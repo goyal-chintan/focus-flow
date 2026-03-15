@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import SwiftData
 
 enum TimerState: Equatable {
@@ -6,6 +7,12 @@ enum TimerState: Equatable {
     case focusing
     case paused
     case onBreak(SessionType)
+}
+
+enum PostCompletionAction {
+    case continueFocusing
+    case takeBreak
+    case endSession
 }
 
 @Observable
@@ -18,9 +25,57 @@ final class TimerViewModel {
     var selectedProject: Project?
     var customLabel: String = ""
 
+    // MARK: - Custom Duration
+    var selectedMinutes: Int = 25
+
+    var focusDuration: TimeInterval {
+        TimeInterval(max(5, selectedMinutes) * 60)
+    }
+
+    // MARK: - Pause Tracking
+    var pauseStartTime: Date? = nil
+    var pauseElapsed: TimeInterval = 0
+    private var pauseTimer: Timer? = nil
+
+    var pauseTimeString: String {
+        let mins = Int(pauseElapsed) / 60
+        let secs = Int(pauseElapsed) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+
+    enum PauseWarningLevel {
+        case normal      // < 2 min
+        case warning     // 2-5 min
+        case critical    // > 5 min
+
+        var color: Color {
+            switch self {
+            case .normal: return .secondary
+            case .warning: return .orange
+            case .critical: return .red
+            }
+        }
+    }
+
+    var pauseWarningLevel: PauseWarningLevel {
+        if pauseElapsed > 300 { return .critical }
+        if pauseElapsed > 120 { return .warning }
+        return .normal
+    }
+
+    // MARK: - Session Completion
+    var showSessionComplete: Bool = false
+    var lastCompletedDuration: TimeInterval? = nil
+    var lastCompletedLabel: String? = nil
+    private var lastCompletedSession: FocusSession? = nil
+
     // MARK: - Today Stats
     var todayFocusTime: TimeInterval = 0
     var todaySessionCount: Int = 0
+
+    // MARK: - Day Boundary
+    private var currentDay: Date = Calendar.current.startOfDay(for: Date())
+    private var midnightTimer: Timer?
 
     // MARK: - Private
     private var timer: Timer?
@@ -60,6 +115,51 @@ final class TimerViewModel {
         self.modelContext = modelContext
         loadSettings()
         loadTodayStats()
+        cleanupOrphanedSessions()
+        scheduleMidnightRefresh()
+    }
+
+    /// Schedules a timer to fire at midnight to refresh today's stats
+    private func scheduleMidnightRefresh() {
+        midnightTimer?.invalidate()
+        let calendar = Calendar.current
+        guard let nextMidnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) else { return }
+        let interval = nextMidnight.timeIntervalSinceNow + 1 // 1 sec after midnight
+
+        let t = Timer(fire: Date().addingTimeInterval(interval), interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleDayChange()
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        midnightTimer = t
+    }
+
+    @MainActor
+    private func handleDayChange() {
+        currentDay = Calendar.current.startOfDay(for: Date())
+        completedFocusSessions = 0
+        loadTodayStats()
+        // Schedule next midnight refresh
+        scheduleMidnightRefresh()
+    }
+
+    private func cleanupOrphanedSessions() {
+        let predicate = #Predicate<FocusSession> { $0.endedAt == nil }
+        let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
+        guard let orphans = try? modelContext?.fetch(descriptor) else { return }
+        for session in orphans {
+            let elapsed = Date().timeIntervalSince(session.startedAt)
+            if elapsed < 60 {
+                // Delete sessions with less than 1 minute — not worth keeping
+                modelContext?.delete(session)
+            } else {
+                // Cap the duration at what was planned
+                session.endedAt = session.startedAt.addingTimeInterval(min(elapsed, session.duration))
+                session.completed = false
+            }
+        }
+        try? modelContext?.save()
     }
 
     private func loadSettings() {
@@ -71,26 +171,39 @@ final class TimerViewModel {
             try? modelContext?.save()
             settings = newSettings
         }
+        if let settings {
+            selectedMinutes = Int(settings.focusDuration / 60)
+        }
     }
 
     func loadTodayStats() {
-        let startOfDay = Calendar.current.startOfDay(for: Date())
-        let predicate = #Predicate<FocusSession> {
-            $0.startedAt >= startOfDay
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        // Fetch sessions that overlap with today (handles cross-midnight)
+        let descriptor = FetchDescriptor<FocusSession>()
+        guard let allSessions = try? modelContext?.fetch(descriptor) else { return }
+        let focusSessions = allSessions.filter { session in
+            guard session.type == .focus else { return false }
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            return sessionEnd > startOfDay && session.startedAt < tomorrow
         }
-        let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
-        guard let sessions = try? modelContext?.fetch(descriptor) else { return }
-        let focusSessions = sessions.filter { $0.type == .focus }
-        todaySessionCount = focusSessions.filter { $0.completed }.count
-        todayFocusTime = focusSessions.reduce(0) { $0 + $1.actualDuration }
-        // Keep in-memory count in sync with persisted completed sessions
+        todaySessionCount = focusSessions.filter(\.completed).count
+        // Attribute only today's portion of each session
+        todayFocusTime = focusSessions.reduce(0) { sum, session in
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            let overlapStart = max(session.startedAt, startOfDay)
+            let overlapEnd = min(sessionEnd, tomorrow)
+            return sum + max(0, overlapEnd.timeIntervalSince(overlapStart))
+        }
         completedFocusSessions = todaySessionCount
     }
 
     // MARK: - Actions
     func startFocus() {
-        guard let settings else { return }
-        let duration = settings.focusDuration
+        guard settings != nil else { return }
+        let duration = focusDuration
+        guard duration >= 300 else { return } // Min 5 minutes
         totalSeconds = duration
         remainingSeconds = duration
         state = .focusing
@@ -128,10 +241,17 @@ final class TimerViewModel {
         timer?.invalidate()
         timer = nil
         state = .paused
+        pauseStartTime = Date()
+        pauseElapsed = 0
+        startPauseTimer()
     }
 
     func resume() {
         guard state == .paused else { return }
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
         state = .focusing
         startTimer()
     }
@@ -139,9 +259,38 @@ final class TimerViewModel {
     func stop() {
         timer?.invalidate()
         timer = nil
-        currentSession?.endedAt = Date()
-        currentSession?.completed = false
-        try? modelContext?.save()
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
+        if let session = currentSession {
+            session.endedAt = Date()
+            session.completed = false
+            // Delete sessions with less than 1 minute of actual focus
+            if session.actualDuration < 60 {
+                modelContext?.delete(session)
+            }
+            try? modelContext?.save()
+        }
+        currentSession = nil
+        state = .idle
+        remainingSeconds = 0
+        totalSeconds = 0
+        loadTodayStats()
+    }
+
+    func abandonSession() {
+        timer?.invalidate()
+        timer = nil
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
+
+        if let session = currentSession {
+            modelContext?.delete(session)
+            try? modelContext?.save()
+        }
         currentSession = nil
         state = .idle
         remainingSeconds = 0
@@ -159,6 +308,7 @@ final class TimerViewModel {
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
+        loadTodayStats()
     }
 
     // MARK: - Timer
@@ -171,6 +321,29 @@ final class TimerViewModel {
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
+    }
+
+    private func startPauseTimer() {
+        pauseTimer?.invalidate()
+        pauseTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.tickPause()
+            }
+        }
+        RunLoop.main.add(pauseTimer!, forMode: .common)
+    }
+
+    @MainActor
+    private func tickPause() {
+        guard let pauseStartTime else { return }
+        pauseElapsed = Date().timeIntervalSince(pauseStartTime)
+
+        // Send notifications at thresholds
+        if Int(pauseElapsed) == 120 { // 2 min
+            NotificationService.shared.sendPauseWarning(minutes: 2)
+        } else if Int(pauseElapsed) == 300 { // 5 min
+            NotificationService.shared.sendPauseCritical(minutes: 5)
+        }
     }
 
     @MainActor
@@ -192,17 +365,21 @@ final class TimerViewModel {
         try? modelContext?.save()
 
         let wasType = currentSession?.type
+        let lastSession = currentSession
         currentSession = nil
 
         if wasType == .focus {
             completedFocusSessions += 1
             loadTodayStats()
             NotificationService.shared.sendFocusComplete(sound: settings?.completionSound ?? "Glass")
-            if settings?.autoStartBreak == true {
-                startBreak()
-            } else {
-                state = .idle
-            }
+            // Note: autoStartBreak setting is intentionally not checked here.
+            // The completion/reflection flow (SessionCompleteView) always shows after focus ends,
+            // so auto-start break is overridden by the user's choice in that view.
+            lastCompletedDuration = lastSession?.duration
+            lastCompletedLabel = lastSession?.label
+            lastCompletedSession = lastSession
+            showSessionComplete = true
+            state = .idle
         } else {
             loadTodayStats()
             NotificationService.shared.sendBreakComplete(sound: settings?.completionSound ?? "Glass")
@@ -211,6 +388,44 @@ final class TimerViewModel {
             } else {
                 state = .idle
             }
+        }
+    }
+
+    // MARK: - Reflection
+
+    func saveReflection(mood: FocusMood?, achievement: String?, splits: [TimeSplitView.SplitEntry]? = nil) {
+        guard let session = lastCompletedSession else { return }
+        session.mood = mood
+        session.achievement = achievement
+
+        // Save splits if provided
+        if let splits, !splits.isEmpty, splits.count > 1 {
+            for split in splits {
+                let timeSplit = TimeSplit(
+                    project: split.project,
+                    customLabel: split.customLabel.isEmpty ? nil : split.customLabel,
+                    duration: TimeInterval(split.minutes * 60)
+                )
+                timeSplit.session = session
+                modelContext?.insert(timeSplit)
+            }
+        }
+
+        try? modelContext?.save()
+    }
+
+    func continueAfterCompletion(action: PostCompletionAction) {
+        showSessionComplete = false
+        lastCompletedSession = nil
+
+        switch action {
+        case .continueFocusing:
+            startFocus()
+        case .takeBreak:
+            startBreak()
+        case .endSession:
+            state = .idle
+            loadTodayStats()
         }
     }
 }

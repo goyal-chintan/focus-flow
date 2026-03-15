@@ -4,9 +4,26 @@ import SwiftData
 struct TodayStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
 
+    /// Sessions that overlap with today (includes cross-midnight sessions from yesterday)
     private var todaySessions: [FocusSession] {
         let start = Calendar.current.startOfDay(for: Date())
-        return allSessions.filter { $0.startedAt >= start && $0.type == .focus }
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        return allSessions.filter { session in
+            guard session.type == .focus && session.actualDuration >= 60 else { return false }
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            // Include if session overlaps today at all
+            return sessionEnd > start && session.startedAt < tomorrow
+        }
+    }
+
+    /// Focus time attributed to today only (handles cross-midnight correctly)
+    private func todayPortion(of session: FocusSession) -> TimeInterval {
+        let start = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+        let overlapStart = max(session.startedAt, start)
+        let overlapEnd = min(sessionEnd, tomorrow)
+        return max(0, overlapEnd.timeIntervalSince(overlapStart))
     }
 
     var body: some View {
@@ -64,6 +81,57 @@ struct TodayStatsView: View {
                 }
                 .padding(16)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+
+                // Reflections section
+                let reflectedSessions = todaySessions.filter { $0.mood != nil || $0.achievement != nil }
+                if !reflectedSessions.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Reflections")
+                            .font(.headline)
+
+                        // Mood distribution
+                        let moodCounts = Dictionary(grouping: todaySessions.compactMap(\.mood), by: { $0 })
+                            .mapValues(\.count)
+                            .sorted { $0.value > $1.value }
+
+                        if !moodCounts.isEmpty {
+                            HStack(spacing: 12) {
+                                ForEach(moodCounts, id: \.key) { mood, count in
+                                    HStack(spacing: 4) {
+                                        Image(systemName: mood.icon)
+                                            .font(.caption)
+                                            .foregroundStyle(moodColor(mood))
+                                        Text("\(count)")
+                                            .font(.subheadline.weight(.medium))
+                                        Text(mood.rawValue)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Achievements list
+                        let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
+                        if !achievements.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(achievements, id: \.self) { achievement in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.green)
+                                            .padding(.top, 2)
+                                        Text(achievement)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+                }
             }
             .padding(24)
         }
@@ -71,7 +139,7 @@ struct TodayStatsView: View {
     }
 
     private var totalFocusTime: TimeInterval {
-        todaySessions.reduce(0) { $0 + $1.actualDuration }
+        todaySessions.reduce(0) { $0 + todayPortion(of: $1) }
     }
 
     private var completedCount: Int {
@@ -92,15 +160,59 @@ struct TodayStatsView: View {
         let color: Color
     }
 
-    private var projectBreakdown: [ProjectItem] {
-        var map: [String: TimeInterval] = [:]
-        for session in todaySessions {
-            map[session.label, default: 0] += session.actualDuration
+    private func moodColor(_ mood: FocusMood) -> Color {
+        switch mood {
+        case .distracted: .orange
+        case .neutral: .secondary
+        case .focused: .blue
+        case .deepFocus: .purple
         }
-        let colors: [Color] = [.blue, .green, .purple, .orange, .pink, .teal]
-        return map.enumerated().map { idx, kv in
-            ProjectItem(name: kv.key, duration: kv.value, color: colors[idx % colors.count])
-        }.sorted { $0.duration > $1.duration }
+    }
+
+    private var projectBreakdown: [ProjectItem] {
+        var map: [String: (TimeInterval, Color)] = [:]
+        for session in todaySessions {
+            if session.hasSplits {
+                // Use split data for sessions with time splits
+                for split in session.splits {
+                    let name = split.label
+                    let color: Color = {
+                        if let c = split.project?.color { return colorFromName(c) }
+                        if let c = session.project?.color { return colorFromName(c) }
+                        return .blue
+                    }()
+                    let existing = map[name]
+                    map[name] = ((existing?.0 ?? 0) + split.duration, existing?.1 ?? color)
+                }
+            } else {
+                // Use session-level data
+                let name = session.label
+                let color: Color = {
+                    if let c = session.project?.color { return colorFromName(c) }
+                    return .blue
+                }()
+                let existing = map[name]
+                map[name] = ((existing?.0 ?? 0) + todayPortion(of: session), existing?.1 ?? color)
+            }
+        }
+        return map.map { ProjectItem(name: $0.key, duration: $0.value.0, color: $0.value.1) }
+            .sorted { $0.duration > $1.duration }
+    }
+
+    private func colorFromName(_ name: String) -> Color {
+        switch name {
+        case "blue": return .blue
+        case "indigo": return .indigo
+        case "purple": return .purple
+        case "pink": return .pink
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "teal": return .teal
+        case "mint": return .mint
+        default: return .blue
+        }
     }
 
 }

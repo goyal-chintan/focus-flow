@@ -19,6 +19,28 @@ final class NotificationService {
         send(title: "Break's over!", body: "Ready to focus again?", sound: sound)
     }
 
+    func sendPauseWarning(minutes: Int) {
+        NSSound(named: NSSound.Name("Bottle"))?.play()
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Pause getting long"
+        content.body = "You've been paused for \(minutes) minutes. Ready to get back to it?"
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "pause-warning", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func sendPauseCritical(minutes: Int) {
+        NSSound(named: NSSound.Name("Sosumi"))?.play()
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Long pause!"
+        content.body = "You've been paused for \(minutes) minutes. Consider resuming or ending the session."
+        content.sound = UNNotificationSound.defaultCritical
+        let request = UNNotificationRequest(identifier: "pause-critical", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     private func send(title: String, body: String, sound: String) {
         NSSound(named: NSSound.Name(sound))?.play()
         guard Bundle.main.bundleIdentifier != nil else { return }

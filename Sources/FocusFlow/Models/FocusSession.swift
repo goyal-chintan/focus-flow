@@ -11,6 +11,16 @@ final class FocusSession {
     var startedAt: Date
     var endedAt: Date?
     var completed: Bool
+    var moodRawValue: String?
+    var achievement: String?
+
+    @Relationship(deleteRule: .cascade)
+    var splits: [TimeSplit]
+
+    var mood: FocusMood? {
+        get { moodRawValue.flatMap { FocusMood(rawValue: $0) } }
+        set { moodRawValue = newValue?.rawValue }
+    }
 
     init(type: SessionType, duration: TimeInterval, project: Project? = nil, customLabel: String? = nil) {
         self.id = UUID()
@@ -21,7 +31,10 @@ final class FocusSession {
         self.startedAt = Date()
         self.endedAt = nil
         self.completed = false
+        self.splits = []
     }
+
+    var hasSplits: Bool { !splits.isEmpty }
 
     var label: String {
         project?.name ?? customLabel ?? type.displayName

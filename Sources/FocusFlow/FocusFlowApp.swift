@@ -4,7 +4,7 @@ import SwiftData
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self])
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self])
         let config = ModelConfiguration(schema: schema)
         return try! ModelContainer(for: schema, configurations: config)
     }()
@@ -18,16 +18,24 @@ struct FocusFlowApp: App {
                     NotificationService.shared.requestPermission()
                 }
         } label: {
-            if timerVM.isRunning {
-                HStack(spacing: 4) {
-                    Image(systemName: "timer")
+            HStack(spacing: 4) {
+                Image(systemName: "timer")
+                if timerVM.state == .paused {
+                    Text("\u{23F8}")
+                } else if timerVM.isRunning {
                     Text(timerVM.timeString)
                         .monospacedDigit()
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
                 }
-            } else {
-                Image(systemName: "timer")
+                if timerVM.todayFocusTime > 0 || timerVM.isRunning {
+                    if timerVM.isRunning {
+                        Text("\u{00B7}")
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(timerVM.todayFocusTime.formattedFocusTime)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .font(.system(size: 12, weight: .medium, design: .rounded))
         }
         .menuBarExtraStyle(.window)
         .modelContainer(container)
