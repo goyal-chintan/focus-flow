@@ -8,24 +8,60 @@ A native macOS Pomodoro focus timer built with SwiftUI and Apple's Liquid Glass 
 
 ## Features
 
-**Menu Bar Timer**
+### Menu Bar Timer
 - Lives in the menu bar — always visible, never in the way
-- Animated timer ring with live countdown
-- Start, pause, resume, and stop focus sessions
-- Pick from saved projects or type a custom label
+- Shows live countdown during focus + total daily focus time
+- Animated timer ring with smooth progress
+- Preset durations (15 / 25 / 45 / 60 min) or custom minute input
+- Minimum 5-minute sessions enforced
 - Session cycle tracking with automatic short and long breaks
+- Pause indicator with elapsed time in menu bar
 
-**Companion Window**
-- Today: focus time, session count, per-project breakdown, session timeline
-- Week: bar chart of daily focus time with 7-day and 30-day views
-- Projects: create, edit, and archive projects with colors and icons
-- Settings: customize durations, sounds, auto-start behavior, launch at login
+### Focus Sessions
+- **Start / Pause / Resume / Stop** with Liquid Glass controls
+- **Pause counter** with color-coded warnings — orange at 2 min, red at 5 min, with notification sounds
+- **Abandon session** — stop and choose to save as incomplete or discard entirely
+- **Session completion flow** — when a timer finishes:
+  - Rate your focus (Distracted / Neutral / Focused / Deep Focus)
+  - Record what you achieved
+  - Split time across multiple projects (e.g., 15 min coding + 10 min review)
+  - Choose: Take a Break, Continue Focusing, or End Session
 
-**Built with Apple's Liquid Glass**
+### Smart Project Management
+- Inline search-and-create — type to find existing projects or create new ones on the fly
+- Projects with custom colors (10 options) and SF Symbol icons (16 options)
+- Archive projects (soft delete, data preserved)
+- No confusing split between "labels" and "projects" — unified system
+
+### Stats & Analytics
+- **Today tab** — focus time, session count, streak, per-project time bars, session timeline with mood icons, reflections summary (mood distribution + achievements)
+- **Week tab** — bar chart with 7-day / 30-day toggle, daily average, best day, total
+- **Edit past sessions** — click any session in the timeline to change project, mood, or achievement
+- **Cross-midnight handling** — sessions spanning midnight are correctly attributed to each day
+- **Time splits in stats** — split sessions show per-project breakdown accurately
+
+### Settings
+- Customize focus / short break / long break durations
+- Sessions before long break (2–8)
+- Auto-start breaks and next session toggles
+- Completion sound picker (13 macOS system sounds with preview)
+- Launch at login (SMAppService)
+
+### Day Boundary Handling
+- Automatic stats refresh at midnight
+- Cross-midnight sessions split attribution between days
+- Session counter resets at day change
+
+### Notifications
+- Focus session complete — sound + macOS notification
+- Break complete — sound + notification
+- Pause too long — warning at 2 min, critical at 5 min
+
+### Built with Apple's Liquid Glass
 - Native `.glassEffect()` materials with refraction and specular highlights
 - `.buttonStyle(.glass)` and `.glassProminent` controls
 - `GlassEffectContainer` for grouped glass elements
-- Designed exclusively for macOS 26 (Tahoe) and Apple Silicon
+- Designed exclusively for macOS 26 (Tahoe)
 
 ## Requirements
 
@@ -59,36 +95,41 @@ Then launch from Spotlight (⌘+Space → "FocusFlow") or Launchpad.
 
 ```
 Sources/FocusFlow/
-├── FocusFlowApp.swift          # App entry — MenuBarExtra + Window scenes
-├── Models/                     # SwiftData models
-│   ├── Project.swift           # Projects with color, icon, sessions
-│   ├── FocusSession.swift      # Focus/break session records
-│   ├── AppSettings.swift       # User preferences
-│   └── SessionType.swift       # Focus, short break, long break
+├── FocusFlowApp.swift              # App entry — MenuBarExtra + Window scenes
+├── Models/
+│   ├── Project.swift               # Projects with color, icon, sessions
+│   ├── FocusSession.swift          # Focus/break session records + mood/achievement
+│   ├── TimeSplit.swift             # Time splits across projects
+│   ├── SessionReflection.swift    # FocusMood enum
+│   ├── AppSettings.swift           # User preferences
+│   └── SessionType.swift           # Focus, short break, long break
 ├── ViewModels/
-│   └── TimerViewModel.swift    # Timer state machine + SwiftData persistence
+│   └── TimerViewModel.swift        # Timer state machine, pause tracking, day boundary
 ├── Services/
-│   └── NotificationService.swift  # macOS notifications + sounds
+│   └── NotificationService.swift   # Notifications + sounds + pause warnings
 └── Views/
     ├── MenuBar/
-    │   └── MenuBarPopoverView.swift   # Timer popover
+    │   ├── MenuBarPopoverView.swift    # Timer popover with controls
+    │   ├── SessionCompleteView.swift   # Completion flow (mood, achievement, splits)
+    │   └── TimeSplitView.swift         # Split time across projects UI
     ├── Companion/
-    │   ├── CompanionWindowView.swift  # Sidebar navigation
-    │   ├── TodayStatsView.swift       # Daily stats dashboard
-    │   ├── WeeklyStatsView.swift      # Weekly/monthly charts
-    │   ├── ProjectsListView.swift     # Project management
-    │   ├── ProjectFormView.swift      # Add/edit project
-    │   └── SettingsView.swift         # App preferences
+    │   ├── CompanionWindowView.swift   # Sidebar navigation
+    │   ├── TodayStatsView.swift        # Daily dashboard with reflections
+    │   ├── WeeklyStatsView.swift       # Weekly/monthly charts
+    │   ├── ProjectsListView.swift      # Project management
+    │   ├── ProjectFormView.swift       # Add/edit project
+    │   ├── SessionEditView.swift       # Edit past sessions
+    │   └── SettingsView.swift          # App preferences
     └── Components/
-        ├── TimerRingView.swift        # Animated progress ring
-        ├── ControlButton.swift        # Liquid Glass buttons
-        ├── SessionDotsView.swift      # Session cycle dots
-        ├── ProjectPickerView.swift    # Project selector
-        ├── StatCard.swift             # Stats display card
-        ├── BarChartView.swift         # Weekly bar chart
-        ├── ProjectTimeBar.swift       # Per-project progress bar
-        ├── SessionTimelineView.swift  # Daily session timeline
-        └── TimeFormatting.swift       # Shared time formatting
+        ├── TimerRingView.swift         # Animated progress ring
+        ├── ControlButton.swift         # Liquid Glass buttons
+        ├── SessionDotsView.swift       # Session cycle dots
+        ├── ProjectPickerView.swift     # Search + create project picker
+        ├── StatCard.swift              # Glass stat card
+        ├── BarChartView.swift          # Weekly bar chart
+        ├── ProjectTimeBar.swift        # Per-project progress bar
+        ├── SessionTimelineView.swift   # Clickable session timeline
+        └── TimeFormatting.swift        # Shared time formatting
 ```
 
 ## Tech Stack
@@ -96,7 +137,7 @@ Sources/FocusFlow/
 - **SwiftUI** — declarative UI framework
 - **SwiftData** — local persistence (no cloud, no accounts)
 - **Liquid Glass** — Apple's native material system (macOS 26+)
-- **UNUserNotificationCenter** — session completion notifications
+- **UNUserNotificationCenter** — session and pause notifications
 - **SMAppService** — launch at login
 
 ## License

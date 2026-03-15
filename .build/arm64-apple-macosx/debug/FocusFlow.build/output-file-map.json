@@ -1,0 +1,215 @@
+{
+  "": {
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/master.swiftdeps"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/FocusFlowApp.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/AppSettings.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/Project.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionReflection.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionType.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/TimeSplit.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SettingsView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/TodayStatsView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/BarChartView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ControlButton.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectPickerView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionDotsView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionTimelineView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/StatCard.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimeFormatting.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimerRingView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/main.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.dia"
+  }
+}
