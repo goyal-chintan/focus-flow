@@ -73,6 +73,10 @@ final class TimerViewModel {
     var todayFocusTime: TimeInterval = 0
     var todaySessionCount: Int = 0
 
+    // MARK: - Day Boundary
+    private var currentDay: Date = Calendar.current.startOfDay(for: Date())
+    private var midnightTimer: Timer?
+
     // MARK: - Private
     private var timer: Timer?
     private var modelContext: ModelContext?
@@ -112,6 +116,32 @@ final class TimerViewModel {
         loadSettings()
         loadTodayStats()
         cleanupOrphanedSessions()
+        scheduleMidnightRefresh()
+    }
+
+    /// Schedules a timer to fire at midnight to refresh today's stats
+    private func scheduleMidnightRefresh() {
+        midnightTimer?.invalidate()
+        let calendar = Calendar.current
+        guard let nextMidnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) else { return }
+        let interval = nextMidnight.timeIntervalSinceNow + 1 // 1 sec after midnight
+
+        let t = Timer(fire: Date().addingTimeInterval(interval), interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleDayChange()
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        midnightTimer = t
+    }
+
+    @MainActor
+    private func handleDayChange() {
+        currentDay = Calendar.current.startOfDay(for: Date())
+        completedFocusSessions = 0
+        loadTodayStats()
+        // Schedule next midnight refresh
+        scheduleMidnightRefresh()
     }
 
     private func cleanupOrphanedSessions() {
@@ -147,16 +177,25 @@ final class TimerViewModel {
     }
 
     func loadTodayStats() {
-        let startOfDay = Calendar.current.startOfDay(for: Date())
-        let predicate = #Predicate<FocusSession> {
-            $0.startedAt >= startOfDay
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        // Fetch sessions that overlap with today (handles cross-midnight)
+        let descriptor = FetchDescriptor<FocusSession>()
+        guard let allSessions = try? modelContext?.fetch(descriptor) else { return }
+        let focusSessions = allSessions.filter { session in
+            guard session.type == .focus else { return false }
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            return sessionEnd > startOfDay && session.startedAt < tomorrow
         }
-        let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
-        guard let sessions = try? modelContext?.fetch(descriptor) else { return }
-        let focusSessions = sessions.filter { $0.type == .focus }
-        todaySessionCount = focusSessions.filter { $0.completed }.count
-        todayFocusTime = focusSessions.reduce(0) { $0 + $1.actualDuration }
-        // Keep in-memory count in sync with persisted completed sessions
+        todaySessionCount = focusSessions.filter(\.completed).count
+        // Attribute only today's portion of each session
+        todayFocusTime = focusSessions.reduce(0) { sum, session in
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            let overlapStart = max(session.startedAt, startOfDay)
+            let overlapEnd = min(sessionEnd, tomorrow)
+            return sum + max(0, overlapEnd.timeIntervalSince(overlapStart))
+        }
         completedFocusSessions = todaySessionCount
     }
 
