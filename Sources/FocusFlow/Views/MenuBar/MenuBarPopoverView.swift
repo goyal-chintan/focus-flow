@@ -8,6 +8,9 @@ struct MenuBarPopoverView: View {
     var body: some View {
         @Bindable var timerVM = timerVM
 
+        if timerVM.showSessionComplete {
+            SessionCompleteView()
+        } else {
         VStack(spacing: 0) {
             // Timer ring
             TimerRingView(
@@ -76,6 +79,7 @@ struct MenuBarPopoverView: View {
         }
         .frame(width: 300)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: timerVM.state)
+        } // else
     }
 
     @ViewBuilder

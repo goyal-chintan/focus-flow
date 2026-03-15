@@ -8,6 +8,12 @@ enum TimerState: Equatable {
     case onBreak(SessionType)
 }
 
+enum PostCompletionAction {
+    case continueFocusing
+    case takeBreak
+    case endSession
+}
+
 @Observable
 final class TimerViewModel {
     // MARK: - State
@@ -17,6 +23,12 @@ final class TimerViewModel {
     var completedFocusSessions: Int = 0
     var selectedProject: Project?
     var customLabel: String = ""
+
+    // MARK: - Session Completion
+    var showSessionComplete: Bool = false
+    var lastCompletedDuration: TimeInterval? = nil
+    var lastCompletedLabel: String? = nil
+    private var lastCompletedSession: FocusSession? = nil
 
     // MARK: - Today Stats
     var todayFocusTime: TimeInterval = 0
@@ -192,17 +204,19 @@ final class TimerViewModel {
         try? modelContext?.save()
 
         let wasType = currentSession?.type
+        let lastSession = currentSession
         currentSession = nil
 
         if wasType == .focus {
             completedFocusSessions += 1
             loadTodayStats()
             NotificationService.shared.sendFocusComplete(sound: settings?.completionSound ?? "Glass")
-            if settings?.autoStartBreak == true {
-                startBreak()
-            } else {
-                state = .idle
-            }
+            // Don't auto-start break — show completion view instead
+            lastCompletedDuration = lastSession?.duration
+            lastCompletedLabel = lastSession?.label
+            lastCompletedSession = lastSession
+            showSessionComplete = true
+            state = .idle
         } else {
             loadTodayStats()
             NotificationService.shared.sendBreakComplete(sound: settings?.completionSound ?? "Glass")
@@ -211,6 +225,29 @@ final class TimerViewModel {
             } else {
                 state = .idle
             }
+        }
+    }
+
+    // MARK: - Reflection
+
+    func saveReflection(mood: FocusMood?, achievement: String?) {
+        lastCompletedSession?.mood = mood
+        lastCompletedSession?.achievement = achievement
+        try? modelContext?.save()
+    }
+
+    func continueAfterCompletion(action: PostCompletionAction) {
+        showSessionComplete = false
+        lastCompletedSession = nil
+
+        switch action {
+        case .continueFocusing:
+            startFocus()
+        case .takeBreak:
+            startBreak()
+        case .endSession:
+            state = .idle
+            loadTodayStats()
         }
     }
 }

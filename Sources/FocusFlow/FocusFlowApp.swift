@@ -18,16 +18,22 @@ struct FocusFlowApp: App {
                     NotificationService.shared.requestPermission()
                 }
         } label: {
-            if timerVM.isRunning {
-                HStack(spacing: 4) {
-                    Image(systemName: "timer")
+            HStack(spacing: 4) {
+                Image(systemName: "timer")
+                if timerVM.isRunning {
                     Text(timerVM.timeString)
                         .monospacedDigit()
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
                 }
-            } else {
-                Image(systemName: "timer")
+                if timerVM.todayFocusTime > 0 || timerVM.isRunning {
+                    if timerVM.isRunning {
+                        Text("\u{00B7}")
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(timerVM.todayFocusTime.formattedFocusTime)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .font(.system(size: 12, weight: .medium, design: .rounded))
         }
         .menuBarExtraStyle(.window)
         .modelContainer(container)
