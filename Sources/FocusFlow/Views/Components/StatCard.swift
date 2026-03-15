@@ -26,6 +26,26 @@ struct StatCard: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(.ultraThinMaterial)
+                // Subtle color tint
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(color.opacity(0.05))
+                // Glass gradient overlay
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.08), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                // Glass border
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+            }
+        }
     }
 }
