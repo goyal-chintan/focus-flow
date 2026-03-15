@@ -9,6 +9,29 @@ struct MenuBarPopoverView: View {
         @Bindable var timerVM = timerVM
 
         VStack(spacing: 0) {
+            // Open Stats banner
+            Button {
+                openWindow(id: "stats")
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            } label: {
+                HStack {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.subheadline)
+                    Text("Open Stats & Settings")
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    Image(systemName: "arrow.up.forward.square")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
             // Timer ring section
             VStack(spacing: 14) {
                 TimerRingView(
@@ -61,6 +84,7 @@ struct MenuBarPopoverView: View {
 
                 Button {
                     openWindow(id: "stats")
+                    NSApplication.shared.activate(ignoringOtherApps: true)
                 } label: {
                     Image(systemName: "chart.bar.fill")
                         .font(.caption)
