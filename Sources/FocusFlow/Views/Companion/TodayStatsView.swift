@@ -64,6 +64,57 @@ struct TodayStatsView: View {
                 }
                 .padding(16)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+
+                // Reflections section
+                let reflectedSessions = todaySessions.filter { $0.mood != nil || $0.achievement != nil }
+                if !reflectedSessions.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Reflections")
+                            .font(.headline)
+
+                        // Mood distribution
+                        let moodCounts = Dictionary(grouping: todaySessions.compactMap(\.mood), by: { $0 })
+                            .mapValues(\.count)
+                            .sorted { $0.value > $1.value }
+
+                        if !moodCounts.isEmpty {
+                            HStack(spacing: 12) {
+                                ForEach(moodCounts, id: \.key) { mood, count in
+                                    HStack(spacing: 4) {
+                                        Image(systemName: mood.icon)
+                                            .font(.caption)
+                                            .foregroundStyle(moodColor(mood))
+                                        Text("\(count)")
+                                            .font(.subheadline.weight(.medium))
+                                        Text(mood.rawValue)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Achievements list
+                        let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
+                        if !achievements.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(achievements, id: \.self) { achievement in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.green)
+                                            .padding(.top, 2)
+                                        Text(achievement)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+                }
             }
             .padding(24)
         }
@@ -90,6 +141,15 @@ struct TodayStatsView: View {
         let name: String
         let duration: TimeInterval
         let color: Color
+    }
+
+    private func moodColor(_ mood: FocusMood) -> Color {
+        switch mood {
+        case .distracted: .orange
+        case .neutral: .secondary
+        case .focused: .blue
+        case .deepFocus: .purple
+        }
     }
 
     private var projectBreakdown: [ProjectItem] {
