@@ -35,6 +35,9 @@ struct FocusFlowApp: App {
         Window("FocusFlow", id: "stats") {
             CompanionWindowView()
                 .environment(timerVM)
+                .onAppear {
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                }
         }
         .defaultSize(width: 720, height: 520)
         .modelContainer(container)
