@@ -6,11 +6,25 @@ struct TimerRingView: View {
     let label: String
     let state: TimerState
 
+    @State private var glowPulse = false
+
+    private var isRunning: Bool {
+        if case .focusing = state { return true }
+        if case .onBreak = state { return true }
+        return false
+    }
+
     var body: some View {
         ZStack {
+            // Glow layer behind the ring
+            Circle()
+                .stroke(lineWidth: 24)
+                .foregroundStyle(ringColor.opacity(glowPulse ? 0.25 : 0.10))
+                .blur(radius: 12)
+
             // Track ring
             Circle()
-                .stroke(lineWidth: 10)
+                .stroke(lineWidth: 12)
                 .foregroundStyle(.quaternary)
 
             // Progress ring
@@ -18,9 +32,10 @@ struct TimerRingView: View {
                 .trim(from: 0, to: max(0, min(1, progress)))
                 .stroke(
                     ringGradient,
-                    style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 12, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
+                .shadow(color: ringColor.opacity(0.5), radius: 6, x: 0, y: 0)
                 .animation(.smooth(duration: 0.9), value: progress)
 
             // Center content
@@ -30,6 +45,7 @@ struct TimerRingView: View {
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: true))
                     .animation(.smooth, value: timeString)
+                    .scaleEffect(isRunning && glowPulse ? 1.02 : 1.0)
 
                 Text(label.uppercased())
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -40,6 +56,20 @@ struct TimerRingView: View {
             }
         }
         .frame(width: 180, height: 180)
+        .onAppear { startPulseIfNeeded() }
+        .onChange(of: state) { _, _ in startPulseIfNeeded() }
+    }
+
+    private func startPulseIfNeeded() {
+        if isRunning {
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                glowPulse = true
+            }
+        } else {
+            withAnimation(.easeInOut(duration: 0.4)) {
+                glowPulse = false
+            }
+        }
     }
 
     private var ringColor: Color {

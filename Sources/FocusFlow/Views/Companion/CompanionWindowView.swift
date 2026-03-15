@@ -23,9 +23,27 @@ struct CompanionWindowView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(CompanionTab.allCases, selection: $selectedTab) { tab in
-                Label(tab.rawValue, systemImage: tab.icon)
-                    .tag(tab)
+            VStack(spacing: 0) {
+                // Sidebar header
+                HStack(spacing: 8) {
+                    Image(systemName: "timer")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.tint)
+                    Text("FocusFlow")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+                Divider()
+                    .padding(.horizontal, 12)
+
+                List(CompanionTab.allCases, selection: $selectedTab) { tab in
+                    Label(tab.rawValue, systemImage: tab.icon)
+                        .tag(tab)
+                }
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
         } detail: {
@@ -42,6 +60,7 @@ struct CompanionWindowView: View {
                 }
             }
             .animation(.smooth, value: selectedTab)
+            .navigationTitle(selectedTab.rawValue)
         }
     }
 }

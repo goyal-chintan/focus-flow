@@ -56,15 +56,16 @@ struct ProjectsListView: View {
                 List {
                     ForEach(projects) { project in
                         HStack(spacing: 14) {
-                            // Icon badge
+                            // Icon badge — larger & more vibrant
                             ZStack {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(colorFromName(project.color).opacity(0.15))
-                                    .frame(width: 40, height: 40)
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(colorFromName(project.color).opacity(0.18))
+                                    .frame(width: 46, height: 46)
                                 Image(systemName: project.icon ?? "folder.fill")
                                     .foregroundStyle(colorFromName(project.color))
-                                    .font(.system(size: 18, weight: .medium))
+                                    .font(.system(size: 22, weight: .semibold))
                             }
+                            .shadow(color: colorFromName(project.color).opacity(0.2), radius: 4, x: 0, y: 2)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(project.name)
@@ -94,7 +95,7 @@ struct ProjectsListView: View {
                                 .help("Edit project")
 
                                 Button {
-                                    withAnimation {
+                                    withAnimation(.easeInOut(duration: 0.35)) {
                                         project.archived = true
                                         try? modelContext.save()
                                     }
@@ -108,6 +109,18 @@ struct ProjectsListView: View {
                             }
                         }
                         .padding(.vertical, 4)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity.combined(with: .move(edge: .trailing))
+                        ))
+                    }
+                    .onDelete { indexSet in
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            for index in indexSet {
+                                projects[index].archived = true
+                            }
+                            try? modelContext.save()
+                        }
                     }
                 }
                 .scrollContentBackground(.hidden)
