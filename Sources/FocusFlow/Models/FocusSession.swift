@@ -11,6 +11,13 @@ final class FocusSession {
     var startedAt: Date
     var endedAt: Date?
     var completed: Bool
+    var moodRawValue: String?
+    var achievement: String?
+
+    var mood: FocusMood? {
+        get { moodRawValue.flatMap { FocusMood(rawValue: $0) } }
+        set { moodRawValue = newValue?.rawValue }
+    }
 
     init(type: SessionType, duration: TimeInterval, project: Project? = nil, customLabel: String? = nil) {
         self.id = UUID()
