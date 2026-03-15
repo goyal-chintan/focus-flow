@@ -32,7 +32,7 @@ struct ProjectsListView: View {
                     Label("New Project", systemImage: "plus")
                         .font(.subheadline.weight(.medium))
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .controlSize(.small)
             }
             .padding(24)

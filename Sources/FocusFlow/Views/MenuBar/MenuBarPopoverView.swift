@@ -50,19 +50,26 @@ struct MenuBarPopoverView: View {
 
             // Footer
             HStack {
-                Text(footerText)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                Label {
+                    Text(footerText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "flame.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
                 Spacer()
+
                 Button {
                     openWindow(id: "stats")
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 } label: {
-                    Text("Stats")
+                    Label("Stats", systemImage: "chart.bar.fill")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 10)

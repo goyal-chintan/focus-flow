@@ -51,6 +51,8 @@ struct TodayStatsView: View {
                             )
                         }
                     }
+                    .padding(16)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
                 }
 
                 // Session timeline
@@ -60,6 +62,8 @@ struct TodayStatsView: View {
 
                     SessionTimelineView(sessions: todaySessions)
                 }
+                .padding(16)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
             }
             .padding(24)
         }
