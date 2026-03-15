@@ -42,6 +42,8 @@ struct CompanionWindowView: View {
                 }
             }
             .navigationTitle(selectedTab.rawValue)
+            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+            .toolbarBackground(.ultraThinMaterial, for: .windowToolbar)
         }
     }
 }
