@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct ProjectFormView: View {
     @Environment(\.dismiss) private var dismiss
@@ -6,6 +7,8 @@ struct ProjectFormView: View {
     @Binding var name: String
     @Binding var color: String
     @Binding var icon: String
+    @Binding var selectedBlockProfile: BlockProfile?
+    @Query(sort: \BlockProfile.createdAt) private var blockProfiles: [BlockProfile]
     let title: String
     let onSave: () -> Void
 
@@ -29,6 +32,7 @@ struct ProjectFormView: View {
             nameSection
             colorSection
             iconSection
+            blockProfileSection
             actionButtons
         }
         .padding(20)
@@ -69,6 +73,45 @@ struct ProjectFormView: View {
                         .onTapGesture { icon = sfSymbol }
                 }
             }
+        }
+    }
+
+    private var blockProfileSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Block Profile")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Menu {
+                Button("None") { selectedBlockProfile = nil }
+                Divider()
+                ForEach(blockProfiles) { profile in
+                    Button {
+                        selectedBlockProfile = profile
+                    } label: {
+                        HStack {
+                            Text(profile.name)
+                            if profile.isDefault { Text("(Default)") }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "shield.checkered")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(selectedBlockProfile?.name ?? "None (uses default)")
+                        .font(.subheadline)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
         }
     }
 

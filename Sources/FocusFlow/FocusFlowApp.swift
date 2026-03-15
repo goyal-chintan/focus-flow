@@ -20,6 +20,10 @@ struct FocusFlowApp: App {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "timer")
+                if timerVM.isBlockingActive {
+                    Image(systemName: "shield.checkered")
+                        .font(.system(size: 10))
+                }
                 if timerVM.state == .paused {
                     Text("\u{23F8}")
                 } else if timerVM.isRunning {
