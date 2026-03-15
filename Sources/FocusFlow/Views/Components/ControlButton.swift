@@ -39,15 +39,11 @@ struct ControlButton: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private var background: some View {
+    private var background: AnyShapeStyle {
         switch role {
-        case .primary:
-            RoundedRectangle(cornerRadius: 10).fill(.tint)
-        case .secondary:
-            RoundedRectangle(cornerRadius: 10).fill(.ultraThinMaterial)
-        case .destructive:
-            RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.12))
+        case .primary: AnyShapeStyle(.tint)
+        case .secondary: AnyShapeStyle(.ultraThinMaterial)
+        case .destructive: AnyShapeStyle(Color.red.opacity(0.12))
         }
     }
 
