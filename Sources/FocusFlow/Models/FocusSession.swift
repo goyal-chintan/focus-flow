@@ -28,7 +28,8 @@ final class FocusSession {
     }
 
     var actualDuration: TimeInterval {
-        guard let endedAt else { return Date().timeIntervalSince(startedAt) }
-        return endedAt.timeIntervalSince(startedAt)
+        let end = endedAt ?? Date()
+        let elapsed = end.timeIntervalSince(startedAt)
+        return min(elapsed, duration)
     }
 }
