@@ -153,14 +153,49 @@ struct TodayStatsView: View {
     }
 
     private var projectBreakdown: [ProjectItem] {
-        var map: [String: TimeInterval] = [:]
+        var map: [String: (TimeInterval, Color)] = [:]
         for session in todaySessions {
-            map[session.label, default: 0] += session.actualDuration
+            if session.hasSplits {
+                // Use split data for sessions with time splits
+                for split in session.splits {
+                    let name = split.label
+                    let color: Color = {
+                        if let c = split.project?.color { return colorFromName(c) }
+                        if let c = session.project?.color { return colorFromName(c) }
+                        return .blue
+                    }()
+                    let existing = map[name]
+                    map[name] = ((existing?.0 ?? 0) + split.duration, existing?.1 ?? color)
+                }
+            } else {
+                // Use session-level data
+                let name = session.label
+                let color: Color = {
+                    if let c = session.project?.color { return colorFromName(c) }
+                    return .blue
+                }()
+                let existing = map[name]
+                map[name] = ((existing?.0 ?? 0) + session.actualDuration, existing?.1 ?? color)
+            }
         }
-        let colors: [Color] = [.blue, .green, .purple, .orange, .pink, .teal]
-        return map.enumerated().map { idx, kv in
-            ProjectItem(name: kv.key, duration: kv.value, color: colors[idx % colors.count])
-        }.sorted { $0.duration > $1.duration }
+        return map.map { ProjectItem(name: $0.key, duration: $0.value.0, color: $0.value.1) }
+            .sorted { $0.duration > $1.duration }
+    }
+
+    private func colorFromName(_ name: String) -> Color {
+        switch name {
+        case "blue": return .blue
+        case "indigo": return .indigo
+        case "purple": return .purple
+        case "pink": return .pink
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "teal": return .teal
+        case "mint": return .mint
+        default: return .blue
+        }
     }
 
 }

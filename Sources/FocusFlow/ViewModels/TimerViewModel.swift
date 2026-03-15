@@ -111,6 +111,19 @@ final class TimerViewModel {
         self.modelContext = modelContext
         loadSettings()
         loadTodayStats()
+        cleanupOrphanedSessions()
+    }
+
+    private func cleanupOrphanedSessions() {
+        let predicate = #Predicate<FocusSession> { $0.endedAt == nil }
+        let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
+        guard let orphans = try? modelContext?.fetch(descriptor) else { return }
+        for session in orphans {
+            // Cap the duration at what was planned
+            session.endedAt = session.startedAt.addingTimeInterval(session.duration)
+            session.completed = false
+        }
+        try? modelContext?.save()
     }
 
     private func loadSettings() {
@@ -225,6 +238,7 @@ final class TimerViewModel {
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
+        loadTodayStats()
     }
 
     // MARK: - Timer
@@ -288,7 +302,9 @@ final class TimerViewModel {
             completedFocusSessions += 1
             loadTodayStats()
             NotificationService.shared.sendFocusComplete(sound: settings?.completionSound ?? "Glass")
-            // Don't auto-start break — show completion view instead
+            // Note: autoStartBreak setting is intentionally not checked here.
+            // The completion/reflection flow (SessionCompleteView) always shows after focus ends,
+            // so auto-start break is overridden by the user's choice in that view.
             lastCompletedDuration = lastSession?.duration
             lastCompletedLabel = lastSession?.label
             lastCompletedSession = lastSession
