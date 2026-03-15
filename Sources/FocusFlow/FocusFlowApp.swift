@@ -1,6 +1,5 @@
 // Sources/FocusFlow/FocusFlowApp.swift
 import SwiftUI
-import SwiftData
 
 struct FocusFlowApp: App {
     var body: some Scene {
