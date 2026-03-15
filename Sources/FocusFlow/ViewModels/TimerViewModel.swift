@@ -102,6 +102,8 @@ final class TimerViewModel {
         }
     }
 
+    var isBlockingActive: Bool { BlockingService.shared.isActive }
+
     var sessionLabel: String {
         selectedProject?.name ?? (customLabel.isEmpty ? "Focus" : customLabel)
     }
@@ -114,8 +116,10 @@ final class TimerViewModel {
     func configure(modelContext: ModelContext) {
         self.modelContext = modelContext
         loadSettings()
+        seedDefaultProfiles()
         loadTodayStats()
         cleanupOrphanedSessions()
+        BlockingService.shared.cleanupIfNeeded()
         scheduleMidnightRefresh()
     }
 
@@ -217,6 +221,7 @@ final class TimerViewModel {
         modelContext?.insert(session)
         currentSession = session
         startTimer()
+        activateBlocking()
     }
 
     func startBreak() {
@@ -272,6 +277,7 @@ final class TimerViewModel {
             }
             try? modelContext?.save()
         }
+        deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
@@ -291,6 +297,7 @@ final class TimerViewModel {
             modelContext?.delete(session)
             try? modelContext?.save()
         }
+        deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
@@ -309,6 +316,23 @@ final class TimerViewModel {
         remainingSeconds = 0
         totalSeconds = 0
         loadTodayStats()
+    }
+
+    // MARK: - Blocking
+    private func activateBlocking() {
+        if let profile = selectedProject?.blockProfile {
+            BlockingService.shared.activate(profile: profile)
+            return
+        }
+        let predicate = #Predicate<BlockProfile> { $0.isDefault == true }
+        let descriptor = FetchDescriptor<BlockProfile>(predicate: predicate)
+        if let defaultProfile = try? modelContext?.fetch(descriptor).first {
+            BlockingService.shared.activate(profile: defaultProfile)
+        }
+    }
+
+    private func deactivateBlocking() {
+        BlockingService.shared.deactivate()
     }
 
     // MARK: - Timer
@@ -414,6 +438,26 @@ final class TimerViewModel {
         try? modelContext?.save()
     }
 
+    private func seedDefaultProfiles() {
+        let descriptor = FetchDescriptor<BlockProfile>()
+        let existing = (try? modelContext?.fetch(descriptor)) ?? []
+        guard existing.isEmpty else { return }
+        let social = BlockProfile(
+            name: "Social Media",
+            websites: ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"],
+            isDefault: true
+        )
+        let fullFocus = BlockProfile(
+            name: "Full Focus",
+            websites: ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com", "news.ycombinator.com", "netflix.com", "twitch.tv"],
+            apps: ["com.tinyspeck.slackmacgap", "com.hnc.Discord", "ph.telegra.Telegraph", "net.whatsapp.WhatsApp"],
+            mutedApps: ["com.tinyspeck.slackmacgap", "com.hnc.Discord"]
+        )
+        modelContext?.insert(social)
+        modelContext?.insert(fullFocus)
+        try? modelContext?.save()
+    }
+
     func continueAfterCompletion(action: PostCompletionAction) {
         showSessionComplete = false
         lastCompletedSession = nil
@@ -424,6 +468,7 @@ final class TimerViewModel {
         case .takeBreak:
             startBreak()
         case .endSession:
+            deactivateBlocking()
             state = .idle
             loadTodayStats()
         }
