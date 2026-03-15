@@ -1,8 +1,6 @@
-// Sources/FocusFlow/FocusFlowApp.swift
 import SwiftUI
 import SwiftData
 
-@main
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
 
@@ -23,13 +21,18 @@ struct FocusFlowApp: App {
             }
         }
         .menuBarExtraStyle(.window)
-        .modelContainer(for: [Project.self, FocusSession.self, AppSettings.self])
+        .modelContainer(for: [Project.self, FocusSession.self, AppSettings.self]) { result in
+            if case .success(let container) = result {
+                timerVM.configure(modelContext: container.mainContext)
+                NotificationService.shared.requestPermission()
+            }
+        }
 
         Window("FocusFlow", id: "stats") {
             CompanionWindowView()
                 .environment(timerVM)
         }
-        .defaultSize(width: 700, height: 500)
+        .defaultSize(width: 720, height: 520)
         .modelContainer(for: [Project.self, FocusSession.self, AppSettings.self])
     }
 }

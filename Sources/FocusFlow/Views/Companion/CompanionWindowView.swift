@@ -34,17 +34,11 @@ struct CompanionWindowView: View {
                 case .today:
                     TodayStatsView()
                 case .weekly:
-                    Text("Weekly Stats")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .foregroundStyle(.secondary)
+                    WeeklyStatsView()
                 case .projects:
-                    Text("Projects")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .foregroundStyle(.secondary)
+                    ProjectsListView()
                 case .settings:
-                    Text("Settings")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .foregroundStyle(.secondary)
+                    SettingsView()
                 }
             }
             .animation(.smooth, value: selectedTab)
