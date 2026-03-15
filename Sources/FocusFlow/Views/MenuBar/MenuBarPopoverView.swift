@@ -129,15 +129,9 @@ struct MenuBarPopoverView: View {
 
     private var footerText: String {
         let sessions = timerVM.todaySessionCount
-        let time = formattedTime(timerVM.todayFocusTime)
+        let time = timerVM.todayFocusTime.formattedFocusTime
         if sessions == 0 { return "No sessions yet today" }
         return "\(sessions) session\(sessions == 1 ? "" : "s") · \(time) focused"
     }
 
-    private func formattedTime(_ interval: TimeInterval) -> String {
-        let h = Int(interval) / 3600
-        let m = (Int(interval) % 3600) / 60
-        if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
-    }
 }

@@ -37,19 +37,19 @@ struct WeeklyStatsView: View {
                 HStack(spacing: 12) {
                     StatCard(
                         title: "Daily Average",
-                        value: formattedTime(dailyAverage),
+                        value: dailyAverage.formattedFocusTime,
                         icon: "chart.line.uptrend.xyaxis",
                         color: .purple
                     )
                     StatCard(
                         title: "Best Day",
-                        value: formattedTime(bestDayDuration),
+                        value: bestDayDuration.formattedFocusTime,
                         icon: "star.fill",
                         color: .yellow
                     )
                     StatCard(
                         title: "Total",
-                        value: formattedTime(periodTotal),
+                        value: periodTotal.formattedFocusTime,
                         icon: "sum",
                         color: .blue
                     )
@@ -64,7 +64,7 @@ struct WeeklyStatsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Best day: \(bestDayLabel)")
                                 .font(.subheadline.weight(.semibold))
-                            Text(formattedTime(bestDayDuration) + " of focused work")
+                            Text(bestDayDuration.formattedFocusTime + " of focused work")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -124,10 +124,4 @@ struct WeeklyStatsView: View {
         return chartData[bestIdx].label
     }
 
-    private func formattedTime(_ interval: TimeInterval) -> String {
-        let h = Int(interval) / 3600
-        let m = (Int(interval) % 3600) / 60
-        if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
-    }
 }
