@@ -4,7 +4,7 @@ import SwiftData
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self])
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self])
         let config = ModelConfiguration(schema: schema)
         return try! ModelContainer(for: schema, configurations: config)
     }()
