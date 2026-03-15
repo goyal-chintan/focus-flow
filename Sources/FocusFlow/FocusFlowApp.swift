@@ -20,7 +20,9 @@ struct FocusFlowApp: App {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "timer")
-                if timerVM.isRunning {
+                if timerVM.state == .paused {
+                    Text("\u{23F8}")
+                } else if timerVM.isRunning {
                     Text(timerVM.timeString)
                         .monospacedDigit()
                 }
