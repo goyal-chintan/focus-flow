@@ -55,17 +55,14 @@ struct ProjectsListView: View {
             } else {
                 List {
                     ForEach(projects) { project in
-                        HStack(spacing: 14) {
-                            // Icon badge — larger & more vibrant
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(colorFromName(project.color).opacity(0.18))
-                                    .frame(width: 46, height: 46)
-                                Image(systemName: project.icon ?? "folder.fill")
-                                    .foregroundStyle(colorFromName(project.color))
-                                    .font(.system(size: 22, weight: .semibold))
-                            }
-                            .shadow(color: colorFromName(project.color).opacity(0.2), radius: 4, x: 0, y: 2)
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(colorFromName(project.color))
+                                .frame(width: 10, height: 10)
+
+                            Image(systemName: project.icon ?? "folder.fill")
+                                .foregroundStyle(colorFromName(project.color))
+                                .frame(width: 20)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(project.name)
@@ -78,7 +75,6 @@ struct ProjectsListView: View {
 
                             Spacer()
 
-                            // Actions
                             HStack(spacing: 4) {
                                 Button {
                                     formName = project.name
@@ -95,7 +91,7 @@ struct ProjectsListView: View {
                                 .help("Edit project")
 
                                 Button {
-                                    withAnimation(.easeInOut(duration: 0.35)) {
+                                    withAnimation {
                                         project.archived = true
                                         try? modelContext.save()
                                     }
@@ -109,13 +105,9 @@ struct ProjectsListView: View {
                             }
                         }
                         .padding(.vertical, 4)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .top)),
-                            removal: .opacity.combined(with: .move(edge: .trailing))
-                        ))
                     }
                     .onDelete { indexSet in
-                        withAnimation(.easeInOut(duration: 0.35)) {
+                        withAnimation {
                             for index in indexSet {
                                 projects[index].archived = true
                             }

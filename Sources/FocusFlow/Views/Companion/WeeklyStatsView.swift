@@ -12,7 +12,7 @@ struct WeeklyStatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 24) {
                 // Period picker
                 Picker("Period", selection: $selectedPeriod) {
                     ForEach(Period.allCases, id: \.self) { period in
@@ -30,8 +30,6 @@ struct WeeklyStatsView: View {
 
                     BarChartView(data: chartData, accentColor: .blue)
                 }
-                .padding(16)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
 
                 // Summary cards
                 HStack(spacing: 12) {
@@ -53,25 +51,6 @@ struct WeeklyStatsView: View {
                         icon: "sum",
                         color: .blue
                     )
-                }
-
-                // Best day callout
-                if bestDayDuration > 0 {
-                    HStack(spacing: 12) {
-                        Image(systemName: "trophy.fill")
-                            .foregroundStyle(.yellow)
-                            .font(.title3)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Best day: \(bestDayLabel)")
-                                .font(.subheadline.weight(.semibold))
-                            Text(bestDayDuration.formattedFocusTime + " of focused work")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
             .padding(24)
@@ -98,7 +77,6 @@ struct WeeklyStatsView: View {
             if days == 7 {
                 label = day.formatted(.dateTime.weekday(.abbreviated))
             } else {
-                // Show day number for 30-day view
                 label = day.formatted(.dateTime.day())
             }
             return (label: label, value: total)

@@ -1,6 +1,7 @@
 import UserNotifications
 import AppKit
 
+@MainActor
 final class NotificationService {
     static let shared = NotificationService()
     private init() {}
