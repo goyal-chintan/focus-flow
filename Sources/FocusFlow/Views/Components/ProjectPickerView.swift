@@ -58,7 +58,10 @@ struct ProjectPickerView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
 
@@ -72,11 +75,11 @@ struct ProjectPickerView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                .transition(.asymmetric(
-                    insertion: .push(from: .top).combined(with: .opacity),
-                    removal: .push(from: .bottom).combined(with: .opacity)
-                ))
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                )
+                .transition(.opacity)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showCustomField)
@@ -89,6 +92,6 @@ struct ProjectPickerView: View {
     }
 
     private var hasSelection: Bool {
-        selectedProject != nil || (!showCustomField == false && !customLabel.isEmpty)
+        selectedProject != nil || (showCustomField && !customLabel.isEmpty)
     }
 }

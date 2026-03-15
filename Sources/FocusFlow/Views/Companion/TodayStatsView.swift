@@ -3,7 +3,6 @@ import SwiftData
 
 struct TodayStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
-    @State private var cardsAppeared = false
 
     private var todaySessions: [FocusSession] {
         let start = Calendar.current.startOfDay(for: Date())
@@ -12,17 +11,7 @@ struct TodayStatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                // Welcome header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Today's Focus")
-                        .font(.title.weight(.bold))
-                    Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+            VStack(spacing: 24) {
                 // Summary cards
                 HStack(spacing: 12) {
                     StatCard(
@@ -31,8 +20,6 @@ struct TodayStatsView: View {
                         icon: "timer",
                         color: .blue
                     )
-                    .opacity(cardsAppeared ? 1 : 0)
-                    .offset(y: cardsAppeared ? 0 : 12)
 
                     StatCard(
                         title: "Sessions",
@@ -40,21 +27,14 @@ struct TodayStatsView: View {
                         icon: "checkmark.circle.fill",
                         color: .green
                     )
-                    .opacity(cardsAppeared ? 1 : 0)
-                    .offset(y: cardsAppeared ? 0 : 12)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.08), value: cardsAppeared)
 
                     StatCard(
-                        title: "On a Streak",
+                        title: "Streak",
                         value: "\(currentStreak)",
                         icon: "flame.fill",
                         color: .orange
                     )
-                    .opacity(cardsAppeared ? 1 : 0)
-                    .offset(y: cardsAppeared ? 0 : 12)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.16), value: cardsAppeared)
                 }
-                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: cardsAppeared)
 
                 // Per-project breakdown
                 if !projectBreakdown.isEmpty {
@@ -71,8 +51,6 @@ struct TodayStatsView: View {
                             )
                         }
                     }
-                    .padding(16)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
                 }
 
                 // Session timeline
@@ -82,17 +60,10 @@ struct TodayStatsView: View {
 
                     SessionTimelineView(sessions: todaySessions)
                 }
-                .padding(16)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
             }
             .padding(24)
         }
         .background(.background)
-        .onAppear {
-            withAnimation {
-                cardsAppeared = true
-            }
-        }
     }
 
     private var totalFocusTime: TimeInterval {

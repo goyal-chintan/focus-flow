@@ -15,7 +15,7 @@ struct SettingsView: View {
             VStack(spacing: 20) {
 
                 // Durations
-                GroupBox {
+                GroupBox("Durations") {
                     VStack(spacing: 14) {
                         DurationRow(
                             label: "Focus",
@@ -70,12 +70,10 @@ struct SettingsView: View {
                         .font(.subheadline)
                     }
                     .padding(4)
-                } label: {
-                    sectionHeader(title: "Durations", icon: "clock.fill")
                 }
 
                 // Behavior
-                GroupBox {
+                GroupBox("Behavior") {
                     VStack(spacing: 12) {
                         ToggleRow(
                             label: "Auto-start breaks",
@@ -112,12 +110,10 @@ struct SettingsView: View {
                         )
                     }
                     .padding(4)
-                } label: {
-                    sectionHeader(title: "Behavior", icon: "gearshape.fill")
                 }
 
                 // Sound
-                GroupBox {
+                GroupBox("Sound") {
                     HStack {
                         Label("Completion sound", systemImage: "speaker.wave.2.fill")
                             .font(.subheadline)
@@ -138,12 +134,10 @@ struct SettingsView: View {
                         .frame(width: 140)
                     }
                     .padding(4)
-                } label: {
-                    sectionHeader(title: "Sound", icon: "music.note")
                 }
 
-                // App info — centered app icon
-                GroupBox {
+                // App info
+                GroupBox("About") {
                     VStack(spacing: 12) {
                         Image(systemName: "timer")
                             .font(.system(size: 40, weight: .light))
@@ -162,24 +156,11 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.vertical, 8)
-                } label: {
-                    sectionHeader(title: "About", icon: "info.circle.fill")
                 }
             }
             .padding(24)
         }
         .background(.background)
-    }
-
-    @ViewBuilder
-    private func sectionHeader(title: String, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(height: 1)
-        }
     }
 
     private func save() {
