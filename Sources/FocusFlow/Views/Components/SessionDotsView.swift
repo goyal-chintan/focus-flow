@@ -5,16 +5,11 @@ struct SessionDotsView: View {
     let total: Int
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             ForEach(0..<total, id: \.self) { index in
-                Capsule()
-                    .fill(index < completed ? Color.accentColor : Color.secondary.opacity(0.25))
-                    .frame(width: index < completed ? 18 : 10, height: 5)
-                    .shadow(
-                        color: index < completed ? Color.accentColor.opacity(0.45) : .clear,
-                        radius: 4, x: 0, y: 0
-                    )
-                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: completed)
+                Circle()
+                    .fill(index < completed ? Color.blue : Color.primary.opacity(0.12))
+                    .frame(width: 6, height: 6)
             }
         }
     }
