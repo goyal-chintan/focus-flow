@@ -4,9 +4,26 @@ import SwiftData
 struct TodayStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
 
+    /// Sessions that overlap with today (includes cross-midnight sessions from yesterday)
     private var todaySessions: [FocusSession] {
         let start = Calendar.current.startOfDay(for: Date())
-        return allSessions.filter { $0.startedAt >= start && $0.type == .focus && $0.actualDuration >= 60 }
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        return allSessions.filter { session in
+            guard session.type == .focus && session.actualDuration >= 60 else { return false }
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            // Include if session overlaps today at all
+            return sessionEnd > start && session.startedAt < tomorrow
+        }
+    }
+
+    /// Focus time attributed to today only (handles cross-midnight correctly)
+    private func todayPortion(of session: FocusSession) -> TimeInterval {
+        let start = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+        let overlapStart = max(session.startedAt, start)
+        let overlapEnd = min(sessionEnd, tomorrow)
+        return max(0, overlapEnd.timeIntervalSince(overlapStart))
     }
 
     var body: some View {
@@ -122,7 +139,7 @@ struct TodayStatsView: View {
     }
 
     private var totalFocusTime: TimeInterval {
-        todaySessions.reduce(0) { $0 + $1.actualDuration }
+        todaySessions.reduce(0) { $0 + todayPortion(of: $1) }
     }
 
     private var completedCount: Int {
@@ -175,7 +192,7 @@ struct TodayStatsView: View {
                     return .blue
                 }()
                 let existing = map[name]
-                map[name] = ((existing?.0 ?? 0) + session.actualDuration, existing?.1 ?? color)
+                map[name] = ((existing?.0 ?? 0) + todayPortion(of: session), existing?.1 ?? color)
             }
         }
         return map.map { ProjectItem(name: $0.key, duration: $0.value.0, color: $0.value.1) }

@@ -71,9 +71,17 @@ struct WeeklyStatsView: View {
         return (0..<days).map { offset in
             let day = calendar.date(byAdding: .day, value: -(days - 1 - offset), to: today)!
             let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
-            let total = focusSessions
-                .filter { $0.startedAt >= day && $0.startedAt < nextDay }
-                .reduce(0.0) { $0 + $1.actualDuration }
+            // Attribute time correctly for sessions spanning midnight
+            let total = focusSessions.reduce(0.0) { sum, session in
+                let sessionStart = session.startedAt
+                let sessionEnd = session.endedAt ?? sessionStart.addingTimeInterval(session.actualDuration)
+                // Skip sessions that don't overlap this day at all
+                guard sessionEnd > day && sessionStart < nextDay else { return sum }
+                // Clamp to this day's boundaries
+                let overlapStart = max(sessionStart, day)
+                let overlapEnd = min(sessionEnd, nextDay)
+                return sum + overlapEnd.timeIntervalSince(overlapStart)
+            }
 
             let label: String
             if days == 7 {
