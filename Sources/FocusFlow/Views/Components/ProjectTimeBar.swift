@@ -6,15 +6,13 @@ struct ProjectTimeBar: View {
     let maxDuration: TimeInterval
     let color: Color
 
-    @State private var animatedRatio: Double = 0
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(name)
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline)
                 Spacer()
-                Text(formattedTime)
+                Text(duration.formattedFocusTime)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -22,31 +20,19 @@ struct ProjectTimeBar: View {
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.quaternary)
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(color.gradient)
-                        .frame(width: geo.size.width * animatedRatio, height: 6)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.primary.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color)
+                        .frame(width: max(2, geo.size.width * ratio))
                 }
             }
-            .frame(height: 6)
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
-                animatedRatio = maxDuration > 0 ? min(1, duration / maxDuration) : 0
-            }
-        }
-        .onChange(of: duration) {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                animatedRatio = maxDuration > 0 ? min(1, duration / maxDuration) : 0
-            }
+            .frame(height: 4)
         }
     }
 
-    private var formattedTime: String {
-        let m = Int(duration) / 60
-        if m >= 60 { return "\(m / 60)h \(m % 60)m" }
-        return "\(m)m"
+    private var ratio: Double {
+        guard maxDuration > 0 else { return 0 }
+        return min(1, duration / maxDuration)
     }
 }

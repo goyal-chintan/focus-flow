@@ -19,29 +19,19 @@ struct SessionTimelineView: View {
             LazyVStack(spacing: 0) {
                 ForEach(sessions) { session in
                     HStack(spacing: 12) {
-                        // Timeline dot + line
-                        VStack(spacing: 0) {
-                            Circle()
-                                .fill(session.completed ? Color.green : Color.orange)
-                                .frame(width: 10, height: 10)
-                            if session.id != sessions.last?.id {
-                                Rectangle()
-                                    .fill(Color.secondary.opacity(0.15))
-                                    .frame(width: 1)
-                                    .frame(maxHeight: .infinity)
-                            }
-                        }
-                        .frame(width: 10)
+                        Circle()
+                            .fill(session.completed ? Color.green : Color.orange)
+                            .frame(width: 8, height: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(session.label)
                                 .font(.subheadline.weight(.medium))
                             HStack(spacing: 6) {
                                 Text(session.startedAt.formatted(date: .omitted, time: .shortened))
-                                Text("·")
+                                Text("\u{00B7}")
                                 Text("\(Int(session.actualDuration / 60))m")
                                 if !session.completed {
-                                    Text("· stopped early")
+                                    Text("\u{00B7} stopped early")
                                         .foregroundStyle(.orange)
                                 }
                             }
@@ -58,6 +48,11 @@ struct SessionTimelineView: View {
                         }
                     }
                     .padding(.vertical, 8)
+
+                    if session.id != sessions.last?.id {
+                        Divider()
+                            .padding(.leading, 20)
+                    }
                 }
             }
         }
