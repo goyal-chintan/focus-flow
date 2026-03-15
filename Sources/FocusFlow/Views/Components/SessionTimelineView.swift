@@ -39,6 +39,12 @@ struct SessionTimelineView: View {
                             .foregroundStyle(.secondary)
                         }
 
+                        if let mood = session.mood {
+                            Image(systemName: mood.icon)
+                                .font(.caption2)
+                                .foregroundStyle(moodColor(mood))
+                        }
+
                         Spacer()
 
                         if session.completed {
@@ -55,6 +61,15 @@ struct SessionTimelineView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func moodColor(_ mood: FocusMood) -> Color {
+        switch mood {
+        case .distracted: .orange
+        case .neutral: .secondary
+        case .focused: .blue
+        case .deepFocus: .purple
         }
     }
 }
