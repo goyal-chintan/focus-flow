@@ -77,6 +77,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift"
         },
         {
@@ -182,6 +186,7 @@
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o",
@@ -302,6 +307,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o"
         },
         {
@@ -397,6 +406,7 @@
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
@@ -443,6 +453,7 @@
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
@@ -602,6 +613,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift"
         },
         {
@@ -713,6 +728,10 @@
         {
           "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
         },
         {
           "kind" : "file",
