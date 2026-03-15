@@ -4,6 +4,8 @@ struct SessionCompleteView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @State private var selectedMood: FocusMood? = nil
     @State private var achievement: String = ""
+    @State private var showSplits = false
+    @State private var splits: [TimeSplitView.SplitEntry] = []
 
     var body: some View {
         VStack(spacing: 20) {
@@ -11,6 +13,7 @@ struct SessionCompleteView: View {
             Divider()
             moodSection
             achievementSection
+            splitSection
             Divider()
             actionsSection
         }
@@ -80,6 +83,44 @@ struct SessionCompleteView: View {
         }
     }
 
+    private var splitSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation {
+                    showSplits.toggle()
+                    if showSplits && splits.isEmpty {
+                        let totalMins = Int((timerVM.lastCompletedDuration ?? 0) / 60)
+                        splits = [TimeSplitView.SplitEntry(
+                            project: timerVM.selectedProject,
+                            customLabel: timerVM.customLabel,
+                            minutes: totalMins
+                        )]
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
+                        .font(.caption)
+                    Text("Split across projects")
+                        .font(.caption)
+                    Spacer()
+                    Image(systemName: showSplits ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if showSplits {
+                TimeSplitView(
+                    totalDuration: timerVM.lastCompletedDuration ?? 0,
+                    splits: $splits
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+
     private var actionsSection: some View {
         GlassEffectContainer {
             VStack(spacing: 8) {
@@ -94,7 +135,7 @@ struct SessionCompleteView: View {
 
     private var takeBreakButton: some View {
         Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement)
+            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
             timerVM.continueAfterCompletion(action: .takeBreak)
         } label: {
             Label("Take a Break", systemImage: "cup.and.saucer.fill")
@@ -107,7 +148,7 @@ struct SessionCompleteView: View {
 
     private var continueFocusingButton: some View {
         Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement)
+            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
             timerVM.continueAfterCompletion(action: .continueFocusing)
         } label: {
             Label("Continue Focusing", systemImage: "arrow.clockwise")
@@ -119,7 +160,7 @@ struct SessionCompleteView: View {
 
     private var endSessionButton: some View {
         Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement)
+            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
             timerVM.continueAfterCompletion(action: .endSession)
         } label: {
             Label("End Session", systemImage: "stop.fill")
