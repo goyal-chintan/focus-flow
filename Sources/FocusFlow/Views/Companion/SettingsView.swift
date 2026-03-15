@@ -71,8 +71,7 @@ struct SettingsView: View {
                     }
                     .padding(4)
                 } label: {
-                    Label("Durations", systemImage: "clock.fill")
-                        .font(.subheadline.weight(.semibold))
+                    sectionHeader(title: "Durations", icon: "clock.fill")
                 }
 
                 // Behavior
@@ -114,8 +113,7 @@ struct SettingsView: View {
                     }
                     .padding(4)
                 } label: {
-                    Label("Behavior", systemImage: "gearshape.fill")
-                        .font(.subheadline.weight(.semibold))
+                    sectionHeader(title: "Behavior", icon: "gearshape.fill")
                 }
 
                 // Sound
@@ -141,34 +139,47 @@ struct SettingsView: View {
                     }
                     .padding(4)
                 } label: {
-                    Label("Sound", systemImage: "music.note")
-                        .font(.subheadline.weight(.semibold))
+                    sectionHeader(title: "Sound", icon: "music.note")
                 }
 
-                // App info
+                // App info — centered app icon
                 GroupBox {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
+                    VStack(spacing: 12) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 40, weight: .light))
+                            .foregroundStyle(.tint)
+                            .frame(maxWidth: .infinity)
+
+                        VStack(spacing: 4) {
                             Text("FocusFlow")
-                                .font(.subheadline.weight(.semibold))
+                                .font(.headline)
                             Text("Pomodoro focus timer for macOS")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Text("v1.0")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
                         }
-                        Spacer()
-                        Text("v1.0")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
                     }
-                    .padding(4)
+                    .padding(.vertical, 8)
                 } label: {
-                    Label("About", systemImage: "info.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                    sectionHeader(title: "About", icon: "info.circle.fill")
                 }
             }
             .padding(24)
         }
         .background(.background)
+    }
+
+    @ViewBuilder
+    private func sectionHeader(title: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 1)
+        }
     }
 
     private func save() {

@@ -14,11 +14,11 @@ struct ControlButton: View {
 
     var body: some View {
         Button(action: {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
+            withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
                 isPressed = true
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
                     isPressed = false
                 }
             }
@@ -33,15 +33,33 @@ struct ControlButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background(background, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.12), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .allowsHitTesting(false)
+            )
             .foregroundStyle(foregroundColor)
-            .scaleEffect(isPressed ? 0.94 : 1.0)
+            .scaleEffect(isPressed ? 0.92 : 1.0)
         }
         .buttonStyle(.plain)
     }
 
     private var background: AnyShapeStyle {
         switch role {
-        case .primary: AnyShapeStyle(.tint)
+        case .primary:
+            AnyShapeStyle(
+                LinearGradient(
+                    colors: [.blue, .indigo],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
         case .secondary: AnyShapeStyle(.ultraThinMaterial)
         case .destructive: AnyShapeStyle(Color.red.opacity(0.12))
         }
