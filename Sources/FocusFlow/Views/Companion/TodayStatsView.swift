@@ -6,7 +6,7 @@ struct TodayStatsView: View {
 
     private var todaySessions: [FocusSession] {
         let start = Calendar.current.startOfDay(for: Date())
-        return allSessions.filter { $0.startedAt >= start && $0.type == .focus }
+        return allSessions.filter { $0.startedAt >= start && $0.type == .focus && $0.actualDuration >= 60 }
     }
 
     var body: some View {

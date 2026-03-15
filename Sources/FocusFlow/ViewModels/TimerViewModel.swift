@@ -119,9 +119,15 @@ final class TimerViewModel {
         let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
         guard let orphans = try? modelContext?.fetch(descriptor) else { return }
         for session in orphans {
-            // Cap the duration at what was planned
-            session.endedAt = session.startedAt.addingTimeInterval(session.duration)
-            session.completed = false
+            let elapsed = Date().timeIntervalSince(session.startedAt)
+            if elapsed < 60 {
+                // Delete sessions with less than 1 minute — not worth keeping
+                modelContext?.delete(session)
+            } else {
+                // Cap the duration at what was planned
+                session.endedAt = session.startedAt.addingTimeInterval(min(elapsed, session.duration))
+                session.completed = false
+            }
         }
         try? modelContext?.save()
     }
@@ -218,9 +224,15 @@ final class TimerViewModel {
         pauseTimer = nil
         pauseStartTime = nil
         pauseElapsed = 0
-        currentSession?.endedAt = Date()
-        currentSession?.completed = false
-        try? modelContext?.save()
+        if let session = currentSession {
+            session.endedAt = Date()
+            session.completed = false
+            // Delete sessions with less than 1 minute of actual focus
+            if session.actualDuration < 60 {
+                modelContext?.delete(session)
+            }
+            try? modelContext?.save()
+        }
         currentSession = nil
         state = .idle
         remainingSeconds = 0
