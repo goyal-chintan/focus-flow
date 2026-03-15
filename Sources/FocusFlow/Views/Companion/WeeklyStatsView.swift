@@ -30,6 +30,8 @@ struct WeeklyStatsView: View {
 
                     BarChartView(data: chartData, accentColor: .blue)
                 }
+                .padding(16)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
 
                 // Summary cards
                 HStack(spacing: 12) {

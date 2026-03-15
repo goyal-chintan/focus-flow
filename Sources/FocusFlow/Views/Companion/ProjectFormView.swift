@@ -74,10 +74,12 @@ struct ProjectFormView: View {
 
     private var actionButtons: some View {
         HStack {
-            Button("Cancel") { dismiss() }.buttonStyle(.plain).foregroundStyle(.secondary)
+            Button("Cancel") { dismiss() }
+                .buttonStyle(.glass)
             Spacer()
             Button("Save") { onSave(); dismiss() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding(.top, 4)
