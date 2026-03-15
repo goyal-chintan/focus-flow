@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import SwiftData
 
 enum TimerState: Equatable {
@@ -23,6 +24,44 @@ final class TimerViewModel {
     var completedFocusSessions: Int = 0
     var selectedProject: Project?
     var customLabel: String = ""
+
+    // MARK: - Custom Duration
+    var selectedMinutes: Int = 25
+
+    var focusDuration: TimeInterval {
+        TimeInterval(max(5, selectedMinutes) * 60)
+    }
+
+    // MARK: - Pause Tracking
+    var pauseStartTime: Date? = nil
+    var pauseElapsed: TimeInterval = 0
+    private var pauseTimer: Timer? = nil
+
+    var pauseTimeString: String {
+        let mins = Int(pauseElapsed) / 60
+        let secs = Int(pauseElapsed) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+
+    enum PauseWarningLevel {
+        case normal      // < 2 min
+        case warning     // 2-5 min
+        case critical    // > 5 min
+
+        var color: Color {
+            switch self {
+            case .normal: return .secondary
+            case .warning: return .orange
+            case .critical: return .red
+            }
+        }
+    }
+
+    var pauseWarningLevel: PauseWarningLevel {
+        if pauseElapsed > 300 { return .critical }
+        if pauseElapsed > 120 { return .warning }
+        return .normal
+    }
 
     // MARK: - Session Completion
     var showSessionComplete: Bool = false
@@ -83,6 +122,9 @@ final class TimerViewModel {
             try? modelContext?.save()
             settings = newSettings
         }
+        if let settings {
+            selectedMinutes = Int(settings.focusDuration / 60)
+        }
     }
 
     func loadTodayStats() {
@@ -101,8 +143,9 @@ final class TimerViewModel {
 
     // MARK: - Actions
     func startFocus() {
-        guard let settings else { return }
-        let duration = settings.focusDuration
+        guard settings != nil else { return }
+        let duration = focusDuration
+        guard duration >= 300 else { return } // Min 5 minutes
         totalSeconds = duration
         remainingSeconds = duration
         state = .focusing
@@ -140,10 +183,17 @@ final class TimerViewModel {
         timer?.invalidate()
         timer = nil
         state = .paused
+        pauseStartTime = Date()
+        pauseElapsed = 0
+        startPauseTimer()
     }
 
     func resume() {
         guard state == .paused else { return }
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
         state = .focusing
         startTimer()
     }
@@ -151,6 +201,10 @@ final class TimerViewModel {
     func stop() {
         timer?.invalidate()
         timer = nil
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
         currentSession?.endedAt = Date()
         currentSession?.completed = false
         try? modelContext?.save()
@@ -183,6 +237,29 @@ final class TimerViewModel {
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
+    }
+
+    private func startPauseTimer() {
+        pauseTimer?.invalidate()
+        pauseTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.tickPause()
+            }
+        }
+        RunLoop.main.add(pauseTimer!, forMode: .common)
+    }
+
+    @MainActor
+    private func tickPause() {
+        guard let pauseStartTime else { return }
+        pauseElapsed = Date().timeIntervalSince(pauseStartTime)
+
+        // Send notifications at thresholds
+        if Int(pauseElapsed) == 120 { // 2 min
+            NotificationService.shared.sendPauseWarning(minutes: 2)
+        } else if Int(pauseElapsed) == 300 { // 5 min
+            NotificationService.shared.sendPauseCritical(minutes: 5)
+        }
     }
 
     @MainActor
