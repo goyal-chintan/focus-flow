@@ -7,10 +7,7 @@ struct SettingsView: View {
     @Query private var allSettings: [AppSettings]
 
     private var settings: AppSettings {
-        if let s = allSettings.first { return s }
-        let s = AppSettings()
-        modelContext.insert(s)
-        return s
+        allSettings.first ?? AppSettings()
     }
 
     var body: some View {

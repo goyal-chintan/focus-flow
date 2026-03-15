@@ -16,7 +16,7 @@ struct TodayStatsView: View {
                 HStack(spacing: 12) {
                     StatCard(
                         title: "Focus Time",
-                        value: formattedTime(totalFocusTime),
+                        value: totalFocusTime.formattedFocusTime,
                         icon: "timer",
                         color: .blue
                     )
@@ -101,10 +101,4 @@ struct TodayStatsView: View {
         }.sorted { $0.duration > $1.duration }
     }
 
-    private func formattedTime(_ interval: TimeInterval) -> String {
-        let h = Int(interval) / 3600
-        let m = (Int(interval) % 3600) / 60
-        if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
-    }
 }

@@ -83,6 +83,8 @@ final class TimerViewModel {
         let focusSessions = sessions.filter { $0.type == .focus }
         todaySessionCount = focusSessions.filter { $0.completed }.count
         todayFocusTime = focusSessions.reduce(0) { $0 + $1.actualDuration }
+        // Keep in-memory count in sync with persisted completed sessions
+        completedFocusSessions = todaySessionCount
     }
 
     // MARK: - Actions
