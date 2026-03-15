@@ -1,0 +1,65 @@
+import SwiftUI
+
+struct SessionTimelineView: View {
+    let sessions: [FocusSession]
+
+    var body: some View {
+        if sessions.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "timer")
+                    .font(.largeTitle)
+                    .foregroundStyle(.tertiary)
+                Text("No sessions yet today")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+        } else {
+            LazyVStack(spacing: 0) {
+                ForEach(sessions) { session in
+                    HStack(spacing: 12) {
+                        // Timeline dot + line
+                        VStack(spacing: 0) {
+                            Circle()
+                                .fill(session.completed ? Color.green : Color.orange)
+                                .frame(width: 10, height: 10)
+                            if session.id != sessions.last?.id {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.15))
+                                    .frame(width: 1)
+                                    .frame(maxHeight: .infinity)
+                            }
+                        }
+                        .frame(width: 10)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(session.label)
+                                .font(.subheadline.weight(.medium))
+                            HStack(spacing: 6) {
+                                Text(session.startedAt.formatted(date: .omitted, time: .shortened))
+                                Text("·")
+                                Text("\(Int(session.actualDuration / 60))m")
+                                if !session.completed {
+                                    Text("· stopped early")
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        if session.completed {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.caption)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+        }
+    }
+}
