@@ -26,7 +26,7 @@ final class TimerViewModel {
     private var timer: Timer?
     private var modelContext: ModelContext?
     private var currentSession: FocusSession?
-    private var settings: AppSettings?
+    private(set) var settings: AppSettings?
 
     // MARK: - Computed
     var progress: Double {
