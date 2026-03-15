@@ -11,15 +11,20 @@ struct ControlButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+        let label = Label(title, systemImage: icon)
+            .font(.system(size: 13, weight: .semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+
+        if role == .primary {
+            Button(action: action) { label }
+                .buttonStyle(.glassProminent)
+                .tint(buttonTint)
+        } else {
+            Button(action: action) { label }
+                .buttonStyle(.glass)
+                .tint(buttonTint)
         }
-        .buttonStyle(.plain)
-        .glassEffect(role == .primary ? .regular.tint(buttonTint ?? .blue).interactive() : .regular.interactive())
-        .tint(buttonTint)
     }
 
     private var buttonTint: Color? {

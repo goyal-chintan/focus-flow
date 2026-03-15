@@ -58,10 +58,7 @@ struct ProjectPickerView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
-                )
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
 
@@ -75,10 +72,7 @@ struct ProjectPickerView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
-                )
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
                 .transition(.opacity)
             }
         }
