@@ -9,24 +9,48 @@ final class BlockingService: @unchecked Sendable {
     private var activeProfile: BlockProfile?
 
     func activate(profile: BlockProfile) {
-        guard !isActive else { return }
+        guard !isActive else {
+            print("[BlockingService] Already active, skipping")
+            return
+        }
         activeProfile = profile
         isActive = true
+        print("[BlockingService] Activating profile: \(profile.name)")
+
+        // Website blocking
         let websites = profile.blockedWebsites
-        if !websites.isEmpty { BlockingHelper.blockWebsites(websites) }
+        print("[BlockingService] Blocking \(websites.count) websites: \(websites)")
+        if !websites.isEmpty {
+            BlockingHelper.blockWebsites(websites)
+        }
+
+        // App blocking
         let apps = profile.blockedApps
-        if !apps.isEmpty { appBlocker.activate(bundleIDs: apps) }
+        print("[BlockingService] Blocking \(apps.count) apps: \(apps)")
+        if !apps.isEmpty {
+            appBlocker.activate(bundleIDs: apps)
+        }
     }
 
     func deactivate() {
         guard isActive else { return }
-        if !(activeProfile?.blockedWebsites.isEmpty ?? true) { BlockingHelper.unblockWebsites() }
+        print("[BlockingService] Deactivating blocking")
+        if !(activeProfile?.blockedWebsites.isEmpty ?? true) {
+            BlockingHelper.unblockWebsites()
+        }
         appBlocker.deactivate()
         activeProfile = nil
         isActive = false
     }
 
+    /// Only clean up if there are stale entries — checks /etc/hosts without admin
+    /// Only prompts for admin password if cleanup is actually needed
     func cleanupIfNeeded() {
-        if BlockingHelper.isBlockingActive() { BlockingHelper.unblockWebsites() }
+        if BlockingHelper.isBlockingActive() {
+            print("[BlockingService] Found stale blocking entries — cleaning up")
+            BlockingHelper.unblockWebsites()
+        } else {
+            print("[BlockingService] No stale blocking — skipping cleanup")
+        }
     }
 }
