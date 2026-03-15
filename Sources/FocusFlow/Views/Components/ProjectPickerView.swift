@@ -6,86 +6,130 @@ struct ProjectPickerView: View {
     @Binding var customLabel: String
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
-    @State private var showCustomField = false
+    @Environment(\.modelContext) private var modelContext
+    @State private var searchText = ""
 
     var body: some View {
         VStack(spacing: 8) {
-            Menu {
-                Button {
-                    selectedProject = nil
-                    showCustomField = false
-                    customLabel = ""
-                } label: {
-                    Label("No Project", systemImage: "minus.circle")
-                }
+            // Inline search/select
+            HStack(spacing: 8) {
+                Image(systemName: selectedProject?.icon ?? "tag")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
 
-                if !projects.isEmpty {
-                    Divider()
-                    ForEach(projects) { project in
-                        Button {
-                            selectedProject = project
-                            showCustomField = false
+                TextField("Search or create project...", text: $searchText)
+                    .font(.subheadline)
+                    .textFieldStyle(.plain)
+                    .onSubmit {
+                        if let match = filteredProjects.first(where: { $0.name.lowercased() == searchText.lowercased() }) {
+                            selectedProject = match
+                            searchText = match.name
                             customLabel = ""
-                        } label: {
-                            Label(project.name, systemImage: project.icon ?? "folder.fill")
+                        } else if !searchText.isEmpty {
+                            createAndSelect(name: searchText)
                         }
                     }
+
+                if selectedProject != nil || !searchText.isEmpty {
+                    Button {
+                        selectedProject = nil
+                        searchText = ""
+                        customLabel = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
                 }
-
-                Divider()
-                Button {
-                    selectedProject = nil
-                    showCustomField = true
-                } label: {
-                    Label("Custom Label...", systemImage: "pencil")
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: selectedProject?.icon ?? (showCustomField ? "pencil" : "tag"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16)
-
-                    Text(pickerLabel)
-                        .font(.subheadline)
-                        .foregroundStyle(hasSelection ? .primary : .secondary)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
 
-            if showCustomField {
-                HStack {
-                    Image(systemName: "pencil")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField("What are you working on?", text: $customLabel)
-                        .font(.subheadline)
+            // Dropdown suggestions
+            if !searchText.isEmpty && selectedProject == nil {
+                VStack(spacing: 0) {
+                    ForEach(filteredProjects) { project in
+                        Button {
+                            selectedProject = project
+                            searchText = project.name
+                            customLabel = ""
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: project.icon ?? "folder.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(colorFromName(project.color))
+                                Text(project.name)
+                                    .font(.subheadline)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Create new option
+                    if !filteredProjects.contains(where: { $0.name.lowercased() == searchText.lowercased() }) {
+                        Button {
+                            createAndSelect(name: searchText)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                                Text("Create \"\(searchText)\"")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.blue)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
-                .transition(.opacity)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showCustomField)
+        .animation(.smooth(duration: 0.2), value: searchText)
+        .onChange(of: selectedProject) { _, newValue in
+            if let project = newValue {
+                searchText = project.name
+            }
+        }
     }
 
-    private var pickerLabel: String {
-        if let project = selectedProject { return project.name }
-        if showCustomField { return customLabel.isEmpty ? "Type a label..." : customLabel }
-        return "Select Project"
+    private var filteredProjects: [Project] {
+        if searchText.isEmpty { return projects }
+        return projects.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
-    private var hasSelection: Bool {
-        selectedProject != nil || (showCustomField && !customLabel.isEmpty)
+    private func createAndSelect(name: String) {
+        let project = Project(name: name)
+        modelContext.insert(project)
+        try? modelContext.save()
+        selectedProject = project
+        searchText = name
+        customLabel = ""
+    }
+
+    private func colorFromName(_ name: String) -> Color {
+        switch name {
+        case "blue": return .blue
+        case "indigo": return .indigo
+        case "purple": return .purple
+        case "pink": return .pink
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "teal": return .teal
+        case "mint": return .mint
+        default: return .blue
+        }
     }
 }

@@ -4,6 +4,7 @@ import SwiftData
 struct MenuBarPopoverView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.openWindow) private var openWindow
+    @State private var showStopConfirmation = false
 
     var body: some View {
         if timerVM.showSessionComplete {
@@ -135,12 +136,18 @@ struct MenuBarPopoverView: View {
             }
 
         case .focusing:
-            HStack(spacing: 8) {
-                ControlButton(title: "Pause", icon: "pause.fill", role: .secondary) {
-                    timerVM.pause()
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    ControlButton(title: "Pause", icon: "pause.fill", role: .secondary) {
+                        timerVM.pause()
+                    }
+                    ControlButton(title: "Stop", icon: "stop.fill", role: .destructive) {
+                        withAnimation { showStopConfirmation = true }
+                    }
                 }
-                ControlButton(title: "Stop", icon: "stop.fill", role: .destructive) {
-                    timerVM.stop()
+
+                if showStopConfirmation {
+                    stopConfirmationView
                 }
             }
 
@@ -164,8 +171,12 @@ struct MenuBarPopoverView: View {
                         timerVM.resume()
                     }
                     ControlButton(title: "Stop", icon: "stop.fill", role: .destructive) {
-                        timerVM.stop()
+                        withAnimation { showStopConfirmation = true }
                     }
+                }
+
+                if showStopConfirmation {
+                    stopConfirmationView
                 }
             }
 
@@ -222,6 +233,51 @@ struct MenuBarPopoverView: View {
         let time = timerVM.todayFocusTime.formattedFocusTime
         if sessions == 0 { return "No sessions yet today" }
         return "\(sessions) session\(sessions == 1 ? "" : "s") \u{00B7} \(time) focused"
+    }
+
+    private var stopConfirmationView: some View {
+        VStack(spacing: 8) {
+            Text("End this session?")
+                .font(.caption.weight(.medium))
+
+            GlassEffectContainer {
+                HStack(spacing: 8) {
+                    Button {
+                        timerVM.stop()
+                        showStopConfirmation = false
+                    } label: {
+                        Label("Save", systemImage: "square.and.arrow.down")
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.glass)
+
+                    Button {
+                        timerVM.abandonSession()
+                        showStopConfirmation = false
+                    } label: {
+                        Label("Discard", systemImage: "trash")
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.glass)
+                    .tint(.red)
+
+                    Button {
+                        showStopConfirmation = false
+                    } label: {
+                        Text("Cancel")
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.glass)
+                }
+            }
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
 }

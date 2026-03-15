@@ -228,6 +228,25 @@ final class TimerViewModel {
         loadTodayStats()
     }
 
+    func abandonSession() {
+        timer?.invalidate()
+        timer = nil
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
+
+        if let session = currentSession {
+            modelContext?.delete(session)
+            try? modelContext?.save()
+        }
+        currentSession = nil
+        state = .idle
+        remainingSeconds = 0
+        totalSeconds = 0
+        loadTodayStats()
+    }
+
     func skipBreak() {
         timer?.invalidate()
         timer = nil
