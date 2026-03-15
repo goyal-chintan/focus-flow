@@ -189,6 +189,18 @@ struct MenuBarPopoverView: View {
 
     private var footerSection: some View {
         HStack {
+            if timerVM.isBlockingActive {
+                HStack(spacing: 4) {
+                    Image(systemName: "shield.checkered")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    Text("Blocking")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+                Text("\u{00B7}").foregroundStyle(.tertiary)
+            }
+
             Label {
                 Text(footerText)
                     .font(.caption)

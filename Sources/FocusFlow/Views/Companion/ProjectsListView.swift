@@ -11,6 +11,7 @@ struct ProjectsListView: View {
     @State private var formName = ""
     @State private var formColor = "blue"
     @State private var formIcon = "folder.fill"
+    @State private var formBlockProfile: BlockProfile?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,6 +81,7 @@ struct ProjectsListView: View {
                                     formName = project.name
                                     formColor = project.color
                                     formIcon = project.icon ?? "folder.fill"
+                                    formBlockProfile = project.blockProfile
                                     editingProject = project
                                     showingAddSheet = true
                                 } label: {
@@ -124,18 +126,21 @@ struct ProjectsListView: View {
                 name: $formName,
                 color: $formColor,
                 icon: $formIcon,
+                selectedBlockProfile: $formBlockProfile,
                 title: editingProject == nil ? "New Project" : "Edit Project"
             ) {
                 if let editing = editingProject {
                     editing.name = formName.trimmingCharacters(in: .whitespaces)
                     editing.color = formColor
                     editing.icon = formIcon
+                    editing.blockProfile = formBlockProfile
                 } else {
                     let project = Project(
                         name: formName.trimmingCharacters(in: .whitespaces),
                         color: formColor,
                         icon: formIcon
                     )
+                    project.blockProfile = formBlockProfile
                     modelContext.insert(project)
                 }
                 try? modelContext.save()
@@ -147,6 +152,7 @@ struct ProjectsListView: View {
         formName = ""
         formColor = "blue"
         formIcon = "folder.fill"
+        formBlockProfile = nil
     }
 
     private func colorFromName(_ name: String) -> Color {
