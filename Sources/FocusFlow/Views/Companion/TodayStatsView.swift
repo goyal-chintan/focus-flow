@@ -26,9 +26,23 @@ struct TodayStatsView: View {
         return max(0, overlapEnd.timeIntervalSince(overlapStart))
     }
 
+    @State private var showManualEntry = false
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // Header with log button
+                HStack {
+                    Spacer()
+                    Button {
+                        showManualEntry = true
+                    } label: {
+                        Label("Log Session", systemImage: "plus.circle")
+                            .font(.subheadline)
+                    }
+                    .buttonStyle(.glass)
+                }
+
                 // Summary cards
                 HStack(spacing: 12) {
                     StatCard(
@@ -136,6 +150,9 @@ struct TodayStatsView: View {
             .padding(24)
         }
         .background(.background)
+        .sheet(isPresented: $showManualEntry) {
+            ManualSessionView()
+        }
     }
 
     private var totalFocusTime: TimeInterval {
