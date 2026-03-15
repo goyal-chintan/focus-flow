@@ -307,9 +307,24 @@ final class TimerViewModel {
 
     // MARK: - Reflection
 
-    func saveReflection(mood: FocusMood?, achievement: String?) {
-        lastCompletedSession?.mood = mood
-        lastCompletedSession?.achievement = achievement
+    func saveReflection(mood: FocusMood?, achievement: String?, splits: [TimeSplitView.SplitEntry]? = nil) {
+        guard let session = lastCompletedSession else { return }
+        session.mood = mood
+        session.achievement = achievement
+
+        // Save splits if provided
+        if let splits, !splits.isEmpty, splits.count > 1 {
+            for split in splits {
+                let timeSplit = TimeSplit(
+                    project: split.project,
+                    customLabel: split.customLabel.isEmpty ? nil : split.customLabel,
+                    duration: TimeInterval(split.minutes * 60)
+                )
+                timeSplit.session = session
+                modelContext?.insert(timeSplit)
+            }
+        }
+
         try? modelContext?.save()
     }
 

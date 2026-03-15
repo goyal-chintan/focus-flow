@@ -14,6 +14,9 @@ final class FocusSession {
     var moodRawValue: String?
     var achievement: String?
 
+    @Relationship(deleteRule: .cascade)
+    var splits: [TimeSplit]
+
     var mood: FocusMood? {
         get { moodRawValue.flatMap { FocusMood(rawValue: $0) } }
         set { moodRawValue = newValue?.rawValue }
@@ -28,7 +31,10 @@ final class FocusSession {
         self.startedAt = Date()
         self.endedAt = nil
         self.completed = false
+        self.splits = []
     }
+
+    var hasSplits: Bool { !splits.isEmpty }
 
     var label: String {
         project?.name ?? customLabel ?? type.displayName
