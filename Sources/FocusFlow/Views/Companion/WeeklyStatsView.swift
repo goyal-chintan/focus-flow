@@ -66,7 +66,7 @@ struct WeeklyStatsView: View {
     private var chartData: [(label: String, value: Double)] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let focusSessions = allSessions.filter { $0.type == .focus && $0.completed }
+        let focusSessions = allSessions.filter { $0.type == .focus }
 
         return (0..<days).map { offset in
             let day = calendar.date(byAdding: .day, value: -(days - 1 - offset), to: today)!
