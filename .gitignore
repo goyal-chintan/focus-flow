@@ -1,0 +1,4 @@
+.worktrees/
+*.xcuserdata/
+DerivedData/
+.DS_Store
