@@ -17,11 +17,17 @@ final class BlockingService: @unchecked Sendable {
         isActive = true
         print("[BlockingService] Activating profile: \(profile.name)")
 
-        // Website blocking
+        // Website blocking — log to file for diagnosis
+        let rawValue = profile.blockedWebsitesRaw
         let websites = profile.blockedWebsites
-        print("[BlockingService] Blocking \(websites.count) websites: \(websites)")
+        let logMsg = "[BlockingService] profile=\(profile.name) raw='\(rawValue)' parsed=\(websites)\n"
+        let logPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/blocking.log"
+        try? logMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
         if !websites.isEmpty {
+            print("[BlockingService] Calling BlockingHelper.blockWebsites...")
             BlockingHelper.blockWebsites(websites)
+        } else {
+            print("[BlockingService] WARNING: No websites to block!")
         }
 
         // App blocking

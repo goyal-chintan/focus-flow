@@ -5,7 +5,11 @@ struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     private let container: ModelContainer = {
         let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self])
-        let config = ModelConfiguration(schema: schema)
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("FocusFlow", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let storeURL = dir.appendingPathComponent("FocusFlow.store")
+        let config = ModelConfiguration(schema: schema, url: storeURL)
         return try! ModelContainer(for: schema, configurations: config)
     }()
 
@@ -13,10 +17,6 @@ struct FocusFlowApp: App {
         MenuBarExtra {
             MenuBarPopoverView()
                 .environment(timerVM)
-                .onAppear {
-                    timerVM.configure(modelContext: container.mainContext)
-                    NotificationService.shared.requestPermission()
-                }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "timer")

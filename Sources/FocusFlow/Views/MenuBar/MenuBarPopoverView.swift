@@ -4,9 +4,23 @@ import SwiftData
 struct MenuBarPopoverView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.modelContext) private var modelContext
     @State private var showStopConfirmation = false
 
+    @State private var didConfigure = false
+
     var body: some View {
+        content
+            .task(id: didConfigure) {
+                if !didConfigure {
+                    didConfigure = true
+                    timerVM.ensureConfigured(modelContext: modelContext)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if timerVM.showSessionComplete {
             SessionCompleteView()
         } else {
@@ -132,6 +146,8 @@ struct MenuBarPopoverView: View {
         switch timerVM.state {
         case .idle:
             ControlButton(title: "Start Focus", icon: "play.fill", role: .primary) {
+                NSLog("FocusFlow: START FOCUS CLICKED")
+                timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
             }
 

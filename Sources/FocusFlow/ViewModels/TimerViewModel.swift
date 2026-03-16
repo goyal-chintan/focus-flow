@@ -113,14 +113,27 @@ final class TimerViewModel {
     }
 
     // MARK: - Setup
+    private var isConfigured = false
+
     func configure(modelContext: ModelContext) {
+        guard !isConfigured else { return }
+        isConfigured = true
         self.modelContext = modelContext
+        log("configure() called")
         loadSettings()
+        log("settings loaded: \(settings != nil)")
         seedDefaultProfiles()
         loadTodayStats()
         cleanupOrphanedSessions()
         BlockingService.shared.cleanupIfNeeded()
         scheduleMidnightRefresh()
+        log("configure() complete")
+    }
+
+    func ensureConfigured(modelContext: ModelContext) {
+        if !isConfigured {
+            configure(modelContext: modelContext)
+        }
     }
 
     /// Schedules a timer to fire at midnight to refresh today's stats
@@ -205,9 +218,10 @@ final class TimerViewModel {
 
     // MARK: - Actions
     func startFocus() {
-        guard settings != nil else { return }
+        guard settings != nil else { log("startFocus: settings nil, aborting"); return }
         let duration = focusDuration
-        guard duration >= 300 else { return } // Min 5 minutes
+        guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
+        log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
         state = .focusing
@@ -221,7 +235,27 @@ final class TimerViewModel {
         modelContext?.insert(session)
         currentSession = session
         startTimer()
+        // Activate blocking — try profile-based first, fallback to hardcoded defaults
         activateBlocking()
+        // Fallback: if blocking didn't activate (no profiles yet), block common distractions directly
+        if !BlockingService.shared.isActive {
+            let fallbackDomains = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
+            BlockingHelper.blockWebsites(fallbackDomains)
+        }
+    }
+
+    private func log(_ msg: String) {
+        let path = "/tmp/focusflow_debug.log"
+        let entry = "[\(Date())] \(msg)\n"
+        if FileManager.default.fileExists(atPath: path) {
+            if let handle = FileHandle(forWritingAtPath: path) {
+                handle.seekToEndOfFile()
+                handle.write(entry.data(using: .utf8)!)
+                handle.closeFile()
+            }
+        } else {
+            try? entry.write(toFile: path, atomically: true, encoding: .utf8)
+        }
     }
 
     func startBreak() {
@@ -320,19 +354,35 @@ final class TimerViewModel {
 
     // MARK: - Blocking
     private func activateBlocking() {
+        log("activateBlocking called")
         if let profile = selectedProject?.blockProfile {
+            log("Using project-specific profile: \(profile.name)")
             BlockingService.shared.activate(profile: profile)
             return
         }
-        let predicate = #Predicate<BlockProfile> { $0.isDefault == true }
-        let descriptor = FetchDescriptor<BlockProfile>(predicate: predicate)
-        if let defaultProfile = try? modelContext?.fetch(descriptor).first {
-            BlockingService.shared.activate(profile: defaultProfile)
+        log("No project profile, looking for default...")
+        do {
+            let predicate = #Predicate<BlockProfile> { $0.isDefault == true }
+            let descriptor = FetchDescriptor<BlockProfile>(predicate: predicate)
+            let results = try modelContext?.fetch(descriptor) ?? []
+            log("Found \(results.count) default profiles")
+            if let defaultProfile = results.first {
+                log("Activating: \(defaultProfile.name), rawWebsites='\(defaultProfile.blockedWebsitesRaw)', parsed=\(defaultProfile.blockedWebsites)")
+                BlockingService.shared.activate(profile: defaultProfile)
+            } else {
+                log("WARNING: No default profile found!")
+            }
+        } catch {
+            log("ERROR fetching profiles: \(error)")
         }
     }
 
     private func deactivateBlocking() {
         BlockingService.shared.deactivate()
+        // Always clean up hosts file as fallback
+        if BlockingHelper.isBlockingActive() {
+            BlockingHelper.unblockWebsites()
+        }
     }
 
     // MARK: - Timer
