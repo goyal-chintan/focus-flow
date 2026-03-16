@@ -23,19 +23,7 @@ struct SessionCompleteWindowView: View {
         }
         .interactiveDismissDisabled()
         .onAppear {
-            // Bring completion window to front of all apps
-            // Required for LSUIElement menu bar apps
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                for window in NSApplication.shared.windows {
-                    if window.title == "Session Complete" {
-                        window.level = .floating
-                        window.makeKeyAndOrderFront(nil)
-                        window.center()
-                        break
-                    }
-                }
-            }
+            bringWindowToFront()
         }
     }
 
@@ -278,6 +266,37 @@ struct SessionCompleteWindowView: View {
         case .neutral: .secondary
         case .focused: .blue
         case .deepFocus: .purple
+        }
+    }
+
+    private func bringWindowToFront() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        // Try immediately and with delays to catch the window at different lifecycle stages
+        for delay in [0.0, 0.2, 0.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                // Find our window — match by content size since hiddenTitleBar may blank the title
+                let allWindows = NSApplication.shared.windows
+                NSLog("FocusFlow: [delay=\(delay)] window count=\(allWindows.count), titles=\(allWindows.map { $0.title })")
+                for window in allWindows {
+                    // Match by: not the menu bar panel, not the stats window, has content
+                    if window.title == "Session Complete" || window.identifier?.rawValue.contains("session-complete") == true {
+                        NSLog("FocusFlow: Found window by title/id: \(window.title)")
+                        window.level = .floating
+                        window.makeKeyAndOrderFront(nil)
+                        window.center()
+                        return
+                    }
+                }
+                // Fallback: find the newest non-panel window that isn't the stats window
+                if let window = allWindows.last(where: {
+                    !$0.title.isEmpty && $0.title != "FocusFlow" && !($0 is NSPanel) && $0.isVisible
+                }) {
+                    NSLog("FocusFlow: Fallback window: \(window.title) frame=\(window.frame)")
+                    window.level = .floating
+                    window.makeKeyAndOrderFront(nil)
+                    window.center()
+                }
+            }
         }
     }
 }
