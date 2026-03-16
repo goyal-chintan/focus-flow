@@ -434,21 +434,29 @@ final class TimerViewModel {
         timer?.invalidate()
         timer = nil
 
-        currentSession?.endedAt = Date()
+        // Mark completed but keep endedAt nil for focus sessions —
+        // time on the completion dialog counts toward the session.
+        // endedAt will be set in continueAfterCompletion().
         currentSession?.completed = true
-        try? modelContext?.save()
 
         let wasType = currentSession?.type
+
+        if wasType != .focus {
+            // For breaks, end immediately
+            currentSession?.endedAt = Date()
+        }
+        try? modelContext?.save()
+
         let lastSession = currentSession
         currentSession = nil
 
         if wasType == .focus {
             completedFocusSessions += 1
             loadTodayStats()
-            NotificationService.shared.sendFocusComplete(sound: settings?.completionSound ?? "Glass")
-            // Note: autoStartBreak setting is intentionally not checked here.
-            // The completion/reflection flow (SessionCompleteView) always shows after focus ends,
-            // so auto-start break is overridden by the user's choice in that view.
+            let sound = settings?.completionSound ?? "Glass"
+            let label = lastSession?.label ?? "Focus"
+            let duration = lastSession?.duration ?? 0
+            NotificationService.shared.sendSessionCompletePrompt(duration: duration, label: label, sound: sound)
             lastCompletedDuration = lastSession?.duration
             lastCompletedLabel = lastSession?.label
             lastCompletedSession = lastSession
@@ -509,6 +517,11 @@ final class TimerViewModel {
     }
 
     func continueAfterCompletion(action: PostCompletionAction) {
+        // NOW end the session — includes time spent on the completion dialog
+        lastCompletedSession?.endedAt = Date()
+        try? modelContext?.save()
+        loadTodayStats()
+
         showSessionComplete = false
         lastCompletedSession = nil
 

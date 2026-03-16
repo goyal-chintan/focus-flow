@@ -4,12 +4,12 @@ struct BlockingHelper {
     private static let startMarker = "# FocusFlow-Block-Start"
     private static let endMarker = "# FocusFlow-Block-End"
     private static let hostsPath = "/etc/hosts"
+    private static let helperDir = NSHomeDirectory() + "/Library/Application Support/FocusFlow"
     private static let helperPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/blocking-helper.sh"
 
     /// Install the helper script once (creates with proper permissions)
     static func installHelperIfNeeded() {
-        let dir = (helperPath as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: helperDir, withIntermediateDirectories: true)
 
         // Always overwrite to keep it current
         let script = """
@@ -54,34 +54,32 @@ struct BlockingHelper {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperPath)
     }
 
-    /// Request admin privileges once and run helper with sudo cached
-    /// Uses `security authorizationdb` approach — the osascript admin dialog
-    /// caches the auth for a short period so subsequent calls don't re-prompt
-    static func blockWebsites(_ domains: [String]) {
-        guard !domains.isEmpty else { return }
+    /// Execute the helper with admin privileges.
+    /// Uses osascript for the first call (prompts for admin password), then
+    /// refreshes the sudo timestamp so subsequent calls via `sudo -n` succeed
+    /// without prompting.
+    private static func executeWithAdmin(_ command: String) {
         installHelperIfNeeded()
 
-        // Disable Secure DNS in Chromium browsers (Arc, Chrome, Brave, Edge)
-        // so they use system DNS which respects /etc/hosts
-        disableChromiumSecureDNS()
+        // Try sudo -n first (non-interactive — works if timestamp is cached)
+        let sudoProcess = Process()
+        sudoProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+        sudoProcess.arguments = ["-n", "bash", helperPath] + command.split(separator: " ").map(String.init)
+        sudoProcess.standardOutput = FileHandle.nullDevice
+        sudoProcess.standardError = FileHandle.nullDevice
+        try? sudoProcess.run()
+        sudoProcess.waitUntilExit()
 
-        let domainArgs = domains.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.joined(separator: " ")
+        if sudoProcess.terminationStatus == 0 {
+            return // sudo cache was valid, no prompt needed
+        }
+
+        // sudo not cached — use osascript to prompt once, then refresh sudo timestamp
+        let escapedHelper = helperPath.replacingOccurrences(of: "'", with: "'\\''")
         let script = """
-        do shell script "bash '\(helperPath)' block \(domainArgs)" with administrator privileges
+        do shell script "bash '\(escapedHelper)' \(command) && /usr/bin/sudo -v" with administrator privileges
         """
         runAppleScript(script)
-    }
-
-    static func unblockWebsites() {
-        installHelperIfNeeded()
-
-        let script = """
-        do shell script "bash '\(helperPath)' unblock" with administrator privileges
-        """
-        runAppleScript(script)
-
-        // Restore Secure DNS in Chromium browsers
-        restoreChromiumSecureDNS()
     }
 
     // MARK: - Chromium Secure DNS
@@ -116,6 +114,21 @@ struct BlockingHelper {
             script?.executeAndReturnError(&error)
         }
         print("[BlockingHelper] Restored Secure DNS for Chromium browsers")
+    }
+
+    // MARK: - Public API
+
+    static func blockWebsites(_ domains: [String]) {
+        guard !domains.isEmpty else { return }
+        disableChromiumSecureDNS()
+        let cleanDomains = domains.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+        let domainArgs = cleanDomains.joined(separator: " ")
+        executeWithAdmin("block \(domainArgs)")
+    }
+
+    static func unblockWebsites() {
+        executeWithAdmin("unblock")
+        restoreChromiumSecureDNS()
     }
 
     /// Check if blocking is active WITHOUT requiring admin

@@ -77,8 +77,7 @@ struct MenuBarPopoverView: View {
 
         return VStack(spacing: 0) {
             ProjectPickerView(
-                selectedProject: $timerVM.selectedProject,
-                customLabel: $timerVM.customLabel
+                selectedProject: $timerVM.selectedProject
             )
             .padding(.horizontal, 20)
             .padding(.top, 16)
