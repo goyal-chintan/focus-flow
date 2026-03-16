@@ -1,0 +1,51 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg3" x1="168" y1="116" x2="882" y2="938" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071018"/>
+      <stop offset="0.48" stop-color="#12212E"/>
+      <stop offset="1" stop-color="#1C3040"/>
+    </linearGradient>
+    <linearGradient id="crest3" x1="269" y1="192" x2="755" y2="818" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#99FBFF"/>
+      <stop offset="0.42" stop-color="#65D8FF"/>
+      <stop offset="1" stop-color="#F5FBFF"/>
+    </linearGradient>
+    <radialGradient id="glow3" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 372) rotate(90) scale(290)">
+      <stop stop-color="#FFF5C4"/>
+      <stop offset="0.3" stop-color="#77F2FF" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#77F2FF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft3" x="174" y="78" width="676" height="852" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg3)"/>
+  <circle cx="512" cy="390" r="290" fill="url(#glow3)"/>
+
+  <g filter="url(#soft3)">
+    <path d="M512 174L730 286V525C730 681 645 809 512 866C379 809 294 681 294 525V286L512 174Z" stroke="url(#crest3)" stroke-width="28" stroke-linejoin="round"/>
+    <path d="M512 237L669 317V519C669 633 610 731 512 786C414 731 355 633 355 519V317L512 237Z" stroke="#87F4FF" stroke-width="12" stroke-linejoin="round" opacity="0.72"/>
+
+    <path d="M512 296C462 296 416 317 384 352C352 387 339 434 347 482C353 522 374 557 406 584C395 617 395 657 406 707" stroke="url(#crest3)" stroke-width="20" stroke-linecap="round"/>
+    <path d="M512 296C562 296 608 317 640 352C672 387 685 434 677 482C671 522 650 557 618 584C629 617 629 657 618 707" stroke="url(#crest3)" stroke-width="20" stroke-linecap="round"/>
+    <path d="M512 309V722" stroke="url(#crest3)" stroke-width="16" stroke-linecap="round"/>
+    <path d="M420 390C450 371 481 362 512 362C543 362 574 371 604 390" stroke="url(#crest3)" stroke-width="15" stroke-linecap="round"/>
+    <path d="M398 483C435 461 473 450 512 450C551 450 589 461 626 483" stroke="url(#crest3)" stroke-width="15" stroke-linecap="round"/>
+    <path d="M412 574C444 560 477 553 512 553C547 553 580 560 612 574" stroke="url(#crest3)" stroke-width="15" stroke-linecap="round"/>
+
+    <circle cx="512" cy="384" r="34" fill="#FFF3BE"/>
+    <path d="M512 127L512 88" stroke="#FFF7D1" stroke-width="14" stroke-linecap="round"/>
+    <path d="M455 143L438 107" stroke="#9FFAFF" stroke-width="10" stroke-linecap="round"/>
+    <path d="M569 143L586 107" stroke="#9FFAFF" stroke-width="10" stroke-linecap="round"/>
+
+    <path d="M512 206L585 245" stroke="#FFE39A" stroke-width="9" stroke-linecap="round" opacity="0.9"/>
+    <path d="M512 206L439 245" stroke="#FFE39A" stroke-width="9" stroke-linecap="round" opacity="0.9"/>
+    <path d="M355 519H669" stroke="#72E8FF" stroke-width="8" stroke-linecap="round" opacity="0.42"/>
+    <path d="M393 653C442 695 482 717 512 722C542 717 582 695 631 653" stroke="#72E8FF" stroke-width="8" stroke-linecap="round" opacity="0.58"/>
+  </g>
+</svg>

@@ -2,6 +2,8 @@
 
 A native macOS Pomodoro focus timer built with SwiftUI and Apple's Liquid Glass design language.
 
+![FocusFlow Logo](Brand/LogoConcepts/focusflow-logo-final.svg)
+
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-blue)
 ![Swift 6.2](https://img.shields.io/badge/Swift-6.2-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
