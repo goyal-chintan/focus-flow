@@ -19,25 +19,32 @@ struct FocusFlowApp: App {
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: menuBarIconName)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+
                 if timerVM.isBlockingActive {
                     Image(systemName: "shield.checkered")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(FFColor.success)
                 }
+
                 if timerVM.state == .paused {
                     Text("\u{23F8}")
+                        .foregroundStyle(FFColor.warning)
                 } else if timerVM.isRunning {
                     Text(timerVM.timeString)
                         .monospacedDigit()
+                        .foregroundStyle(.primary)
                 }
+
                 if timerVM.todayFocusTime > 0 || timerVM.isRunning {
                     if timerVM.isRunning {
                         Text("\u{00B7}")
                             .foregroundStyle(.secondary)
                     }
                     Text(timerVM.todayFocusTime.formattedFocusTime)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.secondary.opacity(0.9))
                 }
             }
             .font(.system(size: 12, weight: .medium, design: .rounded))

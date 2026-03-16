@@ -29,6 +29,14 @@ struct PremiumSurface<Content: View>: View {
             case .inset: FFColor.insetFill
             }
         }
+
+        var material: Material {
+            switch self {
+            case .hero: .ultraThinMaterial
+            case .card: .regularMaterial
+            case .inset: .thinMaterial
+            }
+        }
     }
 
     let style: Style
@@ -51,8 +59,8 @@ struct PremiumSurface<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(style.padding)
+        .background(style.material, in: RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
         .background(style.fill, in: RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
         .ffCardChrome(cornerRadius: style.cornerRadius)
     }
 }
