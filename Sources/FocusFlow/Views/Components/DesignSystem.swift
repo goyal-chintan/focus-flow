@@ -38,6 +38,13 @@ enum FFColor {
     static let insetFill = Color.white.opacity(0.05)
 }
 
+enum FFMotion {
+    static let popover = Animation.spring(response: 0.36, dampingFraction: 0.82)
+    static let section = Animation.spring(response: 0.34, dampingFraction: 0.84)
+    static let control = Animation.spring(response: 0.26, dampingFraction: 0.82)
+    static let breathing = Animation.easeInOut(duration: 1.8).repeatForever(autoreverses: true)
+}
+
 extension View {
     func ffCardChrome(cornerRadius: CGFloat) -> some View {
         overlay {
