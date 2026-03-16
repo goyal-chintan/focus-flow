@@ -21,20 +21,44 @@ struct BlockProfileFormView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(profile == nil ? "New Blocking Profile" : "Edit Profile")
-                .font(.title3.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: FFSpacing.lg) {
+                PremiumSurface(style: .hero) {
+                    PremiumSectionHeader(
+                        profile == nil ? "New Blocking Profile" : "Edit Profile",
+                        eyebrow: "Blocking",
+                        subtitle: "Configure websites and apps to keep distractions out of your focus sessions."
+                    )
+                }
 
-            nameSection
-            websiteSection
-            appSection
-            quickFillSection
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Profile Name", eyebrow: "Basics")
+                    nameSection
+                }
 
-            Divider()
-            actionButtons
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Blocked Websites", eyebrow: "Web", subtitle: "Domain-based blocking during focus sessions.")
+                    websiteSection
+                }
+
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Blocked Apps", eyebrow: "Apps", subtitle: "Quit and keep distracting apps from relaunching.")
+                    appSection
+                }
+
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Quick Fill", eyebrow: "Presets", subtitle: "Seed the list with common distraction clusters.")
+                    quickFillSection
+                }
+
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Save", eyebrow: "Finish")
+                    actionButtons
+                }
+            }
+            .padding(FFSpacing.lg)
         }
-        .padding(24)
-        .frame(width: 440, height: 580)
+        .frame(width: 500, height: 720)
         .onAppear {
             installedApps = AppBlocker.installedApps()
         }
@@ -43,30 +67,31 @@ struct BlockProfileFormView: View {
     // MARK: - Sections
 
     private var nameSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Name")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
             TextField("e.g. Social Media, Full Focus", text: $name)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .font(FFType.body)
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
         }
     }
 
     private var websiteSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Blocked Websites")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
             websiteAddRow
             websiteList
         }
     }
 
     private var websiteAddRow: some View {
-        HStack {
+        HStack(spacing: FFSpacing.sm) {
             TextField("domain.com", text: $newWebsite)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .font(FFType.body)
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
                 .onSubmit { addWebsite() }
             Button("Add") { addWebsite() }
                 .buttonStyle(.glass)
@@ -77,36 +102,30 @@ struct BlockProfileFormView: View {
     @ViewBuilder
     private var websiteList: some View {
         if !websites.isEmpty {
-            ScrollView {
-                VStack(spacing: 4) {
-                    ForEach(websites, id: \.self) { site in
-                        HStack {
-                            Text(site)
-                                .font(.subheadline)
-                            Spacer()
-                            Button {
-                                websites.removeAll { $0 == site }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .buttonStyle(.plain)
+            VStack(spacing: FFSpacing.xs) {
+                ForEach(websites, id: \.self) { site in
+                    HStack {
+                        Text(site)
+                            .font(FFType.body)
+                        Spacer()
+                        Button {
+                            websites.removeAll { $0 == site }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, FFSpacing.md)
+                    .padding(.vertical, FFSpacing.sm)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
                 }
             }
-            .frame(maxHeight: 120)
         }
     }
 
     private var appSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Blocked Apps")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
             appPickerMenu
             blockedAppsList
         }
@@ -120,8 +139,8 @@ struct BlockProfileFormView: View {
                 }
             }
         } label: {
-            Label("Add App", systemImage: "plus.app")
-                .font(.subheadline)
+            Label("Add App", systemImage: "plus.app.fill")
+                .font(FFType.meta)
         }
         .buttonStyle(.glass)
     }
@@ -129,14 +148,16 @@ struct BlockProfileFormView: View {
     @ViewBuilder
     private var blockedAppsList: some View {
         if !blockedApps.isEmpty {
-            VStack(spacing: 4) {
+            VStack(spacing: FFSpacing.xs) {
                 ForEach(blockedApps, id: \.self) { bundleID in
                     HStack {
-                        Text(appName(for: bundleID))
-                            .font(.subheadline)
-                        Text(bundleID)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(appName(for: bundleID))
+                                .font(FFType.body)
+                            Text(bundleID)
+                                .font(FFType.micro)
+                                .foregroundStyle(.tertiary)
+                        }
                         Spacer()
                         Button {
                             blockedApps.removeAll { $0 == bundleID }
@@ -146,58 +167,54 @@ struct BlockProfileFormView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, FFSpacing.md)
+                    .padding(.vertical, FFSpacing.sm)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
                 }
             }
         }
     }
 
     private var quickFillSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Quick Fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Button("Social Media") {
-                    let social = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
-                    for site in social where !websites.contains(site) {
-                        websites.append(site)
-                    }
+        HStack(spacing: FFSpacing.sm) {
+            Button("Social Media") {
+                let social = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
+                for site in social where !websites.contains(site) {
+                    websites.append(site)
                 }
-                .buttonStyle(.glass)
-
-                Button("Entertainment") {
-                    let ent = ["netflix.com", "twitch.tv", "disneyplus.com", "hulu.com"]
-                    for site in ent where !websites.contains(site) {
-                        websites.append(site)
-                    }
-                }
-                .buttonStyle(.glass)
-
-                Button("News") {
-                    let news = ["news.ycombinator.com", "cnn.com", "bbc.com"]
-                    for site in news where !websites.contains(site) {
-                        websites.append(site)
-                    }
-                }
-                .buttonStyle(.glass)
             }
+            .buttonStyle(.glass)
+
+            Button("Entertainment") {
+                let ent = ["netflix.com", "twitch.tv", "disneyplus.com", "hulu.com"]
+                for site in ent where !websites.contains(site) {
+                    websites.append(site)
+                }
+            }
+            .buttonStyle(.glass)
+
+            Button("News") {
+                let news = ["news.ycombinator.com", "cnn.com", "bbc.com"]
+                for site in news where !websites.contains(site) {
+                    websites.append(site)
+                }
+            }
+            .buttonStyle(.glass)
         }
     }
 
     private var actionButtons: some View {
-        HStack {
+        HStack(spacing: FFSpacing.sm) {
             Button { dismiss() } label: {
-                Text("Cancel").frame(maxWidth: .infinity).padding(.vertical, 8)
+                Text("Cancel").frame(maxWidth: .infinity).padding(.vertical, FFSpacing.sm)
             }
             .buttonStyle(.glass)
 
             Button { save(); dismiss() } label: {
-                Text("Save").frame(maxWidth: .infinity).padding(.vertical, 8)
+                Text("Save").frame(maxWidth: .infinity).padding(.vertical, FFSpacing.sm)
             }
             .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .tint(FFColor.focus)
             .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }

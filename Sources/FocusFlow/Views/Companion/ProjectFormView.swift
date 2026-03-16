@@ -36,31 +36,58 @@ struct ProjectFormView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(title).font(.headline)
-                nameSection
-                colorSection
-                iconSection
-                blockProfileSection
-                actionButtons
+            VStack(alignment: .leading, spacing: FFSpacing.lg) {
+                PremiumSurface(style: .hero) {
+                    PremiumSectionHeader(
+                        title,
+                        eyebrow: "Project",
+                        subtitle: "Shape the visual identity and optional blocking behavior for this project."
+                    )
+                }
+
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Identity", eyebrow: "Basics", subtitle: "Name the project and pick a signature color and icon.")
+                    nameSection
+                    colorSection
+                    iconSection
+                }
+
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Blocking", eyebrow: "Optional", subtitle: "Attach a blocking profile if this project needs stricter guardrails.")
+                    blockProfileSection
+                }
+
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Save", eyebrow: "Finish", subtitle: "Store the project and make it available from the focus timer.")
+                    actionButtons
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
+            .padding(FFSpacing.lg)
         }
-        .frame(width: 400)
-        .frame(minHeight: 520)
+        .frame(width: 440)
+        .frame(minHeight: 620)
     }
 
     private var nameSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Name").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            TextField("e.g. IntelliOps, Resume Prep", text: $name).textFieldStyle(.roundedBorder)
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
+            sectionLabel("Name")
+            TextField("e.g. IntelliOps, Resume Prep", text: $name)
+                .textFieldStyle(.plain)
+                .font(FFType.body)
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.1))
+                }
         }
     }
 
     private var colorSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Color").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+            sectionLabel("Color")
             LazyVGrid(columns: colorGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(colors, id: \.name) { item in
                     Circle()
@@ -77,8 +104,8 @@ struct ProjectFormView: View {
     }
 
     private var iconSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Icon").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+            sectionLabel("Icon")
             LazyVGrid(columns: iconGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(icons, id: \.self) { sfSymbol in
                     IconCell(sfSymbol: sfSymbol, selected: sfSymbol == icon)
@@ -91,10 +118,8 @@ struct ProjectFormView: View {
     }
 
     private var blockProfileSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Block Profile")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
+            sectionLabel("Block Profile")
 
             Menu {
                 Button("None") { selectedBlockProfile = nil }
@@ -110,38 +135,48 @@ struct ProjectFormView: View {
                     }
                 }
             } label: {
-                HStack {
+                HStack(spacing: FFSpacing.sm) {
                     Image(systemName: "shield.checkered")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(FFColor.focus)
                     Text(selectedBlockProfile?.name ?? "None (no blocking)")
-                        .font(.subheadline)
+                        .font(FFType.body)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.1))
+                }
             }
             .buttonStyle(.plain)
         }
     }
 
     private var actionButtons: some View {
-        HStack {
+        HStack(spacing: FFSpacing.sm) {
             Button("Cancel") { dismiss() }
                 .buttonStyle(.glass)
-            Spacer()
             Button("Save") { onSave(); dismiss() }
                 .buttonStyle(.glassProminent)
-                .tint(.blue)
+                .tint(FFColor.focus)
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
-        .padding(.top, 4)
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(FFType.micro)
+            .foregroundStyle(.tertiary)
+            .textCase(.uppercase)
+            .tracking(1.2)
     }
 }
 
@@ -150,12 +185,12 @@ private struct IconCell: View {
     let selected: Bool
 
     var body: some View {
-        let bg: Color = selected ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.08)
-        let fg: Color = selected ? Color.accentColor : Color.secondary
+        let bg: Color = selected ? FFColor.focus.opacity(0.2) : Color.secondary.opacity(0.08)
+        let fg: Color = selected ? FFColor.focus : Color.secondary
         return Image(systemName: sfSymbol)
-            .font(.system(size: 16))
-            .frame(width: 32, height: 32)
-            .background(bg, in: RoundedRectangle(cornerRadius: 7))
+            .font(.system(size: 16, weight: .semibold))
+            .frame(width: 34, height: 34)
+            .background(bg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .foregroundStyle(fg)
             .scaleEffect(selected ? 1.1 : 1)
     }
