@@ -8,15 +8,17 @@ struct BlockingSettingsView: View {
     @State private var showNewProfile = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            if profiles.isEmpty {
-                emptyState
-            } else {
-                profileList
+        ScrollView {
+            VStack(spacing: FFSpacing.lg) {
+                header
+                if profiles.isEmpty {
+                    emptyState
+                } else {
+                    profileList
+                }
             }
+            .padding(FFSpacing.lg)
         }
-        .background(.background)
         .sheet(isPresented: $showNewProfile) {
             BlockProfileFormView(profile: nil)
         }
@@ -26,51 +28,53 @@ struct BlockingSettingsView: View {
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Blocking Profiles")
-                    .font(.title2.weight(.bold))
-                Text("\(profiles.count) profiles")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        PremiumSurface(style: .hero) {
+            PremiumSectionHeader(
+                "Blocking Profiles",
+                eyebrow: "Protection",
+                subtitle: "\(profiles.count) profile\(profiles.count == 1 ? "" : "s") configured"
+            ) {
+                Button {
+                    showNewProfile = true
+                } label: {
+                    Label("New Profile", systemImage: "plus.circle.fill")
+                        .font(FFType.meta)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(FFColor.focus)
             }
-            Spacer()
-            Button {
-                showNewProfile = true
-            } label: {
-                Label("New Profile", systemImage: "plus")
-                    .font(.subheadline.weight(.medium))
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
         }
-        .padding(24)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
+        PremiumSurface(style: .card, alignment: .center) {
             Image(systemName: "shield.checkered")
-                .font(.system(size: 48))
+                .font(.system(size: 44, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("No blocking profiles")
-                .font(.headline)
+                .font(FFType.title)
                 .foregroundStyle(.secondary)
             Text("Create profiles to block distracting websites and apps during focus sessions")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
+                .font(FFType.meta)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 
     private var profileList: some View {
-        List {
-            ForEach(profiles) { profile in
-                profileRow(profile)
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Profiles",
+                eyebrow: "Library",
+                subtitle: "Reuse these across projects and mark one as the default."
+            )
+
+            LazyVStack(spacing: FFSpacing.sm) {
+                ForEach(profiles) { profile in
+                    profileRow(profile)
+                }
             }
         }
-        .scrollContentBackground(.hidden)
     }
 
     private func profileRow(_ profile: BlockProfile) -> some View {
@@ -80,7 +84,9 @@ struct BlockingSettingsView: View {
             Spacer()
             profileActions(profile)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, FFSpacing.md)
+        .padding(.vertical, FFSpacing.sm)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
     }
 
     private func profileIcon(_ profile: BlockProfile) -> some View {
@@ -98,18 +104,18 @@ struct BlockingSettingsView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(profile.name)
-                    .font(.body.weight(.medium))
+                    .font(FFType.body.weight(.medium))
                 if profile.isDefault {
                     Text("DEFAULT")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.blue)
+                        .font(FFType.micro.weight(.bold))
+                        .foregroundStyle(FFColor.focus)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                        .background(FFColor.focus.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
                 }
             }
             Text(profileSummary(profile))
-                .font(.caption)
+                .font(FFType.meta)
                 .foregroundStyle(.secondary)
         }
     }

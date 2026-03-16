@@ -12,15 +12,22 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: FFSpacing.lg) {
+                PremiumSurface(style: .hero) {
+                    PremiumSectionHeader(
+                        "Settings",
+                        eyebrow: "Preferences",
+                        subtitle: "Tune focus lengths, behavior, alerts, and startup behavior."
+                    )
+                }
 
-                // Durations
-                GroupBox("Durations") {
-                    VStack(spacing: 14) {
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Durations", eyebrow: "Timers", subtitle: "Choose the pacing of focus and recovery.")
+                    VStack(spacing: FFSpacing.sm) {
                         DurationRow(
                             label: "Focus",
                             icon: "timer",
-                            color: .blue,
+                            color: FFColor.focus,
                             minutes: Binding(
                                 get: { Int(settings.focusDuration / 60) },
                                 set: { settings.focusDuration = TimeInterval($0 * 60); save() }
@@ -32,7 +39,7 @@ struct SettingsView: View {
                         DurationRow(
                             label: "Short Break",
                             icon: "cup.and.saucer.fill",
-                            color: .green,
+                            color: FFColor.success,
                             minutes: Binding(
                                 get: { Int(settings.shortBreakDuration / 60) },
                                 set: { settings.shortBreakDuration = TimeInterval($0 * 60); save() }
@@ -44,7 +51,7 @@ struct SettingsView: View {
                         DurationRow(
                             label: "Long Break",
                             icon: "figure.walk",
-                            color: .purple,
+                            color: FFColor.deepFocus,
                             minutes: Binding(
                                 get: { Int(settings.longBreakDuration / 60) },
                                 set: { settings.longBreakDuration = TimeInterval($0 * 60); save() }
@@ -67,18 +74,17 @@ struct SettingsView: View {
                             )
                             .frame(width: 100)
                         }
-                        .font(.subheadline)
+                        .font(FFType.body)
                     }
-                    .padding(4)
                 }
 
-                // Behavior
-                GroupBox("Behavior") {
-                    VStack(spacing: 12) {
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Behavior", eyebrow: "Automation", subtitle: "Control how sessions and the app behave by default.")
+                    VStack(spacing: FFSpacing.sm) {
                         ToggleRow(
                             label: "Auto-start breaks",
                             icon: "play.circle.fill",
-                            color: .green,
+                            color: FFColor.success,
                             isOn: Binding(
                                 get: { settings.autoStartBreak },
                                 set: { settings.autoStartBreak = $0; save() }
@@ -88,7 +94,7 @@ struct SettingsView: View {
                         ToggleRow(
                             label: "Auto-start next session",
                             icon: "arrow.clockwise.circle.fill",
-                            color: .blue,
+                            color: FFColor.focus,
                             isOn: Binding(
                                 get: { settings.autoStartNextSession },
                                 set: { settings.autoStartNextSession = $0; save() }
@@ -98,7 +104,7 @@ struct SettingsView: View {
                         ToggleRow(
                             label: "Launch at login",
                             icon: "power.circle.fill",
-                            color: .orange,
+                            color: FFColor.warning,
                             isOn: Binding(
                                 get: { settings.launchAtLogin },
                                 set: {
@@ -109,14 +115,13 @@ struct SettingsView: View {
                             )
                         )
                     }
-                    .padding(4)
                 }
 
-                // Sound
-                GroupBox("Sound") {
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader("Sound", eyebrow: "Feedback", subtitle: "Choose the sound that marks the end of a session.")
                     HStack {
                         Label("Completion sound", systemImage: "speaker.wave.2.fill")
-                            .font(.subheadline)
+                            .font(FFType.body)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Picker("", selection: Binding(
@@ -131,36 +136,39 @@ struct SettingsView: View {
                                 Text(sound).tag(sound)
                             }
                         }
+                        .pickerStyle(.menu)
                         .frame(width: 140)
                     }
-                    .padding(4)
                 }
 
-                // App info
-                GroupBox("About") {
-                    VStack(spacing: 12) {
-                        Image(systemName: "timer")
-                            .font(.system(size: 40, weight: .light))
-                            .foregroundStyle(.tint)
-                            .frame(maxWidth: .infinity)
+                PremiumSurface(style: .card, alignment: .center) {
+                    PremiumSectionHeader("About", eyebrow: "FocusFlow")
+                    VStack(spacing: FFSpacing.sm) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: FFRadius.hero, style: .continuous)
+                                .fill(FFColor.focus.opacity(0.15))
+                                .frame(width: 72, height: 72)
+
+                            Image(systemName: "bolt.circle.fill")
+                                .font(.system(size: 34, weight: .semibold))
+                                .foregroundStyle(FFColor.focus)
+                        }
 
                         VStack(spacing: 4) {
                             Text("FocusFlow")
-                                .font(.headline)
+                                .font(FFType.title)
                             Text("Pomodoro focus timer for macOS")
-                                .font(.caption)
+                                .font(FFType.meta)
                                 .foregroundStyle(.secondary)
                             Text("v1.0")
-                                .font(.caption2)
+                                .font(FFType.micro)
                                 .foregroundStyle(.tertiary)
                         }
                     }
-                    .padding(.vertical, 8)
                 }
             }
-            .padding(24)
+            .padding(FFSpacing.lg)
         }
-        .background(.background)
     }
 
     private func save() {
@@ -194,8 +202,8 @@ private struct DurationRow: View {
     var body: some View {
         HStack {
             Label(label, systemImage: icon)
-                .foregroundStyle(.secondary)
-                .font(.subheadline)
+                .foregroundStyle(color)
+                .font(FFType.body)
             Spacer()
             Stepper(
                 "\(minutes) min",
@@ -204,7 +212,7 @@ private struct DurationRow: View {
                 step: step
             )
             .frame(width: 140)
-            .font(.subheadline)
+            .font(FFType.body)
         }
     }
 }
@@ -218,8 +226,8 @@ private struct ToggleRow: View {
     var body: some View {
         Toggle(isOn: $isOn) {
             Label(label, systemImage: icon)
-                .foregroundStyle(.secondary)
-                .font(.subheadline)
+                .foregroundStyle(color)
+                .font(FFType.body)
         }
     }
 }
