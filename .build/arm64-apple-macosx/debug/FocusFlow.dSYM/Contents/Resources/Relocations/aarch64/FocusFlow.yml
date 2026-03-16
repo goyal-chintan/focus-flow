@@ -1,5 +1,0 @@
----
-triple:          'arm64-apple-darwin'
-binary-path:     '/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow'
-relocations:     []
-...

@@ -10,6 +10,10 @@ struct SessionEditView: View {
     @State private var selectedMood: FocusMood?
     @State private var achievement: String
     @State private var selectedProject: Project?
+    @State private var editedDuration: TimeInterval
+    @State private var editedStartedAt: Date
+    @State private var editedEndedAt: Date
+    @State private var selectedDurationMinutes: Int
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
@@ -19,12 +23,24 @@ struct SessionEditView: View {
         _selectedMood = State(initialValue: session.mood)
         _achievement = State(initialValue: session.achievement ?? "")
         _selectedProject = State(initialValue: session.project)
+        _editedDuration = State(initialValue: session.duration)
+        _editedStartedAt = State(initialValue: session.startedAt)
+        _editedEndedAt = State(initialValue: session.endedAt ?? session.startedAt.addingTimeInterval(session.duration))
+        _selectedDurationMinutes = State(initialValue: Int(session.duration / 60))
+    }
+
+    private var isValid: Bool {
+        editedEndedAt > editedStartedAt && editedDuration >= 300
+    }
+
+    private var calculatedActualDuration: TimeInterval {
+        max(0, editedEndedAt.timeIntervalSince(editedStartedAt))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             headerSection
-            sessionInfoSection
+            timingSection
             Divider()
             projectSection
             moodSection
@@ -33,7 +49,7 @@ struct SessionEditView: View {
             actionsSection
         }
         .padding(20)
-        .frame(width: 340)
+        .frame(width: 360)
     }
 
     private var headerSection: some View {
@@ -49,18 +65,143 @@ struct SessionEditView: View {
         }
     }
 
-    private var sessionInfoSection: some View {
+    private var timingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Duration presets
+            durationPresetsRow
+
+            // Start / End pickers
+            datePickersRow
+
+            // Actual duration display
+            actualDurationRow
+
+            // Validation warning
+            if !isValid {
+                validationWarning
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+
+    private var durationPresetsRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Planned Duration")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            GlassEffectContainer {
+                HStack(spacing: 0) {
+                    durationPresetButton(mins: 15)
+                    durationPresetButton(mins: 25)
+                    durationPresetButton(mins: 45)
+                    durationPresetButton(mins: 60)
+                    customDurationButton
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func durationPresetButton(mins: Int) -> some View {
+        let isSelected = selectedDurationMinutes == mins
+        let label = Text("\(mins)")
+            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+
+        if isSelected {
+            Button {
+                selectedDurationMinutes = mins
+                editedDuration = TimeInterval(mins * 60)
+            } label: { label }
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
+        } else {
+            Button {
+                selectedDurationMinutes = mins
+                editedDuration = TimeInterval(mins * 60)
+            } label: { label }
+                .buttonStyle(.glass)
+        }
+    }
+
+    private var customDurationButton: some View {
+        let isCustom = ![15, 25, 45, 60].contains(selectedDurationMinutes)
+        let label = Text("Custom")
+            .font(.system(size: 11, weight: isCustom ? .semibold : .regular))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+
+        return Group {
+            if isCustom {
+                Button {} label: { label }
+                    .buttonStyle(.glassProminent)
+                    .tint(.blue)
+            } else {
+                Button {
+                    selectedDurationMinutes = Int(editedDuration / 60)
+                } label: { label }
+                    .buttonStyle(.glass)
+            }
+        }
+    }
+
+    private var datePickersRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Start")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, alignment: .leading)
+                DatePicker("", selection: $editedStartedAt)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+            }
+
+            HStack {
+                Text("End")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, alignment: .leading)
+                DatePicker("", selection: $editedEndedAt)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+            }
+        }
+    }
+
+    private var actualDurationRow: some View {
         HStack(spacing: 8) {
             Image(systemName: "clock")
                 .foregroundStyle(.secondary)
-            Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
+            Text("Actual:")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Text("\u{00B7}")
-                .foregroundStyle(.tertiary)
-            Text(session.actualDuration.formattedFocusTime)
+            Text(calculatedActualDuration.formattedFocusTime)
                 .font(.subheadline.weight(.medium))
+                .monospacedDigit()
+            Spacer()
+            Text("Planned: \(selectedDurationMinutes)m")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
         }
+    }
+
+    private var validationWarning: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+            if editedEndedAt <= editedStartedAt {
+                Text("End time must be after start time")
+                    .font(.caption)
+            } else if editedDuration < 300 {
+                Text("Duration must be at least 5 minutes")
+                    .font(.caption)
+            }
+        }
+        .foregroundStyle(.orange)
     }
 
     private var projectSection: some View {
@@ -102,9 +243,11 @@ struct SessionEditView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 6) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    moodButton(mood)
+            GlassEffectContainer {
+                HStack(spacing: 6) {
+                    ForEach(FocusMood.allCases, id: \.self) { mood in
+                        moodButton(mood)
+                    }
                 }
             }
         }
@@ -146,6 +289,7 @@ struct SessionEditView: View {
     }
 
     private var actionsSection: some View {
+        GlassEffectContainer {
         HStack {
             Button {
                 dismiss()
@@ -166,6 +310,9 @@ struct SessionEditView: View {
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
+            .disabled(!isValid)
+            .opacity(isValid ? 1 : 0.5)
+        }
         }
     }
 
@@ -173,6 +320,9 @@ struct SessionEditView: View {
         session.project = selectedProject
         session.mood = selectedMood
         session.achievement = achievement.isEmpty ? nil : achievement
+        session.duration = editedDuration
+        session.startedAt = editedStartedAt
+        session.endedAt = editedEndedAt
         try? modelContext.save()
     }
 

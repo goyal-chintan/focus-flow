@@ -67,7 +67,11 @@ final class TimerViewModel {
     var showSessionComplete: Bool = false
     var lastCompletedDuration: TimeInterval? = nil
     var lastCompletedLabel: String? = nil
-    private var lastCompletedSession: FocusSession? = nil
+    private(set) var lastCompletedSession: FocusSession? = nil
+
+    // MARK: - Overtime
+    var isOvertime: Bool = false
+    var overtimeSeconds: Int = 0
 
     // MARK: - Today Stats
     var todayFocusTime: TimeInterval = 0
@@ -93,6 +97,12 @@ final class TimerViewModel {
         let minutes = Int(remainingSeconds) / 60
         let seconds = Int(remainingSeconds) % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    var overtimeTimeString: String {
+        let mins = overtimeSeconds / 60
+        let secs = overtimeSeconds % 60
+        return String(format: "+%d:%02d", mins, secs)
     }
 
     var isRunning: Bool {
@@ -218,7 +228,7 @@ final class TimerViewModel {
 
     // MARK: - Actions
     func startFocus() {
-        guard settings != nil else { log("startFocus: settings nil, aborting"); return }
+        guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
         let duration = focusDuration
         guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
@@ -254,7 +264,7 @@ final class TimerViewModel {
     }
 
     func startBreak() {
-        guard let settings else { return }
+        guard let settings, !isOvertime else { return }
         let isLongBreak = completedFocusSessions > 0
             && (completedFocusSessions % settings.sessionsBeforeLongBreak) == 0
         let type: SessionType = isLongBreak ? .longBreak : .shortBreak
@@ -271,7 +281,7 @@ final class TimerViewModel {
     }
 
     func pause() {
-        guard state == .focusing else { return }
+        guard state == .focusing, !isOvertime else { return }
         timer?.invalidate()
         timer = nil
         state = .paused
@@ -297,6 +307,9 @@ final class TimerViewModel {
         pauseTimer = nil
         pauseStartTime = nil
         pauseElapsed = 0
+        isOvertime = false
+        overtimeSeconds = 0
+        showSessionComplete = false
         if let session = currentSession {
             session.endedAt = Date()
             session.completed = false
@@ -322,6 +335,9 @@ final class TimerViewModel {
         pauseStartTime = nil
         pauseElapsed = 0
 
+        isOvertime = false
+        overtimeSeconds = 0
+        showSessionComplete = false
         if let session = currentSession {
             modelContext?.delete(session)
             try? modelContext?.save()
@@ -337,6 +353,9 @@ final class TimerViewModel {
     func skipBreak() {
         timer?.invalidate()
         timer = nil
+        isOvertime = false
+        overtimeSeconds = 0
+        showSessionComplete = false
         currentSession?.endedAt = Date()
         currentSession?.completed = false
         try? modelContext?.save()
@@ -403,6 +422,15 @@ final class TimerViewModel {
 
     @MainActor
     private func tick() {
+        if isOvertime {
+            overtimeSeconds += 1
+            currentSession?.endedAt = Date()
+            if overtimeSeconds % 30 == 0 {
+                try? modelContext?.save()
+            }
+            loadTodayStats()
+            return
+        }
         guard remainingSeconds > 0 else { return }
         remainingSeconds -= 1
         if remainingSeconds <= 0 {
@@ -412,46 +440,36 @@ final class TimerViewModel {
 
     @MainActor
     private func timerCompleted() {
-        timer?.invalidate()
-        timer = nil
-
-        // Mark completed but keep endedAt nil for focus sessions —
-        // time on the completion dialog counts toward the session.
-        // endedAt will be set in continueAfterCompletion().
+        // Don't invalidate timer — continues for overtime
+        currentSession?.endedAt = Date()
         currentSession?.completed = true
+        try? modelContext?.save()
 
         let wasType = currentSession?.type
 
-        if wasType != .focus {
-            // For breaks, end immediately
-            currentSession?.endedAt = Date()
-        }
-        try? modelContext?.save()
-
-        let lastSession = currentSession
-        currentSession = nil
+        // Capture completion info
+        lastCompletedDuration = currentSession?.duration
+        lastCompletedLabel = currentSession?.label
+        lastCompletedSession = currentSession
 
         if wasType == .focus {
             completedFocusSessions += 1
-            loadTodayStats()
             let sound = settings?.completionSound ?? "Glass"
-            let label = lastSession?.label ?? "Focus"
-            let duration = lastSession?.duration ?? 0
+            let label = currentSession?.label ?? "Focus"
+            let duration = currentSession?.duration ?? 0
             NotificationService.shared.sendSessionCompletePrompt(duration: duration, label: label, sound: sound)
-            lastCompletedDuration = lastSession?.duration
-            lastCompletedLabel = lastSession?.label
-            lastCompletedSession = lastSession
-            showSessionComplete = true
-            state = .idle
         } else {
-            loadTodayStats()
             NotificationService.shared.sendBreakComplete(sound: settings?.completionSound ?? "Glass")
-            if settings?.autoStartNextSession == true {
-                startFocus()
-            } else {
-                state = .idle
-            }
         }
+
+        // Enter overtime — timer keeps running, counting up
+        // State goes idle so popover doesn't show pause/stop
+        loadTodayStats()
+        isOvertime = true
+        overtimeSeconds = 0
+        remainingSeconds = 0
+        state = .idle
+        showSessionComplete = true
     }
 
     // MARK: - Reflection
@@ -497,12 +515,21 @@ final class TimerViewModel {
     }
 
     func continueAfterCompletion(action: PostCompletionAction) {
-        // NOW end the session — includes time spent on the completion dialog
-        lastCompletedSession?.endedAt = Date()
-        try? modelContext?.save()
+        // Stop overtime timer
+        timer?.invalidate()
+        timer = nil
+        isOvertime = false
+        overtimeSeconds = 0
+
+        // Final save of session endedAt (includes overtime)
+        if let session = currentSession ?? lastCompletedSession {
+            session.endedAt = Date()
+            try? modelContext?.save()
+        }
         loadTodayStats()
 
         showSessionComplete = false
+        currentSession = nil
         lastCompletedSession = nil
 
         switch action {

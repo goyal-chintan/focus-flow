@@ -21,11 +21,13 @@ struct MenuBarPopoverView: View {
 
     @ViewBuilder
     private var content: some View {
-        if timerVM.showSessionComplete {
-            SessionCompleteView()
-        } else {
-            mainContent
-        }
+        mainContent
+            .onChange(of: timerVM.showSessionComplete) { _, newValue in
+                if newValue {
+                    openWindow(id: "session-complete")
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                }
+            }
     }
 
     private var mainContent: some View {

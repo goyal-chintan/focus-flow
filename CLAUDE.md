@@ -43,7 +43,7 @@ The app cannot run via bare `swift run` — it needs a proper .app bundle for Li
 
 ### Timer State Machine (TimerViewModel)
 ```
-IDLE → startFocus() → FOCUSING → timerCompleted() → showSessionComplete (idle + completion view)
+IDLE → startFocus() → FOCUSING → timerCompleted() → OVERTIME (idle + completion window)
                          ↓                               ↓
                       pause()                    continueAfterCompletion(.takeBreak) → ON_BREAK
                          ↓                       continueAfterCompletion(.continueFocusing) → FOCUSING
@@ -52,7 +52,11 @@ IDLE → startFocus() → FOCUSING → timerCompleted() → showSessionComplete 
                       resume() → FOCUSING
 ```
 
-- Focus completion always shows `SessionCompleteView` (the `autoStartBreak` setting is intentionally unused)
+- On completion, timer keeps running in overtime mode (`isOvertime=true`), counting up
+- `endedAt` is set at completion and updated every tick — overtime duration is included in `actualDuration`
+- Completion opens a standalone `SessionCompleteWindowView` (not inline in popover)
+- Menu bar shows orange `+M:SS` overtime counter
+- Focus completion always shows `SessionCompleteWindowView` (the `autoStartBreak` setting is intentionally unused)
 - `stop()` saves session as incomplete; `abandonSession()` deletes it entirely
 - Sessions under 1 minute are auto-deleted (in `stop()` and `cleanupOrphanedSessions()`)
 - Minimum session duration: 5 minutes (300 seconds guard in `startFocus()`)
@@ -67,11 +71,16 @@ IDLE → startFocus() → FOCUSING → timerCompleted() → showSessionComplete 
 - Applied in `loadTodayStats()`, `TodayStatsView`, and `WeeklyStatsView`
 - Orphaned sessions (app quit mid-focus) are cleaned up on next launch
 
-### Liquid Glass Usage Rules
-- Glass on controls/navigation only: buttons, picker backgrounds, floating panels
-- Never stack glass on glass
-- Use `GlassEffectContainer` when grouping multiple glass elements
-- Conditional `.buttonStyle(.glass)` vs `.glassProminent` requires if/else branches (ternary causes type errors)
+### Liquid Glass Design Philosophy
+FocusFlow embraces macOS Tahoe's Liquid Glass as a core design language, not just a styling option:
+
+- **Glass on controls/navigation only:** buttons, picker backgrounds, floating panels. Content areas stay clear.
+- **Never stack glass on glass** — leads to visual muddiness and breaks the translucency effect.
+- **Use `GlassEffectContainer`** when grouping multiple glass elements (e.g., action button rows). This ensures proper compositing.
+- **Conditional `.buttonStyle(.glass)` vs `.glassProminent`** requires if/else branches — ternary causes SwiftUI type errors.
+- **`.glassProminent`** for primary/selected actions (with `.tint()` for color), **`.glass`** for secondary/unselected.
+- **`.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))`** for text fields and passive containers — gives subtle depth without interactive affordance.
+- **Standalone windows** (e.g., Session Complete) use `.windowStyle(.hiddenTitleBar)` to let glass compositing extend edge-to-edge.
 
 ### SwiftUI Type-Check Timeout
 Complex view bodies trigger "unable to type-check this expression in reasonable time." Fix by extracting sections into `private var someSection: some View` computed properties or separate structs. This has affected `MenuBarPopoverView`, `ProjectFormView`, and `ManualSessionView`.
