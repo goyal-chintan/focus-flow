@@ -6,46 +6,48 @@ struct SessionTimelineView: View {
 
     var body: some View {
         if sessions.isEmpty {
-            VStack(spacing: 10) {
+            PremiumSurface(style: .inset, alignment: .center) {
                 Image(systemName: "timer")
-                    .font(.largeTitle)
+                    .font(.system(size: 34, weight: .light))
                     .foregroundStyle(.tertiary)
                 Text("No sessions yet today")
-                    .font(.subheadline)
+                    .font(FFType.callout)
+                    .foregroundStyle(.secondary)
+                Text("Sessions you complete today will appear here.")
+                    .font(FFType.meta)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
         } else {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: FFSpacing.sm) {
                 ForEach(sessions) { session in
                     Button {
                         editingSession = session
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack(spacing: FFSpacing.md) {
                             Circle()
-                                .fill(session.completed ? Color.green : Color.orange)
-                                .frame(width: 8, height: 8)
+                                .fill(session.completed ? FFColor.success : FFColor.warning)
+                                .frame(width: 10, height: 10)
 
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(session.label)
-                                    .font(.subheadline.weight(.medium))
-                                HStack(spacing: 6) {
+                                    .font(FFType.body.weight(.medium))
+                                HStack(spacing: FFSpacing.xs) {
                                     Text(session.startedAt.formatted(date: .omitted, time: .shortened))
                                     Text("\u{00B7}")
                                     Text("\(Int(session.actualDuration / 60))m")
                                     if !session.completed {
                                         Text("\u{00B7} stopped early")
-                                            .foregroundStyle(.orange)
+                                            .foregroundStyle(FFColor.warning)
                                     }
                                 }
-                                .font(.caption)
+                                .font(FFType.meta)
                                 .foregroundStyle(.secondary)
                             }
 
                             if let mood = session.mood {
                                 Image(systemName: mood.icon)
-                                    .font(.caption2)
+                                    .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(moodColor(mood))
                             }
 
@@ -53,18 +55,15 @@ struct SessionTimelineView: View {
 
                             if session.completed {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                    .font(.caption)
+                                    .foregroundStyle(FFColor.success)
+                                    .font(.system(size: 14, weight: .semibold))
                             }
                         }
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, FFSpacing.md)
+                        .padding(.vertical, FFSpacing.sm)
+                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
                     }
                     .buttonStyle(.plain)
-
-                    if session.id != sessions.last?.id {
-                        Divider()
-                            .padding(.leading, 20)
-                    }
                 }
             }
             .sheet(item: $editingSession) { session in
@@ -75,10 +74,10 @@ struct SessionTimelineView: View {
 
     private func moodColor(_ mood: FocusMood) -> Color {
         switch mood {
-        case .distracted: .orange
+        case .distracted: FFColor.warning
         case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
+        case .focused: FFColor.focus
+        case .deepFocus: FFColor.deepFocus
         }
     }
 }
