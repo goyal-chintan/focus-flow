@@ -15,120 +15,59 @@ struct ProjectsListView: View {
     @State private var formBlockProfile: BlockProfile?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Projects")
-                        .font(.title2.weight(.bold))
-                    Text("\(projects.count) active")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    resetForm()
-                    editingProject = nil
-                    showingAddSheet = true
-                } label: {
-                    Label("New Project", systemImage: "plus")
-                        .font(.subheadline.weight(.medium))
-                }
-                .buttonStyle(.glassProminent)
-                .controlSize(.small)
-            }
-            .padding(24)
-
-            if projects.isEmpty {
-                VStack(spacing: 14) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.tertiary)
-                    Text("No projects yet")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                    Text("Create a project to categorize your focus sessions")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding()
-            } else {
-                List {
-                    ForEach(projects) { project in
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(colorFromName(project.color))
-                                .frame(width: 10, height: 10)
-
-                            Image(systemName: project.icon ?? "folder.fill")
-                                .foregroundStyle(colorFromName(project.color))
-                                .frame(width: 20)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(project.name)
-                                    .font(.body.weight(.medium))
-                                let count = project.sessions.filter { $0.type == .focus && $0.completed }.count
-                                Text("\(count) focus session\(count == 1 ? "" : "s")")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            HStack(spacing: 4) {
-                                Button {
-                                    formName = project.name
-                                    formColor = project.color
-                                    formIcon = project.icon ?? "folder.fill"
-                                    formBlockProfile = project.blockProfile
-                                    editingProject = project
-                                    showingAddSheet = true
-                                } label: {
-                                    Image(systemName: "pencil")
-                                        .padding(6)
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
-                                .help("Edit project")
-
-                                Button {
-                                    withAnimation {
-                                        project.archived = true
-                                        if timerVM.selectedProject?.id == project.id {
-                                            timerVM.selectedProject = nil
-                                        }
-                                        try? modelContext.save()
-                                    }
-                                } label: {
-                                    Image(systemName: "archivebox")
-                                        .padding(6)
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
-                                .help("Archive project")
-                            }
+        ScrollView {
+            VStack(spacing: FFSpacing.lg) {
+                PremiumSurface(style: .hero) {
+                    PremiumSectionHeader(
+                        "Projects",
+                        eyebrow: "Workspace",
+                        subtitle: "\(projects.count) active projects"
+                    ) {
+                        Button {
+                            resetForm()
+                            editingProject = nil
+                            showingAddSheet = true
+                        } label: {
+                            Label("New Project", systemImage: "plus.circle.fill")
+                                .font(FFType.meta)
                         }
-                        .padding(.vertical, 4)
+                        .buttonStyle(.glassProminent)
+                        .tint(FFColor.focus)
                     }
-                    .onDelete { indexSet in
-                        withAnimation {
-                            for index in indexSet {
-                                let project = projects[index]
-                                if timerVM.selectedProject?.id == project.id {
-                                    timerVM.selectedProject = nil
-                                }
-                                projects[index].archived = true
+                }
+
+                if projects.isEmpty {
+                    PremiumSurface(style: .card, alignment: .center) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 44, weight: .light))
+                            .foregroundStyle(.tertiary)
+                        Text("No projects yet")
+                            .font(FFType.title)
+                            .foregroundStyle(.secondary)
+                        Text("Create a project to categorize focus sessions and attach blocking profiles when needed.")
+                            .font(FFType.meta)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    PremiumSurface(style: .card) {
+                        PremiumSectionHeader(
+                            "Active Projects",
+                            eyebrow: "Library",
+                            subtitle: "Edit a project, attach a blocking profile, or archive it when it is done."
+                        )
+
+                        LazyVStack(spacing: FFSpacing.sm) {
+                            ForEach(projects) { project in
+                                projectRow(project)
                             }
-                            try? modelContext.save()
                         }
                     }
                 }
-                .scrollContentBackground(.hidden)
             }
+            .padding(FFSpacing.lg)
         }
-        .background(.background)
         .sheet(isPresented: $showingAddSheet) {
             ProjectFormView(
                 name: $formName,
@@ -160,6 +99,78 @@ struct ProjectsListView: View {
                 }
             }
         }
+    }
+
+    private func projectRow(_ project: Project) -> some View {
+        let count = project.sessions.filter { $0.type == .focus && $0.completed }.count
+
+        return HStack(spacing: FFSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                    .fill(colorFromName(project.color).opacity(0.15))
+
+                Image(systemName: project.icon ?? "folder.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(colorFromName(project.color))
+            }
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: FFSpacing.xs) {
+                    Text(project.name)
+                        .font(FFType.body.weight(.medium))
+
+                    if let profile = project.blockProfile {
+                        Text(profile.name)
+                            .font(FFType.micro)
+                            .foregroundStyle(FFColor.focus)
+                            .padding(.horizontal, FFSpacing.xs)
+                            .padding(.vertical, 3)
+                            .background(FFColor.focus.opacity(0.12), in: Capsule())
+                    }
+                }
+
+                Text("\(count) focus session\(count == 1 ? "" : "s")")
+                    .font(FFType.meta)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: FFSpacing.xs) {
+                Button {
+                    formName = project.name
+                    formColor = project.color
+                    formIcon = project.icon ?? "folder.fill"
+                    formBlockProfile = project.blockProfile
+                    editingProject = project
+                    showingAddSheet = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.glass)
+
+                Button {
+                    withAnimation {
+                        project.archived = true
+                        if timerVM.selectedProject?.id == project.id {
+                            timerVM.selectedProject = nil
+                        }
+                        try? modelContext.save()
+                    }
+                } label: {
+                    Image(systemName: "archivebox")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.glass)
+            }
+        }
+        .padding(.horizontal, FFSpacing.md)
+        .padding(.vertical, FFSpacing.sm)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
     }
 
     private func resetForm() {
