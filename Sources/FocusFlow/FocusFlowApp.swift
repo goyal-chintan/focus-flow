@@ -17,9 +17,10 @@ struct FocusFlowApp: App {
         MenuBarExtra {
             MenuBarPopoverView()
                 .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "timer")
+                Image(systemName: menuBarIconName)
                 if timerVM.isBlockingActive {
                     Image(systemName: "shield.checkered")
                         .font(.system(size: 10))
@@ -47,11 +48,30 @@ struct FocusFlowApp: App {
         Window("FocusFlow", id: "stats") {
             CompanionWindowView()
                 .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
         }
         .defaultSize(width: 720, height: 520)
         .modelContainer(container)
+    }
+
+    private var menuBarIconName: String {
+        switch timerVM.state {
+        case .idle:
+            return "bolt.circle"
+        case .focusing, .paused:
+            return timerVM.selectedProject?.icon ?? "scope"
+        case .onBreak(let type):
+            switch type {
+            case .shortBreak:
+                return "cup.and.saucer.fill"
+            case .longBreak:
+                return "figure.walk"
+            case .focus:
+                return timerVM.selectedProject?.icon ?? "scope"
+            }
+        }
     }
 }

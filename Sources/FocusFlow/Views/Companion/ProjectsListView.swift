@@ -3,6 +3,7 @@ import SwiftData
 
 struct ProjectsListView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(TimerViewModel.self) private var timerVM
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
 
@@ -95,6 +96,9 @@ struct ProjectsListView: View {
                                 Button {
                                     withAnimation {
                                         project.archived = true
+                                        if timerVM.selectedProject?.id == project.id {
+                                            timerVM.selectedProject = nil
+                                        }
                                         try? modelContext.save()
                                     }
                                 } label: {
@@ -111,6 +115,10 @@ struct ProjectsListView: View {
                     .onDelete { indexSet in
                         withAnimation {
                             for index in indexSet {
+                                let project = projects[index]
+                                if timerVM.selectedProject?.id == project.id {
+                                    timerVM.selectedProject = nil
+                                }
                                 projects[index].archived = true
                             }
                             try? modelContext.save()
@@ -129,11 +137,13 @@ struct ProjectsListView: View {
                 selectedBlockProfile: $formBlockProfile,
                 title: editingProject == nil ? "New Project" : "Edit Project"
             ) {
+                var savedProject: Project?
                 if let editing = editingProject {
                     editing.name = formName.trimmingCharacters(in: .whitespaces)
                     editing.color = formColor
                     editing.icon = formIcon
                     editing.blockProfile = formBlockProfile
+                    savedProject = editing
                 } else {
                     let project = Project(
                         name: formName.trimmingCharacters(in: .whitespaces),
@@ -142,8 +152,12 @@ struct ProjectsListView: View {
                     )
                     project.blockProfile = formBlockProfile
                     modelContext.insert(project)
+                    savedProject = project
                 }
                 try? modelContext.save()
+                if let savedProject {
+                    timerVM.selectedProject = savedProject
+                }
             }
         }
     }

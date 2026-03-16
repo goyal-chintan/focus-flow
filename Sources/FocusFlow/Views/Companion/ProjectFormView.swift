@@ -26,17 +26,29 @@ struct ProjectFormView: View {
         "figure.run", "cup.and.saucer.fill", "pencil.and.ruler.fill", "doc.text.fill"
     ]
 
+    private var colorGridColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 30, maximum: 30), spacing: 8, alignment: .leading)]
+    }
+
+    private var iconGridColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 36, maximum: 36), spacing: 8, alignment: .leading)]
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(title).font(.headline)
-            nameSection
-            colorSection
-            iconSection
-            blockProfileSection
-            actionButtons
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text(title).font(.headline)
+                nameSection
+                colorSection
+                iconSection
+                blockProfileSection
+                actionButtons
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
         }
-        .padding(20)
-        .frame(width: 360)
+        .frame(width: 400)
+        .frame(minHeight: 520)
     }
 
     private var nameSection: some View {
@@ -49,7 +61,7 @@ struct ProjectFormView: View {
     private var colorSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Color").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(30)), count: 10), spacing: 8) {
+            LazyVGrid(columns: colorGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(colors, id: \.name) { item in
                     Circle()
                         .fill(item.color)
@@ -60,19 +72,21 @@ struct ProjectFormView: View {
                         .onTapGesture { color = item.name }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var iconSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Icon").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(36)), count: 8), spacing: 8) {
+            LazyVGrid(columns: iconGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(icons, id: \.self) { sfSymbol in
                     IconCell(sfSymbol: sfSymbol, selected: sfSymbol == icon)
                         .animation(.spring(response: 0.2), value: icon)
                         .onTapGesture { icon = sfSymbol }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -100,8 +114,10 @@ struct ProjectFormView: View {
                     Image(systemName: "shield.checkered")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(selectedBlockProfile?.name ?? "None (uses default)")
+                    Text(selectedBlockProfile?.name ?? "None (no blocking)")
                         .font(.subheadline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)

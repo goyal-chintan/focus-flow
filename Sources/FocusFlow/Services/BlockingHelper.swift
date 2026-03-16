@@ -6,6 +6,10 @@ struct BlockingHelper {
     private static let hostsPath = "/etc/hosts"
     private static let helperDir = NSHomeDirectory() + "/Library/Application Support/FocusFlow"
     private static let helperPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/blocking-helper.sh"
+    private static let askpassPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/sudo-askpass.sh"
+    private static let keepAliveQueue = DispatchQueue(label: "FocusFlow.SudoKeepAlive")
+    nonisolated(unsafe) private static var keepAliveTimer: DispatchSourceTimer?
+    private static let keepAliveIntervalSeconds: TimeInterval = 240
 
     /// Install the helper script once (creates with proper permissions)
     static func installHelperIfNeeded() {
@@ -52,34 +56,24 @@ struct BlockingHelper {
         try? script.write(toFile: helperPath, atomically: true, encoding: .utf8)
         // Make executable
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperPath)
+        installAskpassIfNeeded()
     }
 
     /// Execute the helper with admin privileges.
-    /// Uses osascript for the first call (prompts for admin password), then
-    /// refreshes the sudo timestamp so subsequent calls via `sudo -n` succeed
-    /// without prompting.
-    private static func executeWithAdmin(_ command: String) {
+    /// Prompts once via sudo askpass and keeps the sudo ticket alive while app runs.
+    @discardableResult
+    private static func executeWithAdmin(_ command: String) -> Bool {
         installHelperIfNeeded()
+        guard ensureSudoSession() else { return false }
 
-        // Try sudo -n first (non-interactive — works if timestamp is cached)
-        let sudoProcess = Process()
-        sudoProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-        sudoProcess.arguments = ["-n", "bash", helperPath] + command.split(separator: " ").map(String.init)
-        sudoProcess.standardOutput = FileHandle.nullDevice
-        sudoProcess.standardError = FileHandle.nullDevice
-        try? sudoProcess.run()
-        sudoProcess.waitUntilExit()
+        let status = runProcess(
+            executablePath: "/usr/bin/sudo",
+            arguments: ["-n", "bash", helperPath] + command.split(separator: " ").map(String.init)
+        )
+        if status == 0 { return true }
 
-        if sudoProcess.terminationStatus == 0 {
-            return // sudo cache was valid, no prompt needed
-        }
-
-        // sudo not cached — use osascript to prompt once, then refresh sudo timestamp
-        let escapedHelper = helperPath.replacingOccurrences(of: "'", with: "'\\''")
-        let script = """
-        do shell script "bash '\(escapedHelper)' \(command) && /usr/bin/sudo -v" with administrator privileges
-        """
-        runAppleScript(script)
+        print("[BlockingHelper] Privileged command failed: \(command)")
+        return false
     }
 
     // MARK: - Chromium Secure DNS
@@ -120,10 +114,11 @@ struct BlockingHelper {
 
     static func blockWebsites(_ domains: [String]) {
         guard !domains.isEmpty else { return }
-        disableChromiumSecureDNS()
         let cleanDomains = domains.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
         let domainArgs = cleanDomains.joined(separator: " ")
-        executeWithAdmin("block \(domainArgs)")
+        if executeWithAdmin("block \(domainArgs)") {
+            disableChromiumSecureDNS()
+        }
     }
 
     static func unblockWebsites() {
@@ -145,15 +140,79 @@ struct BlockingHelper {
         unblockWebsites()
     }
 
-    @discardableResult
-    private static func runAppleScript(_ source: String) -> Bool {
-        let script = NSAppleScript(source: source)
-        var error: NSDictionary?
-        script?.executeAndReturnError(&error)
-        if let error {
-            print("[BlockingHelper] AppleScript error: \(error)")
-            return false
+    private static func installAskpassIfNeeded() {
+        let script = """
+        #!/bin/bash
+        /usr/bin/osascript <<'APPLESCRIPT'
+        set promptText to "FocusFlow needs administrator access once to enable website blocking for this macOS session."
+        set promptResult to display dialog promptText default answer "" with hidden answer buttons {"Cancel", "Continue"} default button "Continue"
+        text returned of promptResult
+        APPLESCRIPT
+        """
+        try? script.write(toFile: askpassPath, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: askpassPath)
+    }
+
+    private static func ensureSudoSession() -> Bool {
+        if runProcess(executablePath: "/usr/bin/sudo", arguments: ["-n", "-v"]) == 0 {
+            startSudoKeepAlive()
+            return true
         }
-        return true
+
+        var env = ProcessInfo.processInfo.environment
+        env["SUDO_ASKPASS"] = askpassPath
+        env["SSH_ASKPASS_REQUIRE"] = "force"
+        env["SUDO_PROMPT"] = "FocusFlow admin password: "
+
+        if runProcess(executablePath: "/usr/bin/sudo", arguments: ["-A", "-v"], environment: env) == 0 {
+            startSudoKeepAlive()
+            return true
+        }
+
+        print("[BlockingHelper] Admin authorization failed or was cancelled.")
+        return false
+    }
+
+    private static func startSudoKeepAlive() {
+        keepAliveQueue.async {
+            if keepAliveTimer != nil { return }
+            let timer = DispatchSource.makeTimerSource(queue: keepAliveQueue)
+            timer.schedule(
+                deadline: .now() + keepAliveIntervalSeconds,
+                repeating: keepAliveIntervalSeconds
+            )
+            timer.setEventHandler {
+                let status = runProcess(executablePath: "/usr/bin/sudo", arguments: ["-n", "-v"])
+                if status != 0 {
+                    keepAliveTimer?.cancel()
+                    keepAliveTimer = nil
+                }
+            }
+            keepAliveTimer = timer
+            timer.resume()
+        }
+    }
+
+    private static func runProcess(
+        executablePath: String,
+        arguments: [String],
+        environment: [String: String]? = nil
+    ) -> Int32? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        if let environment {
+            process.environment = environment
+        }
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus
+        } catch {
+            print("[BlockingHelper] Failed to run process \(executablePath): \(error)")
+            return nil
+        }
     }
 }
