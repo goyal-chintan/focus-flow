@@ -16,28 +16,27 @@ struct ControlButton: View {
                 .font(FFType.callout)
         } icon: {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, FFSpacing.md)
-        .padding(.vertical, FFSpacing.sm + 1)
+        .padding(.vertical, FFSpacing.sm + 2)
 
-        if role == .primary {
-            Button(action: action) { label }
-                .buttonStyle(.glassProminent)
-                .tint(buttonTint)
-        } else {
-            Button(action: action) { label }
-                .buttonStyle(.glass)
-                .tint(buttonTint)
+        Button(action: action) { label }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(buttonTint)
+    }
+
+    private var buttonTint: Color {
+        switch role {
+        case .primary: FFColor.focus
+        case .secondary: .white.opacity(0.5)
+        case .destructive: FFColor.danger
         }
     }
 
-    private var buttonTint: Color? {
-        switch role {
-        case .primary: FFColor.focus
-        case .secondary: nil
-        case .destructive: FFColor.danger
-        }
+    private var isProminent: Bool {
+        role == .primary
     }
 }
