@@ -79,6 +79,7 @@ struct SessionEditView: View {
             // Validation warning
             if !isValid {
                 validationWarning
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
     }
@@ -89,12 +90,14 @@ struct SessionEditView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 0) {
-                durationPresetButton(mins: 15)
-                durationPresetButton(mins: 25)
-                durationPresetButton(mins: 45)
-                durationPresetButton(mins: 60)
-                customDurationButton
+            GlassEffectContainer {
+                HStack(spacing: 0) {
+                    durationPresetButton(mins: 15)
+                    durationPresetButton(mins: 25)
+                    durationPresetButton(mins: 45)
+                    durationPresetButton(mins: 60)
+                    customDurationButton
+                }
             }
         }
     }
@@ -177,9 +180,11 @@ struct SessionEditView: View {
                 .foregroundStyle(.secondary)
             Text(calculatedActualDuration.formattedFocusTime)
                 .font(.subheadline.weight(.medium))
+                .monospacedDigit()
             Spacer()
             Text("Planned: \(selectedDurationMinutes)m")
                 .font(.caption)
+                .monospacedDigit()
                 .foregroundStyle(.tertiary)
         }
     }
@@ -196,7 +201,7 @@ struct SessionEditView: View {
                     .font(.caption)
             }
         }
-        .foregroundStyle(.red)
+        .foregroundStyle(.orange)
     }
 
     private var projectSection: some View {
@@ -238,9 +243,11 @@ struct SessionEditView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 6) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    moodButton(mood)
+            GlassEffectContainer {
+                HStack(spacing: 6) {
+                    ForEach(FocusMood.allCases, id: \.self) { mood in
+                        moodButton(mood)
+                    }
                 }
             }
         }
@@ -282,6 +289,7 @@ struct SessionEditView: View {
     }
 
     private var actionsSection: some View {
+        GlassEffectContainer {
         HStack {
             Button {
                 dismiss()
@@ -304,6 +312,7 @@ struct SessionEditView: View {
             .tint(.blue)
             .disabled(!isValid)
             .opacity(isValid ? 1 : 0.5)
+        }
         }
     }
 
