@@ -7,23 +7,31 @@ struct StatCard: View {
     let color: Color
 
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
+        PremiumSurface(style: .card, alignment: .leading) {
+            HStack(alignment: .top, spacing: FFSpacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
+                        .fill(color.opacity(0.14))
 
-            Text(value)
-                .font(.system(.title2, weight: .semibold))
-                .contentTransition(.numericText())
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                .frame(width: 42, height: 42)
 
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+                VStack(alignment: .leading, spacing: FFSpacing.xs) {
+                    Text(title)
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
+
+                    Text(value)
+                        .font(FFType.cardValue)
+                        .foregroundStyle(.primary)
+                        .contentTransition(.numericText())
+                }
+
+                Spacer(minLength: FFSpacing.sm)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14))
     }
 }
