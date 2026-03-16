@@ -32,70 +32,74 @@ struct MenuBarPopoverView: View {
     private var mainContent: some View {
         @Bindable var timerVM = timerVM
 
-        return VStack(spacing: 0) {
-            // Timer ring
+        return VStack(spacing: FFSpacing.lg) {
+            heroSection
+
+            if timerVM.state == .idle {
+                idleSection
+            } else {
+                stateContextSection
+            }
+
+            actionDeck
+
+            footerSection
+        }
+        .padding(FFSpacing.lg)
+        .frame(width: 392)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: timerVM.state)
+    }
+
+    private var heroSection: some View {
+        PremiumSurface(style: .hero, alignment: .center) {
             TimerRingView(
                 progress: timerVM.progress,
                 timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
                 label: stateLabel,
                 state: timerVM.state
             )
-            .padding(.top, 24)
-            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity)
 
-            // Session dots
             SessionDotsView(
                 completed: timerVM.completedFocusSessions % timerVM.sessionsBeforeLongBreak,
                 total: timerVM.sessionsBeforeLongBreak
             )
-            .opacity(timerVM.state == .idle && timerVM.completedFocusSessions == 0 ? 0.4 : 1)
+            .opacity(timerVM.state == .idle && timerVM.completedFocusSessions == 0 ? 0.5 : 1)
+            .frame(maxWidth: .infinity)
 
-            // Project picker and duration selector (idle only)
-            if timerVM.state == .idle {
-                idleSection
+            if let heroContextCopy {
+                Text(heroContextCopy)
+                    .font(FFType.meta)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
             }
-
-            // Glass controls
-            GlassEffectContainer {
-                controlsSection
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-
-            // Subtle divider
-            Divider()
-                .padding(.top, 16)
-
-            // Footer
-            footerSection
         }
-        .frame(width: 300)
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: timerVM.state)
     }
 
     private var idleSection: some View {
         @Bindable var timerVM = timerVM
 
-        return VStack(spacing: 0) {
+        return PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Focus Setup",
+                eyebrow: "Ready",
+                subtitle: "Set your project and session length before you start."
+            )
+
             ProjectPickerView(
                 selectedProject: $timerVM.selectedProject
             )
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
 
             durationPresetButtons
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
 
             customDurationInput
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private var durationPresetButtons: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: FFSpacing.xs) {
             durationButton(mins: 15)
             durationButton(mins: 25)
             durationButton(mins: 45)
@@ -106,15 +110,15 @@ struct MenuBarPopoverView: View {
     @ViewBuilder
     private func durationButton(mins: Int) -> some View {
         let isSelected = timerVM.selectedMinutes == mins
-        let label = Text("\(mins)")
-            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+        let label = Text("\(mins) min")
+            .font(isSelected ? FFType.meta.weight(.semibold) : FFType.meta)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+            .padding(.vertical, FFSpacing.sm)
 
         if isSelected {
             Button { timerVM.selectedMinutes = mins } label: { label }
                 .buttonStyle(.glassProminent)
-                .tint(.blue)
+                .tint(FFColor.focus)
         } else {
             Button { timerVM.selectedMinutes = mins } label: { label }
                 .buttonStyle(.glass)
@@ -124,20 +128,79 @@ struct MenuBarPopoverView: View {
     private var customDurationInput: some View {
         @Bindable var timerVM = timerVM
 
-        return HStack {
-            Text("or")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            TextField("Custom min", value: $timerVM.selectedMinutes, format: .number)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .frame(width: 50)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
-            Text("min")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+        return PremiumSurface(style: .inset) {
+            HStack(spacing: FFSpacing.sm) {
+                Text("Custom duration")
+                    .font(FFType.meta)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                TextField("Minutes", value: $timerVM.selectedMinutes, format: .number)
+                    .textFieldStyle(.plain)
+                    .font(FFType.body)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 58)
+                    .padding(.horizontal, FFSpacing.sm)
+                    .padding(.vertical, FFSpacing.xs)
+                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous))
+
+                Text("min")
+                    .font(FFType.meta)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private var stateContextSection: some View {
+        PremiumSurface(style: .card) {
+            switch timerVM.state {
+            case .focusing:
+                PremiumSectionHeader(
+                    "In Session",
+                    eyebrow: "Focus",
+                    subtitle: timerVM.selectedProject?.name ?? "Deep work in progress"
+                )
+
+                statusRow(label: "Blocking", value: timerVM.isBlockingActive ? "Active" : "Off", accent: timerVM.isBlockingActive ? .green : .secondary)
+                statusRow(label: "Today's focus", value: timerVM.todayFocusTime.formattedFocusTime, accent: .secondary)
+
+            case .paused:
+                PremiumSectionHeader(
+                    "Paused",
+                    eyebrow: "Hold",
+                    subtitle: pauseDescriptor
+                )
+
+                statusRow(label: "Paused for", value: timerVM.pauseTimeString, accent: timerVM.pauseWarningLevel.color)
+                statusRow(label: "Project", value: timerVM.selectedProject?.name ?? "No project", accent: .secondary)
+
+            case .onBreak(let type):
+                PremiumSectionHeader(
+                    type.displayName,
+                    eyebrow: "Recovery",
+                    subtitle: breakDescriptor
+                )
+
+                statusRow(label: "Completed today", value: "\(timerVM.todaySessionCount) sessions", accent: .secondary)
+                statusRow(label: "Up next", value: "Another focus session", accent: FFColor.focus)
+
+            case .idle:
+                EmptyView()
+            }
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func statusRow(label: String, value: String, accent: Color) -> some View {
+        HStack(spacing: FFSpacing.sm) {
+            Text(label)
+                .font(FFType.meta)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(FFType.meta.weight(.semibold))
+                .foregroundStyle(accent)
         }
     }
 
@@ -203,43 +266,57 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private var footerSection: some View {
-        HStack {
-            if timerVM.isBlockingActive {
-                HStack(spacing: 4) {
-                    Image(systemName: "shield.checkered")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                    Text("Blocking")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-                Text("\u{00B7}").foregroundStyle(.tertiary)
-            }
+    private var actionDeck: some View {
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                actionDeckTitle,
+                eyebrow: actionDeckEyebrow,
+                subtitle: actionDeckSubtitle
+            )
 
-            Label {
-                Text(footerText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } icon: {
-                Image(systemName: "flame.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+            GlassEffectContainer {
+                controlsSection
             }
-
-            Spacer()
-
-            Button {
-                openWindow(id: "stats")
-                NSApplication.shared.activate(ignoringOtherApps: true)
-            } label: {
-                Label("Stats", systemImage: "chart.bar.fill")
-                    .font(.caption)
-            }
-            .buttonStyle(.glass)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+    }
+
+    private var footerSection: some View {
+        PremiumSurface(style: .inset) {
+            HStack(spacing: FFSpacing.sm) {
+                if timerVM.isBlockingActive {
+                    HStack(spacing: FFSpacing.xs) {
+                        Image(systemName: "shield.checkered")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                        Text("Blocking")
+                            .font(FFType.meta)
+                            .foregroundStyle(.green)
+                    }
+                    Text("\u{00B7}").foregroundStyle(.tertiary)
+                }
+
+                Label {
+                    Text(footerText)
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "flame.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
+                Spacer()
+
+                Button {
+                    openWindow(id: "stats")
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                } label: {
+                    Label("Open Companion", systemImage: "chart.bar.fill")
+                        .font(FFType.meta)
+                }
+                .buttonStyle(.glass)
+            }
+        }
     }
 
     private var stateLabel: String {
@@ -264,20 +341,20 @@ struct MenuBarPopoverView: View {
     }
 
     private var stopConfirmationView: some View {
-        VStack(spacing: 8) {
+        PremiumSurface(style: .inset) {
             Text("End this session?")
-                .font(.caption.weight(.medium))
+                .font(FFType.meta.weight(.semibold))
 
             GlassEffectContainer {
-                HStack(spacing: 8) {
+                HStack(spacing: FFSpacing.xs) {
                     Button {
                         timerVM.stop()
                         showStopConfirmation = false
                     } label: {
                         Label("Save", systemImage: "square.and.arrow.down")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(FFType.meta.weight(.medium))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, FFSpacing.sm)
                     }
                     .buttonStyle(.glass)
 
@@ -286,26 +363,85 @@ struct MenuBarPopoverView: View {
                         showStopConfirmation = false
                     } label: {
                         Label("Discard", systemImage: "trash")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(FFType.meta.weight(.medium))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, FFSpacing.sm)
                     }
                     .buttonStyle(.glass)
-                    .tint(.red)
+                    .tint(FFColor.danger)
 
                     Button {
                         showStopConfirmation = false
                     } label: {
                         Text("Cancel")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(FFType.meta.weight(.medium))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, FFSpacing.sm)
                     }
                     .buttonStyle(.glass)
                 }
             }
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private var heroContextCopy: String? {
+        switch timerVM.state {
+        case .idle:
+            return timerVM.selectedProject?.name ?? "Choose a project and start a premium focus block."
+        case .focusing:
+            return timerVM.selectedProject?.name ?? "You are in a live focus session."
+        case .paused:
+            return "Resume when you are ready. Longer pauses will lower session quality."
+        case .onBreak(let type):
+            return type == .longBreak ? "Take a real reset before the next round." : "A short break helps you sustain depth."
+        }
+    }
+
+    private var actionDeckTitle: String {
+        switch timerVM.state {
+        case .idle: "Start Session"
+        case .focusing: "Session Controls"
+        case .paused: "Pause Controls"
+        case .onBreak: "Break Controls"
+        }
+    }
+
+    private var actionDeckEyebrow: String? {
+        switch timerVM.state {
+        case .idle: "Action"
+        case .focusing: "Live"
+        case .paused: "Attention"
+        case .onBreak: "Optional"
+        }
+    }
+
+    private var actionDeckSubtitle: String? {
+        switch timerVM.state {
+        case .idle:
+            return "Begin the next focus block when everything looks right."
+        case .focusing:
+            return "Pause if needed, or end the session and save or discard it."
+        case .paused:
+            return "Resume soon to protect your momentum."
+        case .onBreak:
+            return "Skip ahead if you are ready to return early."
+        }
+    }
+
+    private var pauseDescriptor: String {
+        switch timerVM.pauseWarningLevel {
+        case .normal:
+            return "A short pause is fine. Resume when you are ready."
+        case .warning:
+            return "Your pause is stretching out. Consider returning soon."
+        case .critical:
+            return "This session is cooling off. Resume or stop decisively."
+        }
+    }
+
+    private var breakDescriptor: String {
+        "Step away for a moment so the next session starts fresh."
     }
 
 }
