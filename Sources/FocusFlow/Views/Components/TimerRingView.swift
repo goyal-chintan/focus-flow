@@ -9,35 +9,54 @@ struct TimerRingView: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.primary.opacity(0.08), lineWidth: 6)
+                .fill(Color.white.opacity(0.05))
+                .frame(width: 188, height: 188)
+
+            Circle()
+                .stroke(Color.primary.opacity(0.08), lineWidth: 14)
 
             Circle()
                 .trim(from: 0, to: max(0.001, progress))
-                .stroke(ringColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .stroke(
+                    AngularGradient(
+                        colors: [
+                            ringColor.opacity(0.35),
+                            ringColor,
+                            ringColor.opacity(0.55)
+                        ],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 14, lineCap: .round)
+                )
                 .rotationEffect(.degrees(-90))
                 .animation(.easeInOut(duration: 0.8), value: progress)
 
-            VStack(spacing: 4) {
+            Circle()
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                .frame(width: 156, height: 156)
+
+            VStack(spacing: FFSpacing.xs) {
                 Text(timeString)
-                    .font(.system(size: 44, weight: .ultraLight, design: .rounded))
+                    .font(FFType.heroTimer)
                     .monospacedDigit()
+                    .foregroundStyle(.primary)
                     .contentTransition(.numericText(countsDown: true))
 
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(FFType.heroLabel)
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
-                    .tracking(1.5)
+                    .tracking(1.8)
             }
         }
-        .frame(width: 170, height: 170)
+        .frame(width: 220, height: 220)
     }
 
     private var ringColor: Color {
         switch state {
-        case .focusing: .blue
-        case .paused: .blue.opacity(0.4)
-        case .onBreak(let type): type == .longBreak ? .purple : .green
+        case .focusing: FFColor.focus
+        case .paused: FFColor.warning
+        case .onBreak(let type): type == .longBreak ? FFColor.deepFocus : FFColor.success
         case .idle: .secondary.opacity(0.3)
         }
     }

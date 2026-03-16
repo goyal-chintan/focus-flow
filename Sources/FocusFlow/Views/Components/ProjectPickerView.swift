@@ -10,7 +10,13 @@ struct ProjectPickerView: View {
     @State private var newProjectName = ""
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
+            Text("Project")
+                .font(FFType.micro)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+                .tracking(1.2)
+
             Menu {
                 Button {
                     selectedProject = nil
@@ -46,44 +52,75 @@ struct ProjectPickerView: View {
                     Label("New Project...", systemImage: "plus.circle")
                 }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: selectedProject?.icon ?? "tag")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16)
-                    Text(selectedProject?.name ?? "No Project")
-                        .font(.subheadline)
-                        .foregroundStyle(selectedProject != nil ? .primary : .secondary)
+                HStack(spacing: FFSpacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
+                            .fill(projectTint.opacity(0.16))
+
+                        Image(systemName: selectedProject?.icon ?? "tag")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(projectTint)
+                    }
+                    .frame(width: 34, height: 34)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selectedProject == nil ? "No project selected" : "Selected project")
+                            .font(FFType.meta)
+                            .foregroundStyle(.secondary)
+
+                        Text(selectedProject?.name ?? "No Project")
+                            .font(FFType.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                    }
+
                     Spacer()
+
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+                .ffCardChrome(cornerRadius: FFRadius.card)
             }
             .buttonStyle(.plain)
         }
         .popover(isPresented: $showCreateSheet) {
-            VStack(spacing: 12) {
-                Text("New Project")
-                    .font(.subheadline.weight(.medium))
+            PremiumSurface(style: .card) {
+                PremiumSectionHeader("New Project", subtitle: "Create a quick project without leaving the timer.")
+
                 TextField("Project name", text: $newProjectName)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .font(FFType.body)
+                    .padding(.horizontal, FFSpacing.md)
+                    .padding(.vertical, FFSpacing.sm)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12))
+                    }
                     .onSubmit { createProject() }
-                HStack {
+
+                HStack(spacing: FFSpacing.sm) {
                     Button("Cancel") { showCreateSheet = false }
-                        .buttonStyle(.plain)
-                    Spacer()
+                        .buttonStyle(.glass)
+
                     Button("Create") { createProject() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.glassProminent)
+                        .tint(FFColor.focus)
                         .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .padding(16)
-            .frame(width: 250)
+            .padding(FFSpacing.md)
+            .frame(width: 320)
         }
+    }
+
+    private var projectTint: Color {
+        guard let selectedProject else { return .secondary }
+        return colorFromName(selectedProject.color)
     }
 
     private func createProject() {
@@ -95,5 +132,21 @@ struct ProjectPickerView: View {
         selectedProject = project
         newProjectName = ""
         showCreateSheet = false
+    }
+
+    private func colorFromName(_ name: String) -> Color {
+        switch name {
+        case "blue": return .blue
+        case "indigo": return .indigo
+        case "purple": return .purple
+        case "pink": return .pink
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "teal": return .teal
+        case "mint": return .mint
+        default: return .blue
+        }
     }
 }

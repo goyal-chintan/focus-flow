@@ -20,11 +20,14 @@ struct FocusFlowApp: App {
                 .environment(\.modelContext, container.mainContext)
                 .background(CompletionWindowLauncher(timerVM: timerVM))
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: menuBarIconName)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+
                 if timerVM.isBlockingActive {
                     Image(systemName: "shield.checkered")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(FFColor.success)
                 }
                 if timerVM.isOvertime {
                     Text(timerVM.overtimeTimeString)
@@ -33,11 +36,14 @@ struct FocusFlowApp: App {
                         .foregroundStyle(.orange)
                 } else if timerVM.state == .paused {
                     Text("\u{23F8}")
+                        .foregroundStyle(FFColor.warning)
                 } else if timerVM.isRunning {
                     Text(timerVM.timeString)
                         .monospacedDigit()
                         .contentTransition(.numericText())
+                        .foregroundStyle(.primary)
                 }
+
                 if timerVM.todayFocusTime > 0 || timerVM.isRunning || timerVM.isOvertime {
                     if timerVM.isRunning || timerVM.isOvertime {
                         Text("\u{00B7}")
@@ -46,7 +52,7 @@ struct FocusFlowApp: App {
                     Text(timerVM.todayFocusTime.formattedFocusTime)
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.secondary.opacity(0.9))
                 }
             }
             .font(.system(size: 12, weight: .medium, design: .rounded))
