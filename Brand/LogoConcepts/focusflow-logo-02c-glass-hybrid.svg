@@ -1,0 +1,59 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="124" y1="96" x2="900" y2="944" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#150E11"/>
+      <stop offset="0.52" stop-color="#23161A"/>
+      <stop offset="1" stop-color="#31262A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 418) rotate(90) scale(332)">
+      <stop stop-color="#F8E5C0"/>
+      <stop offset="0.32" stop-color="#B9E1C8" stop-opacity="0.88"/>
+      <stop offset="0.64" stop-color="#86C6AC" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#86C6AC" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brain" x1="302" y1="296" x2="708" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F0D7A9"/>
+      <stop offset="0.48" stop-color="#BFDFC7"/>
+      <stop offset="1" stop-color="#6FA68D"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="330" y1="252" x2="698" y2="734" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.7"/>
+      <stop offset="0.44" stop-color="#F9F7F2" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.08"/>
+    </linearGradient>
+    <filter id="blur" x="168" y="120" width="688" height="784" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <circle cx="512" cy="418" r="332" fill="url(#glow)"/>
+
+  <g opacity="0.82">
+    <circle cx="512" cy="472" r="246" fill="#FFFFFF" fill-opacity="0.03"/>
+    <circle cx="512" cy="472" r="246" stroke="url(#glass)" stroke-width="10"/>
+    <ellipse cx="456" cy="332" rx="154" ry="74" fill="#FFFFFF" fill-opacity="0.08"/>
+  </g>
+
+  <g filter="url(#blur)" opacity="0.62">
+    <path d="M255 533C326 433 418 383 512 383C606 383 698 433 769 533" stroke="#86C6AC" stroke-width="22" stroke-linecap="round"/>
+    <path d="M310 646C368 573 438 538 512 538C586 538 656 573 714 646" stroke="#E0C28E" stroke-width="18" stroke-linecap="round"/>
+  </g>
+
+  <path d="M320 340C382 281 448 252 512 252C576 252 642 281 704 340" stroke="url(#glass)" stroke-width="20" stroke-linecap="round"/>
+  <path d="M292 524C362 434 433 390 512 390C591 390 662 434 732 524" stroke="url(#glass)" stroke-width="12" stroke-linecap="round" opacity="0.7"/>
+
+  <path d="M512 230C413 230 327 278 276 365C225 452 217 561 254 646C292 735 371 796 463 816C496 823 528 823 561 816C653 796 732 735 770 646C807 561 799 452 748 365C697 278 611 230 512 230Z" stroke="#F4EEE3" stroke-width="28"/>
+  <path d="M512 298C458 298 409 321 375 360C341 399 325 451 331 505C336 555 361 598 402 629C384 669 381 711 393 751" stroke="url(#brain)" stroke-width="22" stroke-linecap="round"/>
+  <path d="M512 298C566 298 615 321 649 360C683 399 699 451 693 505C688 555 663 598 622 629C640 669 643 711 631 751" stroke="url(#brain)" stroke-width="22" stroke-linecap="round"/>
+  <path d="M512 313V764" stroke="url(#brain)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M414 401C447 381 479 371 512 371C545 371 577 381 610 401" stroke="url(#brain)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M394 497C431 473 471 461 512 461C553 461 593 473 630 497" stroke="url(#brain)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M408 594C440 580 474 573 512 573C550 573 584 580 616 594" stroke="url(#brain)" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="512" cy="387" r="40" fill="#F8E6BF"/>
+  <path d="M512 175L512 121" stroke="#F6E5C5" stroke-width="16" stroke-linecap="round"/>
+  <path d="M452 188L432 140" stroke="#B8D7C2" stroke-width="12" stroke-linecap="round"/>
+  <path d="M572 188L592 140" stroke="#B8D7C2" stroke-width="12" stroke-linecap="round"/>
+  <path d="M622 228L664 191" stroke="#E8C38B" stroke-width="12" stroke-linecap="round"/>
+  <path d="M402 228L360 191" stroke="#E8C38B" stroke-width="12" stroke-linecap="round"/>
+</svg>

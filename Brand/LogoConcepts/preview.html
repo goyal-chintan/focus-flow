@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FocusFlow Logo Concepts</title>
+  <style>
+    :root {
+      --bg: #08131d;
+      --panel: rgba(255,255,255,0.06);
+      --stroke: rgba(255,255,255,0.12);
+      --text: #ecf7f8;
+      --muted: #94adb0;
+      --accent: #7ae9df;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SF Pro Display", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(122,233,223,0.16), transparent 32%),
+        linear-gradient(180deg, #09141f, #071018 55%, #0b1621);
+      color: var(--text);
+    }
+    main {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 48px 24px 72px;
+    }
+    h1 {
+      font-size: clamp(2rem, 3vw, 3.4rem);
+      margin: 0 0 10px;
+      letter-spacing: -0.03em;
+    }
+    p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      max-width: 760px;
+      line-height: 1.55;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--stroke);
+      border-radius: 28px;
+      padding: 18px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.28);
+    }
+    img {
+      width: 100%;
+      display: block;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.03);
+    }
+    h2 {
+      font-size: 1.15rem;
+      margin: 16px 0 8px;
+    }
+    .tag {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(122,233,223,0.12);
+      color: var(--accent);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hint {
+      margin-top: 24px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    code {
+      color: #fff4b5;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="tag">FocusFlow</span>
+    <h1>Logo Concepts</h1>
+    <p>Each concept keeps a visible brain shape with an enlightenment cue, but pushes the identity in a different direction. The bottom row isolates three Apple Liquid Glass-inspired treatments for the selected symbolic emblem so you can compare material direction without changing the core symbol.</p>
+    <section class="grid">
+      <article class="card">
+        <img src="focusflow-logo-01-minimal-vector.svg" alt="Minimal vector logo concept">
+        <h2>01. Minimal Vector Mark</h2>
+        <p>Most restrained and app-icon friendly. Strong central glow, simple brain geometry, premium software feel.</p>
+      </article>
+      <article class="card">
+        <img src="focusflow-logo-02-symbolic-emblem.svg" alt="Symbolic emblem logo concept">
+        <h2>02. Symbolic Emblem</h2>
+        <p>Selected direction. Updated with an ember, jade, and champagne palette so it feels calmer, richer, and less like a default startup logo.</p>
+      </article>
+      <article class="card">
+        <img src="focusflow-logo-03-futuristic-crest.svg" alt="Futuristic crest logo concept">
+        <h2>03. Futuristic Crest</h2>
+        <p>Sharper and more performance-oriented. Keeps the enlightened brain idea but adds a stronger tech and elite-focus tone.</p>
+      </article>
+      <article class="card">
+        <img src="focusflow-logo-02a-glass-aura.svg" alt="Symbolic emblem with liquid glass aura">
+        <h2>02A. Glass Aura</h2>
+        <p>Most spiritual version. Refractive arcs and translucent highlights sit around the symbol, while the brain remains the primary read.</p>
+      </article>
+      <article class="card">
+        <img src="focusflow-logo-02b-glass-medallion.svg" alt="Symbolic emblem inside a liquid glass medallion">
+        <h2>02B. Glass Medallion</h2>
+        <p>Strongest Apple Liquid Glass interpretation. The mark sits inside a glass orb, so it feels closer to an app icon object.</p>
+      </article>
+      <article class="card">
+        <img src="focusflow-logo-02c-glass-hybrid.svg" alt="Symbolic emblem with hybrid liquid glass treatment">
+        <h2>02C. Glass Hybrid</h2>
+        <p>Final selection. A restrained glass vessel plus lighter aura accents keeps the logo readable while adding material depth.</p>
+      </article>
+      <article class="card">
+        <img src="focusflow-logo-final.svg" alt="Final FocusFlow logo">
+        <h2>Final. FocusFlow Logo</h2>
+        <p>Canonical final asset, currently mapped to the selected `02C` hybrid Liquid Glass direction.</p>
+      </article>
+    </section>
+    <p class="hint">Files are in <code>FocusFlow/Brand/LogoConcepts</code>.</p>
+  </main>
+</body>
+</html>

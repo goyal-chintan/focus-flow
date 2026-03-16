@@ -36,6 +36,8 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>FocusFlow</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSSupportsAutomaticTermination</key>
@@ -49,6 +51,11 @@ PLIST
 # Copy resources if they exist
 if [ -d "$BUILD_DIR/FocusFlow_FocusFlow.bundle" ]; then
     cp -R "$BUILD_DIR/FocusFlow_FocusFlow.bundle" "$RESOURCES/"
+fi
+
+# Include app icon for the manually bundled .app flow
+if [ -f "Sources/FocusFlow/Assets.xcassets/AppIcon.icns" ]; then
+    cp "Sources/FocusFlow/Assets.xcassets/AppIcon.icns" "$RESOURCES/"
 fi
 
 echo "Built $APP_BUNDLE"
