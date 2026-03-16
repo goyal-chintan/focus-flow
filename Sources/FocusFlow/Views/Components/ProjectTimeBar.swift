@@ -7,28 +7,33 @@ struct ProjectTimeBar: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
             HStack {
                 Text(name)
-                    .font(.subheadline)
+                    .font(FFType.body.weight(.medium))
                 Spacer()
                 Text(duration.formattedFocusTime)
-                    .font(.subheadline)
+                    .font(FFType.meta.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color.primary.opacity(0.06))
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(color)
-                        .frame(width: max(2, geo.size.width * ratio))
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(
+                            LinearGradient(colors: [color.opacity(0.45), color], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .frame(width: max(6, geo.size.width * ratio))
                 }
             }
-            .frame(height: 4)
+            .frame(height: 10)
         }
+        .padding(.horizontal, FFSpacing.md)
+        .padding(.vertical, FFSpacing.sm)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
     }
 
     private var ratio: Double {
