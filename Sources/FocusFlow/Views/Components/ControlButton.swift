@@ -11,10 +11,16 @@ struct ControlButton: View {
     }
 
     var body: some View {
-        let label = Label(title, systemImage: icon)
-            .font(.system(size: 13, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+        let label = Label {
+            Text(title)
+                .font(FFType.callout)
+        } icon: {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, FFSpacing.md)
+        .padding(.vertical, FFSpacing.sm + 1)
 
         if role == .primary {
             Button(action: action) { label }
@@ -29,9 +35,9 @@ struct ControlButton: View {
 
     private var buttonTint: Color? {
         switch role {
-        case .primary: .blue
+        case .primary: FFColor.focus
         case .secondary: nil
-        case .destructive: .red
+        case .destructive: FFColor.danger
         }
     }
 }
