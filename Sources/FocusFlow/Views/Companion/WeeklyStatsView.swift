@@ -12,52 +12,55 @@ struct WeeklyStatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Period picker
-                Picker("Period", selection: $selectedPeriod) {
-                    ForEach(Period.allCases, id: \.self) { period in
-                        Text(period.rawValue).tag(period)
+            VStack(spacing: FFSpacing.lg) {
+                PremiumSurface(style: .hero) {
+                    PremiumSectionHeader(
+                        "Weekly View",
+                        eyebrow: "Trends",
+                        subtitle: selectedPeriod == .week ? "See how the current week is shaping up." : "Zoom out to the last thirty days."
+                    ) {
+                        Picker("Period", selection: $selectedPeriod) {
+                            ForEach(Period.allCases, id: \.self) { period in
+                                Text(period.rawValue).tag(period)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 220)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
-                .frame(maxWidth: .infinity, alignment: .trailing)
 
-                // Bar chart
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(selectedPeriod == .week ? "This Week" : "Last 30 Days")
-                        .font(.headline)
-
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader(
+                        selectedPeriod == .week ? "This Week" : "Last 30 Days",
+                        eyebrow: "Chart",
+                        subtitle: bestDayLabel.isEmpty ? "No focus sessions in this period yet." : "Best day: \(bestDayLabel)"
+                    )
                     BarChartView(data: chartData, accentColor: .blue)
                 }
-                .padding(16)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
 
-                // Summary cards
-                HStack(spacing: 12) {
+                HStack(spacing: FFSpacing.sm) {
                     StatCard(
                         title: "Daily Average",
                         value: dailyAverage.formattedFocusTime,
                         icon: "chart.line.uptrend.xyaxis",
-                        color: .purple
+                        color: FFColor.deepFocus
                     )
                     StatCard(
                         title: "Best Day",
                         value: bestDayDuration.formattedFocusTime,
                         icon: "star.fill",
-                        color: .yellow
+                        color: FFColor.warning
                     )
                     StatCard(
                         title: "Total",
                         value: periodTotal.formattedFocusTime,
                         icon: "sum",
-                        color: .blue
+                        color: FFColor.focus
                     )
                 }
             }
-            .padding(24)
+            .padding(FFSpacing.lg)
         }
-        .background(.background)
         .animation(.smooth, value: selectedPeriod)
     }
 

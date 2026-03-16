@@ -30,49 +30,54 @@ struct TodayStatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Header with log button
-                HStack {
-                    Spacer()
-                    Button {
-                        showManualEntry = true
-                    } label: {
-                        Label("Log Session", systemImage: "plus.circle")
-                            .font(.subheadline)
+            VStack(spacing: FFSpacing.lg) {
+                PremiumSurface(style: .hero) {
+                    PremiumSectionHeader(
+                        "Today",
+                        eyebrow: "Dashboard",
+                        subtitle: heroSubtitle
+                    ) {
+                        Button {
+                            showManualEntry = true
+                        } label: {
+                            Label("Log Session", systemImage: "plus.circle.fill")
+                                .font(FFType.meta)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .tint(FFColor.focus)
                     }
-                    .buttonStyle(.glass)
                 }
 
-                // Summary cards
-                HStack(spacing: 12) {
+                HStack(spacing: FFSpacing.sm) {
                     StatCard(
                         title: "Focus Time",
                         value: totalFocusTime.formattedFocusTime,
-                        icon: "timer",
-                        color: .blue
+                        icon: "timer.circle.fill",
+                        color: FFColor.focus
                     )
 
                     StatCard(
                         title: "Sessions",
                         value: "\(completedCount)",
                         icon: "checkmark.circle.fill",
-                        color: .green
+                        color: FFColor.success
                     )
 
                     StatCard(
                         title: "Streak",
                         value: "\(currentStreak)",
                         icon: "flame.fill",
-                        color: .orange
+                        color: FFColor.warning
                     )
                 }
 
-                // Per-project breakdown
                 if !projectBreakdown.isEmpty {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Projects")
-                            .font(.headline)
-
+                    PremiumSurface(style: .card) {
+                        PremiumSectionHeader(
+                            "Projects",
+                            eyebrow: "Distribution",
+                            subtitle: "Where your time went today."
+                        )
                         ForEach(projectBreakdown, id: \.name) { item in
                             ProjectTimeBar(
                                 name: item.name,
@@ -82,74 +87,62 @@ struct TodayStatsView: View {
                             )
                         }
                     }
-                    .padding(16)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
                 }
 
-                // Session timeline
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Timeline")
-                        .font(.headline)
-
+                PremiumSurface(style: .card) {
+                    PremiumSectionHeader(
+                        "Timeline",
+                        eyebrow: "Sessions",
+                        subtitle: todaySessions.isEmpty ? "No focus sessions logged yet." : "Tap any session to edit its details."
+                    )
                     SessionTimelineView(sessions: todaySessions)
                 }
-                .padding(16)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
 
-                // Reflections section
                 let reflectedSessions = todaySessions.filter { $0.mood != nil || $0.achievement != nil }
                 if !reflectedSessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Reflections")
-                            .font(.headline)
+                    PremiumSurface(style: .card) {
+                        PremiumSectionHeader(
+                            "Reflections",
+                            eyebrow: "Review",
+                            subtitle: "Mood trends and the outcomes you captured."
+                        )
 
-                        // Mood distribution
                         let moodCounts = Dictionary(grouping: todaySessions.compactMap(\.mood), by: { $0 })
                             .mapValues(\.count)
                             .sorted { $0.value > $1.value }
 
                         if !moodCounts.isEmpty {
-                            HStack(spacing: 12) {
+                            HStack(spacing: FFSpacing.sm) {
                                 ForEach(moodCounts, id: \.key) { mood, count in
-                                    HStack(spacing: 4) {
-                                        Image(systemName: mood.icon)
-                                            .font(.caption)
-                                            .foregroundStyle(moodColor(mood))
-                                        Text("\(count)")
-                                            .font(.subheadline.weight(.medium))
-                                        Text(mood.rawValue)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    reflectionPill(for: mood, count: count)
                                 }
                             }
                         }
 
-                        // Achievements list
                         let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
                         if !achievements.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: FFSpacing.sm) {
                                 ForEach(achievements, id: \.self) { achievement in
-                                    HStack(alignment: .top, spacing: 8) {
+                                    HStack(alignment: .top, spacing: FFSpacing.sm) {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .font(.caption)
-                                            .foregroundStyle(.green)
-                                            .padding(.top, 2)
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(FFColor.success)
+                                            .padding(.top, 3)
                                         Text(achievement)
-                                            .font(.subheadline)
+                                            .font(FFType.body)
                                             .foregroundStyle(.secondary)
                                     }
+                                    .padding(.horizontal, FFSpacing.md)
+                                    .padding(.vertical, FFSpacing.sm)
+                                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
                                 }
                             }
                         }
                     }
-                    .padding(16)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
                 }
             }
-            .padding(24)
+            .padding(FFSpacing.lg)
         }
-        .background(.background)
         .sheet(isPresented: $showManualEntry) {
             ManualSessionView()
         }
@@ -177,12 +170,38 @@ struct TodayStatsView: View {
         let color: Color
     }
 
+    private var heroSubtitle: String {
+        if todaySessions.isEmpty {
+            return "No sessions logged yet. Start focusing or add one manually."
+        }
+        return "\(completedCount) completed \u{00B7} \(totalFocusTime.formattedFocusTime) of intentional work today"
+    }
+
+    private func reflectionPill(for mood: FocusMood, count: Int) -> some View {
+        HStack(spacing: FFSpacing.xs) {
+            Image(systemName: mood.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(moodColor(mood))
+            Text("\(count)")
+                .font(FFType.meta.weight(.semibold))
+            Text(mood.rawValue)
+                .font(FFType.meta)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, FFSpacing.md)
+        .padding(.vertical, FFSpacing.xs)
+        .background(Color.white.opacity(0.05), in: Capsule())
+        .overlay {
+            Capsule().strokeBorder(Color.white.opacity(0.1))
+        }
+    }
+
     private func moodColor(_ mood: FocusMood) -> Color {
         switch mood {
-        case .distracted: .orange
+        case .distracted: FFColor.warning
         case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
+        case .focused: FFColor.focus
+        case .deepFocus: FFColor.deepFocus
         }
     }
 
