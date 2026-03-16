@@ -235,13 +235,8 @@ final class TimerViewModel {
         modelContext?.insert(session)
         currentSession = session
         startTimer()
-        // Activate blocking — try profile-based first, fallback to hardcoded defaults
+        // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()
-        // Fallback: if blocking didn't activate (no profiles yet), block common distractions directly
-        if !BlockingService.shared.isActive {
-            let fallbackDomains = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
-            BlockingHelper.blockWebsites(fallbackDomains)
-        }
     }
 
     private func log(_ msg: String) {
@@ -360,21 +355,7 @@ final class TimerViewModel {
             BlockingService.shared.activate(profile: profile)
             return
         }
-        log("No project profile, looking for default...")
-        do {
-            let predicate = #Predicate<BlockProfile> { $0.isDefault == true }
-            let descriptor = FetchDescriptor<BlockProfile>(predicate: predicate)
-            let results = try modelContext?.fetch(descriptor) ?? []
-            log("Found \(results.count) default profiles")
-            if let defaultProfile = results.first {
-                log("Activating: \(defaultProfile.name), rawWebsites='\(defaultProfile.blockedWebsitesRaw)', parsed=\(defaultProfile.blockedWebsites)")
-                BlockingService.shared.activate(profile: defaultProfile)
-            } else {
-                log("WARNING: No default profile found!")
-            }
-        } catch {
-            log("ERROR fetching profiles: \(error)")
-        }
+        log("No blocking profile assigned to selected project; skipping blocking.")
     }
 
     private func deactivateBlocking() {
@@ -502,8 +483,7 @@ final class TimerViewModel {
         guard existing.isEmpty else { return }
         let social = BlockProfile(
             name: "Social Media",
-            websites: ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"],
-            isDefault: true
+            websites: ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
         )
         let fullFocus = BlockProfile(
             name: "Full Focus",
