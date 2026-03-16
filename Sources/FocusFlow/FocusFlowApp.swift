@@ -28,12 +28,14 @@ struct FocusFlowApp: App {
                 if timerVM.isOvertime {
                     Text(timerVM.overtimeTimeString)
                         .monospacedDigit()
+                        .contentTransition(.numericText())
                         .foregroundStyle(.orange)
                 } else if timerVM.state == .paused {
                     Text("\u{23F8}")
                 } else if timerVM.isRunning {
                     Text(timerVM.timeString)
                         .monospacedDigit()
+                        .contentTransition(.numericText())
                 }
                 if timerVM.todayFocusTime > 0 || timerVM.isRunning || timerVM.isOvertime {
                     if timerVM.isRunning || timerVM.isOvertime {
@@ -42,6 +44,7 @@ struct FocusFlowApp: App {
                     }
                     Text(timerVM.todayFocusTime.formattedFocusTime)
                         .monospacedDigit()
+                        .contentTransition(.numericText())
                         .foregroundStyle(.secondary)
                 }
             }

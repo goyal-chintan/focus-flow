@@ -3,7 +3,7 @@ import Foundation
 extension Foundation.Bundle {
     static let module: Bundle = {
         let mainPath = Bundle.main.bundleURL.appendingPathComponent("FocusFlow_FocusFlow.bundle").path
-        let buildPath = "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow_FocusFlow.bundle"
+        let buildPath = "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow_FocusFlow.bundle"
 
         let preferredBundle = Bundle(path: mainPath)
 

@@ -3,17 +3,17 @@
 
   ],
   "copyCommands" : {
-    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow_FocusFlow.bundle/Assets.xcassets" : {
+    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow_FocusFlow.bundle/Assets.xcassets" : {
       "inputs" : [
         {
           "kind" : "directory",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Assets.xcassets"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Assets.xcassets"
         }
       ],
       "outputs" : [
         {
           "kind" : "directory",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow_FocusFlow.bundle/Assets.xcassets"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow_FocusFlow.bundle/Assets.xcassets"
         }
       ]
     }
@@ -32,160 +32,164 @@
   "swiftCommands" : {
     "C.FocusFlow-arm64-apple-macosx26.0-debug.module" : {
       "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
-      "fileList" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/sources",
-      "importPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/Modules",
+      "fileList" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/sources",
+      "importPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/Modules",
       "inputs" : [
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/FocusFlowApp.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/FocusFlowApp.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/AppSettings.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/AppSettings.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/BlockProfile.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/FocusSession.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/Project.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/Project.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionReflection.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionReflection.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionType.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionType.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/TimeSplit.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/TimeSplit.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/AppBlocker.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingHelper.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingService.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/NotificationService.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/ViewModels/TimerViewModel.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectFormView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectsListView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SessionEditView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SettingsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SettingsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/TodayStatsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/TodayStatsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/BarChartView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/BarChartView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ControlButton.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ControlButton.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectPickerView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectPickerView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionDotsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionDotsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionTimelineView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionTimelineView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/StatCard.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/StatCard.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimeFormatting.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimeFormatting.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimerRingView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimerRingView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/main.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/SessionCompleteWindow.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/main.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
         },
         {
           "kind" : "virtual",
@@ -193,50 +197,51 @@
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/sources"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/sources"
         }
       ],
       "isLibrary" : false,
       "moduleName" : "FocusFlow",
-      "moduleOutputPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/Modules/FocusFlow.swiftmodule",
+      "moduleOutputPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/Modules/FocusFlow.swiftmodule",
       "objects" : [
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swift.o",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swift.o"
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteWindow.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swift.o"
       ],
       "otherArguments" : [
         "-target",
@@ -245,7 +250,7 @@
         "-enable-batch-mode",
         "-serialize-diagnostics",
         "-index-store-path",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/index/store",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/index/store",
         "-Onone",
         "-enable-testing",
         "-j12",
@@ -253,7 +258,7 @@
         "-DDEBUG",
         "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
         "-module-cache-path",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/ModuleCache",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/ModuleCache",
         "-parseable-output",
         "-Xfrontend",
         "-entry-point-function-name",
@@ -291,204 +296,209 @@
         "-Xcc",
         "-g",
         "-package-name",
-        "focusflow_build"
+        "session_editing_overtime"
       ],
-      "outputFileMapPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/output-file-map.json",
+      "outputFileMapPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/output-file-map.json",
       "outputs" : [
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteWindow.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/Modules/FocusFlow.swiftmodule"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/Modules/FocusFlow.swiftmodule"
         }
       ],
       "prepareForIndexing" : false,
       "sources" : [
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/FocusFlowApp.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/AppSettings.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/Project.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionReflection.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionType.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/TimeSplit.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SettingsView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/TodayStatsView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/BarChartView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ControlButton.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectPickerView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionDotsView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionTimelineView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/StatCard.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimeFormatting.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimerRingView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/main.swift",
-        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift"
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/FocusFlowApp.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/AppSettings.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/BlockProfile.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/FocusSession.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/Project.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionReflection.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionType.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/TimeSplit.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/AppBlocker.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingHelper.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingService.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/NotificationService.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SettingsView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/TodayStatsView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/BarChartView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ControlButton.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectPickerView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionDotsView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionTimelineView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/StatCard.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimeFormatting.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimerRingView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/SessionCompleteWindow.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/main.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift"
       ],
-      "tempsPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build",
+      "tempsPath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build",
       "wholeModuleOptimization" : false
     }
   },
@@ -501,54 +511,55 @@
       "-module-name",
       "FocusFlow",
       "-package-name",
-      "focusflow_build",
+      "session_editing_overtime",
       "-c",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/FocusFlowApp.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/AppSettings.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/Project.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionReflection.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionType.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/TimeSplit.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SettingsView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/TodayStatsView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/BarChartView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ControlButton.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectPickerView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionDotsView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionTimelineView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/StatCard.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimeFormatting.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimerRingView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/main.swift",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/FocusFlowApp.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/AppSettings.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/BlockProfile.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/FocusSession.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/Project.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionReflection.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionType.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/TimeSplit.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/AppBlocker.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingHelper.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingService.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/NotificationService.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SettingsView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/TodayStatsView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/BarChartView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ControlButton.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectPickerView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionDotsView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionTimelineView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/StatCard.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimeFormatting.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimerRingView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/SessionCompleteWindow.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/main.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift",
       "-I",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/Modules",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/Modules",
       "-target",
       "arm64-apple-macosx26.0",
       "-incremental",
       "-enable-batch-mode",
       "-serialize-diagnostics",
       "-index-store-path",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/index/store",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/index/store",
       "-Onone",
       "-enable-testing",
       "-j12",
@@ -556,7 +567,7 @@
       "-DDEBUG",
       "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
       "-module-cache-path",
-      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/ModuleCache",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/ModuleCache",
       "-parseable-output",
       "-Xfrontend",
       "-entry-point-function-name",
@@ -594,7 +605,7 @@
       "-Xcc",
       "-g",
       "-package-name",
-      "focusflow_build",
+      "session_editing_overtime",
       "-driver-use-frontend-path",
       "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
     ]
@@ -616,7 +627,7 @@
     }
   },
   "writeCommands" : {
-    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow-entitlement.plist" : {
+    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow-entitlement.plist" : {
       "alwaysOutOfDate" : false,
       "inputs" : [
         {
@@ -628,9 +639,9 @@
           "name" : "<com.apple.security.get-task-allow>"
         }
       ],
-      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow-entitlement.plist"
+      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow-entitlement.plist"
     },
-    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/sources" : {
+    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/sources" : {
       "alwaysOutOfDate" : false,
       "inputs" : [
         {
@@ -639,156 +650,160 @@
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/FocusFlowApp.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/FocusFlowApp.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/AppSettings.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/AppSettings.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/BlockProfile.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/FocusSession.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/Project.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/Project.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionReflection.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionReflection.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionType.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/SessionType.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/TimeSplit.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Models/TimeSplit.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/AppBlocker.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingHelper.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/BlockingService.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Services/NotificationService.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/ViewModels/TimerViewModel.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectFormView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/ProjectsListView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SessionEditView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SettingsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/SettingsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/TodayStatsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/TodayStatsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Companion/WeeklyStatsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/BarChartView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/BarChartView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ControlButton.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ControlButton.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectPickerView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectPickerView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/ProjectTimeBar.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionDotsView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionDotsView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/SessionTimelineView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/SessionTimelineView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/StatCard.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/StatCard.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimeFormatting.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimeFormatting.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Components/TimerRingView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/Components/TimerRingView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/SessionCompleteView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/MenuBar/TimeSplitView.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/main.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/Views/SessionCompleteWindow.swift"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/Sources/FocusFlow/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/DerivedSources/resource_bundle_accessor.swift"
         }
       ],
-      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/sources"
+      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/sources"
     },
-    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.product/Objects.LinkFileList" : {
+    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.product/Objects.LinkFileList" : {
       "alwaysOutOfDate" : false,
       "inputs" : [
         {
@@ -797,156 +812,160 @@
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ControlButton.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/MenuBarPopoverView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectPickerView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectTimeBar.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionCompleteWindow.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionDotsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionTimelineView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/SettingsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/StatCard.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeFormatting.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplitView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerRingView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/TodayStatsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/WeeklyStatsView.swift.o"
         },
         {
           "kind" : "file",
-          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swift.o"
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.build/resource_bundle_accessor.swift.o"
         }
       ],
-      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.product/Objects.LinkFileList"
+      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/FocusFlow.product/Objects.LinkFileList"
     },
-    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+    "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
       "alwaysOutOfDate" : true,
       "inputs" : [
         {
@@ -958,7 +977,7 @@
           "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
         }
       ],
-      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+      "outputFilePath" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/session-editing-overtime/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
     }
   }
 }

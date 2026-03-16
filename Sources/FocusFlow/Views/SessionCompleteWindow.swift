@@ -22,6 +22,21 @@ struct SessionCompleteWindowView: View {
             }
         }
         .interactiveDismissDisabled()
+        .onAppear {
+            // Bring completion window to front of all apps
+            // Required for LSUIElement menu bar apps
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                for window in NSApplication.shared.windows {
+                    if window.title == "Session Complete" {
+                        window.level = .floating
+                        window.makeKeyAndOrderFront(nil)
+                        window.center()
+                        break
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Focus Completion
@@ -36,7 +51,7 @@ struct SessionCompleteWindowView: View {
             Divider()
             focusActionsSection
         }
-        .padding(24)
+        .padding(20)
         .frame(width: 380)
     }
 
@@ -51,12 +66,14 @@ struct SessionCompleteWindowView: View {
 
             Text("\(Int((timerVM.lastCompletedDuration ?? 0) / 60)) minutes \u{00B7} \(timerVM.lastCompletedLabel ?? "Focus")")
                 .font(.subheadline)
+                .monospacedDigit()
                 .foregroundStyle(.secondary)
 
             if timerVM.isOvertime {
                 Text(timerVM.overtimeTimeString)
                     .font(.system(size: 16, weight: .medium, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
                     .foregroundStyle(.orange)
             }
         }
@@ -112,7 +129,7 @@ struct SessionCompleteWindowView: View {
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                     showSplits.toggle()
                     if showSplits && splits.isEmpty {
                         let totalMins = Int((timerVM.lastCompletedDuration ?? 0) / 60)
@@ -202,7 +219,7 @@ struct SessionCompleteWindowView: View {
             Divider()
             breakActionsSection
         }
-        .padding(24)
+        .padding(20)
         .frame(width: 320)
     }
 
@@ -219,6 +236,7 @@ struct SessionCompleteWindowView: View {
                 Text(timerVM.overtimeTimeString)
                     .font(.system(size: 16, weight: .medium, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
                     .foregroundStyle(.orange)
             }
         }
