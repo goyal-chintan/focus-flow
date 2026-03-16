@@ -1,0 +1,41 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg1" x1="160" y1="120" x2="860" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071B2A"/>
+      <stop offset="1" stop-color="#103B46"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 410) rotate(90) scale(250)">
+      <stop stop-color="#FFF4B0"/>
+      <stop offset="0.42" stop-color="#68F0E7" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#68F0E7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brainStroke1" x1="354" y1="298" x2="666" y2="702" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C2FFF8"/>
+      <stop offset="1" stop-color="#4DD9D0"/>
+    </linearGradient>
+    <filter id="softGlow1" x="162" y="97" width="700" height="830" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="22" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="url(#bg1)"/>
+  <circle cx="512" cy="420" r="250" fill="url(#glow1)"/>
+
+  <g filter="url(#softGlow1)">
+    <path d="M512 193C419 193 335 240 279 321C222 404 204 514 231 610C260 712 339 791 438 820C478 832 547 832 586 820C685 791 764 712 793 610C820 514 802 404 745 321C689 240 605 193 512 193Z" stroke="#D8FFF8" stroke-width="30"/>
+    <path d="M512 276C458 276 410 298 378 337C347 374 335 421 344 471C351 512 374 547 405 574C354 604 327 661 338 720" stroke="url(#brainStroke1)" stroke-width="24" stroke-linecap="round"/>
+    <path d="M512 276C566 276 614 298 646 337C677 374 689 421 680 471C673 512 650 547 619 574C670 604 697 661 686 720" stroke="url(#brainStroke1)" stroke-width="24" stroke-linecap="round"/>
+    <path d="M512 284V748" stroke="url(#brainStroke1)" stroke-width="20" stroke-linecap="round"/>
+    <path d="M424 372C456 349 486 340 512 340C538 340 568 349 600 372" stroke="url(#brainStroke1)" stroke-width="18" stroke-linecap="round"/>
+    <path d="M399 470C437 445 474 433 512 433C550 433 587 445 625 470" stroke="url(#brainStroke1)" stroke-width="18" stroke-linecap="round"/>
+    <path d="M414 566C445 551 478 544 512 544C546 544 579 551 610 566" stroke="url(#brainStroke1)" stroke-width="18" stroke-linecap="round"/>
+    <circle cx="512" cy="390" r="36" fill="#FFF4B0"/>
+    <path d="M512 147L530 207" stroke="#FFF7C8" stroke-width="18" stroke-linecap="round"/>
+    <path d="M447 170L475 223" stroke="#DDFCF8" stroke-width="14" stroke-linecap="round"/>
+    <path d="M577 170L549 223" stroke="#DDFCF8" stroke-width="14" stroke-linecap="round"/>
+  </g>
+</svg>
