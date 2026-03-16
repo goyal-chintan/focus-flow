@@ -45,6 +45,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift"
         },
         {
@@ -65,6 +69,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift"
         },
         {
@@ -73,7 +89,19 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
         },
         {
           "kind" : "file",
@@ -174,14 +202,21 @@
       "objects" : [
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusFlowApp.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/Project.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionReflection.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionType.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectsListView.swift.o",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/SessionEditView.swift.o",
@@ -270,6 +305,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o"
         },
         {
@@ -290,6 +329,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o"
         },
         {
@@ -298,7 +349,19 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
         },
         {
           "kind" : "file",
@@ -389,14 +452,21 @@
       "sources" : [
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/FocusFlowApp.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/AppSettings.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/Project.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionReflection.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionType.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/TimeSplit.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
+        "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
         "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
@@ -435,14 +505,21 @@
       "-c",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/FocusFlowApp.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/AppSettings.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/Project.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionReflection.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/SessionType.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/TimeSplit.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/ViewModels/TimerViewModel.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift",
+      "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectsListView.swift",
       "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/SessionEditView.swift",
@@ -570,6 +647,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift"
         },
         {
@@ -590,6 +671,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift"
         },
         {
@@ -598,7 +691,19 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift"
         },
         {
           "kind" : "file",
@@ -692,11 +797,35 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swift.o"
         },
         {
           "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BarChartView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o"
         },
         {
           "kind" : "file",
@@ -713,6 +842,10 @@
         {
           "kind" : "file",
           "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o"
         },
         {
           "kind" : "file",
