@@ -29,7 +29,7 @@ final class TimerViewModel {
     var selectedMinutes: Int = 25
 
     var focusDuration: TimeInterval {
-        TimeInterval(max(5, selectedMinutes) * 60)
+        TimeInterval(max(1, selectedMinutes) * 60)
     }
 
     // MARK: - Pause Tracking
@@ -80,6 +80,10 @@ final class TimerViewModel {
     // MARK: - Day Boundary
     private var currentDay: Date = Calendar.current.startOfDay(for: Date())
     private var midnightTimer: Timer?
+
+    // MARK: - Window Callback
+    /// Set by FocusFlowApp to open the session-complete window from any context
+    var openCompletionWindow: (() -> Void)?
 
     // MARK: - Private
     private var timer: Timer?
@@ -230,7 +234,7 @@ final class TimerViewModel {
     func startFocus() {
         guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
         let duration = focusDuration
-        guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
+        guard duration >= 30 else { log("startFocus: duration \(duration) < 30, aborting"); return }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
@@ -470,6 +474,7 @@ final class TimerViewModel {
         remainingSeconds = 0
         state = .idle
         showSessionComplete = true
+        openCompletionWindow?()
     }
 
     // MARK: - Reflection

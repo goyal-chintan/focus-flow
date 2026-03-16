@@ -25,7 +25,6 @@ struct MenuBarPopoverView: View {
             .onChange(of: timerVM.showSessionComplete) { _, newValue in
                 if newValue {
                     openWindow(id: "session-complete")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
                 }
             }
     }
