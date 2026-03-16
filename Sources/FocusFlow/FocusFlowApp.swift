@@ -25,18 +25,23 @@ struct FocusFlowApp: App {
                     Image(systemName: "shield.checkered")
                         .font(.system(size: 10))
                 }
-                if timerVM.state == .paused {
+                if timerVM.isOvertime {
+                    Text(timerVM.overtimeTimeString)
+                        .monospacedDigit()
+                        .foregroundStyle(.orange)
+                } else if timerVM.state == .paused {
                     Text("\u{23F8}")
                 } else if timerVM.isRunning {
                     Text(timerVM.timeString)
                         .monospacedDigit()
                 }
-                if timerVM.todayFocusTime > 0 || timerVM.isRunning {
-                    if timerVM.isRunning {
+                if timerVM.todayFocusTime > 0 || timerVM.isRunning || timerVM.isOvertime {
+                    if timerVM.isRunning || timerVM.isOvertime {
                         Text("\u{00B7}")
                             .foregroundStyle(.secondary)
                     }
                     Text(timerVM.todayFocusTime.formattedFocusTime)
+                        .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
             }
@@ -54,6 +59,15 @@ struct FocusFlowApp: App {
                 }
         }
         .defaultSize(width: 720, height: 520)
+        .modelContainer(container)
+
+        Window("Session Complete", id: "session-complete") {
+            SessionCompleteWindowView()
+                .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
     }
 
