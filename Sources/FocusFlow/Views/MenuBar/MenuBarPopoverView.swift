@@ -4,9 +4,23 @@ import SwiftData
 struct MenuBarPopoverView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.modelContext) private var modelContext
     @State private var showStopConfirmation = false
 
+    @State private var didConfigure = false
+
     var body: some View {
+        content
+            .task(id: didConfigure) {
+                if !didConfigure {
+                    didConfigure = true
+                    timerVM.ensureConfigured(modelContext: modelContext)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if timerVM.showSessionComplete {
             SessionCompleteView()
         } else {
@@ -63,8 +77,7 @@ struct MenuBarPopoverView: View {
 
         return VStack(spacing: 0) {
             ProjectPickerView(
-                selectedProject: $timerVM.selectedProject,
-                customLabel: $timerVM.customLabel
+                selectedProject: $timerVM.selectedProject
             )
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -132,6 +145,8 @@ struct MenuBarPopoverView: View {
         switch timerVM.state {
         case .idle:
             ControlButton(title: "Start Focus", icon: "play.fill", role: .primary) {
+                NSLog("FocusFlow: START FOCUS CLICKED")
+                timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
             }
 
@@ -189,6 +204,18 @@ struct MenuBarPopoverView: View {
 
     private var footerSection: some View {
         HStack {
+            if timerVM.isBlockingActive {
+                HStack(spacing: 4) {
+                    Image(systemName: "shield.checkered")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    Text("Blocking")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+                Text("\u{00B7}").foregroundStyle(.tertiary)
+            }
+
             Label {
                 Text(footerText)
                     .font(.caption)

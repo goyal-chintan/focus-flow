@@ -16,6 +16,13 @@
     "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.swiftdeps",
     "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppSettings.dia"
   },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/BlockProfile.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfile.dia"
+  },
   "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Models/FocusSession.swift": {
     "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.d",
     "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/FocusSession.swift.o",
@@ -51,6 +58,27 @@
     "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.swiftdeps",
     "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimeSplit.dia"
   },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/AppBlocker.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/AppBlocker.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingHelper.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingHelper.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/BlockingService.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingService.dia"
+  },
   "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Services/NotificationService.swift": {
     "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.d",
     "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/NotificationService.swift.o",
@@ -65,12 +93,33 @@
     "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.swiftdeps",
     "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/TimerViewModel.dia"
   },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockProfileFormView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockProfileFormView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/BlockingSettingsView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/BlockingSettingsView.dia"
+  },
   "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/CompanionWindowView.swift": {
     "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.d",
     "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swift.o",
     "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView~partial.swiftmodule",
     "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.swiftdeps",
     "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/CompanionWindowView.dia"
+  },
+  "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ManualSessionView.swift": {
+    "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.d",
+    "object": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swift.o",
+    "swiftmodule": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView~partial.swiftmodule",
+    "swift-dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.swiftdeps",
+    "diagnostics": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ManualSessionView.dia"
   },
   "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/Sources/FocusFlow/Views/Companion/ProjectFormView.swift": {
     "dependencies": "/Users/chintan/Personal/repos/FocusFlow/.worktrees/feature/focusflow-build/.build/arm64-apple-macosx/debug/FocusFlow.build/ProjectFormView.d",

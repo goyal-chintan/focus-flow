@@ -102,6 +102,8 @@ final class TimerViewModel {
         }
     }
 
+    var isBlockingActive: Bool { BlockingService.shared.isActive }
+
     var sessionLabel: String {
         selectedProject?.name ?? (customLabel.isEmpty ? "Focus" : customLabel)
     }
@@ -111,12 +113,27 @@ final class TimerViewModel {
     }
 
     // MARK: - Setup
+    private var isConfigured = false
+
     func configure(modelContext: ModelContext) {
+        guard !isConfigured else { return }
+        isConfigured = true
         self.modelContext = modelContext
+        log("configure() called")
         loadSettings()
+        log("settings loaded: \(settings != nil)")
+        seedDefaultProfiles()
         loadTodayStats()
         cleanupOrphanedSessions()
+        BlockingService.shared.cleanupIfNeeded()
         scheduleMidnightRefresh()
+        log("configure() complete")
+    }
+
+    func ensureConfigured(modelContext: ModelContext) {
+        if !isConfigured {
+            configure(modelContext: modelContext)
+        }
     }
 
     /// Schedules a timer to fire at midnight to refresh today's stats
@@ -201,9 +218,10 @@ final class TimerViewModel {
 
     // MARK: - Actions
     func startFocus() {
-        guard settings != nil else { return }
+        guard settings != nil else { log("startFocus: settings nil, aborting"); return }
         let duration = focusDuration
-        guard duration >= 300 else { return } // Min 5 minutes
+        guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
+        log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
         state = .focusing
@@ -217,6 +235,22 @@ final class TimerViewModel {
         modelContext?.insert(session)
         currentSession = session
         startTimer()
+        // Project-based blocking only: activate if selected project has a profile.
+        activateBlocking()
+    }
+
+    private func log(_ msg: String) {
+        let path = "/tmp/focusflow_debug.log"
+        let entry = "[\(Date())] \(msg)\n"
+        if FileManager.default.fileExists(atPath: path) {
+            if let handle = FileHandle(forWritingAtPath: path) {
+                handle.seekToEndOfFile()
+                handle.write(entry.data(using: .utf8)!)
+                handle.closeFile()
+            }
+        } else {
+            try? entry.write(toFile: path, atomically: true, encoding: .utf8)
+        }
     }
 
     func startBreak() {
@@ -272,6 +306,7 @@ final class TimerViewModel {
             }
             try? modelContext?.save()
         }
+        deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
@@ -291,6 +326,7 @@ final class TimerViewModel {
             modelContext?.delete(session)
             try? modelContext?.save()
         }
+        deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
@@ -309,6 +345,25 @@ final class TimerViewModel {
         remainingSeconds = 0
         totalSeconds = 0
         loadTodayStats()
+    }
+
+    // MARK: - Blocking
+    private func activateBlocking() {
+        log("activateBlocking called")
+        if let profile = selectedProject?.blockProfile {
+            log("Using project-specific profile: \(profile.name)")
+            BlockingService.shared.activate(profile: profile)
+            return
+        }
+        log("No blocking profile assigned to selected project; skipping blocking.")
+    }
+
+    private func deactivateBlocking() {
+        BlockingService.shared.deactivate()
+        // Always clean up hosts file as fallback
+        if BlockingHelper.isBlockingActive() {
+            BlockingHelper.unblockWebsites()
+        }
     }
 
     // MARK: - Timer
@@ -360,21 +415,29 @@ final class TimerViewModel {
         timer?.invalidate()
         timer = nil
 
-        currentSession?.endedAt = Date()
+        // Mark completed but keep endedAt nil for focus sessions —
+        // time on the completion dialog counts toward the session.
+        // endedAt will be set in continueAfterCompletion().
         currentSession?.completed = true
-        try? modelContext?.save()
 
         let wasType = currentSession?.type
+
+        if wasType != .focus {
+            // For breaks, end immediately
+            currentSession?.endedAt = Date()
+        }
+        try? modelContext?.save()
+
         let lastSession = currentSession
         currentSession = nil
 
         if wasType == .focus {
             completedFocusSessions += 1
             loadTodayStats()
-            NotificationService.shared.sendFocusComplete(sound: settings?.completionSound ?? "Glass")
-            // Note: autoStartBreak setting is intentionally not checked here.
-            // The completion/reflection flow (SessionCompleteView) always shows after focus ends,
-            // so auto-start break is overridden by the user's choice in that view.
+            let sound = settings?.completionSound ?? "Glass"
+            let label = lastSession?.label ?? "Focus"
+            let duration = lastSession?.duration ?? 0
+            NotificationService.shared.sendSessionCompletePrompt(duration: duration, label: label, sound: sound)
             lastCompletedDuration = lastSession?.duration
             lastCompletedLabel = lastSession?.label
             lastCompletedSession = lastSession
@@ -414,7 +477,31 @@ final class TimerViewModel {
         try? modelContext?.save()
     }
 
+    private func seedDefaultProfiles() {
+        let descriptor = FetchDescriptor<BlockProfile>()
+        let existing = (try? modelContext?.fetch(descriptor)) ?? []
+        guard existing.isEmpty else { return }
+        let social = BlockProfile(
+            name: "Social Media",
+            websites: ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
+        )
+        let fullFocus = BlockProfile(
+            name: "Full Focus",
+            websites: ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com", "news.ycombinator.com", "netflix.com", "twitch.tv"],
+            apps: ["com.tinyspeck.slackmacgap", "com.hnc.Discord", "ph.telegra.Telegraph", "net.whatsapp.WhatsApp"],
+            mutedApps: ["com.tinyspeck.slackmacgap", "com.hnc.Discord"]
+        )
+        modelContext?.insert(social)
+        modelContext?.insert(fullFocus)
+        try? modelContext?.save()
+    }
+
     func continueAfterCompletion(action: PostCompletionAction) {
+        // NOW end the session — includes time spent on the completion dialog
+        lastCompletedSession?.endedAt = Date()
+        try? modelContext?.save()
+        loadTodayStats()
+
         showSessionComplete = false
         lastCompletedSession = nil
 
@@ -424,6 +511,7 @@ final class TimerViewModel {
         case .takeBreak:
             startBreak()
         case .endSession:
+            deactivateBlocking()
             state = .idle
             loadTodayStats()
         }

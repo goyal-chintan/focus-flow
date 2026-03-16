@@ -19,6 +19,17 @@ final class NotificationService {
         send(title: "Break's over!", body: "Ready to focus again?", sound: sound)
     }
 
+    func sendSessionCompletePrompt(duration: TimeInterval, label: String, sound: String) {
+        NSSound(named: NSSound.Name(sound))?.play()
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Focus Session Complete!"
+        content.body = "\(Int(duration / 60)) min of \(label) — tap the timer to review and log."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "session-complete", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     func sendPauseWarning(minutes: Int) {
         NSSound(named: NSSound.Name("Bottle"))?.play()
         guard Bundle.main.bundleIdentifier != nil else { return }

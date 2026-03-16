@@ -9,6 +9,7 @@ final class Project {
     var icon: String?
     var archived: Bool
     var createdAt: Date
+    var blockProfile: BlockProfile?
 
     @Relationship(deleteRule: .nullify, inverse: \FocusSession.project)
     var sessions: [FocusSession]
