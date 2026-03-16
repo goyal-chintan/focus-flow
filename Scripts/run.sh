@@ -53,9 +53,9 @@ if [ -d "$BUILD_DIR/FocusFlow_FocusFlow.bundle" ]; then
     cp -R "$BUILD_DIR/FocusFlow_FocusFlow.bundle" "$RESOURCES/"
 fi
 
-# Include app icon for the manually bundled .app flow
-if [ -f "Sources/FocusFlow/Assets.xcassets/AppIcon.icns" ]; then
-    cp "Sources/FocusFlow/Assets.xcassets/AppIcon.icns" "$RESOURCES/"
+# Include app icon
+if [ -f "Sources/FocusFlow/AppIcon.icns" ]; then
+    cp "Sources/FocusFlow/AppIcon.icns" "$RESOURCES/"
 fi
 
 echo "Built $APP_BUNDLE"
