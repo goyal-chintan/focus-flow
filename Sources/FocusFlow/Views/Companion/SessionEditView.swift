@@ -22,52 +22,101 @@ struct SessionEditView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            headerSection
-            sessionInfoSection
-            Divider()
-            projectSection
-            moodSection
-            achievementSection
-            Divider()
-            actionsSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: FFSpacing.lg) {
+                headerSection
+                detailsSection
+                reflectionSection
+                actionsSection
+            }
+            .padding(FFSpacing.lg)
         }
-        .padding(20)
-        .frame(width: 340)
+        .frame(width: 440)
     }
 
     private var headerSection: some View {
-        HStack {
-            Text("Edit Session")
-                .font(.headline)
-            Spacer()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
+        PremiumSurface(style: .hero) {
+            PremiumSectionHeader(
+                "Edit Session",
+                eyebrow: "Revision",
+                subtitle: "Adjust the project, focus quality, or notes after the fact."
+            ) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
-    private var sessionInfoSection: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock")
-                .foregroundStyle(.secondary)
-            Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text("\u{00B7}")
-                .foregroundStyle(.tertiary)
-            Text(session.actualDuration.formattedFocusTime)
-                .font(.subheadline.weight(.medium))
+    private var detailsSection: some View {
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Session Details",
+                eyebrow: "Core",
+                subtitle: session.startedAt.formatted(date: .abbreviated, time: .shortened) + " \u{00B7} " + session.actualDuration.formattedFocusTime
+            )
+
+            projectSection
+        }
+    }
+
+    private var reflectionSection: some View {
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Reflection",
+                eyebrow: "Quality",
+                subtitle: "Update how the session felt and what it produced."
+            )
+
+            moodSection
+            achievementSection
+        }
+    }
+
+    private var actionsSection: some View {
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Save Changes",
+                eyebrow: "Finish",
+                subtitle: "Apply the edits and keep your analytics consistent."
+            )
+
+            HStack(spacing: FFSpacing.sm) {
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Cancel")
+                        .font(FFType.callout)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, FFSpacing.sm)
+                }
+                .buttonStyle(.glass)
+
+                Button {
+                    save()
+                    dismiss()
+                } label: {
+                    Text("Save")
+                        .font(FFType.callout)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, FFSpacing.sm)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(FFColor.focus)
+            }
         }
     }
 
     private var projectSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
             Text("Project")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(FFType.micro)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+                .tracking(1.2)
 
             Menu {
                 Button("None") { selectedProject = nil }
@@ -80,29 +129,52 @@ struct SessionEditView: View {
                     }
                 }
             } label: {
-                HStack {
-                    Text(selectedProject?.name ?? "No Project")
-                        .font(.subheadline)
+                HStack(spacing: FFSpacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
+                            .fill(FFColor.focus.opacity(0.12))
+
+                        Image(systemName: selectedProject?.icon ?? "tag")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(FFColor.focus)
+                    }
+                    .frame(width: 34, height: 34)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(selectedProject == nil ? "Optional categorization" : "Current project")
+                            .font(FFType.meta)
+                            .foregroundStyle(.secondary)
+                        Text(selectedProject?.name ?? "No Project")
+                            .font(FFType.body.weight(.medium))
+                    }
+
                     Spacer()
+
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.1))
+                }
             }
             .buttonStyle(.plain)
         }
     }
 
     private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
             Text("Focus Quality")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(FFType.micro)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+                .tracking(1.2)
 
-            HStack(spacing: 6) {
+            HStack(spacing: FFSpacing.sm) {
                 ForEach(FocusMood.allCases, id: \.self) { mood in
                     moodButton(mood)
                 }
@@ -113,14 +185,14 @@ struct SessionEditView: View {
     @ViewBuilder
     private func moodButton(_ mood: FocusMood) -> some View {
         let isSelected = selectedMood == mood
-        let label = VStack(spacing: 2) {
+        let label = VStack(spacing: FFSpacing.xs) {
             Image(systemName: mood.icon)
-                .font(.system(size: 14))
+                .font(.system(size: 16, weight: .semibold))
             Text(mood.rawValue)
-                .font(.system(size: 9))
+                .font(FFType.meta)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, FFSpacing.sm)
 
         if isSelected {
             Button { selectedMood = nil } label: { label }
@@ -133,39 +205,23 @@ struct SessionEditView: View {
     }
 
     private var achievementSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
             Text("Achievement")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(FFType.micro)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+                .tracking(1.2)
 
             TextField("What did you achieve?", text: $achievement)
                 .textFieldStyle(.plain)
-                .padding(8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-        }
-    }
-
-    private var actionsSection: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Text("Cancel")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .buttonStyle(.glass)
-
-            Button {
-                save()
-                dismiss()
-            } label: {
-                Text("Save")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+                .font(FFType.body)
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.1))
+                }
         }
     }
 
@@ -178,10 +234,10 @@ struct SessionEditView: View {
 
     private func moodColor(_ mood: FocusMood) -> Color {
         switch mood {
-        case .distracted: .orange
+        case .distracted: FFColor.warning
         case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
+        case .focused: FFColor.focus
+        case .deepFocus: FFColor.deepFocus
         }
     }
 }

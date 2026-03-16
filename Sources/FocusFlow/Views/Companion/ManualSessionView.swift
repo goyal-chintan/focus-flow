@@ -15,28 +15,92 @@ struct ManualSessionView: View {
     @State private var achievement: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Log Focus Session")
-                .font(.title3.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: FFSpacing.lg) {
+                headerSection
+                detailsSection
+                reflectionSection
+                actionsSection
+            }
+            .padding(FFSpacing.lg)
+        }
+        .frame(width: 460)
+    }
+
+    private var headerSection: some View {
+        PremiumSurface(style: .hero) {
+            PremiumSectionHeader(
+                "Log Focus Session",
+                eyebrow: "Manual Entry",
+                subtitle: "Capture a completed session with the same premium metadata as live focus."
+            )
+        }
+    }
+
+    private var detailsSection: some View {
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Session Details",
+                eyebrow: "Core",
+                subtitle: "Assign the project, duration, and timestamp."
+            )
 
             projectSection
             durationSection
             whenSection
-            moodSection
-            achievementSection
-
-            Divider()
-
-            actionButtons
         }
-        .padding(24)
-        .frame(width: 380)
     }
 
-    // MARK: - Sections
+    private var reflectionSection: some View {
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Reflection",
+                eyebrow: "Quality",
+                subtitle: "Optional, but useful for learning what deep work looks like for you."
+            )
+
+            moodSection
+            achievementSection
+        }
+    }
+
+    private var actionsSection: some View {
+        PremiumSurface(style: .card) {
+            PremiumSectionHeader(
+                "Save Session",
+                eyebrow: "Finish",
+                subtitle: "Store the entry and include it in your daily and weekly stats."
+            )
+
+            HStack(spacing: FFSpacing.sm) {
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Cancel")
+                        .font(FFType.callout)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, FFSpacing.sm)
+                }
+                .buttonStyle(.glass)
+
+                Button {
+                    save()
+                    dismiss()
+                } label: {
+                    Text("Log Session")
+                        .font(FFType.callout)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, FFSpacing.sm)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(FFColor.focus)
+                .disabled(duration < 5)
+            }
+        }
+    }
 
     private var projectSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
             sectionLabel("Project")
 
             Menu {
@@ -50,51 +114,18 @@ struct ManualSessionView: View {
                     }
                 }
             } label: {
-                HStack {
-                    Text(selectedProject?.name ?? "No Project")
-                        .font(.subheadline)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                selectionField(
+                    title: selectedProject?.name ?? "No Project",
+                    subtitle: selectedProject == nil ? "Optional categorization" : "Current project",
+                    icon: selectedProject?.icon ?? "tag"
+                )
             }
             .buttonStyle(.plain)
         }
     }
 
-    private var durationSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("Duration")
-
-            durationPresets
-
-            HStack {
-                Text("Custom:")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                TextField("min", value: $duration, format: .number)
-                    .textFieldStyle(.plain)
-                    .font(.subheadline)
-                    .frame(width: 50)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
-                    .onChange(of: duration) {
-                        startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
-                    }
-                Text("minutes")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
     private var durationPresets: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: FFSpacing.sm) {
             ForEach([15, 25, 45, 60], id: \.self) { mins in
                 DurationPresetButton(mins: mins, isSelected: duration == mins) {
                     duration = mins
@@ -104,19 +135,56 @@ struct ManualSessionView: View {
         }
     }
 
+    private var durationSection: some View {
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+            sectionLabel("Duration")
+
+            durationPresets
+
+            PremiumSurface(style: .inset) {
+                HStack(spacing: FFSpacing.sm) {
+                    Text("Custom duration")
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    TextField("min", value: $duration, format: .number)
+                        .textFieldStyle(.plain)
+                        .font(FFType.body)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 56)
+                        .padding(.horizontal, FFSpacing.sm)
+                        .padding(.vertical, FFSpacing.xs)
+                        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous))
+                        .onChange(of: duration) {
+                            startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
+                        }
+
+                    Text("min")
+                        .font(FFType.meta)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
     private var whenSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
             sectionLabel("When")
-            DatePicker("Started at", selection: $startTime, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden()
+
+            PremiumSurface(style: .inset) {
+                DatePicker("Started at", selection: $startTime, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                    .labelsHidden()
+            }
         }
     }
 
     private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
             sectionLabel("Focus Quality")
 
-            HStack(spacing: 6) {
+            HStack(spacing: FFSpacing.sm) {
                 ForEach(FocusMood.allCases, id: \.self) { mood in
                     MoodButton(mood: mood, isSelected: selectedMood == mood) {
                         selectedMood = selectedMood == mood ? nil : mood
@@ -127,46 +195,62 @@ struct ManualSessionView: View {
     }
 
     private var achievementSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: FFSpacing.xs) {
             sectionLabel("What did you achieve?")
             TextField("e.g. Finished the API integration", text: $achievement)
                 .textFieldStyle(.plain)
-                .padding(8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                .font(FFType.body)
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.1))
+                }
         }
     }
-
-    private var actionButtons: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Text("Cancel")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .buttonStyle(.glass)
-
-            Button {
-                save()
-                dismiss()
-            } label: {
-                Text("Log Session")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-            .disabled(duration < 5)
-        }
-    }
-
-    // MARK: - Helpers
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(FFType.micro)
+            .foregroundStyle(.tertiary)
+            .textCase(.uppercase)
+            .tracking(1.2)
+    }
+
+    private func selectionField(title: String, subtitle: String, icon: String) -> some View {
+        HStack(spacing: FFSpacing.sm) {
+            ZStack {
+                RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
+                    .fill(FFColor.focus.opacity(0.12))
+
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(FFColor.focus)
+            }
+            .frame(width: 34, height: 34)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(subtitle)
+                    .font(FFType.meta)
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(FFType.body.weight(.medium))
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, FFSpacing.md)
+        .padding(.vertical, FFSpacing.sm)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.1))
+        }
     }
 
     private func save() {
@@ -196,19 +280,19 @@ private struct DurationPresetButton: View {
     var body: some View {
         if isSelected {
             Button(action: action) {
-                Text("\(mins)m")
-                    .font(.system(size: 13, weight: .semibold))
+                Text("\(mins) min")
+                    .font(FFType.meta.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, FFSpacing.sm)
             }
             .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .tint(FFColor.focus)
         } else {
             Button(action: action) {
-                Text("\(mins)m")
-                    .font(.system(size: 13, weight: .regular))
+                Text("\(mins) min")
+                    .font(FFType.meta)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, FFSpacing.sm)
             }
             .buttonStyle(.glass)
         }
@@ -232,22 +316,22 @@ private struct MoodButton: View {
     }
 
     private var moodLabel: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: FFSpacing.xs) {
             Image(systemName: mood.icon)
-                .font(.system(size: 14))
+                .font(.system(size: 16, weight: .semibold))
             Text(mood.rawValue)
-                .font(.system(size: 9))
+                .font(FFType.meta)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, FFSpacing.sm)
     }
 
     private var moodColor: Color {
         switch mood {
-        case .distracted: .orange
+        case .distracted: FFColor.warning
         case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
+        case .focused: FFColor.focus
+        case .deepFocus: FFColor.deepFocus
         }
     }
 }
