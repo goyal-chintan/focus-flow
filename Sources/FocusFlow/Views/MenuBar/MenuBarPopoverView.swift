@@ -49,7 +49,8 @@ struct MenuBarPopoverView: View {
     private var mainContent: some View {
         @Bindable var timerVM = timerVM
 
-        return VStack(spacing: FFSpacing.md) {
+        return VStack(spacing: FFSpacing.lg) {
+            // Timer ring floats freely — no card wrapper
             heroSection
 
             if timerVM.state == .idle {
@@ -58,11 +59,15 @@ struct MenuBarPopoverView: View {
                 liveStatusStrip
             }
 
-            actionDeck
+            // Action buttons directly — no card wrapper
+            GlassEffectContainer {
+                controlsSection
+            }
+            .animation(FFMotion.section, value: controlsIdentity)
 
             footerSection
         }
-        .padding(FFSpacing.md)
+        .padding(FFSpacing.lg)
         .frame(width: 340)
         .opacity(hasAnimatedEntry ? 1 : 0)
         .offset(y: hasAnimatedEntry ? 0 : -8)
@@ -71,40 +76,44 @@ struct MenuBarPopoverView: View {
         .animation(FFMotion.popover, value: hasAnimatedEntry)
     }
 
+    // MARK: - Hero (no wrapper — ring floats on popover glass)
+
     private var heroSection: some View {
-        PremiumSurface(style: .card, alignment: .center) {
+        VStack(spacing: FFSpacing.xs) {
             TimerRingView(
                 progress: timerVM.progress,
                 timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
                 label: stateLabel,
                 state: timerVM.state
             )
-            .frame(maxWidth: .infinity)
 
             SessionDotsView(
                 completed: timerVM.completedFocusSessions % timerVM.sessionsBeforeLongBreak,
                 total: timerVM.sessionsBeforeLongBreak
             )
             .opacity(timerVM.state == .idle && timerVM.completedFocusSessions == 0 ? 0.5 : 1)
-            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
         .id("hero-\(stateKey)")
         .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
     }
 
+    // MARK: - Idle (no wrapper — controls float directly)
+
     private var idleSection: some View {
         @Bindable var timerVM = timerVM
 
-        return PremiumSurface(style: .inset) {
+        return VStack(spacing: FFSpacing.sm) {
             ProjectPickerView(
                 selectedProject: $timerVM.selectedProject
             )
 
-            durationPresetButtons
+            GlassEffectContainer {
+                durationPresetButtons
+            }
 
-            customDurationInput
+            customDurationStepper
         }
-        .id("idle-\(timerVM.selectedMinutes)")
         .transition(.asymmetric(
             insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
             removal: .opacity
@@ -123,23 +132,63 @@ struct MenuBarPopoverView: View {
     @ViewBuilder
     private func durationButton(mins: Int) -> some View {
         let isSelected = timerVM.selectedMinutes == mins
-        let label = Text("\(mins) min")
-            .font(isSelected ? FFType.meta.weight(.semibold) : FFType.meta)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, FFSpacing.sm)
 
         if isSelected {
-            Button { timerVM.selectedMinutes = mins } label: { label }
-                .buttonStyle(.glassProminent)
-                .tint(FFColor.focus)
-                .contentTransition(.interpolate)
-                .scaleEffect(1.0)
-                .animation(FFMotion.control, value: timerVM.selectedMinutes)
+            Button { timerVM.selectedMinutes = mins } label: {
+                Text("\(mins)m")
+                    .font(FFType.callout)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, FFSpacing.sm)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(FFColor.focus)
+            .animation(FFMotion.control, value: timerVM.selectedMinutes)
         } else {
-            Button { timerVM.selectedMinutes = mins } label: { label }
-                .buttonStyle(.glass)
-                .contentTransition(.interpolate)
-                .animation(FFMotion.control, value: timerVM.selectedMinutes)
+            Button { timerVM.selectedMinutes = mins } label: {
+                Text("\(mins)m")
+                    .font(FFType.callout)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, FFSpacing.sm)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(.white.opacity(0.5))
+            .animation(FFMotion.control, value: timerVM.selectedMinutes)
+        }
+    }
+
+    private var customDurationStepper: some View {
+        @Bindable var timerVM = timerVM
+
+        return HStack(spacing: FFSpacing.sm) {
+            Button {
+                if timerVM.selectedMinutes > 5 { timerVM.selectedMinutes -= 5 }
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(.white.opacity(0.5))
+
+            Text("\(timerVM.selectedMinutes) min")
+                .font(FFType.title)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .frame(maxWidth: .infinity)
+
+            Button {
+                if timerVM.selectedMinutes < 120 { timerVM.selectedMinutes += 5 }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(.white.opacity(0.5))
         }
     }
 
@@ -166,8 +215,9 @@ struct MenuBarPopoverView: View {
                 .font(FFType.meta)
                 .foregroundStyle(.tertiary)
         }
-        .padding(.top, FFSpacing.xs)
     }
+
+    // MARK: - Live Status
 
     private var liveStatusStrip: some View {
         HStack(spacing: FFSpacing.sm) {
@@ -210,6 +260,8 @@ struct MenuBarPopoverView: View {
             .animation(FFMotion.control, value: text)
     }
 
+    // MARK: - Controls (inside GlassEffectContainer, no PremiumSurface)
+
     @ViewBuilder
     private var controlsSection: some View {
         switch timerVM.state {
@@ -221,8 +273,8 @@ struct MenuBarPopoverView: View {
             }
 
         case .focusing:
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
+            VStack(spacing: FFSpacing.sm) {
+                HStack(spacing: FFSpacing.xs) {
                     ControlButton(title: "Pause", icon: "pause.fill", role: .secondary) {
                         timerVM.pause()
                     }
@@ -237,21 +289,20 @@ struct MenuBarPopoverView: View {
             }
 
         case .paused:
-            VStack(spacing: 10) {
-                // Pause duration display
-                VStack(spacing: 4) {
+            VStack(spacing: FFSpacing.sm) {
+                VStack(spacing: FFSpacing.xxs) {
                     Text("Paused for")
-                        .font(.caption)
+                        .font(FFType.meta)
                         .foregroundStyle(.secondary)
                     Text(timerVM.pauseTimeString)
-                        .font(.system(size: 20, weight: .light, design: .rounded))
+                        .font(FFType.titleLarge)
                         .monospacedDigit()
                         .foregroundStyle(timerVM.pauseWarningLevel.color)
                         .contentTransition(.numericText())
-                        .animation(.smooth, value: timerVM.pauseTimeString)
+                        .animation(FFMotion.control, value: timerVM.pauseTimeString)
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: FFSpacing.xs) {
                     ControlButton(title: "Resume", icon: "play.fill", role: .primary) {
                         timerVM.resume()
                     }
@@ -272,21 +323,7 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private var actionDeck: some View {
-        PremiumSurface(style: .inset) {
-            GlassEffectContainer {
-                ZStack {
-                    controlsSection
-                }
-                .id(controlsIdentity)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
-                    removal: .opacity
-                ))
-            }
-        }
-        .animation(FFMotion.section, value: controlsIdentity)
-    }
+    // MARK: - Footer
 
     private var footerSection: some View {
         HStack(spacing: FFSpacing.sm) {
@@ -310,12 +347,67 @@ struct MenuBarPopoverView: View {
                 Label("Stats", systemImage: "chart.bar.fill")
                     .font(FFType.meta)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(.white.opacity(0.5))
         }
-        .padding(.horizontal, FFSpacing.xs)
         .padding(.top, FFSpacing.xs)
         .animation(FFMotion.control, value: footerText)
     }
+
+    // MARK: - Stop Confirmation (no PremiumSurface wrapper)
+
+    private var stopConfirmationView: some View {
+        VStack(spacing: FFSpacing.sm) {
+            Text("End this session?")
+                .font(FFType.callout)
+
+            GlassEffectContainer {
+                HStack(spacing: FFSpacing.xs) {
+                    Button {
+                        timerVM.stop()
+                        showStopConfirmation = false
+                    } label: {
+                        Label("Save", systemImage: "square.and.arrow.down")
+                            .font(FFType.meta)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, FFSpacing.sm)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(.white.opacity(0.5))
+
+                    Button {
+                        timerVM.abandonSession()
+                        showStopConfirmation = false
+                    } label: {
+                        Label("Discard", systemImage: "trash")
+                            .font(FFType.meta)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, FFSpacing.sm)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(FFColor.danger)
+
+                    Button {
+                        showStopConfirmation = false
+                    } label: {
+                        Text("Cancel")
+                            .font(FFType.meta)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, FFSpacing.sm)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(.white.opacity(0.5))
+                }
+            }
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    // MARK: - Computed
 
     private var stateLabel: String {
         switch timerVM.state {
@@ -340,64 +432,14 @@ struct MenuBarPopoverView: View {
 
     private var stateKey: String {
         switch timerVM.state {
-        case .idle:
-            "idle"
-        case .focusing:
-            "focusing"
-        case .paused:
-            "paused"
-        case .onBreak(let type):
-            "break-\(type.rawValue)"
+        case .idle: "idle"
+        case .focusing: "focusing"
+        case .paused: "paused"
+        case .onBreak(let type): "break-\(type.rawValue)"
         }
     }
 
     private var controlsIdentity: String {
         "\(stateKey)-\(showStopConfirmation)"
     }
-
-    private var stopConfirmationView: some View {
-        PremiumSurface(style: .inset) {
-            Text("End this session?")
-                .font(FFType.meta.weight(.semibold))
-
-            GlassEffectContainer {
-                HStack(spacing: FFSpacing.xs) {
-                    Button {
-                        timerVM.stop()
-                        showStopConfirmation = false
-                    } label: {
-                        Label("Save", systemImage: "square.and.arrow.down")
-                            .font(FFType.meta.weight(.medium))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, FFSpacing.sm)
-                    }
-                    .buttonStyle(.glass)
-
-                    Button {
-                        timerVM.abandonSession()
-                        showStopConfirmation = false
-                    } label: {
-                        Label("Discard", systemImage: "trash")
-                            .font(FFType.meta.weight(.medium))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, FFSpacing.sm)
-                    }
-                    .buttonStyle(.glass)
-                    .tint(FFColor.danger)
-
-                    Button {
-                        showStopConfirmation = false
-                    } label: {
-                        Text("Cancel")
-                            .font(FFType.meta.weight(.medium))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, FFSpacing.sm)
-                    }
-                    .buttonStyle(.glass)
-                }
-            }
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
 }

@@ -8,81 +8,52 @@ struct SessionCompleteView: View {
     @State private var splits: [TimeSplitView.SplitEntry] = []
 
     var body: some View {
-        VStack(spacing: FFSpacing.lg) {
-            headerSection
-            reflectionSection
-            actionsSection
+        ScrollView {
+            VStack(spacing: FFSpacing.xl) {
+                headerSection
+                moodSection
+                achievementSection
+                splitSection
+                actionsSection
+            }
+            .padding(FFSpacing.lg)
         }
-        .padding(FFSpacing.lg)
-        .frame(width: 432)
+        .frame(width: 400)
     }
 
-    private var headerSection: some View {
-        PremiumSurface(style: .hero, alignment: .center) {
-            ZStack {
-                RoundedRectangle(cornerRadius: FFRadius.hero, style: .continuous)
-                    .fill(FFColor.success.opacity(0.14))
-                    .frame(width: 72, height: 72)
+    // MARK: - Header (no card wrapper — floats on popover glass)
 
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(FFColor.success)
-            }
-            .frame(maxWidth: .infinity)
+    private var headerSection: some View {
+        VStack(spacing: FFSpacing.sm) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(FFColor.success)
 
             Text("Focus Complete")
                 .font(FFType.titleLarge)
-                .frame(maxWidth: .infinity)
 
             Text("\(completedMinutes) minutes \u{00B7} \(timerVM.lastCompletedLabel ?? "Focus")")
                 .font(FFType.meta)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-
-            Text("Capture how the session felt while it is still fresh.")
-                .font(FFType.meta)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, FFSpacing.sm)
     }
 
-    private var reflectionSection: some View {
-        PremiumSurface(style: .card) {
-            PremiumSectionHeader(
-                "Reflection",
-                eyebrow: "Session Review",
-                subtitle: "Rate the quality, jot down the outcome, and optionally split the time."
-            )
+    // MARK: - Mood (glass buttons directly — no card wrapper)
 
-            VStack(alignment: .leading, spacing: FFSpacing.sm) {
-                Text("How was your focus?")
-                    .font(FFType.callout)
+    private var moodSection: some View {
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+            Text("How was your focus?")
+                .font(FFType.callout)
 
+            GlassEffectContainer {
                 HStack(spacing: FFSpacing.sm) {
                     ForEach(FocusMood.allCases, id: \.self) { mood in
                         moodButton(for: mood)
                     }
                 }
             }
-
-            VStack(alignment: .leading, spacing: FFSpacing.sm) {
-                Text("What did you achieve?")
-                    .font(FFType.callout)
-
-                TextField("Finished the API integration, wrote the design doc, cleaned up the tests...", text: $achievement)
-                    .textFieldStyle(.plain)
-                    .font(FFType.body)
-                    .padding(.horizontal, FFSpacing.md)
-                    .padding(.vertical, FFSpacing.sm)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.1))
-                    }
-            }
-
-            splitSection
         }
     }
 
@@ -90,7 +61,7 @@ struct SessionCompleteView: View {
     private func moodButton(for mood: FocusMood) -> some View {
         let label = VStack(spacing: FFSpacing.xs) {
             Image(systemName: mood.icon)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
             Text(mood.rawValue)
                 .font(FFType.meta)
                 .multilineTextAlignment(.center)
@@ -108,10 +79,28 @@ struct SessionCompleteView: View {
         }
     }
 
+    // MARK: - Achievement (glass text field — no card wrapper)
+
+    private var achievementSection: some View {
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+            Text("What did you achieve?")
+                .font(FFType.callout)
+
+            TextField("Finished the API integration, wrote the design doc...", text: $achievement)
+                .textFieldStyle(.plain)
+                .font(FFType.body)
+                .padding(.horizontal, FFSpacing.md)
+                .padding(.vertical, FFSpacing.sm)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
+        }
+    }
+
+    // MARK: - Split (disclosure — no card wrapper)
+
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: FFSpacing.sm) {
             Button {
-                withAnimation {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     showSplits.toggle()
                     if showSplits && splits.isEmpty {
                         let totalMins = Int((timerVM.lastCompletedDuration ?? 0) / 60)
@@ -124,24 +113,13 @@ struct SessionCompleteView: View {
                 }
             } label: {
                 HStack(spacing: FFSpacing.sm) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
-                            .fill(FFColor.focus.opacity(0.12))
+                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(FFColor.focus)
 
-                        Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(FFColor.focus)
-                    }
-                    .frame(width: 34, height: 34)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Allocate time across projects")
-                            .font(FFType.callout)
-                            .foregroundStyle(.primary)
-                        Text(showSplits ? "Adjust the split before saving." : "Turn this on if the session covered more than one outcome.")
-                            .font(FFType.meta)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("Split time across projects")
+                        .font(FFType.callout)
+                        .foregroundStyle(.primary)
 
                     Spacer()
 
@@ -149,15 +127,9 @@ struct SessionCompleteView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, FFSpacing.md)
-                .padding(.vertical, FFSpacing.sm)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.1))
-                }
+                .padding(.vertical, FFSpacing.xs)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
 
             if showSplits {
                 TimeSplitView(
@@ -169,66 +141,52 @@ struct SessionCompleteView: View {
         }
     }
 
-    private var actionsSection: some View {
-        PremiumSurface(style: .card) {
-            PremiumSectionHeader(
-                "Next Step",
-                eyebrow: "Continue",
-                subtitle: "Choose whether to recover, keep the momentum, or close the loop."
-            )
+    // MARK: - Actions (glass buttons directly — no card wrapper)
 
-            GlassEffectContainer {
-                VStack(spacing: FFSpacing.sm) {
-                    takeBreakButton
-                    HStack(spacing: FFSpacing.sm) {
-                        continueFocusingButton
-                        endSessionButton
+    private var actionsSection: some View {
+        GlassEffectContainer {
+            VStack(spacing: FFSpacing.sm) {
+                Button {
+                    timerVM.saveReflection(mood: selectedMood, achievement: normalizedAchievement, splits: showSplits ? splits : nil)
+                    timerVM.continueAfterCompletion(action: .takeBreak)
+                } label: {
+                    Label("Take a Break", systemImage: "cup.and.saucer.fill")
+                        .font(FFType.callout)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, FFSpacing.sm)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(FFColor.success)
+
+                HStack(spacing: FFSpacing.sm) {
+                    Button {
+                        timerVM.saveReflection(mood: selectedMood, achievement: normalizedAchievement, splits: showSplits ? splits : nil)
+                        timerVM.continueAfterCompletion(action: .continueFocusing)
+                    } label: {
+                        Label("Continue", systemImage: "arrow.clockwise")
+                            .font(FFType.callout)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, FFSpacing.sm)
                     }
+                    .buttonStyle(.glass)
+
+                    Button {
+                        timerVM.saveReflection(mood: selectedMood, achievement: normalizedAchievement, splits: showSplits ? splits : nil)
+                        timerVM.continueAfterCompletion(action: .endSession)
+                    } label: {
+                        Label("End Session", systemImage: "stop.fill")
+                            .font(FFType.callout)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, FFSpacing.sm)
+                    }
+                    .buttonStyle(.glass)
+                    .tint(FFColor.danger)
                 }
             }
         }
     }
 
-    private var takeBreakButton: some View {
-        Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: normalizedAchievement, splits: showSplits ? splits : nil)
-            timerVM.continueAfterCompletion(action: .takeBreak)
-        } label: {
-            Label("Take a Break", systemImage: "cup.and.saucer.fill")
-                .font(FFType.callout)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, FFSpacing.sm)
-        }
-        .buttonStyle(.glassProminent)
-        .tint(FFColor.success)
-    }
-
-    private var continueFocusingButton: some View {
-        Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: normalizedAchievement, splits: showSplits ? splits : nil)
-            timerVM.continueAfterCompletion(action: .continueFocusing)
-        } label: {
-            Label("Continue", systemImage: "arrow.clockwise")
-                .font(FFType.meta)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, FFSpacing.sm)
-        }
-        .buttonStyle(.glass)
-    }
-
-    private var endSessionButton: some View {
-        Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: normalizedAchievement, splits: showSplits ? splits : nil)
-            timerVM.continueAfterCompletion(action: .endSession)
-        } label: {
-            Label("End Session", systemImage: "stop.fill")
-                .font(FFType.meta)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, FFSpacing.sm)
-        }
-        .buttonStyle(.glass)
-        .tint(FFColor.danger)
-    }
+    // MARK: - Helpers
 
     private var completedMinutes: Int {
         Int((timerVM.lastCompletedDuration ?? 0) / 60)

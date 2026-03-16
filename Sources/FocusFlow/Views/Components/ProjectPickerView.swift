@@ -48,40 +48,28 @@ struct ProjectPickerView: View {
                 }
             } label: {
                 HStack(spacing: FFSpacing.sm) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
-                            .fill(projectTint.opacity(selectionPulse ? 0.24 : 0.16))
-                            .animation(FFMotion.control, value: selectionPulse)
+                    Image(systemName: selectedProject?.icon ?? "tag")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(projectTint)
+                        .contentTransition(.interpolate)
 
-                        Image(systemName: selectedProject?.icon ?? "tag")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(projectTint)
-                            .contentTransition(.interpolate)
-                    }
-                    .frame(width: 34, height: 34)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(selectedProject?.name ?? "No Project")
-                            .font(FFType.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                            .contentTransition(.interpolate)
-                    }
+                    Text(selectedProject?.name ?? "No Project")
+                        .font(FFType.body)
+                        .foregroundStyle(.primary)
+                        .contentTransition(.interpolate)
 
                     Spacer()
 
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, FFSpacing.md)
-                .padding(.vertical, FFSpacing.sm)
-                .scaleEffect(selectionPulse ? 1.01 : 1)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
-                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous))
-                .ffCardChrome(cornerRadius: FFRadius.card)
-                .animation(FFMotion.control, value: selectionPulse)
+                .padding(.vertical, FFSpacing.sm + 2)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
             .onChange(of: selectedProject?.name) { _, _ in
                 withAnimation(FFMotion.control) {
                     selectionPulse = true
