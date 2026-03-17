@@ -12,6 +12,14 @@ let package = Package(
             resources: [
                 .process("Assets.xcassets")
             ]
+        ),
+        .executableTarget(
+            name: "FocusFlow2",
+            path: "Sources/FocusFlow2",
+            exclude: ["Info.plist", "AppIcon.icns"],
+            resources: [
+                .process("Assets.xcassets")
+            ]
         )
     ]
 )
