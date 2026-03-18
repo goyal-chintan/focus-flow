@@ -3,15 +3,56 @@ import SwiftData
 
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
-    private static let executableName = ProcessInfo.processInfo.processName
-    private static let appDisplayName: String = executableName == "FocusFlow2" ? "FocusFlow 2" : "FocusFlow"
-    private static let dataStoreFolderName: String = executableName == "FocusFlow2" ? "FocusFlow2" : "FocusFlow"
+    @State private var designTokens: FFDesignTokens
+    @State private var designLabStore: FFDesignLabStore
+
+    private static let appDisplayName: String = "FocusFlow 2"
+    private static let dataStoreFolderName: String = "FocusFlow2"
+
+    private static func bootstrapIsolatedStoreIfNeeded(appSupportDir: URL, targetStoreURL: URL) {
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: targetStoreURL.path) else { return }
+
+        let sourceStoreURL = appSupportDir
+            .appendingPathComponent("FocusFlow", isDirectory: true)
+            .appendingPathComponent("FocusFlow.store")
+
+        guard fileManager.fileExists(atPath: sourceStoreURL.path) else { return }
+
+        do {
+            try fileManager.copyItem(at: sourceStoreURL, to: targetStoreURL)
+
+            for suffix in ["-wal", "-shm"] {
+                let sourceSidecarURL = URL(fileURLWithPath: sourceStoreURL.path + suffix)
+                let targetSidecarURL = URL(fileURLWithPath: targetStoreURL.path + suffix)
+                if fileManager.fileExists(atPath: sourceSidecarURL.path) {
+                    try? fileManager.copyItem(at: sourceSidecarURL, to: targetSidecarURL)
+                }
+            }
+        } catch {
+            assertionFailure("Failed to snapshot FocusFlow store for FocusFlow2: \(error)")
+        }
+    }
+
+    init() {
+        let store = FFDesignLabStore()
+        _designLabStore = State(initialValue: store)
+        if let activeId = store.activeVariantId,
+           let variant = store.variants.first(where: { $0.id == activeId }) {
+            _designTokens = State(initialValue: variant.tokens.copy())
+        } else {
+            _designTokens = State(initialValue: FFDesignTokens())
+        }
+    }
+
     private let container: ModelContainer = {
         let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self])
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupportDir
             .appendingPathComponent(Self.dataStoreFolderName, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("\(Self.dataStoreFolderName).store")
+        Self.bootstrapIsolatedStoreIfNeeded(appSupportDir: appSupportDir, targetStoreURL: storeURL)
         let config = ModelConfiguration(schema: schema, url: storeURL)
         return try! ModelContainer(for: schema, configurations: config)
     }()
@@ -20,6 +61,7 @@ struct FocusFlowApp: App {
         MenuBarExtra {
             MenuBarPopoverView()
                 .environment(timerVM)
+                .environment(designTokens)
                 .environment(\.modelContext, container.mainContext)
                 .background(CompletionWindowLauncher(timerVM: timerVM))
         } label: {
@@ -66,6 +108,7 @@ struct FocusFlowApp: App {
         Window(Self.appDisplayName, id: "stats") {
             CompanionWindowView()
                 .environment(timerVM)
+                .environment(designTokens)
                 .environment(\.modelContext, container.mainContext)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
@@ -74,14 +117,34 @@ struct FocusFlowApp: App {
         .defaultSize(width: 720, height: 520)
         .modelContainer(container)
 
+        WindowGroup("Variant Lab", id: "variant-lab") {
+            VariantLabView()
+                .environment(designTokens)
+                .environment(\.modelContext, container.mainContext)
+                .onAppear {
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                }
+        }
+        .defaultSize(width: 1280, height: 860)
+        .modelContainer(container)
+
         Window("Session Complete", id: "session-complete") {
             SessionCompleteWindowView()
                 .environment(timerVM)
+                .environment(designTokens)
                 .environment(\.modelContext, container.mainContext)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
+
+        Window("Design Lab (Advanced)", id: "design-lab") {
+            DesignLabWindow()
+                .environment(designTokens)
+                .environment(designLabStore)
+        }
+        .defaultSize(width: 900, height: 640)
+        .keyboardShortcut("d", modifiers: [.command, .shift])
     }
 
     private var menuBarIconName: String {
