@@ -64,9 +64,10 @@ enum FFColor {
 
 enum FFMotion {
     // Original spring tokens (used by existing views)
-    static let popover = Animation.spring(response: 0.36, dampingFraction: 0.82)
-    static let section = Animation.spring(response: 0.34, dampingFraction: 0.84)
-    static let control = Animation.spring(response: 0.26, dampingFraction: 0.82)
+    // Winner: Motion A - spring-forward but stable (less snap/jitter on press/release).
+    static let popover = Animation.spring(response: 0.34, dampingFraction: 0.84)
+    static let section = Animation.spring(response: 0.30, dampingFraction: 0.82)
+    static let control = Animation.spring(response: 0.22, dampingFraction: 0.80)
     static let breathing = Animation.easeInOut(duration: 1.8).repeatForever(autoreverses: true)
 
     // Aliases for new code

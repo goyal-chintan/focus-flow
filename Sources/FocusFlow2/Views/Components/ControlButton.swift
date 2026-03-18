@@ -30,9 +30,10 @@ struct ControlButton: View {
 
     private var buttonTint: Color {
         switch role {
-        case .primary: FFColor.focus
-        case .secondary: .white.opacity(0.5)
-        case .destructive: FFColor.danger
+        // Winner: Buttons A (clear, premium hierarchy with softer glass tint).
+        case .primary: .white.opacity(0.64)
+        case .secondary: .white.opacity(0.46)
+        case .destructive: FFColor.danger.opacity(0.84)
         }
     }
 

@@ -1,27 +1,27 @@
 import SwiftUI
 
 struct TimerRingView: View {
+    @Environment(FFDesignTokens.self) private var tokens
     let progress: Double
     let timeString: String
     let label: String
     let state: TimerState
     @State private var isBreathing = false
 
-    private let ringSize: CGFloat = 184
-    private let strokeWidth: CGFloat = 5
-
     var body: some View {
-        ZStack {
+        let r = tokens.ring
+
+        return ZStack {
             // Subtle background disc
             Circle()
-                .fill(Color.primary.opacity(0.03))
-                .frame(width: ringSize, height: ringSize)
+                .fill(Color.primary.opacity(r.backgroundDiscOpacity))
+                .frame(width: r.size, height: r.size)
                 .scaleEffect(state == .focusing && isBreathing ? 1.06 : 1.0)
                 .opacity(state == .focusing && isBreathing ? 0.7 : 1.0)
 
             // Track ring
             Circle()
-                .stroke(Color.primary.opacity(0.06), lineWidth: strokeWidth)
+                .stroke(Color.primary.opacity(r.trackOpacity), lineWidth: r.strokeWidth)
 
             // Progress arc with glow
             Circle()
@@ -35,31 +35,32 @@ struct TimerRingView: View {
                         ],
                         center: .center
                     ),
-                    style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    style: StrokeStyle(lineWidth: r.strokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: ringColor.opacity(0.45), radius: 10, y: 0)
+                .shadow(color: ringColor.opacity(r.glowOpacity), radius: r.glowRadius, y: 0)
                 .animation(.easeInOut(duration: 0.8), value: progress)
-                .animation(FFMotion.content, value: state)
+                .animation(tokens.motion.content, value: state)
 
             // Center text
-            VStack(spacing: FFSpacing.xs) {
+            VStack(spacing: tokens.spacing.xs) {
                 Text(timeString)
-                    .font(FFType.heroTimer)
+                    .font(r.timerFont)
                     .monospacedDigit()
+                    .tracking(r.digitTracking)
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText(countsDown: true))
-                    .animation(FFMotion.control, value: timeString)
+                    .animation(tokens.motion.control, value: timeString)
 
                 Text(label)
-                    .font(FFType.heroLabel)
+                    .font(r.labelFont)
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
-                    .tracking(1.2)
+                    .tracking(r.labelTracking)
                     .contentTransition(.interpolate)
             }
         }
-        .frame(width: ringSize, height: ringSize)
+        .frame(width: r.size, height: r.size)
         .onAppear {
             updateBreathing(for: state)
         }
@@ -70,9 +71,9 @@ struct TimerRingView: View {
 
     private var ringColor: Color {
         switch state {
-        case .focusing: FFColor.focus
-        case .paused: FFColor.warning
-        case .onBreak(let type): type == .longBreak ? FFColor.deepFocus : FFColor.success
+        case .focusing: tokens.color.focus
+        case .paused: tokens.color.warning
+        case .onBreak(let type): type == .longBreak ? tokens.color.deepFocus : tokens.color.success
         case .idle: .secondary.opacity(0.3)
         }
     }
@@ -80,11 +81,11 @@ struct TimerRingView: View {
     private func updateBreathing(for state: TimerState) {
         if state == .focusing {
             isBreathing = false
-            withAnimation(FFMotion.breathing) {
+            withAnimation(tokens.motion.breathing) {
                 isBreathing = true
             }
         } else {
-            withAnimation(FFMotion.control) {
+            withAnimation(tokens.motion.control) {
                 isBreathing = false
             }
         }
