@@ -8,6 +8,7 @@ struct DesignLabWorkbenchView: View {
     @State private var selectedComponent: DesignLabComponent = .material
     @State private var selectedScenario: VariantLabScenario = .idle
     @State private var motionSpeed: VariantLabMotionSpeed = .x1
+    @State private var backdropStyle: FFLabBackdropStyle = .texture
     @State private var isExpanded = true
     @State private var hoverPreview = false
     @State private var pressPreview = false
@@ -32,28 +33,7 @@ struct DesignLabWorkbenchView: View {
             }
             .padding(FFSpacing.lg)
         }
-        .background(backgroundLayer)
-    }
-
-    private var backgroundLayer: some View {
-        LinearGradient(
-            colors: [
-                Color.black.opacity(0.18),
-                Color.white.opacity(0.02),
-                Color.black.opacity(0.14)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
-            RadialGradient(
-                colors: [FFColor.focus.opacity(0.14), .clear],
-                center: .topLeading,
-                startRadius: 40,
-                endRadius: 540
-            )
-            .blendMode(.screen)
-        }
+        .background(FFLabBackdropView(style: backdropStyle))
     }
 
     private func heroSection(decisionStore: DesignLabDecisionStore) -> some View {
@@ -196,6 +176,15 @@ struct DesignLabWorkbenchView: View {
                         Picker("Scenario", selection: $selectedScenario) {
                             ForEach(VariantLabScenario.allCases) { scenario in
                                 Text(scenario.displayName).tag(scenario)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    controlGroup(title: "Backdrop") {
+                        Picker("Backdrop", selection: $backdropStyle) {
+                            ForEach(FFLabBackdropStyle.allCases) { style in
+                                Text(style.rawValue).tag(style)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -1131,6 +1120,24 @@ private struct DesignLabVariantPreviewCard: View {
         }
     }
 
+    private func scenarioMeter(for snapshot: VariantLabScenarioSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: FFSpacing.xxs) {
+            HStack {
+                Text(snapshot.stateLabel)
+                    .font(FFType.meta)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(snapshot.timerText)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: snapshot.progress)
+                .tint(component.tint.opacity(0.75))
+                .scaleEffect(y: 0.85, anchor: .center)
+        }
+    }
+
     private var materialPreview: some View {
         let materialStyle: Material = switch variant {
         case .a: .ultraThinMaterial
@@ -1143,71 +1150,96 @@ private struct DesignLabVariantPreviewCard: View {
         case .b: 24
         case .c: 20
         }
+        let variantBias: CGFloat = switch variant {
+        case .a: 1.0
+        case .b: 0.84
+        case .c: 0.70
+        }
+        let fillOpacity = max(0.02, min(0.30, tokens.color.panelFillOpacity * 2.5 * variantBias))
+        let borderOpacity = max(0.04, min(0.36, tokens.color.panelBorderOpacity * 2.1 * variantBias))
+        let highlightOpacity = max(0.03, min(0.22, tokens.color.panelHighlightOpacity * 2.6 * variantBias))
+        let insetOpacity = max(0.02, min(0.16, tokens.color.insetFillOpacity * 1.4))
 
         return VStack(alignment: .leading, spacing: FFSpacing.sm) {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(materialStyle)
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(materialFillOverlay)
+                        .fill(Color.white.opacity(fillOpacity))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(materialBorder, lineWidth: 1)
+                        .strokeBorder(Color.white.opacity(borderOpacity), lineWidth: 1 + tokens.color.fieldBorderOpacity * 4)
+                }
+                .overlay {
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(highlightOpacity),
+                            .clear,
+                            Color.white.opacity(highlightOpacity * 0.35)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 }
                 .frame(height: 176)
                 .overlay {
                     VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                        scenarioMeter(for: scenario)
+
                         HStack {
-                            Text(scenario.stateLabel)
-                                .font(FFType.meta)
-                                .foregroundStyle(.secondary)
+                            Text("Glass depth")
+                                .font(FFType.callout)
                             Spacer()
                             Text("A/B/C")
                                 .font(FFType.meta)
                                 .foregroundStyle(.secondary)
                         }
 
-                        Spacer()
-
                         VStack(alignment: .leading, spacing: FFSpacing.xxs) {
-                            Text("Glass depth")
-                                .font(FFType.callout)
                             Text("Border, tint, and highlight should feel native.")
                                 .font(FFType.meta)
                                 .foregroundStyle(.secondary)
                         }
 
                         HStack(spacing: FFSpacing.xs) {
-                            chip("Opacity")
-                            chip("Border")
-                            chip("Highlight")
+                            chip("Fill \(valueText(tokens.color.panelFillOpacity))")
+                            chip("Border \(valueText(tokens.color.panelBorderOpacity))")
+                            chip("Glow \(valueText(tokens.color.panelHighlightOpacity))")
                         }
                     }
                     .padding(FFSpacing.md)
                 }
+                .shadow(color: .black.opacity(0.12 + insetOpacity), radius: 14, y: 8)
 
             HStack(spacing: FFSpacing.xs) {
-                pill("Fill \(valueText(tokens.color.panelFillOpacity))")
-                pill("Border \(valueText(tokens.color.panelBorderOpacity))")
-                pill("Glow \(valueText(tokens.color.panelHighlightOpacity))")
+                pill("Inset \(valueText(tokens.color.insetFillOpacity))")
+                pill("Row \(valueText(tokens.color.rowFillOpacity))")
+                pill("Field \(valueText(tokens.color.fieldFillOpacity))")
             }
         }
     }
 
     private var motionPreview: some View {
-        let travel: CGFloat = switch variant {
-        case .a: 24
-        case .b: 16
-        case .c: 8
-        }
+        let response = max(0.6, min(2.0, Double(tokens.motion.controlResponse) * 2.2))
+        let damping = max(0.6, min(1.2, Double(tokens.motion.controlDamping)))
+        let travel: CGFloat = {
+            switch variant {
+            case .a: return 24
+            case .b: return 16
+            case .c: return 8
+            }
+        }() * CGFloat(response * (1.18 - damping * 0.12))
 
         let amplitude = hoverPreview ? travel : travel * 0.45
-        let scaleBase: CGFloat = switch variant {
-        case .a: 1.06
-        case .b: 1.02
-        case .c: 1.0
-        }
+        let scaleBase: CGFloat = {
+            switch variant {
+            case .a: return 1.06
+            case .b: return 1.02
+            case .c: return 1.0
+            }
+        }() * CGFloat(max(0.92, min(1.10, Double(tokens.motion.sectionResponse))))
+        let settle = CGFloat(max(0.85, min(1.08, Double(tokens.motion.sectionDamping) + 0.08)))
 
         return VStack(alignment: .leading, spacing: FFSpacing.sm) {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -1219,6 +1251,8 @@ private struct DesignLabVariantPreviewCard: View {
                 .frame(height: 176)
                 .overlay {
                     VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                        scenarioMeter(for: scenario)
+
                         HStack {
                             Text("Hover / press / transition")
                                 .font(FFType.meta)
@@ -1239,6 +1273,7 @@ private struct DesignLabVariantPreviewCard: View {
                                 .frame(width: 72, height: 52)
                                 .offset(x: variant == .a ? amplitude : 0, y: variant == .c ? 6 : 0)
                                 .scaleEffect(pressPreview ? 0.96 : scaleBase)
+                                .opacity(Double(settle))
                                 .animation(springAnimation, value: amplitude)
 
                             VStack(alignment: .leading, spacing: FFSpacing.xxs) {
@@ -1253,6 +1288,7 @@ private struct DesignLabVariantPreviewCard: View {
                     }
                     .padding(FFSpacing.md)
                 }
+                .shadow(color: .black.opacity(0.12), radius: 14, y: 8)
 
             HStack(spacing: FFSpacing.xs) {
                 pill("Response \(valueText(tokens.motion.controlResponse))")
@@ -1312,7 +1348,14 @@ private struct DesignLabVariantPreviewCard: View {
     }
 
     private var buttonsPreview: some View {
-        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+        let controlHeight = max(40, tokens.sizing.controlMin)
+        let controlRadius = tokens.radius.control
+        let typographyScale = max(0.9, min(1.2, Double(tokens.typography.calloutSize / 13)))
+        let spacingScale = max(0.8, min(1.4, Double(tokens.spacing.md / 16)))
+
+        return VStack(alignment: .leading, spacing: FFSpacing.sm) {
+            scenarioMeter(for: scenario)
+
             HStack {
                 Text(scenario.footer)
                     .font(FFType.meta)
@@ -1325,29 +1368,31 @@ private struct DesignLabVariantPreviewCard: View {
 
             VStack(alignment: .leading, spacing: FFSpacing.sm) {
                 if variant == .a {
-                    ControlButton(title: scenario.primaryAction, icon: "play.fill", role: .primary) {}
+                    previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
                     HStack(spacing: FFSpacing.sm) {
-                        ControlButton(title: scenario.secondaryAction, icon: "stop.fill", role: .secondary) {}
-                        ControlButton(title: "Later", icon: "clock.fill", role: .secondary) {}
+                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                        previewControlButton(title: "Later", icon: "clock.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
                     }
                 } else if variant == .b {
                     HStack(spacing: FFSpacing.sm) {
-                        ControlButton(title: scenario.primaryAction, icon: "play.fill", role: .primary) {}
-                        ControlButton(title: scenario.secondaryAction, icon: "stop.fill", role: .secondary) {}
+                        previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
                     }
-                    HStack(spacing: FFSpacing.sm) {
-                        ControlButton(title: "Break", icon: "cup.and.saucer.fill", role: .secondary) {}
-                        ControlButton(title: "Log", icon: "square.and.pencil", role: .secondary) {}
+                    HStack(spacing: FFSpacing.sm * spacingScale) {
+                        previewControlButton(title: "Break", icon: "cup.and.saucer.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                        previewControlButton(title: "Log", icon: "square.and.pencil", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
                     }
                 } else {
                     HStack(spacing: FFSpacing.sm) {
-                        ControlButton(title: scenario.primaryAction, icon: "play.fill", role: .primary) {}
-                        ControlButton(title: scenario.secondaryAction, icon: "stop.fill", role: .secondary) {}
+                        previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
                     }
                 }
             }
             .scaleEffect(pressPreview ? 0.98 : 1.0)
             .offset(y: hoverPreview ? -2 : 0)
+            .animation(springAnimation, value: pressPreview)
+            .animation(springAnimation, value: hoverPreview)
 
             HStack(spacing: FFSpacing.xs) {
                 pill("Min \(valueText(tokens.sizing.controlMin))")
@@ -1355,6 +1400,32 @@ private struct DesignLabVariantPreviewCard: View {
                 pill("Callout \(valueText(tokens.typography.calloutSize))")
             }
         }
+    }
+
+    private func previewControlButton(
+        title: String,
+        icon: String,
+        primary: Bool,
+        controlHeight: CGFloat,
+        controlRadius: CGFloat,
+        typographySize: CGFloat
+    ) -> some View {
+        Button {}
+        label: {
+            HStack(spacing: FFSpacing.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(title)
+                    .font(.system(size: typographySize, weight: primary ? .semibold : .medium, design: .rounded))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: controlHeight)
+            .padding(.horizontal, FFSpacing.md)
+        }
+        .buttonStyle(.glassProminent)
+        .buttonBorderShape(.roundedRectangle(radius: controlRadius))
+        .tint(primary ? component.tint.opacity(0.75) : .white.opacity(0.44))
     }
 
     private var selectedState: VariantLabScenario {

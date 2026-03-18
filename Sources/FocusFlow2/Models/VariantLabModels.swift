@@ -38,6 +38,7 @@ enum VariantLabComponent: String, CaseIterable, Identifiable, Codable {
     case buttons = "Buttons"
     case effects = "Glass Effects"
     case motion = "Motion"
+    case layout = "Layout"
 
     var id: String { rawValue }
 
@@ -55,6 +56,9 @@ enum VariantLabComponent: String, CaseIterable, Identifiable, Codable {
         case (.motion, .variantA): return "Pulse Motion"
         case (.motion, .variantB): return "Rail Motion"
         case (.motion, .variantC): return "Drift Motion"
+        case (.layout, .variantA): return "Floating Slider"
+        case (.layout, .variantB): return "Balanced Rail"
+        case (.layout, .variantC): return "Compact Stack"
         }
     }
 
@@ -72,6 +76,89 @@ enum VariantLabComponent: String, CaseIterable, Identifiable, Codable {
         case (.motion, .variantA): return "Spring-forward pulse on interaction"
         case (.motion, .variantB): return "Structured horizontal motion response"
         case (.motion, .variantC): return "Subtle drift and breathing transitions"
+        case (.layout, .variantA): return "Loose popover stack with a floating slider rail"
+        case (.layout, .variantB): return "Balanced split layout with centered controls"
+        case (.layout, .variantC): return "Compact layout with tighter spacing and denser controls"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .timerRing: return "timer"
+        case .buttons: return "rectangle.portrait.on.rectangle.portrait.angled"
+        case .effects: return "drop.degreesign.fill"
+        case .motion: return "waveform.path"
+        case .layout: return "rectangle.3.group"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .timerRing:
+            return "Countdown ring, label rhythm, and glow"
+        case .buttons:
+            return "CTA hierarchy, hit area, and quiet premium chrome"
+        case .effects:
+            return "Glass opacity, border, highlight, and depth"
+        case .motion:
+            return "Spring response, damping, and interaction feel"
+        case .layout:
+            return "Menu slider placement, spacing, and control shapes"
+        }
+    }
+
+    var checklistItems: [String] {
+        switch self {
+        case .timerRing:
+            return [
+                "Is the number dominant without feeling oversized?",
+                "Is the ring thickness visually balanced?",
+                "Does the label sit calmly under the timer?",
+                "Does the glow support the state without shouting?"
+            ]
+        case .buttons:
+            return [
+                "Is the primary action obvious in the first second?",
+                "Do button heights feel easy to tap and elegant?",
+                "Do the secondary actions stay quiet?",
+                "Does the control rail align with the rest of the UI?"
+            ]
+        case .effects:
+            return [
+                "Does the surface read as glass, not tinted plastic?",
+                "Is the border thin enough to feel native?",
+                "Do highlights stay subtle instead of shiny?",
+                "Can the content still read clearly at a glance?"
+            ]
+        case .motion:
+            return [
+                "Does press feel immediate, not sticky?",
+                "Does release settle smoothly without overshoot?",
+                "Do hover and transition share the same rhythm?",
+                "Does the animation still feel calm at 1x speed?"
+            ]
+        case .layout:
+            return [
+                "Does each layout keep the slider easy to find?",
+                "Does the shape stay aligned at compact and wide sizes?",
+                "Is the control spacing comfortable without feeling loose?",
+                "Does the popover still read as premium glass?"
+            ]
+        }
+    }
+
+    var reviewPrompt: String {
+        switch self {
+        case .timerRing:
+            return "Keep the countdown correct, then refine typography and ring balance."
+        case .buttons:
+            return "Make the primary action feel premium without adding noise."
+        case .effects:
+            return "Tune the glass first. Then check whether the content still feels airy."
+        case .motion:
+            return "Pick the feel of the interaction before you touch the numbers again."
+        case .layout:
+            return "Compare the same menu slider in different shapes before you freeze the layout."
         }
     }
 }

@@ -27,6 +27,12 @@ final class DesignLabModelTests: XCTestCase {
         }
     }
 
+    func testSharedBackdropStylesIncludeTextureForTransparencyReview() {
+        XCTAssertEqual(FFLabBackdropStyle.allCases.count, 4)
+        XCTAssertTrue(FFLabBackdropStyle.allCases.contains(.texture))
+        XCTAssertEqual(FFLabBackdropStyle.texture.rawValue, "Texture")
+    }
+
     func testDecisionRecordMarkdownIsDeterministic() {
         let record = VariantLabDecisionRecord(
             timestamp: Date(timeIntervalSince1970: 1_700_000_000),

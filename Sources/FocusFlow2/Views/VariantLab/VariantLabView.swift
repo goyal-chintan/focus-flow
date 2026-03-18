@@ -7,20 +7,9 @@ private struct VariantLabDecisionKey: Hashable {
     let variant: VariantLabMenuVariant
 }
 
-private enum StudioMaterialProfile: String, CaseIterable, Identifiable {
-    case crystal = "Crystal"
-    case balanced = "Balanced"
-    case frosted = "Frosted"
-
-    var id: String { rawValue }
-}
-
-private enum VariantBackdropStyle: String, CaseIterable, Identifiable {
-    case studio = "Studio"
-    case aurora = "Aurora"
-    case contrast = "Contrast"
-
-    var id: String { rawValue }
+private struct VariantLabLayoutDecisionKey: Hashable {
+    let component: VariantLabComponent
+    let variant: VariantLabMenuVariant
 }
 
 struct VariantLabView: View {
@@ -29,14 +18,14 @@ struct VariantLabView: View {
     @State private var scenario: VariantLabScenario = .idle
     @State private var component: VariantLabComponent = .timerRing
     @State private var motionSpeed: VariantLabMotionSpeed = .x1
-    @State private var backdropStyle: VariantBackdropStyle = .aurora
+    @State private var backdropStyle: FFLabBackdropStyle = .texture
     @State private var showAllComponentSliders = true
     @State private var isExpanded = true
     @State private var hoverPreview = false
     @State private var pressPreview = false
     @State private var pressAmount: CGFloat = 0
     @State private var transitionStep = 0
-    @State private var materialProfile: StudioMaterialProfile = .balanced
+    @State private var materialProfile: VariantLabMaterialProfile = .balanced
     @State private var materialOpacity: Double = 0.90
     @State private var highlightStrength: Double = 0.18
     @State private var motionIntensity: Double = 1.0
@@ -51,6 +40,25 @@ struct VariantLabView: View {
     @State private var motionHoverTuning: Double = 1.0
     @State private var motionPressTuning: Double = 1.0
     @State private var motionDriftTuning: Double = 1.0
+    @State private var layoutWinnerByComponent: [VariantLabComponent: VariantLabMenuVariant] = Dictionary(
+        uniqueKeysWithValues: VariantLabComponent.allCases.map { ($0, .variantA) }
+    )
+    @State private var layoutRatingsByDecision: [VariantLabLayoutDecisionKey: [VariantLabCriterion: Int]] = Dictionary(
+        uniqueKeysWithValues: VariantLabComponent.allCases.flatMap { component in
+            VariantLabMenuVariant.allCases.map { variant in
+                (VariantLabLayoutDecisionKey(component: component, variant: variant), defaultVariantLabRatings())
+            }
+        }
+    )
+    @State private var layoutActionsByDecision: [VariantLabLayoutDecisionKey: VariantLabDecisionAction] = [:]
+    @State private var layoutNotesByDecision: [VariantLabLayoutDecisionKey: String] = Dictionary(
+        uniqueKeysWithValues: VariantLabComponent.allCases.flatMap { component in
+            VariantLabMenuVariant.allCases.map { variant in
+                (VariantLabLayoutDecisionKey(component: component, variant: variant), "")
+            }
+        }
+    )
+    @State private var layoutStatusMessage: String = ""
 
     @State private var roundName = "1"
     @State private var winnerByComponent: [VariantLabComponent: VariantLabMenuVariant] = Dictionary(
@@ -84,6 +92,7 @@ struct VariantLabView: View {
                 guidanceSection
                 controlsSection
                 componentTuningSection
+                layoutBenchSection
                 comparisonLegendSection
                 variantsSection
                 finalizeSection
@@ -92,7 +101,7 @@ struct VariantLabView: View {
             .padding(FFSpacing.lg)
         }
         .frame(minWidth: 1220, minHeight: 840)
-        .background(labBackdrop)
+        .background(FFLabBackdropView(style: backdropStyle))
     }
 
     private var headerSection: some View {
@@ -238,7 +247,7 @@ struct VariantLabView: View {
                             .font(FFType.meta)
                             .foregroundStyle(.secondary)
                         Picker("Backdrop", selection: $backdropStyle) {
-                            ForEach(VariantBackdropStyle.allCases) { style in
+                            ForEach(FFLabBackdropStyle.allCases) { style in
                                 Text(style.rawValue).tag(style)
                             }
                         }
@@ -310,7 +319,7 @@ struct VariantLabView: View {
                     sliderGroup(title: "Glass Effects") {
                         sliderRow("Material Profile") {
                             Picker("Material Profile", selection: $materialProfile) {
-                                ForEach(StudioMaterialProfile.allCases) { profile in
+                                ForEach(VariantLabMaterialProfile.allCases) { profile in
                                     Text(profile.rawValue).tag(profile)
                                 }
                             }
@@ -346,6 +355,129 @@ struct VariantLabView: View {
                         sliderRow("Hover Lift", value: $motionHoverTuning, range: 0.5...1.6, step: 0.05)
                         sliderRow("Press Depth", value: $motionPressTuning, range: 0.5...1.6, step: 0.05)
                         sliderRow("Drift Amount", value: $motionDriftTuning, range: 0.5...1.8, step: 0.05)
+                    }
+                }
+            }
+        }
+    }
+
+    private var layoutBenchSection: some View {
+        let snapshot = scenario.snapshot(transitionStep: transitionStep)
+
+        return ContentPanel(cornerRadius: FFRadius.card, padding: FFSpacing.md) {
+            VStack(alignment: .leading, spacing: FFSpacing.md) {
+                VStack(alignment: .leading, spacing: FFSpacing.xxs) {
+                    Text("Layout Bench")
+                        .font(FFType.title)
+                    Text("After tuning the current component, compare how the menu slider and popover controls are shaped and placed before you freeze the layout.")
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: FFSpacing.xxs) {
+                    Text("How to review this stage")
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
+                    Text("1. Keep the same backdrop so transparency stays comparable.")
+                        .font(FFType.meta)
+                    Text("2. Compare the control cluster shape, not just color or shine.")
+                        .font(FFType.meta)
+                    Text("3. Use Keep / Reject / Needs tweak on each layout card and leave notes.")
+                        .font(FFType.meta)
+                    Text("4. Lock one layout winner for the current component before moving on.")
+                        .font(FFType.meta)
+                }
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 360), spacing: FFSpacing.md),
+                        GridItem(.flexible(minimum: 360), spacing: FFSpacing.md),
+                        GridItem(.flexible(minimum: 360), spacing: FFSpacing.md)
+                    ],
+                    alignment: .leading,
+                    spacing: FFSpacing.md
+                ) {
+                    ForEach(VariantLabMenuVariant.allCases) { variant in
+                        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                            VariantLabMenuSliderLayoutBenchCard(
+                                variant: variant,
+                                snapshot: snapshot,
+                                isExpanded: isExpanded,
+                                hoverPreview: hoverPreview,
+                                pressAmount: pressAmount,
+                                transitionStep: transitionStep,
+                                animation: springAnimation,
+                                materialProfile: materialProfile,
+                                materialOpacity: materialOpacity,
+                                highlightStrength: highlightStrength,
+                                motionIntensity: motionIntensity,
+                                buttonProminence: buttonProminence,
+                                buttonSecondaryOpacity: buttonSecondaryOpacity,
+                                buttonSpacingTuning: buttonSpacingTuning,
+                                glassEdgeStrength: glassEdgeStrength,
+                                glassBloomStrength: glassBloomStrength,
+                                motionHoverTuning: motionHoverTuning,
+                                motionPressTuning: motionPressTuning,
+                                motionDriftTuning: motionDriftTuning,
+                                backdropStyle: backdropStyle
+                            )
+
+                            layoutDecisionPanel(for: variant)
+                        }
+                    }
+                }
+
+                layoutFinalizationSection
+
+                if !layoutStatusMessage.isEmpty {
+                    HStack(spacing: FFSpacing.xs) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text(layoutStatusMessage)
+                            .font(FFType.meta)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var layoutFinalizationSection: some View {
+        ContentPanel(cornerRadius: FFRadius.card) {
+            VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                Text("Layout Finalization")
+                    .font(FFType.title)
+
+                Text("Choose one winner for the current component's menu-slider layout, then freeze the loser cards so the next screen can build on one consistent shape.")
+                    .font(FFType.meta)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: FFSpacing.md) {
+                    Picker("Layout Winner", selection: layoutWinnerBinding(for: component)) {
+                        ForEach(VariantLabMenuVariant.allCases) { variant in
+                            Text(variant.rawValue).tag(variant)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .tint(Color.white.opacity(0.72))
+                    .frame(width: 220)
+
+                    Button("Finalize Layout Winner") {
+                        finalizeLayoutRound(for: component)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(FFColor.focus)
+                }
+
+                HStack(spacing: FFSpacing.xs) {
+                    ForEach(VariantLabComponent.allCases) { reviewComponent in
+                        let selected = layoutWinnerByComponent[reviewComponent] ?? .variantA
+                        Text("\(reviewComponent.rawValue): \(selected.rawValue)")
+                            .font(FFType.meta)
+                            .padding(.horizontal, FFSpacing.sm)
+                            .padding(.vertical, FFSpacing.xxs)
+                            .background(Color.white.opacity(0.08), in: Capsule())
                     }
                 }
             }
@@ -592,56 +724,6 @@ struct VariantLabView: View {
         }
     }
 
-    private var labBackdrop: some View {
-        ZStack {
-            switch backdropStyle {
-            case .studio:
-                LinearGradient(
-                    colors: [Color.black.opacity(0.30), Color.white.opacity(0.02), Color.black.opacity(0.24)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-            case .aurora:
-                LinearGradient(
-                    colors: [Color.black.opacity(0.30), Color.indigo.opacity(0.10), Color.teal.opacity(0.08), Color.black.opacity(0.26)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-            case .contrast:
-                LinearGradient(
-                    colors: [Color.black.opacity(0.40), Color.black.opacity(0.26)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-
-            if backdropStyle != .studio {
-                RadialGradient(
-                    colors: [Color.white.opacity(0.18), .clear],
-                    center: .topLeading,
-                    startRadius: 30,
-                    endRadius: 360
-                )
-                .blendMode(.screen)
-            }
-
-            if backdropStyle == .contrast {
-                VStack(spacing: 16) {
-                    ForEach(0..<18, id: \.self) { index in
-                        Rectangle()
-                            .fill(index.isMultiple(of: 2) ? Color.white.opacity(0.05) : Color.white.opacity(0.015))
-                            .frame(height: 14)
-                    }
-                }
-                .blur(radius: 0.4)
-                .padding(.horizontal, 24)
-            }
-        }
-        .ignoresSafeArea()
-    }
-
     private var springAnimation: Animation {
         .spring(response: 0.42 / motionSpeed.multiplier, dampingFraction: 0.82)
     }
@@ -769,6 +851,148 @@ struct VariantLabView: View {
         case .needsTweak: return FFColor.warning
         }
     }
+
+    private func layoutDecisionPanel(for variant: VariantLabMenuVariant) -> some View {
+        let decisionKey = VariantLabLayoutDecisionKey(component: component, variant: variant)
+
+        return ContentPanel(cornerRadius: FFRadius.card, padding: FFSpacing.sm) {
+            VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                VStack(alignment: .leading, spacing: FFSpacing.xxs) {
+                    Text(variant.layoutTitle)
+                        .font(FFType.title)
+                    Text(variant.layoutSubtitle)
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(VariantLabCriterion.allCases) { criterion in
+                    HStack(spacing: FFSpacing.sm) {
+                        Text(criterion.rawValue)
+                            .font(FFType.meta)
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(layoutRatingValue(for: variant, criterion: criterion))/5")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36)
+
+                        Slider(
+                            value: layoutRatingBinding(for: variant, criterion: criterion),
+                            in: 1...5,
+                            step: 1
+                        )
+                        .frame(width: 140)
+                        .tint(Color.white.opacity(0.76))
+                    }
+                }
+
+                HStack(spacing: FFSpacing.xs) {
+                    ForEach(VariantLabDecisionAction.allCases) { action in
+                        let selected = layoutActionsByDecision[decisionKey] == action
+                        Button(action.rawValue) {
+                            layoutActionsByDecision[decisionKey] = action
+                        }
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.capsule)
+                        .tint(selected ? actionColor(action) : .white.opacity(0.45))
+                    }
+                }
+
+                TextField("Why this layout?", text: layoutNoteBinding(for: decisionKey), axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(3, reservesSpace: true)
+
+                Button("Save Layout Decision") {
+                    saveLayoutDecision(for: variant, in: component)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(FFColor.success)
+                .disabled(layoutActionsByDecision[decisionKey] == nil)
+            }
+        }
+    }
+
+    private func layoutRatingValue(for variant: VariantLabMenuVariant, criterion: VariantLabCriterion) -> Int {
+        let key = VariantLabLayoutDecisionKey(component: component, variant: variant)
+        return layoutRatingsByDecision[key]?[criterion] ?? 3
+    }
+
+    private func layoutRatingBinding(for variant: VariantLabMenuVariant, criterion: VariantLabCriterion) -> Binding<Double> {
+        Binding(
+            get: { Double(layoutRatingValue(for: variant, criterion: criterion)) },
+            set: { newValue in
+                let key = VariantLabLayoutDecisionKey(component: component, variant: variant)
+                var variantRatings = layoutRatingsByDecision[key] ?? defaultVariantLabRatings()
+                variantRatings[criterion] = Int(newValue.rounded())
+                layoutRatingsByDecision[key] = variantRatings
+            }
+        )
+    }
+
+    private func layoutNoteBinding(for decisionKey: VariantLabLayoutDecisionKey) -> Binding<String> {
+        Binding(
+            get: { layoutNotesByDecision[decisionKey] ?? "" },
+            set: { layoutNotesByDecision[decisionKey] = $0 }
+        )
+    }
+
+    private func layoutWinnerBinding(for component: VariantLabComponent) -> Binding<VariantLabMenuVariant> {
+        Binding(
+            get: { layoutWinnerByComponent[component] ?? .variantA },
+            set: { layoutWinnerByComponent[component] = $0 }
+        )
+    }
+
+    private func finalizeLayoutRound(for component: VariantLabComponent) {
+        let winner = layoutWinnerByComponent[component] ?? .variantA
+
+        for variant in VariantLabMenuVariant.allCases {
+            let key = VariantLabLayoutDecisionKey(component: component, variant: variant)
+            layoutActionsByDecision[key] = (variant == winner) ? .keep : .reject
+
+            if variant != winner && (layoutNotesByDecision[key]?.isEmpty ?? true) {
+                layoutNotesByDecision[key] = "Archived after layout winner finalized for \(component.rawValue) in round \(roundName)."
+            }
+            saveLayoutDecision(for: variant, in: component)
+        }
+
+        layoutStatusMessage = "Saved \(component.rawValue) layout winner \(winner.rawValue) for \(scenario.displayName)."
+    }
+
+    private func saveLayoutDecision(for variant: VariantLabMenuVariant, in component: VariantLabComponent) {
+        let decisionKey = VariantLabLayoutDecisionKey(component: component, variant: variant)
+        guard let action = layoutActionsByDecision[decisionKey] else { return }
+
+        let ratings = layoutRatingsByDecision[decisionKey] ?? defaultVariantLabRatings()
+        let notes = (layoutNotesByDecision[decisionKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixedNotes = notes.isEmpty ? "[Layout Bench] \(variant.layoutSubtitle)" : "[Layout Bench] \(notes)"
+
+        let record = VariantLabDecisionRecord(
+            timestamp: Date(),
+            roundName: "Layout \(roundName)",
+            scenario: scenario,
+            component: component,
+            variant: variant,
+            motionSpeed: motionSpeed,
+            action: action,
+            ratings: Dictionary(uniqueKeysWithValues: ratings.map { ($0.key.rawValue, $0.value) }),
+            notes: prefixedNotes,
+            interaction: VariantLabInteractionSnapshot(
+                isExpanded: isExpanded,
+                hoverPreview: hoverPreview,
+                pressPreview: pressPreview,
+                transitionStep: transitionStep
+            )
+        )
+
+        do {
+            latestLogURL = try VariantLabLogStore.shared.appendDecision(record)
+            layoutStatusMessage = "Saved layout \(component.rawValue) \(variant.rawValue) as \(action.rawValue) for \(scenario.displayName)."
+        } catch {
+            layoutStatusMessage = "Failed to save layout decision: \(error.localizedDescription)"
+        }
+    }
 }
 
 private struct VariantPreviewCard: View {
@@ -781,7 +1005,7 @@ private struct VariantPreviewCard: View {
     let pressAmount: CGFloat
     let transitionStep: Int
     let animation: Animation
-    let materialProfile: StudioMaterialProfile
+    let materialProfile: VariantLabMaterialProfile
     let materialOpacity: Double
     let highlightStrength: Double
     let motionIntensity: Double
@@ -796,7 +1020,7 @@ private struct VariantPreviewCard: View {
     let motionHoverTuning: Double
     let motionPressTuning: Double
     let motionDriftTuning: Double
-    let backdropStyle: VariantBackdropStyle
+    let backdropStyle: FFLabBackdropStyle
 
     var body: some View {
         Group {
@@ -809,6 +1033,8 @@ private struct VariantPreviewCard: View {
                 effectsPreview
             case .motion:
                 motionPreview
+            case .layout:
+                layoutPreview
             }
         }
         .padding(FFSpacing.md)
@@ -982,6 +1208,31 @@ private struct VariantPreviewCard: View {
         }
     }
 
+    private var layoutPreview: some View {
+        VariantLabMenuSliderLayoutBenchCard(
+            variant: variant,
+            snapshot: snapshot,
+            isExpanded: isExpanded,
+            hoverPreview: hoverPreview,
+            pressAmount: pressAmount,
+            transitionStep: transitionStep,
+            animation: animation,
+            materialProfile: materialProfile,
+            materialOpacity: materialOpacity,
+            highlightStrength: highlightStrength,
+            motionIntensity: motionIntensity,
+            buttonProminence: buttonProminence,
+            buttonSecondaryOpacity: buttonSecondaryOpacity,
+            buttonSpacingTuning: buttonSpacingTuning,
+            glassEdgeStrength: glassEdgeStrength,
+            glassBloomStrength: glassBloomStrength,
+            motionHoverTuning: motionHoverTuning,
+            motionPressTuning: motionPressTuning,
+            motionDriftTuning: motionDriftTuning,
+            backdropStyle: backdropStyle
+        )
+    }
+
     private var scenarioBadge: some View {
         Text(snapshot.stateLabel)
             .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -1107,6 +1358,15 @@ private struct VariantPreviewCard: View {
                     }
                 }
                 .padding(.horizontal, 20)
+            case .texture:
+                VStack(spacing: 12) {
+                    ForEach(0..<12, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(index.isMultiple(of: 2) ? Color.white.opacity(0.05) : Color.white.opacity(0.015))
+                            .frame(height: 10)
+                    }
+                }
+                .padding(.horizontal, 18)
             }
         }
     }
