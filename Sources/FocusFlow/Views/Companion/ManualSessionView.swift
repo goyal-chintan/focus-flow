@@ -15,153 +15,170 @@ struct ManualSessionView: View {
     @State private var achievement: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Log Focus Session")
-                .font(.title3.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.large) {
+                LiquidSectionHeader("Log Focus Session", subtitle: "Record work completed outside the active timer")
 
-            projectSection
-            durationSection
-            whenSection
-            moodSection
-            achievementSection
-
-            Divider()
-
-            actionButtons
+                projectSection
+                durationSection
+                whenSection
+                moodSection
+                achievementSection
+                actionButtons
+            }
+            .padding(20)
         }
-        .padding(24)
-        .frame(width: 380)
+        .frame(width: 420)
+        .background(.background)
     }
 
-    // MARK: - Sections
-
     private var projectSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("Project")
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("Project")
 
-            Menu {
-                Button("None") { selectedProject = nil }
-                Divider()
-                ForEach(projects) { project in
-                    Button {
-                        selectedProject = project
-                    } label: {
-                        Label(project.name, systemImage: project.icon ?? "folder.fill")
+                Menu {
+                    Button("None") { selectedProject = nil }
+                    Divider()
+                    ForEach(projects) { project in
+                        Button {
+                            selectedProject = project
+                        } label: {
+                            Label(project.name, systemImage: project.icon ?? "folder.fill")
+                        }
                     }
+                } label: {
+                    HStack {
+                        Text(selectedProject?.name ?? "No Project")
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
                 }
-            } label: {
-                HStack {
-                    Text(selectedProject?.name ?? "No Project")
-                        .font(.subheadline)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(12)
         }
     }
 
     private var durationSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("Duration")
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("Duration")
 
-            durationPresets
-
-            HStack {
-                Text("Custom:")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                TextField("min", value: $duration, format: .number)
-                    .textFieldStyle(.plain)
-                    .font(.subheadline)
-                    .frame(width: 50)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
-                    .onChange(of: duration) {
-                        startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
+                GlassEffectContainer {
+                    HStack(spacing: 8) {
+                        ForEach([15, 25, 45, 60], id: \.self) { mins in
+                            DurationPresetButton(mins: mins, isSelected: duration == mins) {
+                                duration = mins
+                                startTime = Date().addingTimeInterval(TimeInterval(-mins * 60))
+                            }
+                        }
                     }
-                Text("minutes")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
+                }
 
-    private var durationPresets: some View {
-        HStack(spacing: 12) {
-            ForEach([15, 25, 45, 60], id: \.self) { mins in
-                DurationPresetButton(mins: mins, isSelected: duration == mins) {
-                    duration = mins
-                    startTime = Date().addingTimeInterval(TimeInterval(-mins * 60))
+                HStack(spacing: 8) {
+                    Text("Custom")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+
+                    TextField("min", value: $duration, format: .number)
+                        .textFieldStyle(.plain)
+                        .font(.subheadline)
+                        .frame(width: 58)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.input))
+                        .onChange(of: duration) {
+                            startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
+                        }
+
+                    Text("minutes")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
             }
+            .padding(12)
         }
     }
 
     private var whenSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("When")
-            DatePicker("Started at", selection: $startTime, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden()
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("When")
+                DatePicker(
+                    "Started at",
+                    selection: $startTime,
+                    in: ...Date(),
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .datePickerStyle(.compact)
+            }
+            .padding(12)
         }
     }
 
     private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("Focus Quality")
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("Focus Quality")
 
-            HStack(spacing: 6) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    MoodButton(mood: mood, isSelected: selectedMood == mood) {
-                        selectedMood = selectedMood == mood ? nil : mood
+                GlassEffectContainer {
+                    HStack(spacing: 6) {
+                        ForEach(FocusMood.allCases, id: \.self) { mood in
+                            MoodButton(mood: mood, isSelected: selectedMood == mood) {
+                                selectedMood = selectedMood == mood ? nil : mood
+                            }
+                        }
                     }
                 }
             }
+            .padding(12)
         }
     }
 
     private var achievementSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("What did you achieve?")
-            TextField("e.g. Finished the API integration", text: $achievement)
-                .textFieldStyle(.plain)
-                .padding(8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("What did you achieve?")
+
+                TextField("e.g. Finished the API integration", text: $achievement)
+                    .textFieldStyle(.plain)
+                    .padding(8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            }
+            .padding(12)
         }
     }
 
     private var actionButtons: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
-                Text("Cancel")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-            }
-            .buttonStyle(.glass)
+        GlassEffectContainer {
+            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+                LiquidActionButton(
+                    title: "Cancel",
+                    icon: "xmark",
+                    role: .secondary
+                ) {
+                    dismiss()
+                }
 
-            Button {
-                save()
-                dismiss()
-            } label: {
-                Text("Log Session")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                LiquidActionButton(
+                    title: "Log Session",
+                    icon: "checkmark",
+                    role: .primary
+                ) {
+                    save()
+                    dismiss()
+                }
+                .disabled(duration < 5)
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-            .disabled(duration < 5)
         }
     }
-
-    // MARK: - Helpers
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
@@ -186,31 +203,24 @@ struct ManualSessionView: View {
     }
 }
 
-// MARK: - Sub-components
-
 private struct DurationPresetButton: View {
     let mins: Int
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
+        let label = Text("\(mins)m")
+            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+
         if isSelected {
-            Button(action: action) {
-                Text("\(mins)m")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+            Button(action: action) { label }
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
         } else {
-            Button(action: action) {
-                Text("\(mins)m")
-                    .font(.system(size: 13, weight: .regular))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.glass)
+            Button(action: action) { label }
+                .buttonStyle(.glass)
         }
     }
 }
