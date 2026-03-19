@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_NAME="FocusFlow"
+APP_NAME="FocusFlow 2 Dev"
+BUILD_TARGET="FocusFlow2"
+EXECUTABLE_NAME="FocusFlow2"
 BUILD_DIR=".build/debug"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 CONTENTS="$APP_BUNDLE/Contents"
@@ -10,26 +12,22 @@ RESOURCES="$CONTENTS/Resources"
 BUILD_SHA="$(git rev-parse --short HEAD)"
 BUILD_TIMESTAMP_UTC="$(date -u +"%Y%m%dT%H%M%SZ")"
 
-# Build first
-swift build
+swift build --target "$BUILD_TARGET"
 
-# Create .app bundle structure
 rm -rf "$APP_BUNDLE"
 mkdir -p "$MACOS" "$RESOURCES"
 
-# Copy binary
-cp "$BUILD_DIR/$APP_NAME" "$MACOS/$APP_NAME"
+cp "$BUILD_DIR/$EXECUTABLE_NAME" "$MACOS/$EXECUTABLE_NAME"
 
-# Create Info.plist
-cat > "$CONTENTS/Info.plist" << 'PLIST'
+cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>FocusFlow</string>
+    <string>FocusFlow 2 Dev</string>
     <key>CFBundleIdentifier</key>
-    <string>com.focusflow.app</string>
+    <string>com.focusflow.app.dev</string>
     <key>CFBundleVersion</key>
     <string>${BUILD_SHA}</string>
     <key>CFBundleShortVersionString</key>
@@ -41,7 +39,7 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <key>CFBundlePackageName</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>FocusFlow</string>
+    <string>${EXECUTABLE_NAME}</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSUIElement</key>
@@ -54,22 +52,18 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-# Copy resources if they exist
-if [ -d "$BUILD_DIR/FocusFlow_FocusFlow.bundle" ]; then
-    cp -R "$BUILD_DIR/FocusFlow_FocusFlow.bundle" "$RESOURCES/"
+if [ -d "$BUILD_DIR/FocusFlow2_FocusFlow2.bundle" ]; then
+    cp -R "$BUILD_DIR/FocusFlow2_FocusFlow2.bundle" "$RESOURCES/"
 fi
 
-# Include app icon
-if [ -f "Sources/FocusFlow/AppIcon.icns" ]; then
-    cp "Sources/FocusFlow/AppIcon.icns" "$RESOURCES/"
+if [ -f "Sources/FocusFlow2/AppIcon.icns" ]; then
+    cp "Sources/FocusFlow2/AppIcon.icns" "$RESOURCES/"
 fi
 
 echo "Built $APP_BUNDLE"
 
-# Kill existing instance
-pkill -x FocusFlow 2>/dev/null || true
+pkill -x FocusFlow2 2>/dev/null || true
 sleep 0.5
 
-# Launch
 open "$APP_BUNDLE"
-echo "Launched FocusFlow"
+echo "Launched FocusFlow2"

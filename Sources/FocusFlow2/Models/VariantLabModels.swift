@@ -33,6 +33,71 @@ enum VariantLabMenuVariant: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum VariantLabLayoutVariant: String, CaseIterable, Identifiable, Codable {
+    case variantA = "A"
+    case variantB = "B"
+    case variantC = "C"
+    case variantD = "D"
+    case variantE = "E"
+
+    var id: String { rawValue }
+
+    var layoutTitle: String {
+        switch self {
+        case .variantA: return "A · Floating Glass Rail"
+        case .variantB: return "B · Balanced Split Rail"
+        case .variantC: return "C · Compact Control Stack"
+        case .variantD: return "D · Wide Menu Shelf"
+        case .variantE: return "E · Minimal Hover Rail"
+        }
+    }
+
+    var layoutSubtitle: String {
+        switch self {
+        case .variantA: return "Tall floating popover with generous spacing and a strong top-to-bottom read."
+        case .variantB: return "Two-column rail that separates the summary from the menu slider and controls."
+        case .variantC: return "Tighter compact composition with low chrome and denser control placement."
+        case .variantD: return "Broader shelf that stretches the controls into a clearer horizontal stage."
+        case .variantE: return "Minimal rail that reduces chrome and keeps the controls tightly centered."
+        }
+    }
+
+    var layoutChecklistItems: [String] {
+        switch self {
+        case .variantA:
+            return [
+                "Does the floating stack keep the menu slider easy to scan?",
+                "Does the wider breathing room make transparency easier to judge?",
+                "Do the controls still feel premium, not detached?"
+            ]
+        case .variantB:
+            return [
+                "Does the split rail make the hierarchy clearer?",
+                "Do the controls stay aligned when the layout gets wider?",
+                "Does the rail still feel like liquid glass rather than a hard panel?"
+            ]
+        case .variantC:
+            return [
+                "Does the compact stack stay readable at a smaller size?",
+                "Do the controls compress without feeling cramped?",
+                "Does the minimal shape still read as premium glass?"
+            ]
+        case .variantD:
+            return [
+                "Does the wider shelf make the menu slider feel easier to reach?",
+                "Does the extra span still keep the layout stable?",
+                "Does the broader shape preserve the glass character?"
+            ]
+        case .variantE:
+            return [
+                "Does the minimal rail stay readable with less chrome?",
+                "Are the controls still easy to scan without extra decoration?",
+                "Does the stripped-back shape still feel premium?"
+            ]
+        }
+    }
+}
+
 enum VariantLabComponent: String, CaseIterable, Identifiable, Codable {
     case timerRing = "Timer Ring"
     case buttons = "Buttons"
@@ -160,6 +225,14 @@ enum VariantLabComponent: String, CaseIterable, Identifiable, Codable {
         case .layout:
             return "Compare the same menu slider in different shapes before you freeze the layout."
         }
+    }
+
+    func layoutPreviewTitle(for variant: VariantLabLayoutVariant) -> String {
+        variant.layoutTitle
+    }
+
+    func layoutPreviewSubtitle(for variant: VariantLabLayoutVariant) -> String {
+        variant.layoutSubtitle
     }
 }
 
@@ -304,16 +377,6 @@ enum VariantLabMotionSpeed: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-enum VariantLabCriterion: String, CaseIterable, Identifiable, Codable {
-    case premiumFeel = "Premium Feel"
-    case clarity = "Clarity"
-    case calmness = "Calmness"
-    case readability = "Readability"
-    case delight = "Delight"
-
-    var id: String { rawValue }
-}
-
 enum VariantLabDecisionAction: String, CaseIterable, Identifiable, Codable {
     case keep = "Keep"
     case reject = "Reject"
@@ -334,36 +397,26 @@ struct VariantLabDecisionRecord: Codable {
     let roundName: String
     let scenario: VariantLabScenario
     let component: VariantLabComponent
-    let variant: VariantLabMenuVariant
+    let variant: String
     let motionSpeed: VariantLabMotionSpeed
     let action: VariantLabDecisionAction
-    let ratings: [String: Int]
     let notes: String
     let interaction: VariantLabInteractionSnapshot
 
     var markdownEntry: String {
         let date = ISO8601DateFormatter().string(from: timestamp)
-        let sortedRatings = ratings.keys.sorted().map { key in
-            "- \(key): \(ratings[key] ?? 0)/5"
-        }.joined(separator: "\\n")
-
         let safeNotes = notes.isEmpty ? "(no notes)" : notes
 
         return """
         ## \(date) \u{00B7} Round \(roundName)
         - Scenario: \(scenario.displayName)
         - Component: \(component.rawValue)
-        - Variant: \(variant.rawValue)
+        - Variant: \(variant)
         - Action: \(action.rawValue)
         - Motion: \(motionSpeed.rawValue)
         - Interaction: open=\(interaction.isExpanded), hover=\(interaction.hoverPreview), press=\(interaction.pressPreview), transition=\(interaction.transitionStep)
-        \(sortedRatings)
         - Notes: \(safeNotes)
 
         """
     }
-}
-
-func defaultVariantLabRatings() -> [VariantLabCriterion: Int] {
-    Dictionary(uniqueKeysWithValues: VariantLabCriterion.allCases.map { ($0, 3) })
 }

@@ -2,6 +2,23 @@ import XCTest
 @testable import FocusFlow2
 
 final class DesignLabModelTests: XCTestCase {
+    func testBuildInfoReadsBundleKeysAndFallsBackToBundleVersion() {
+        let keyed = FFBuildInfo(bundleInfo: [
+            "FFBuildSHA": "6b4c7d9",
+            "FFBuildTimestampUTC": "20260319T121500Z"
+        ])
+        XCTAssertEqual(keyed.shortGitSHA, "6b4c7d9")
+        XCTAssertEqual(keyed.timestampUTC, "20260319T121500Z")
+        XCTAssertEqual(keyed.displayString, "6b4c7d9 · 20260319T121500Z")
+
+        let fallback = FFBuildInfo(bundleInfo: [
+            "CFBundleVersion": "86d678a"
+        ])
+        XCTAssertEqual(fallback.shortGitSHA, "86d678a")
+        XCTAssertEqual(fallback.timestampUTC, "unknown")
+        XCTAssertEqual(fallback.displayString, "86d678a · unknown")
+    }
+
     func testScenarioSnapshotsCycleEveryThreeSteps() {
         for scenario in VariantLabScenario.allCases {
             let snapshot0 = scenario.snapshot(transitionStep: 0)
@@ -18,19 +35,23 @@ final class DesignLabModelTests: XCTestCase {
         }
     }
 
-    func testDefaultRatingsCoverAllCriteria() {
-        let ratings = defaultVariantLabRatings()
-
-        XCTAssertEqual(ratings.count, VariantLabCriterion.allCases.count)
-        for criterion in VariantLabCriterion.allCases {
-            XCTAssertEqual(ratings[criterion], 3)
-        }
-    }
-
     func testSharedBackdropStylesIncludeTextureForTransparencyReview() {
         XCTAssertEqual(FFLabBackdropStyle.allCases.count, 4)
         XCTAssertTrue(FFLabBackdropStyle.allCases.contains(.texture))
         XCTAssertEqual(FFLabBackdropStyle.texture.rawValue, "Texture")
+    }
+
+    func testVariantLabSourceDoesNotContainStandaloneLayoutBenchSections() throws {
+        let sourceURL = URL(fileURLWithPath: "/Users/chintan/Personal/repos/FocusFlow/.worktrees/codex/premium-ui-redesign/Sources/FocusFlow2/Views/VariantLab/VariantLabView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains("Layout Bench"))
+        XCTAssertFalse(source.contains("Layout Finalization"))
+    }
+
+    func testLayoutReviewUsesFiveDedicatedVariants() {
+        XCTAssertEqual(VariantLabLayoutVariant.allCases.count, 5)
+        XCTAssertEqual(VariantLabLayoutVariant.allCases.map(\.rawValue), ["A", "B", "C", "D", "E"])
     }
 
     func testDecisionRecordMarkdownIsDeterministic() {
@@ -39,16 +60,9 @@ final class DesignLabModelTests: XCTestCase {
             roundName: "2",
             scenario: .running,
             component: .motion,
-            variant: .variantB,
+            variant: VariantLabMenuVariant.variantB.rawValue,
             motionSpeed: .x15,
             action: .needsTweak,
-            ratings: [
-                VariantLabCriterion.clarity.rawValue: 4,
-                VariantLabCriterion.delight.rawValue: 2,
-                VariantLabCriterion.premiumFeel.rawValue: 5,
-                VariantLabCriterion.readability.rawValue: 4,
-                VariantLabCriterion.calmness.rawValue: 3
-            ],
             notes: "Reduce glow radius and calm the press response.",
             interaction: VariantLabInteractionSnapshot(
                 isExpanded: true,
@@ -70,6 +84,7 @@ final class DesignLabModelTests: XCTestCase {
         XCTAssertTrue(first.contains("Motion: 1.5x"))
         XCTAssertTrue(first.contains("open=true, hover=false, press=true, transition=2"))
         XCTAssertTrue(first.contains("Reduce glow radius"))
+        XCTAssertFalse(first.contains("Ratings"))
     }
 
     func testTokenCopyAndApplyAreIdempotent() {

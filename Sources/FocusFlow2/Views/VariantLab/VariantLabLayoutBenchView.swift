@@ -1,48 +1,7 @@
 import SwiftUI
 
-extension VariantLabMenuVariant {
-    var layoutTitle: String {
-        switch self {
-        case .variantA: return "A · Floating Glass Rail"
-        case .variantB: return "B · Balanced Split Rail"
-        case .variantC: return "C · Compact Control Stack"
-        }
-    }
-
-    var layoutSubtitle: String {
-        switch self {
-        case .variantA: return "Tall floating popover with generous spacing and a strong top-to-bottom read."
-        case .variantB: return "Two-column rail that separates the summary from the menu slider and controls."
-        case .variantC: return "Tighter compact composition with low chrome and denser control placement."
-        }
-    }
-
-    var layoutChecklistItems: [String] {
-        switch self {
-        case .variantA:
-            return [
-                "Does the floating stack keep the menu slider easy to scan?",
-                "Does the wider breathing room make transparency easier to judge?",
-                "Do the controls still feel premium, not detached?"
-            ]
-        case .variantB:
-            return [
-                "Does the split rail make the hierarchy clearer?",
-                "Do the controls stay aligned when the layout gets wider?",
-                "Does the rail still feel like liquid glass rather than a hard panel?"
-            ]
-        case .variantC:
-            return [
-                "Does the compact stack stay readable at a smaller size?",
-                "Do the controls compress without feeling cramped?",
-                "Does the minimal shape still read as premium glass?"
-            ]
-        }
-    }
-}
-
-struct VariantLabMenuSliderLayoutBenchCard: View {
-    let variant: VariantLabMenuVariant
+struct VariantLabLayoutPreviewCard: View {
+    let variant: VariantLabLayoutVariant
     let snapshot: VariantLabScenarioSnapshot
     let isExpanded: Bool
     let hoverPreview: Bool
@@ -117,7 +76,7 @@ struct VariantLabMenuSliderLayoutBenchCard: View {
 
             if variant == .variantA {
                 RadialGradient(
-                    colors: [Color.white.opacity(highlightStrength * 0.42), .clear],
+                    colors: [Color.white.opacity(highlightStrength * 0.45), .clear],
                     center: .topLeading,
                     startRadius: 12,
                     endRadius: 220
@@ -135,6 +94,21 @@ struct VariantLabMenuSliderLayoutBenchCard: View {
             if variant == .variantC {
                 RoundedRectangle(cornerRadius: FFRadius.hero, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.09 * glassEdgeStrength), lineWidth: 1)
+            }
+
+            if variant == .variantD {
+                RoundedRectangle(cornerRadius: FFRadius.card, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                    .padding(.horizontal, 12)
+            }
+
+            if variant == .variantE {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.09), .clear, Color.white.opacity(0.04)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .opacity(0.5)
             }
 
             content
@@ -158,6 +132,10 @@ struct VariantLabMenuSliderLayoutBenchCard: View {
             splitRailLayout
         case .variantC:
             compactLayout
+        case .variantD:
+            shelfLayout
+        case .variantE:
+            minimalLayout
         }
     }
 
@@ -237,6 +215,65 @@ struct VariantLabMenuSliderLayoutBenchCard: View {
             stepperRow
             actionRow
         }
+    }
+
+    private var shelfLayout: some View {
+        VStack(alignment: .leading, spacing: FFSpacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                summaryRow
+                Spacer()
+                scenarioBadge
+            }
+
+            HStack(alignment: .top, spacing: FFSpacing.sm * buttonSpacingTuning) {
+                VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                    projectChipRow
+                    textFooter
+                }
+                .frame(maxWidth: 140, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: FFSpacing.sm * buttonSpacingTuning) {
+                    durationRail
+                    stepperRow
+                    actionRow
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var minimalLayout: some View {
+        VStack(alignment: .leading, spacing: FFSpacing.sm * 0.9 * buttonSpacingTuning) {
+            HStack(alignment: .firstTextBaseline) {
+                summaryRow
+                Spacer()
+                textFooter
+            }
+
+            HStack(spacing: FFSpacing.sm * buttonSpacingTuning) {
+                projectChipRow
+                Spacer(minLength: 0)
+                scenarioBadge
+            }
+
+            VStack(alignment: .leading, spacing: FFSpacing.sm * buttonSpacingTuning) {
+                durationRail
+                stepperRow
+                actionRow
+            }
+        }
+    }
+
+    private var scenarioBadge: some View {
+        Text(snapshot.stateLabel)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .padding(.horizontal, FFSpacing.sm)
+            .padding(.vertical, FFSpacing.xxs)
+            .background(Color.white.opacity(0.12), in: Capsule())
+            .overlay {
+                Capsule()
+                    .strokeBorder(Color.white.opacity(0.10))
+            }
     }
 
     private var summaryRow: some View {
@@ -421,7 +458,149 @@ struct VariantLabMenuSliderLayoutBenchCard: View {
                     .strokeBorder(Color.white.opacity(0.08 * glassEdgeStrength), lineWidth: 1.1)
                     .blur(radius: 0.3)
             }
+
+            if variant == .variantD {
+                LinearGradient(
+                    colors: [Color.white.opacity(0.06), .clear, Color.white.opacity(0.03)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .blendMode(.screen)
+            }
+
+            if variant == .variantE {
+                RoundedRectangle(cornerRadius: FFRadius.hero, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                    .padding(10)
+            }
         }
+    }
+
+    private var canvasHeight: CGFloat {
+        switch variant {
+        case .variantA: return 320
+        case .variantB: return 292
+        case .variantC: return 272
+        case .variantD: return 284
+        case .variantE: return 262
+        }
+    }
+
+    private var contentPadding: EdgeInsets {
+        switch variant {
+        case .variantA: return EdgeInsets(top: 18, leading: 18, bottom: 18, trailing: 18)
+        case .variantB: return EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
+        case .variantC: return EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
+        case .variantD: return EdgeInsets(top: 16, leading: 18, bottom: 16, trailing: 18)
+        case .variantE: return EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
+        }
+    }
+
+    private var ringStyle: StrokeStyle {
+        switch variant {
+        case .variantA: return StrokeStyle(lineWidth: 7.5, lineCap: .round, lineJoin: .round)
+        case .variantB: return StrokeStyle(lineWidth: 5.0, lineCap: .round, lineJoin: .round)
+        case .variantC: return StrokeStyle(lineWidth: 4.0, lineCap: .round, lineJoin: .round)
+        case .variantD: return StrokeStyle(lineWidth: 5.8, lineCap: .round, lineJoin: .round)
+        case .variantE: return StrokeStyle(lineWidth: 3.8, lineCap: .round, lineJoin: .round)
+        }
+    }
+
+    private var ringWeight: Font.Weight {
+        switch variant {
+        case .variantA: return .light
+        case .variantB: return .thin
+        case .variantC: return .ultraLight
+        case .variantD: return .light
+        case .variantE: return .thin
+        }
+    }
+
+    private var ringScale: CGFloat {
+        switch variant {
+        case .variantA: return 1.0
+        case .variantB: return 0.84
+        case .variantC: return 0.72
+        case .variantD: return 0.90
+        case .variantE: return 0.66
+        }
+    }
+
+    private var effectRingScale: CGFloat {
+        switch variant {
+        case .variantA: return 0.95
+        case .variantB: return 0.82
+        case .variantC: return 0.74
+        case .variantD: return 0.88
+        case .variantE: return 0.68
+        }
+    }
+
+    private var motionRingScale: CGFloat {
+        switch variant {
+        case .variantA: return 0.95
+        case .variantB: return 0.85
+        case .variantC: return 0.76
+        case .variantD: return 0.88
+        case .variantE: return 0.70
+        }
+    }
+
+    private var motionHoverScale: CGFloat {
+        switch variant {
+        case .variantA: return 1.06
+        case .variantB: return 1.03
+        case .variantC: return 1.02
+        case .variantD: return 1.04
+        case .variantE: return 1.015
+        }
+    }
+
+    private var motionPressScale: CGFloat {
+        switch variant {
+        case .variantA: return 0.96
+        case .variantB: return 0.97
+        case .variantC: return 0.98
+        case .variantD: return 0.965
+        case .variantE: return 0.985
+        }
+    }
+
+    private var motionClosedYOffset: CGFloat {
+        switch variant {
+        case .variantA: return 6
+        case .variantB: return 4
+        case .variantC: return 3
+        case .variantD: return 5
+        case .variantE: return 2
+        }
+    }
+
+    private var previewTimerState: TimerState {
+        .idle
+    }
+
+    private var primaryActionTint: Color {
+        switch variant {
+        case .variantA: return snapshot.highlight.opacity(0.93)
+        case .variantB: return snapshot.highlight.opacity(0.85)
+        case .variantC: return snapshot.highlight.opacity(0.78)
+        case .variantD: return snapshot.highlight.opacity(0.88)
+        case .variantE: return snapshot.highlight.opacity(0.75)
+        }
+    }
+
+    private func durationTint(for label: String) -> Color {
+        if label == "25m" {
+            return snapshot.highlight.opacity(0.92)
+        }
+        if label == "15m" {
+            return .white.opacity(0.54)
+        }
+        if label == "45m" {
+            return .white.opacity(0.48)
+        }
+        return .white.opacity(0.45)
     }
 
     private var materialFill: AnyShapeStyle {
@@ -438,65 +617,72 @@ struct VariantLabMenuSliderLayoutBenchCard: View {
 
     private var backgroundMaterialOpacity: Double {
         switch variant {
-        case .variantA: return 0.92
-        case .variantB: return 0.96
-        case .variantC: return 0.99
+        case .variantA: return 0.90
+        case .variantB: return 0.94
+        case .variantC: return 0.98
+        case .variantD: return 0.92
+        case .variantE: return 0.96
         }
     }
 
     private var gradientColors: [Color] {
         switch variant {
         case .variantA:
-            return [Color.white.opacity(highlightStrength * 0.70), Color.white.opacity(0.03), Color.black.opacity(0.05)]
+            return [Color.white.opacity(highlightStrength * 0.75), Color.white.opacity(0.03), Color.black.opacity(0.05)]
         case .variantB:
-            return [Color.white.opacity(highlightStrength * 0.42), Color.white.opacity(0.02), Color.black.opacity(0.05)]
+            return [Color.white.opacity(highlightStrength * 0.45), Color.white.opacity(0.02), Color.black.opacity(0.05)]
         case .variantC:
-            return [Color.white.opacity(highlightStrength * 0.28), Color.white.opacity(0.01), Color.black.opacity(0.04)]
-        }
-    }
-
-    private var canvasHeight: CGFloat {
-        switch variant {
-        case .variantA: return 252
-        case .variantB: return 252
-        case .variantC: return 228
-        }
-    }
-
-    private var contentPadding: EdgeInsets {
-        switch variant {
-        case .variantA:
-            return EdgeInsets(top: 20, leading: 20, bottom: 18, trailing: 20)
-        case .variantB:
-            return EdgeInsets(top: 20, leading: 18, bottom: 18, trailing: 18)
-        case .variantC:
-            return EdgeInsets(top: 18, leading: 16, bottom: 16, trailing: 16)
+            return [Color.white.opacity(highlightStrength * 0.3), Color.white.opacity(0.01), Color.black.opacity(0.04)]
+        case .variantD:
+            return [Color.white.opacity(highlightStrength * 0.5), Color.white.opacity(0.015), Color.black.opacity(0.05)]
+        case .variantE:
+            return [Color.white.opacity(highlightStrength * 0.22), Color.white.opacity(0.01), Color.black.opacity(0.03)]
         }
     }
 
     private var canvasShadow: Color {
         switch variant {
-        case .variantA: return .black.opacity(0.24)
-        case .variantB: return .black.opacity(0.17)
+        case .variantA: return .black.opacity(0.16)
+        case .variantB: return .black.opacity(0.14)
         case .variantC: return .black.opacity(0.12)
+        case .variantD: return .black.opacity(0.13)
+        case .variantE: return .black.opacity(0.11)
         }
     }
 
-    private var primaryActionTint: Color {
-        let prominenceOpacity = min(0.95, max(0.35, 0.44 + (buttonProminence * 0.22)))
-        switch variant {
-        case .variantA: return .white.opacity(min(1.0, prominenceOpacity + 0.10))
-        case .variantB: return .white.opacity(min(1.0, prominenceOpacity + 0.04))
-        case .variantC: return .white.opacity(prominenceOpacity)
-        }
+    private var effectFill: some ShapeStyle {
+        materialFill
     }
 
-    private func durationTint(for label: String) -> Color {
-        switch (variant, label) {
-        case (.variantA, "25m"): return .white.opacity(0.72)
-        case (.variantB, "25m"): return .white.opacity(0.66)
-        case (.variantC, "25m"): return .white.opacity(0.60)
-        default: return .white.opacity(0.42)
-        }
+    private var effectStroke: Color {
+        .white.opacity(0.14 * glassEdgeStrength)
+    }
+
+    private var effectGloss: some ShapeStyle {
+        LinearGradient(
+            colors: [
+                .white.opacity(0.12 * glassBloomStrength),
+                .clear,
+                .white.opacity(0.05 * glassBloomStrength)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var effectShadow: Color {
+        .black.opacity(0.16)
+    }
+
+    private var motionPanelFill: some ShapeStyle {
+        materialFill
+    }
+
+    private var motionPanelStroke: Color {
+        .white.opacity(0.12)
+    }
+
+    private var motionShadow: Color {
+        .black.opacity(0.15)
     }
 }

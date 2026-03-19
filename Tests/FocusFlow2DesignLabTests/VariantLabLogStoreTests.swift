@@ -6,7 +6,7 @@ final class VariantLabLogStoreTests: XCTestCase {
     func testAppendDecisionWritesJsonlAndMarkdownUnderVariantLabRoot() throws {
         try DesignLabTestSupport.withTemporaryHome {
             let store = VariantLabLogStore(rootDirectory: DesignLabTestSupport.variantLabRoot())
-            let record = makeRecord(component: .timerRing, variant: .variantA, action: .keep, round: "1")
+            let record = makeRecord(component: .timerRing, variant: VariantLabMenuVariant.variantA.rawValue, action: .keep, round: "1")
             let markdownURL = try store.appendDecision(record)
             let jsonlURL = DesignLabTestSupport.variantLabRoot().appendingPathComponent("decision-log.jsonl")
 
@@ -30,8 +30,8 @@ final class VariantLabLogStoreTests: XCTestCase {
     func testAppendDecisionAppendsMultipleRecords() throws {
         try DesignLabTestSupport.withTemporaryHome {
             let store = VariantLabLogStore(rootDirectory: DesignLabTestSupport.variantLabRoot())
-            let first = makeRecord(component: .motion, variant: .variantB, action: .reject, round: "1")
-            let second = makeRecord(component: .motion, variant: .variantC, action: .needsTweak, round: "2")
+            let first = makeRecord(component: .motion, variant: VariantLabMenuVariant.variantB.rawValue, action: .reject, round: "1")
+            let second = makeRecord(component: .motion, variant: VariantLabMenuVariant.variantC.rawValue, action: .needsTweak, round: "2")
 
             let markdownURL = try store.appendDecision(first)
             _ = try store.appendDecision(second)
@@ -47,7 +47,7 @@ final class VariantLabLogStoreTests: XCTestCase {
 
     private func makeRecord(
         component: VariantLabComponent,
-        variant: VariantLabMenuVariant,
+        variant: String,
         action: VariantLabDecisionAction,
         round: String
     ) -> VariantLabDecisionRecord {
@@ -59,7 +59,6 @@ final class VariantLabLogStoreTests: XCTestCase {
             variant: variant,
             motionSpeed: .x1,
             action: action,
-            ratings: Dictionary(uniqueKeysWithValues: VariantLabCriterion.allCases.map { ($0.rawValue, 3) }),
             notes: "Decision note",
             interaction: VariantLabInteractionSnapshot(
                 isExpanded: true,

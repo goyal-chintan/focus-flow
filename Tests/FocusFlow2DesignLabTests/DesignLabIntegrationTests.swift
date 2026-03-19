@@ -33,10 +33,9 @@ final class DesignLabIntegrationTests: XCTestCase {
                 roundName: "Integration",
                 scenario: .running,
                 component: .timerRing,
-                variant: .variantA,
+                variant: VariantLabMenuVariant.variantA.rawValue,
                 motionSpeed: .x1,
                 action: .keep,
-                ratings: Dictionary(uniqueKeysWithValues: VariantLabCriterion.allCases.map { ($0.rawValue, 4) }),
                 notes: "Use the tuned winner.",
                 interaction: VariantLabInteractionSnapshot(
                     isExpanded: true,

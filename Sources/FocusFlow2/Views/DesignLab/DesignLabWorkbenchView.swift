@@ -3,6 +3,7 @@ import SwiftUI
 struct DesignLabWorkbenchView: View {
     @Environment(FFDesignTokens.self) private var tokens
     @Environment(FFDesignLabStore.self) private var tokenStore
+    @Environment(\.ffBuildInfo) private var buildInfo
 
     @State private var decisionStore = DesignLabDecisionStore()
     @State private var selectedComponent: DesignLabComponent = .material
@@ -47,6 +48,10 @@ struct DesignLabWorkbenchView: View {
                         .font(FFType.meta)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+
+                    Text("Build \(buildInfo.displayString)")
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
 
                     HStack(spacing: FFSpacing.xs) {
                         statusChip(selectedComponent.icon, title: selectedComponent.rawValue, tint: selectedComponent.tint)
@@ -1161,63 +1166,103 @@ private struct DesignLabVariantPreviewCard: View {
         let insetOpacity = max(0.02, min(0.16, tokens.color.insetFillOpacity * 1.4))
 
         return VStack(alignment: .leading, spacing: FFSpacing.sm) {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(materialStyle)
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.white.opacity(fillOpacity))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(Color.white.opacity(borderOpacity), lineWidth: 1 + tokens.color.fieldBorderOpacity * 4)
-                }
-                .overlay {
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(highlightOpacity),
-                            .clear,
-                            Color.white.opacity(highlightOpacity * 0.35)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
-                .frame(height: 176)
-                .overlay {
-                    VStack(alignment: .leading, spacing: FFSpacing.sm) {
-                        scenarioMeter(for: scenario)
-
-                        HStack {
-                            Text("Glass depth")
-                                .font(FFType.callout)
-                            Spacer()
-                            Text("A/B/C")
-                                .font(FFType.meta)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        VStack(alignment: .leading, spacing: FFSpacing.xxs) {
-                            Text("Border, tint, and highlight should feel native.")
-                                .font(FFType.meta)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        HStack(spacing: FFSpacing.xs) {
-                            chip("Fill \(valueText(tokens.color.panelFillOpacity))")
-                            chip("Border \(valueText(tokens.color.panelBorderOpacity))")
-                            chip("Glow \(valueText(tokens.color.panelHighlightOpacity))")
-                        }
-                    }
-                    .padding(FFSpacing.md)
-                }
-                .shadow(color: .black.opacity(0.12 + insetOpacity), radius: 14, y: 8)
+            materialPreviewSurface(
+                materialStyle: materialStyle,
+                cornerRadius: cornerRadius,
+                fillOpacity: fillOpacity,
+                borderOpacity: borderOpacity,
+                highlightOpacity: highlightOpacity,
+                insetOpacity: insetOpacity
+            )
 
             HStack(spacing: FFSpacing.xs) {
                 pill("Inset \(valueText(tokens.color.insetFillOpacity))")
                 pill("Row \(valueText(tokens.color.rowFillOpacity))")
                 pill("Field \(valueText(tokens.color.fieldFillOpacity))")
             }
+
+            cueRow(DesignLabPreviewMetrics.materialCues(tokens: tokens))
         }
+    }
+
+    @ViewBuilder
+    private func materialPreviewSurface(
+        materialStyle: Material,
+        cornerRadius: CGFloat,
+        fillOpacity: CGFloat,
+        borderOpacity: CGFloat,
+        highlightOpacity: CGFloat,
+        insetOpacity: CGFloat
+    ) -> some View {
+        let fieldRadius = max(10, cornerRadius * 0.42)
+
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(materialStyle)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.white.opacity(fillOpacity))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(borderOpacity), lineWidth: 1 + tokens.color.fieldBorderOpacity * 4)
+            }
+            .overlay {
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(highlightOpacity),
+                        .clear,
+                        Color.white.opacity(highlightOpacity * 0.35)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            .frame(height: 176)
+            .overlay {
+                VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                    scenarioMeter(for: scenario)
+
+                    HStack {
+                        Text("Glass depth")
+                            .font(FFType.callout)
+                        Spacer()
+                        Text("A/B/C")
+                            .font(FFType.meta)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("Border, tint, and highlight should feel native.")
+                        .font(FFType.meta)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: FFSpacing.xs) {
+                        chip("Fill \(valueText(tokens.color.panelFillOpacity))")
+                        chip("Border \(valueText(tokens.color.panelBorderOpacity))")
+                        chip("Glow \(valueText(tokens.color.panelHighlightOpacity))")
+                    }
+
+                    RoundedRectangle(cornerRadius: fieldRadius, style: .continuous)
+                        .fill(Color.white.opacity(max(0.02, tokens.color.fieldFillOpacity * 1.8)))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: fieldRadius, style: .continuous)
+                                .strokeBorder(Color.white.opacity(max(0.05, tokens.color.fieldBorderOpacity)))
+                        }
+                        .frame(height: 38)
+                        .overlay {
+                            HStack {
+                                Text("Field row")
+                                    .font(FFType.meta)
+                                Spacer()
+                                Text("Border \(valueText(tokens.color.fieldBorderOpacity))")
+                                    .font(FFType.meta)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, FFSpacing.sm)
+                        }
+                }
+                .padding(FFSpacing.md)
+            }
+            .shadow(color: .black.opacity(0.12 + insetOpacity), radius: 14, y: 8)
     }
 
     private var motionPreview: some View {
@@ -1295,6 +1340,8 @@ private struct DesignLabVariantPreviewCard: View {
                 pill("Damping \(valueText(tokens.motion.controlDamping))")
                 pill("Tempo \(valueText(tokens.motion.breathingDuration))")
             }
+
+            cueRow(DesignLabPreviewMetrics.motionCues(tokens: tokens))
         }
     }
 
@@ -1344,14 +1391,16 @@ private struct DesignLabVariantPreviewCard: View {
                 pill("Stroke \(valueText(tokens.ring.strokeWidth))")
                 pill("Label \(valueText(tokens.ring.labelFontSize))")
             }
+
+            cueRow(DesignLabPreviewMetrics.ringCues(tokens: tokens))
         }
     }
 
     private var buttonsPreview: some View {
-        let controlHeight = max(40, tokens.sizing.controlMin)
-        let controlRadius = tokens.radius.control
+        let chrome = DesignLabPreviewMetrics.buttonChrome(tokens: tokens, variant: variant)
         let typographyScale = max(0.9, min(1.2, Double(tokens.typography.calloutSize / 13)))
         let spacingScale = max(0.8, min(1.4, Double(tokens.spacing.md / 16)))
+        let iconSize = max(12, min(18, chrome.iconFrame * 0.32))
 
         return VStack(alignment: .leading, spacing: FFSpacing.sm) {
             scenarioMeter(for: scenario)
@@ -1368,26 +1417,32 @@ private struct DesignLabVariantPreviewCard: View {
 
             VStack(alignment: .leading, spacing: FFSpacing.sm) {
                 if variant == .a {
-                    previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
-                    HStack(spacing: FFSpacing.sm) {
-                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
-                        previewControlButton(title: "Later", icon: "clock.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                    previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, chrome: chrome, typographySize: chrome.titleSize * CGFloat(typographyScale), iconSize: iconSize)
+                    HStack(spacing: FFSpacing.sm * spacingScale) {
+                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, chrome: chrome, typographySize: chrome.subtitleSize * CGFloat(typographyScale), iconSize: iconSize)
+                        previewControlButton(title: "Later", icon: "clock.fill", primary: false, chrome: chrome, typographySize: chrome.subtitleSize * CGFloat(typographyScale), iconSize: iconSize)
                     }
                 } else if variant == .b {
-                    HStack(spacing: FFSpacing.sm) {
-                        previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
-                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                    HStack(spacing: FFSpacing.sm * spacingScale) {
+                        previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, chrome: chrome, typographySize: chrome.titleSize * CGFloat(typographyScale), iconSize: iconSize)
+                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, chrome: chrome, typographySize: chrome.subtitleSize * CGFloat(typographyScale), iconSize: iconSize)
                     }
                     HStack(spacing: FFSpacing.sm * spacingScale) {
-                        previewControlButton(title: "Break", icon: "cup.and.saucer.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
-                        previewControlButton(title: "Log", icon: "square.and.pencil", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                        previewControlButton(title: "Break", icon: "cup.and.saucer.fill", primary: false, chrome: chrome, typographySize: chrome.subtitleSize * CGFloat(typographyScale), iconSize: iconSize)
+                        previewControlButton(title: "Log", icon: "square.and.pencil", primary: false, chrome: chrome, typographySize: chrome.subtitleSize * CGFloat(typographyScale), iconSize: iconSize)
                     }
                 } else {
-                    HStack(spacing: FFSpacing.sm) {
-                        previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
-                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, controlHeight: controlHeight, controlRadius: controlRadius, typographySize: tokens.typography.calloutSize * CGFloat(typographyScale))
+                    HStack(spacing: FFSpacing.sm * spacingScale) {
+                        previewControlButton(title: scenario.primaryAction, icon: "play.fill", primary: true, chrome: chrome, typographySize: chrome.titleSize * CGFloat(typographyScale), iconSize: iconSize)
+                        previewControlButton(title: scenario.secondaryAction, icon: "stop.fill", primary: false, chrome: chrome, typographySize: chrome.subtitleSize * CGFloat(typographyScale), iconSize: iconSize)
                     }
                 }
+            }
+            .padding(FFSpacing.sm)
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: chrome.containerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: chrome.containerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10))
             }
             .scaleEffect(pressPreview ? 0.98 : 1.0)
             .offset(y: hoverPreview ? -2 : 0)
@@ -1399,6 +1454,8 @@ private struct DesignLabVariantPreviewCard: View {
                 pill("Radius \(valueText(tokens.radius.control))")
                 pill("Callout \(valueText(tokens.typography.calloutSize))")
             }
+
+            cueRow(chrome.badges)
         }
     }
 
@@ -1406,26 +1463,27 @@ private struct DesignLabVariantPreviewCard: View {
         title: String,
         icon: String,
         primary: Bool,
-        controlHeight: CGFloat,
-        controlRadius: CGFloat,
-        typographySize: CGFloat
+        chrome: DesignLabButtonChrome,
+        typographySize: CGFloat,
+        iconSize: CGFloat
     ) -> some View {
         Button {}
         label: {
             HStack(spacing: FFSpacing.xs) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: iconSize, weight: .semibold))
+                    .frame(width: chrome.iconFrame * 0.44)
                 Text(title)
-                    .font(.system(size: typographySize, weight: primary ? .semibold : .medium, design: .rounded))
+                    .font(.system(size: typographySize, weight: primary ? chrome.titleWeight.weight : chrome.subtitleWeight.weight, design: .rounded))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .frame(minHeight: controlHeight)
+            .frame(minHeight: chrome.controlHeight)
             .padding(.horizontal, FFSpacing.md)
         }
         .buttonStyle(.glassProminent)
-        .buttonBorderShape(.roundedRectangle(radius: controlRadius))
-        .tint(primary ? component.tint.opacity(0.75) : .white.opacity(0.44))
+        .buttonBorderShape(.capsule)
+        .tint(primary ? .white.opacity(chrome.primaryTintOpacity) : .white.opacity(chrome.secondaryTintOpacity))
     }
 
     private var selectedState: VariantLabScenario {
@@ -1495,6 +1553,10 @@ private struct DesignLabVariantPreviewCard: View {
         } else {
             return String(format: "%.1f", Double(value))
         }
+    }
+
+    private func cueRow(_ values: [String]) -> some View {
+        FlowBadgeRow(values: values, accent: component.tint.opacity(0.75))
     }
 }
 
@@ -1598,6 +1660,69 @@ private struct DesignLabSurfacePreviewCard: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(FFColor.panelBorder)
                 }
+        }
+    }
+}
+
+private struct FlowBadgeRow: View {
+    let values: [String]
+    let accent: Color
+
+    var body: some View {
+        FlowBadgeLayout(values: values, accent: accent)
+    }
+}
+
+private struct FlowBadgeLayout: View {
+    let values: [String]
+    let accent: Color
+
+    var body: some View {
+        FlowBadgeStack(values: values, accent: accent)
+    }
+}
+
+private struct FlowBadgeStack: View {
+    let values: [String]
+    let accent: Color
+
+    var body: some View {
+        FlowBadgeContent(values: values, accent: accent)
+    }
+}
+
+private struct FlowBadgeContent: View {
+    let values: [String]
+    let accent: Color
+
+    var body: some View {
+        let rows = values.chunked(into: 3)
+
+        return VStack(alignment: .leading, spacing: FFSpacing.xxs) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: FFSpacing.xs) {
+                    ForEach(Array(row.enumerated()), id: \.offset) { _, value in
+                        Text(value)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, FFSpacing.sm)
+                            .padding(.vertical, FFSpacing.xxs)
+                            .background(accent.opacity(0.10), in: Capsule())
+                            .overlay {
+                                Capsule().strokeBorder(accent.opacity(0.14))
+                            }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [] }
+        return stride(from: 0, to: count, by: size).map { start in
+            Array(self[start..<Swift.min(start + size, count)])
         }
     }
 }

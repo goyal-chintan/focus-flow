@@ -9,11 +9,12 @@ private struct VariantLabDecisionKey: Hashable {
 
 private struct VariantLabLayoutDecisionKey: Hashable {
     let component: VariantLabComponent
-    let variant: VariantLabMenuVariant
+    let variant: VariantLabLayoutVariant
 }
 
 struct VariantLabView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.ffBuildInfo) private var buildInfo
 
     @State private var scenario: VariantLabScenario = .idle
     @State private var component: VariantLabComponent = .timerRing
@@ -40,20 +41,13 @@ struct VariantLabView: View {
     @State private var motionHoverTuning: Double = 1.0
     @State private var motionPressTuning: Double = 1.0
     @State private var motionDriftTuning: Double = 1.0
-    @State private var layoutWinnerByComponent: [VariantLabComponent: VariantLabMenuVariant] = Dictionary(
+    @State private var layoutWinnerByComponent: [VariantLabComponent: VariantLabLayoutVariant] = Dictionary(
         uniqueKeysWithValues: VariantLabComponent.allCases.map { ($0, .variantA) }
-    )
-    @State private var layoutRatingsByDecision: [VariantLabLayoutDecisionKey: [VariantLabCriterion: Int]] = Dictionary(
-        uniqueKeysWithValues: VariantLabComponent.allCases.flatMap { component in
-            VariantLabMenuVariant.allCases.map { variant in
-                (VariantLabLayoutDecisionKey(component: component, variant: variant), defaultVariantLabRatings())
-            }
-        }
     )
     @State private var layoutActionsByDecision: [VariantLabLayoutDecisionKey: VariantLabDecisionAction] = [:]
     @State private var layoutNotesByDecision: [VariantLabLayoutDecisionKey: String] = Dictionary(
         uniqueKeysWithValues: VariantLabComponent.allCases.flatMap { component in
-            VariantLabMenuVariant.allCases.map { variant in
+            VariantLabLayoutVariant.allCases.map { variant in
                 (VariantLabLayoutDecisionKey(component: component, variant: variant), "")
             }
         }
@@ -65,13 +59,6 @@ struct VariantLabView: View {
         uniqueKeysWithValues: VariantLabComponent.allCases.map { ($0, .variantA) }
     )
 
-    @State private var ratingsByDecision: [VariantLabDecisionKey: [VariantLabCriterion: Int]] = Dictionary(
-        uniqueKeysWithValues: VariantLabComponent.allCases.flatMap { component in
-            VariantLabMenuVariant.allCases.map { variant in
-                (VariantLabDecisionKey(component: component, variant: variant), defaultVariantLabRatings())
-            }
-        }
-    )
     @State private var actionsByDecision: [VariantLabDecisionKey: VariantLabDecisionAction] = [:]
     @State private var notesByDecision: [VariantLabDecisionKey: String] = Dictionary(
         uniqueKeysWithValues: VariantLabComponent.allCases.flatMap { component in
@@ -92,7 +79,6 @@ struct VariantLabView: View {
                 guidanceSection
                 controlsSection
                 componentTuningSection
-                layoutBenchSection
                 comparisonLegendSection
                 variantsSection
                 finalizeSection
@@ -136,6 +122,10 @@ struct VariantLabView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Text("Build \(buildInfo.displayString)")
+                .font(FFType.meta)
+                .foregroundStyle(.secondary)
 
             if let latestLogURL {
                 HStack(spacing: FFSpacing.sm) {
@@ -361,129 +351,6 @@ struct VariantLabView: View {
         }
     }
 
-    private var layoutBenchSection: some View {
-        let snapshot = scenario.snapshot(transitionStep: transitionStep)
-
-        return ContentPanel(cornerRadius: FFRadius.card, padding: FFSpacing.md) {
-            VStack(alignment: .leading, spacing: FFSpacing.md) {
-                VStack(alignment: .leading, spacing: FFSpacing.xxs) {
-                    Text("Layout Bench")
-                        .font(FFType.title)
-                    Text("After tuning the current component, compare how the menu slider and popover controls are shaped and placed before you freeze the layout.")
-                        .font(FFType.meta)
-                        .foregroundStyle(.secondary)
-                }
-
-                VStack(alignment: .leading, spacing: FFSpacing.xxs) {
-                    Text("How to review this stage")
-                        .font(FFType.meta)
-                        .foregroundStyle(.secondary)
-                    Text("1. Keep the same backdrop so transparency stays comparable.")
-                        .font(FFType.meta)
-                    Text("2. Compare the control cluster shape, not just color or shine.")
-                        .font(FFType.meta)
-                    Text("3. Use Keep / Reject / Needs tweak on each layout card and leave notes.")
-                        .font(FFType.meta)
-                    Text("4. Lock one layout winner for the current component before moving on.")
-                        .font(FFType.meta)
-                }
-
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(minimum: 360), spacing: FFSpacing.md),
-                        GridItem(.flexible(minimum: 360), spacing: FFSpacing.md),
-                        GridItem(.flexible(minimum: 360), spacing: FFSpacing.md)
-                    ],
-                    alignment: .leading,
-                    spacing: FFSpacing.md
-                ) {
-                    ForEach(VariantLabMenuVariant.allCases) { variant in
-                        VStack(alignment: .leading, spacing: FFSpacing.sm) {
-                            VariantLabMenuSliderLayoutBenchCard(
-                                variant: variant,
-                                snapshot: snapshot,
-                                isExpanded: isExpanded,
-                                hoverPreview: hoverPreview,
-                                pressAmount: pressAmount,
-                                transitionStep: transitionStep,
-                                animation: springAnimation,
-                                materialProfile: materialProfile,
-                                materialOpacity: materialOpacity,
-                                highlightStrength: highlightStrength,
-                                motionIntensity: motionIntensity,
-                                buttonProminence: buttonProminence,
-                                buttonSecondaryOpacity: buttonSecondaryOpacity,
-                                buttonSpacingTuning: buttonSpacingTuning,
-                                glassEdgeStrength: glassEdgeStrength,
-                                glassBloomStrength: glassBloomStrength,
-                                motionHoverTuning: motionHoverTuning,
-                                motionPressTuning: motionPressTuning,
-                                motionDriftTuning: motionDriftTuning,
-                                backdropStyle: backdropStyle
-                            )
-
-                            layoutDecisionPanel(for: variant)
-                        }
-                    }
-                }
-
-                layoutFinalizationSection
-
-                if !layoutStatusMessage.isEmpty {
-                    HStack(spacing: FFSpacing.xs) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text(layoutStatusMessage)
-                            .font(FFType.meta)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    private var layoutFinalizationSection: some View {
-        ContentPanel(cornerRadius: FFRadius.card) {
-            VStack(alignment: .leading, spacing: FFSpacing.sm) {
-                Text("Layout Finalization")
-                    .font(FFType.title)
-
-                Text("Choose one winner for the current component's menu-slider layout, then freeze the loser cards so the next screen can build on one consistent shape.")
-                    .font(FFType.meta)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: FFSpacing.md) {
-                    Picker("Layout Winner", selection: layoutWinnerBinding(for: component)) {
-                        ForEach(VariantLabMenuVariant.allCases) { variant in
-                            Text(variant.rawValue).tag(variant)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .tint(Color.white.opacity(0.72))
-                    .frame(width: 220)
-
-                    Button("Finalize Layout Winner") {
-                        finalizeLayoutRound(for: component)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .buttonBorderShape(.capsule)
-                    .tint(FFColor.focus)
-                }
-
-                HStack(spacing: FFSpacing.xs) {
-                    ForEach(VariantLabComponent.allCases) { reviewComponent in
-                        let selected = layoutWinnerByComponent[reviewComponent] ?? .variantA
-                        Text("\(reviewComponent.rawValue): \(selected.rawValue)")
-                            .font(FFType.meta)
-                            .padding(.horizontal, FFSpacing.sm)
-                            .padding(.vertical, FFSpacing.xxs)
-                            .background(Color.white.opacity(0.08), in: Capsule())
-                    }
-                }
-            }
-        }
-    }
-
     private func sliderGroup<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: FFSpacing.xs) {
             Text(title)
@@ -534,37 +401,70 @@ struct VariantLabView: View {
             alignment: .leading,
             spacing: FFSpacing.md
         ) {
-            ForEach(VariantLabMenuVariant.allCases) { variant in
-                VStack(alignment: .leading, spacing: FFSpacing.sm) {
-                    VariantPreviewCard(
-                        variant: variant,
-                        component: component,
-                        scenario: scenario,
-                        snapshot: snapshot,
-                        isExpanded: isExpanded,
-                        hoverPreview: hoverPreview,
-                        pressAmount: pressAmount,
-                        transitionStep: transitionStep,
-                        animation: springAnimation,
-                        materialProfile: materialProfile,
-                        materialOpacity: materialOpacity,
-                        highlightStrength: highlightStrength,
-                        motionIntensity: motionIntensity,
-                        ringScaleTuning: ringScaleTuning,
-                        ringStrokeTuning: ringStrokeTuning,
-                        ringTextTuning: ringTextTuning,
-                        buttonProminence: buttonProminence,
-                        buttonSecondaryOpacity: buttonSecondaryOpacity,
-                        buttonSpacingTuning: buttonSpacingTuning,
-                        glassEdgeStrength: glassEdgeStrength,
-                        glassBloomStrength: glassBloomStrength,
-                        motionHoverTuning: motionHoverTuning,
-                        motionPressTuning: motionPressTuning,
-                        motionDriftTuning: motionDriftTuning,
-                        backdropStyle: backdropStyle
-                    )
+            switch component {
+            case .layout:
+                ForEach(VariantLabLayoutVariant.allCases) { variant in
+                    VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                        VariantLabLayoutPreviewCard(
+                            variant: variant,
+                            snapshot: snapshot,
+                            isExpanded: isExpanded,
+                            hoverPreview: hoverPreview,
+                            pressAmount: pressAmount,
+                            transitionStep: transitionStep,
+                            animation: springAnimation,
+                            materialProfile: materialProfile,
+                            materialOpacity: materialOpacity,
+                            highlightStrength: highlightStrength,
+                            motionIntensity: motionIntensity,
+                            buttonProminence: buttonProminence,
+                            buttonSecondaryOpacity: buttonSecondaryOpacity,
+                            buttonSpacingTuning: buttonSpacingTuning,
+                            glassEdgeStrength: glassEdgeStrength,
+                            glassBloomStrength: glassBloomStrength,
+                            motionHoverTuning: motionHoverTuning,
+                            motionPressTuning: motionPressTuning,
+                            motionDriftTuning: motionDriftTuning,
+                            backdropStyle: backdropStyle
+                        )
 
-                    decisionPanel(for: variant, component: component)
+                        layoutDecisionPanel(for: variant, component: component)
+                    }
+                }
+
+            default:
+                ForEach(VariantLabMenuVariant.allCases) { variant in
+                    VStack(alignment: .leading, spacing: FFSpacing.sm) {
+                        VariantPreviewCard(
+                            variant: variant,
+                            component: component,
+                            scenario: scenario,
+                            snapshot: snapshot,
+                            isExpanded: isExpanded,
+                            hoverPreview: hoverPreview,
+                            pressAmount: pressAmount,
+                            transitionStep: transitionStep,
+                            animation: springAnimation,
+                            materialProfile: materialProfile,
+                            materialOpacity: materialOpacity,
+                            highlightStrength: highlightStrength,
+                            motionIntensity: motionIntensity,
+                            ringScaleTuning: ringScaleTuning,
+                            ringStrokeTuning: ringStrokeTuning,
+                            ringTextTuning: ringTextTuning,
+                            buttonProminence: buttonProminence,
+                            buttonSecondaryOpacity: buttonSecondaryOpacity,
+                            buttonSpacingTuning: buttonSpacingTuning,
+                            glassEdgeStrength: glassEdgeStrength,
+                            glassBloomStrength: glassBloomStrength,
+                            motionHoverTuning: motionHoverTuning,
+                            motionPressTuning: motionPressTuning,
+                            motionDriftTuning: motionDriftTuning,
+                            backdropStyle: backdropStyle
+                        )
+
+                        decisionPanel(for: variant, component: component)
+                    }
                 }
             }
         }
@@ -575,10 +475,18 @@ struct VariantLabView: View {
             VStack(alignment: .leading, spacing: FFSpacing.xs) {
                 Text("What To Compare For \(component.rawValue)")
                     .font(FFType.title)
-                ForEach(VariantLabMenuVariant.allCases) { variant in
-                    Text("\(variant.rawValue): \(variant.subtitle(for: component))")
-                        .font(FFType.meta)
-                        .foregroundStyle(.secondary)
+                if component == .layout {
+                    ForEach(VariantLabLayoutVariant.allCases) { variant in
+                        Text("\(variant.rawValue): \(variant.layoutSubtitle)")
+                            .font(FFType.meta)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    ForEach(VariantLabMenuVariant.allCases) { variant in
+                        Text("\(variant.rawValue): \(variant.subtitle(for: component))")
+                            .font(FFType.meta)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -595,17 +503,33 @@ struct VariantLabView: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: FFSpacing.md) {
-                    Picker("Winner", selection: winnerBinding(for: component)) {
-                        ForEach(VariantLabMenuVariant.allCases) { variant in
-                            Text(variant.rawValue).tag(variant)
+                    if component == .layout {
+                        Picker("Winner", selection: layoutWinnerBinding(for: component)) {
+                            ForEach(VariantLabLayoutVariant.allCases) { variant in
+                                Text(variant.rawValue).tag(variant)
+                            }
                         }
+                        .pickerStyle(.segmented)
+                        .tint(Color.white.opacity(0.72))
+                        .frame(width: 300)
+
+                    } else {
+                        Picker("Winner", selection: winnerBinding(for: component)) {
+                            ForEach(VariantLabMenuVariant.allCases) { variant in
+                                Text(variant.rawValue).tag(variant)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .tint(Color.white.opacity(0.72))
+                        .frame(width: 220)
                     }
-                    .pickerStyle(.segmented)
-                    .tint(Color.white.opacity(0.72))
-                    .frame(width: 220)
 
                     Button("Finalize \(component.rawValue) Winner") {
-                        finalizeRound(for: component)
+                        if component == .layout {
+                            finalizeLayoutRound(for: component)
+                        } else {
+                            finalizeRound(for: component)
+                        }
                     }
                     .buttonStyle(.glassProminent)
                     .buttonBorderShape(.capsule)
@@ -614,8 +538,10 @@ struct VariantLabView: View {
 
                 HStack(spacing: FFSpacing.xs) {
                     ForEach(VariantLabComponent.allCases) { reviewComponent in
-                        let selected = winnerByComponent[reviewComponent] ?? .variantA
-                        Text("\(reviewComponent.rawValue): \(selected.rawValue)")
+                        let selected = reviewComponent == .layout
+                            ? (layoutWinnerByComponent[reviewComponent]?.rawValue ?? "A")
+                            : (winnerByComponent[reviewComponent]?.rawValue ?? "A")
+                        Text("\(reviewComponent.rawValue): \(selected)")
                             .font(FFType.meta)
                             .padding(.horizontal, FFSpacing.sm)
                             .padding(.vertical, FFSpacing.xxs)
@@ -635,9 +561,9 @@ struct VariantLabView: View {
                     .font(FFType.meta)
                 Text("2. Use Open/Hover/Press/Transition and Backdrop to inspect glass behavior.")
                     .font(FFType.meta)
-                Text("3. Tune sliders for this component (or all components in one list).")
+                Text("3. Tune the active component sliders and watch the live preview change.")
                     .font(FFType.meta)
-                Text("4. Rate A, B, C separately, choose Keep/Reject/Needs tweak, add notes, and save each card.")
+                Text("4. Choose Keep/Reject/Needs tweak, add notes, and save each card.")
                     .font(FFType.meta)
                 Text("5. Finalize winner for only the current component.")
                     .font(FFType.meta)
@@ -674,27 +600,6 @@ struct VariantLabView: View {
                     Text(variant.subtitle(for: component))
                         .font(FFType.meta)
                         .foregroundStyle(.secondary)
-                }
-
-                ForEach(VariantLabCriterion.allCases) { criterion in
-                    HStack(spacing: FFSpacing.sm) {
-                        Text(criterion.rawValue)
-                            .font(FFType.meta)
-                            .lineLimit(1)
-                        Spacer()
-                        Text("\(ratingValue(for: variant, criterion: criterion))/5")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 36)
-
-                        Slider(
-                            value: ratingBinding(for: variant, criterion: criterion),
-                            in: 1...5,
-                            step: 1
-                        )
-                        .frame(width: 140)
-                        .tint(Color.white.opacity(0.76))
-                    }
                 }
 
                 HStack(spacing: FFSpacing.xs) {
@@ -783,8 +688,6 @@ struct VariantLabView: View {
     private func saveDecision(for variant: VariantLabMenuVariant, in component: VariantLabComponent) {
         let decisionKey = VariantLabDecisionKey(component: component, variant: variant)
         guard let action = actionsByDecision[decisionKey] else { return }
-
-        let ratings = ratingsByDecision[decisionKey] ?? defaultVariantLabRatings()
         let notes = (notesByDecision[decisionKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
         let record = VariantLabDecisionRecord(
@@ -792,10 +695,9 @@ struct VariantLabView: View {
             roundName: roundName,
             scenario: scenario,
             component: component,
-            variant: variant,
+            variant: variant.rawValue,
             motionSpeed: motionSpeed,
             action: action,
-            ratings: Dictionary(uniqueKeysWithValues: ratings.map { ($0.key.rawValue, $0.value) }),
             notes: notes,
             interaction: VariantLabInteractionSnapshot(
                 isExpanded: isExpanded,
@@ -811,23 +713,6 @@ struct VariantLabView: View {
         } catch {
             statusMessage = "Failed to save decision: \(error.localizedDescription)"
         }
-    }
-
-    private func ratingValue(for variant: VariantLabMenuVariant, criterion: VariantLabCriterion) -> Int {
-        let key = VariantLabDecisionKey(component: component, variant: variant)
-        return ratingsByDecision[key]?[criterion] ?? 3
-    }
-
-    private func ratingBinding(for variant: VariantLabMenuVariant, criterion: VariantLabCriterion) -> Binding<Double> {
-        Binding(
-            get: { Double(ratingValue(for: variant, criterion: criterion)) },
-            set: { newValue in
-                let key = VariantLabDecisionKey(component: component, variant: variant)
-                var variantRatings = ratingsByDecision[key] ?? defaultVariantLabRatings()
-                variantRatings[criterion] = Int(newValue.rounded())
-                ratingsByDecision[key] = variantRatings
-            }
-        )
     }
 
     private func noteBinding(for decisionKey: VariantLabDecisionKey) -> Binding<String> {
@@ -852,7 +737,7 @@ struct VariantLabView: View {
         }
     }
 
-    private func layoutDecisionPanel(for variant: VariantLabMenuVariant) -> some View {
+    private func layoutDecisionPanel(for variant: VariantLabLayoutVariant, component: VariantLabComponent) -> some View {
         let decisionKey = VariantLabLayoutDecisionKey(component: component, variant: variant)
 
         return ContentPanel(cornerRadius: FFRadius.card, padding: FFSpacing.sm) {
@@ -863,27 +748,6 @@ struct VariantLabView: View {
                     Text(variant.layoutSubtitle)
                         .font(FFType.meta)
                         .foregroundStyle(.secondary)
-                }
-
-                ForEach(VariantLabCriterion.allCases) { criterion in
-                    HStack(spacing: FFSpacing.sm) {
-                        Text(criterion.rawValue)
-                            .font(FFType.meta)
-                            .lineLimit(1)
-                        Spacer()
-                        Text("\(layoutRatingValue(for: variant, criterion: criterion))/5")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 36)
-
-                        Slider(
-                            value: layoutRatingBinding(for: variant, criterion: criterion),
-                            in: 1...5,
-                            step: 1
-                        )
-                        .frame(width: 140)
-                        .tint(Color.white.opacity(0.76))
-                    }
                 }
 
                 HStack(spacing: FFSpacing.xs) {
@@ -913,23 +777,6 @@ struct VariantLabView: View {
         }
     }
 
-    private func layoutRatingValue(for variant: VariantLabMenuVariant, criterion: VariantLabCriterion) -> Int {
-        let key = VariantLabLayoutDecisionKey(component: component, variant: variant)
-        return layoutRatingsByDecision[key]?[criterion] ?? 3
-    }
-
-    private func layoutRatingBinding(for variant: VariantLabMenuVariant, criterion: VariantLabCriterion) -> Binding<Double> {
-        Binding(
-            get: { Double(layoutRatingValue(for: variant, criterion: criterion)) },
-            set: { newValue in
-                let key = VariantLabLayoutDecisionKey(component: component, variant: variant)
-                var variantRatings = layoutRatingsByDecision[key] ?? defaultVariantLabRatings()
-                variantRatings[criterion] = Int(newValue.rounded())
-                layoutRatingsByDecision[key] = variantRatings
-            }
-        )
-    }
-
     private func layoutNoteBinding(for decisionKey: VariantLabLayoutDecisionKey) -> Binding<String> {
         Binding(
             get: { layoutNotesByDecision[decisionKey] ?? "" },
@@ -937,7 +784,7 @@ struct VariantLabView: View {
         )
     }
 
-    private func layoutWinnerBinding(for component: VariantLabComponent) -> Binding<VariantLabMenuVariant> {
+    private func layoutWinnerBinding(for component: VariantLabComponent) -> Binding<VariantLabLayoutVariant> {
         Binding(
             get: { layoutWinnerByComponent[component] ?? .variantA },
             set: { layoutWinnerByComponent[component] = $0 }
@@ -947,7 +794,7 @@ struct VariantLabView: View {
     private func finalizeLayoutRound(for component: VariantLabComponent) {
         let winner = layoutWinnerByComponent[component] ?? .variantA
 
-        for variant in VariantLabMenuVariant.allCases {
+        for variant in VariantLabLayoutVariant.allCases {
             let key = VariantLabLayoutDecisionKey(component: component, variant: variant)
             layoutActionsByDecision[key] = (variant == winner) ? .keep : .reject
 
@@ -960,23 +807,21 @@ struct VariantLabView: View {
         layoutStatusMessage = "Saved \(component.rawValue) layout winner \(winner.rawValue) for \(scenario.displayName)."
     }
 
-    private func saveLayoutDecision(for variant: VariantLabMenuVariant, in component: VariantLabComponent) {
+    private func saveLayoutDecision(for variant: VariantLabLayoutVariant, in component: VariantLabComponent) {
         let decisionKey = VariantLabLayoutDecisionKey(component: component, variant: variant)
         guard let action = layoutActionsByDecision[decisionKey] else { return }
 
-        let ratings = layoutRatingsByDecision[decisionKey] ?? defaultVariantLabRatings()
         let notes = (layoutNotesByDecision[decisionKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let prefixedNotes = notes.isEmpty ? "[Layout Bench] \(variant.layoutSubtitle)" : "[Layout Bench] \(notes)"
+        let prefixedNotes = notes.isEmpty ? "[Layout] \(variant.layoutSubtitle)" : "[Layout] \(notes)"
 
         let record = VariantLabDecisionRecord(
             timestamp: Date(),
             roundName: "Layout \(roundName)",
             scenario: scenario,
             component: component,
-            variant: variant,
+            variant: variant.rawValue,
             motionSpeed: motionSpeed,
             action: action,
-            ratings: Dictionary(uniqueKeysWithValues: ratings.map { ($0.key.rawValue, $0.value) }),
             notes: prefixedNotes,
             interaction: VariantLabInteractionSnapshot(
                 isExpanded: isExpanded,
@@ -1034,7 +879,7 @@ private struct VariantPreviewCard: View {
             case .motion:
                 motionPreview
             case .layout:
-                layoutPreview
+                EmptyView()
             }
         }
         .padding(FFSpacing.md)
@@ -1206,31 +1051,6 @@ private struct VariantPreviewCard: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var layoutPreview: some View {
-        VariantLabMenuSliderLayoutBenchCard(
-            variant: variant,
-            snapshot: snapshot,
-            isExpanded: isExpanded,
-            hoverPreview: hoverPreview,
-            pressAmount: pressAmount,
-            transitionStep: transitionStep,
-            animation: animation,
-            materialProfile: materialProfile,
-            materialOpacity: materialOpacity,
-            highlightStrength: highlightStrength,
-            motionIntensity: motionIntensity,
-            buttonProminence: buttonProminence,
-            buttonSecondaryOpacity: buttonSecondaryOpacity,
-            buttonSpacingTuning: buttonSpacingTuning,
-            glassEdgeStrength: glassEdgeStrength,
-            glassBloomStrength: glassBloomStrength,
-            motionHoverTuning: motionHoverTuning,
-            motionPressTuning: motionPressTuning,
-            motionDriftTuning: motionDriftTuning,
-            backdropStyle: backdropStyle
-        )
     }
 
     private var scenarioBadge: some View {

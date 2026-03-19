@@ -5,6 +5,7 @@ struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     @State private var designTokens: FFDesignTokens
     @State private var designLabStore: FFDesignLabStore
+    @State private var buildInfo = FFBuildInfo()
 
     private static let appDisplayName: String = "FocusFlow 2"
     private static let dataStoreFolderName: String = "FocusFlow2"
@@ -62,6 +63,7 @@ struct FocusFlowApp: App {
             MenuBarPopoverView()
                 .environment(timerVM)
                 .environment(designTokens)
+                .environment(\.ffBuildInfo, buildInfo)
                 .environment(\.modelContext, container.mainContext)
                 .background(CompletionWindowLauncher(timerVM: timerVM))
         } label: {
@@ -109,6 +111,7 @@ struct FocusFlowApp: App {
             CompanionWindowView()
                 .environment(timerVM)
                 .environment(designTokens)
+                .environment(\.ffBuildInfo, buildInfo)
                 .environment(\.modelContext, container.mainContext)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
@@ -120,6 +123,7 @@ struct FocusFlowApp: App {
         WindowGroup("Variant Lab", id: "variant-lab") {
             VariantLabView()
                 .environment(designTokens)
+                .environment(\.ffBuildInfo, buildInfo)
                 .environment(\.modelContext, container.mainContext)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
@@ -132,6 +136,7 @@ struct FocusFlowApp: App {
             SessionCompleteWindowView()
                 .environment(timerVM)
                 .environment(designTokens)
+                .environment(\.ffBuildInfo, buildInfo)
                 .environment(\.modelContext, container.mainContext)
         }
         .windowResizability(.contentSize)
@@ -142,6 +147,7 @@ struct FocusFlowApp: App {
             DesignLabWindow()
                 .environment(designTokens)
                 .environment(designLabStore)
+                .environment(\.ffBuildInfo, buildInfo)
         }
         .defaultSize(width: 900, height: 640)
         .keyboardShortcut("d", modifiers: [.command, .shift])

@@ -30,10 +30,9 @@ final class DesignLabStorageGuardrailTests: XCTestCase {
                 roundName: "Guardrail",
                 scenario: .paused,
                 component: .motion,
-                variant: .variantC,
+                variant: VariantLabMenuVariant.variantC.rawValue,
                 motionSpeed: .x05,
                 action: .reject,
-                ratings: Dictionary(uniqueKeysWithValues: VariantLabCriterion.allCases.map { ($0.rawValue, 2) }),
                 notes: "",
                 interaction: VariantLabInteractionSnapshot(
                     isExpanded: false,

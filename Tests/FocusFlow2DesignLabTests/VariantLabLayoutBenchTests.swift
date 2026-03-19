@@ -2,16 +2,29 @@ import XCTest
 @testable import FocusFlow2
 
 final class VariantLabLayoutBenchTests: XCTestCase {
-    func testLayoutComponentMetadataDescribesMenuSliderBench() throws {
+    func testLayoutVariantMetadataDescribesFiveDistinctLayouts() throws {
+        XCTAssertEqual(VariantLabLayoutVariant.allCases.count, 5)
+
+        let titles = VariantLabLayoutVariant.allCases.map(\.layoutTitle)
+        XCTAssertEqual(titles.count, 5)
+        XCTAssertTrue(titles[0].contains("A"))
+        XCTAssertTrue(titles[4].contains("E"))
+
+        let subtitles = VariantLabLayoutVariant.allCases.map(\.layoutSubtitle)
+        XCTAssertEqual(subtitles.count, 5)
+        XCTAssertTrue(subtitles.allSatisfy { !$0.isEmpty })
+    }
+
+    func testLayoutComponentMetadataDescribesMenuSliderFlow() throws {
         let layout = try XCTUnwrap(VariantLabComponent(rawValue: "Layout"))
 
         XCTAssertEqual(layout.rawValue, "Layout")
         XCTAssertEqual(layout.subtitle, "Menu slider placement, spacing, and control shapes")
         XCTAssertEqual(layout.reviewPrompt, "Compare the same menu slider in different shapes before you freeze the layout.")
         XCTAssertEqual(layout.checklistItems.count, 4)
-        XCTAssertTrue(layout.variantTitle(for: .variantA).contains("Floating"))
-        XCTAssertTrue(layout.variantTitle(for: .variantB).contains("Balanced"))
-        XCTAssertTrue(layout.variantTitle(for: .variantC).contains("Compact"))
+        XCTAssertTrue(layout.layoutPreviewTitle(for: .variantA).contains("Floating"))
+        XCTAssertTrue(layout.layoutPreviewTitle(for: .variantB).contains("Balanced"))
+        XCTAssertTrue(layout.layoutPreviewTitle(for: .variantC).contains("Compact"))
     }
 
     func testLayoutDecisionRecordCanLogLayoutComponent() throws {
@@ -21,10 +34,9 @@ final class VariantLabLayoutBenchTests: XCTestCase {
             roundName: "Layout",
             scenario: .idle,
             component: layout,
-            variant: .variantB,
+            variant: VariantLabLayoutVariant.variantB.rawValue,
             motionSpeed: .x1,
             action: .keep,
-            ratings: Dictionary(uniqueKeysWithValues: VariantLabCriterion.allCases.map { ($0.rawValue, 4) }),
             notes: "Balanced rail reads best for the popover.",
             interaction: VariantLabInteractionSnapshot(
                 isExpanded: true,
