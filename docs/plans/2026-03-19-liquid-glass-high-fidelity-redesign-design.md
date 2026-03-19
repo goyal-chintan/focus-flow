@@ -143,3 +143,30 @@ Mitigation:
 - Keep data logic untouched
 - Verify every major state explicitly after rewrite
 
+
+---
+
+## Final Verification Notes
+
+Automated verification commands run (success):
+
+- `swift build`
+- `bash Scripts/run.sh`
+
+Manual UX validation checklist:
+
+- [ ] Popover: idle
+- [ ] Popover: focusing
+- [ ] Popover: paused
+- [ ] Popover: break
+- [ ] Session complete: focus
+- [ ] Session complete: break
+- [ ] Companion: Today
+- [ ] Companion: Weekly
+- [ ] Companion: Projects
+- [ ] Companion: Blocking
+- [ ] Companion: Settings
+- [ ] Forms/flows: manual session log
+- [ ] Forms/flows: session edit
+- [ ] Forms/flows: project form
+- [ ] Forms/flows: block profile form
