@@ -69,7 +69,7 @@ struct ProjectPickerView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
             .buttonStyle(.plain)
         }

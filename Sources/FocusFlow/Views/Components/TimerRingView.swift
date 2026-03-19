@@ -22,20 +22,12 @@ struct TimerRingView: View {
 
     var body: some View {
         ZStack {
-            // Inner dark disc (recessed look)
+            // Inner disc — uses dark fill with slight transparency for glass compatibility
             Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            LiquidDesignTokens.Surface.containerLow,
-                            LiquidDesignTokens.Surface.background
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: ringSize / 2 - discInset
-                    )
-                )
+                .fill(.black.opacity(0.55))
+                .background(.ultraThinMaterial, in: Circle())
                 .frame(width: ringSize - discInset * 2, height: ringSize - discInset * 2)
+                .clipShape(Circle())
 
             // Track ring (subtle)
             Circle()

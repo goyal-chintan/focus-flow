@@ -389,11 +389,8 @@ final class TimerViewModel {
     }
 
     private func deactivateBlocking() {
+        guard BlockingService.shared.isActive else { return }
         BlockingService.shared.deactivate()
-        // Always clean up hosts file as fallback
-        if BlockingHelper.isBlockingActive() {
-            BlockingHelper.unblockWebsites()
-        }
     }
 
     // MARK: - Timer

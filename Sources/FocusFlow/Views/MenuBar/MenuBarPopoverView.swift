@@ -27,21 +27,23 @@ struct MenuBarPopoverView: View {
     }
 
     private var popoverShell: some View {
-        VStack(spacing: 0) {
-            headerBar
+        GlassEffectContainer {
+            VStack(spacing: 0) {
+                headerBar
 
-            activeContextSection
+                activeContextSection
 
-            timerHeroSection
+                timerHeroSection
 
-            stateSection
+                stateSection
 
-            Spacer(minLength: 4)
+                Spacer(minLength: 4)
 
-            footerSection
+                footerSection
+            }
         }
         .frame(width: 300)
-        .background(LiquidDesignTokens.Surface.background)
+        .background(.regularMaterial)
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: timerVM.state)
     }
 
@@ -312,7 +314,7 @@ private struct IdlePopoverContent: View {
             }
             .buttonStyle(.plain)
         }
-        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
     }
 
     @ViewBuilder
@@ -387,7 +389,7 @@ private struct IdlePopoverContent: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         .opacity(blockingProfileName != nil ? 1 : 0.5)
     }
 
@@ -459,7 +461,7 @@ private struct FocusingPopoverContent: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
-            .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         }
         .buttonStyle(.plain)
     }
@@ -477,7 +479,7 @@ private struct FocusingPopoverContent: View {
             }
         }
         .padding(12)
-        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.card)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.card))
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
@@ -494,7 +496,7 @@ private struct FocusingPopoverContent: View {
             .foregroundStyle(color)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 7)
-            .obsidianGlass(cornerRadius: 8)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
@@ -532,26 +534,25 @@ private struct PausedPopoverContent: View {
             }
             .padding(.top, 8)
 
-            // Resume CTA (amber gradient)
+            // Resume CTA — uses blue gradient (consistent with Start Focus)
             Button(action: onResume) {
                 HStack(spacing: 8) {
                     Image(systemName: "play.fill")
                         .font(.system(size: 12))
-                    Text("RESUME FOCUS")
-                        .font(.system(size: 15, weight: .bold))
-                        .tracking(0.5)
+                    Text("Resume Focus")
+                        .font(LiquidDesignTokens.Typography.controlLabel)
                 }
-                .foregroundStyle(LiquidDesignTokens.Surface.background)
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(
                     RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
-                        .fill(ObsidianGradients.amberCTA())
-                        .shadow(color: LiquidDesignTokens.Spectral.amber.opacity(0.35), radius: 16, y: 4)
+                        .fill(ObsidianGradients.blueCTA())
+                        .shadow(color: LiquidDesignTokens.Spectral.primaryContainer.opacity(0.3), radius: 16, y: 4)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                 )
             }
             .buttonStyle(.plain)
@@ -586,7 +587,7 @@ private struct PausedPopoverContent: View {
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .obsidianGlass(cornerRadius: 8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
 
@@ -596,7 +597,7 @@ private struct PausedPopoverContent: View {
                     .foregroundStyle(LiquidDesignTokens.Spectral.destructive)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .obsidianGlass(cornerRadius: 8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
 
@@ -606,7 +607,7 @@ private struct PausedPopoverContent: View {
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
-                    .obsidianGlass(cornerRadius: 8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
         }
@@ -648,7 +649,7 @@ private struct BreakPopoverContent: View {
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 11)
-                .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
