@@ -292,7 +292,7 @@ private struct IdlePopoverContent: View {
     }
 
     private var presetsRow: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             ForEach(presets, id: \.self) { mins in
                 presetButton(mins)
             }
@@ -306,14 +306,15 @@ private struct IdlePopoverContent: View {
                 Text("CUST")
                     .font(.system(size: 12, weight: showCustomInput ? .semibold : .regular))
                     .italic()
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, minHeight: 36)
                     .foregroundStyle(showCustomInput
                         ? LiquidDesignTokens.Spectral.electricBlue
                         : LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
+        .padding(3)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
     }
 
@@ -321,22 +322,25 @@ private struct IdlePopoverContent: View {
     private func presetButton(_ mins: Int) -> some View {
         let isSelected = selectedMinutes == mins && !showCustomInput
         Button {
-            showCustomInput = false
-            selectedMinutes = mins
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                showCustomInput = false
+                selectedMinutes = mins
+            }
         } label: {
             Text("\(mins)")
-                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
+                .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                .frame(maxWidth: .infinity, minHeight: 36)
                 .foregroundStyle(isSelected
                     ? LiquidDesignTokens.Surface.onSurface
                     : LiquidDesignTokens.Surface.onSurfaceMuted)
-                .background(
-                    isSelected
-                        ? Capsule(style: .continuous)
-                            .fill(Color.white.opacity(0.1))
-                        : nil
-                )
+                .background {
+                    if isSelected {
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -388,7 +392,8 @@ private struct IdlePopoverContent: View {
                 .tint(LiquidDesignTokens.Spectral.primaryContainer)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         .opacity(blockingProfileName != nil ? 1 : 0.5)
     }
@@ -451,16 +456,16 @@ private struct FocusingPopoverContent: View {
 
     private func glassControlButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 10))
+                    .font(.system(size: 12))
                     .foregroundStyle(color)
                 Text(title)
-                    .font(LiquidDesignTokens.Typography.controlSmall)
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .contentShape(Rectangle())
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         }
         .buttonStyle(.plain)
@@ -640,15 +645,15 @@ private struct BreakPopoverContent: View {
             // Skip Break button
             Button(action: onSkipBreak) {
                 HStack(spacing: 6) {
-                    Text("SKIP BREAK")
-                        .font(LiquidDesignTokens.Typography.controlSmall)
-                        .tracking(1.0)
+                    Text("Skip Break")
+                        .font(.system(size: 14, weight: .medium))
+                        .tracking(0.5)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10))
                 }
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .contentShape(Rectangle())
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
             .buttonStyle(.plain)
