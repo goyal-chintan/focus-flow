@@ -3,3 +3,7 @@
 *.xcuserdata/
 DerivedData/
 .DS_Store
+
+# Stitch design mockups (reference only)
+stitch_popover_break_light 2/
+.swiftpm/

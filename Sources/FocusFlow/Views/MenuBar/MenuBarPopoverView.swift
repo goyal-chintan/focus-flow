@@ -30,11 +30,13 @@ struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             headerBar
 
+            activeContextSection
+
             timerHeroSection
 
             stateSection
 
-            Spacer().frame(height: 8)
+            Spacer(minLength: 4)
 
             footerSection
         }
@@ -43,12 +45,12 @@ struct MenuBarPopoverView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: timerVM.state)
     }
 
-    // MARK: - Header Bar
+    // MARK: - Header Bar (focusing, paused, break only)
 
     @ViewBuilder
     private var headerBar: some View {
         switch timerVM.state {
-        case .paused, .onBreak:
+        case .focusing, .paused, .onBreak:
             HStack {
                 Text("FocusFlow")
                     .font(.system(size: 14, weight: .bold))
@@ -56,75 +58,68 @@ struct MenuBarPopoverView: View {
 
                 Spacer()
 
-                Button {
-                    openWindow(id: "stats")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 11))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                HStack(spacing: 12) {
+                    Button {
+                        openWindow(id: "stats")
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        // Close popover — sends dismiss action
+                        NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             .padding(.top, 16)
             .padding(.bottom, 4)
-        case .focusing:
-            focusingHeader
-                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 16)
-                .padding(.bottom, 4)
         default:
             EmptyView()
         }
     }
 
-    private var focusingHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
+    // MARK: - Active Context (focusing only)
+
+    @ViewBuilder
+    private var activeContextSection: some View {
+        if case .focusing = timerVM.state {
+            VStack(spacing: 3) {
                 TrackedLabel(
-                    text: "Focusing",
+                    text: "Active Context",
                     font: LiquidDesignTokens.Typography.labelSmall,
-                    color: LiquidDesignTokens.Spectral.salmon,
+                    color: LiquidDesignTokens.Spectral.electricBlue,
                     tracking: 1.5
                 )
-                Text(timerVM.sessionLabel)
+                Text("Project: \(timerVM.selectedProject?.name ?? "Focus")")
                     .font(LiquidDesignTokens.Typography.headlineMedium)
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                     .lineLimit(1)
             }
-
-            Spacer()
-
-            Button {} label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 13))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .frame(width: 28, height: 28)
-                    .obsidianGlass(cornerRadius: 14)
-            }
-            .buttonStyle(.plain)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
         }
     }
 
-    // MARK: - Timer Hero
+    // MARK: - Timer Hero (ring only, no dots)
 
     private var timerHeroSection: some View {
-        VStack(spacing: 8) {
-            TimerRingView(
-                progress: timerVM.progress,
-                timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
-                label: stateLabel,
-                state: timerVM.state
-            )
-            .padding(.top, timerVM.state == .idle ? 28 : 16)
-
-            SessionDotsView(
-                completed: timerVM.completedFocusSessions % timerVM.sessionsBeforeLongBreak,
-                total: timerVM.sessionsBeforeLongBreak
-            )
-            .opacity(timerVM.state == .idle && timerVM.completedFocusSessions == 0 ? 0.3 : 1)
-        }
+        TimerRingView(
+            progress: timerVM.progress,
+            timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
+            label: stateLabel,
+            state: timerVM.state
+        )
+        .padding(.top, timerVM.state == .idle ? 28 : 16)
     }
 
     // MARK: - State Section
@@ -147,19 +142,13 @@ struct MenuBarPopoverView: View {
 
     private var footerSection: some View {
         HStack(spacing: 6) {
-            if timerVM.state == .focusing {
-                Circle()
-                    .fill(LiquidDesignTokens.Spectral.mint)
-                    .frame(width: 5, height: 5)
-            }
-
-            footerLeadingText
+            footerLeadingContent
 
             Spacer()
 
             Text(timerVM.todayFocusTime.formattedFocusTime)
                 .font(LiquidDesignTokens.Typography.labelMedium)
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                .foregroundStyle(footerTimeColor)
                 .monospacedDigit()
 
             Button {
@@ -177,36 +166,52 @@ struct MenuBarPopoverView: View {
         .background(Color.white.opacity(0.02))
     }
 
-    private var footerLeadingText: some View {
-        Group {
-            switch timerVM.state {
-            case .focusing:
+    @ViewBuilder
+    private var footerLeadingContent: some View {
+        switch timerVM.state {
+        case .focusing:
+            TrackedLabel(
+                text: "Today's Total",
+                font: LiquidDesignTokens.Typography.labelSmall,
+                tracking: 1.0
+            )
+        case .paused:
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(LiquidDesignTokens.Spectral.amber)
+                    .frame(width: 5, height: 5)
                 TrackedLabel(
-                    text: "Live Session",
+                    text: "Today's Total",
                     font: LiquidDesignTokens.Typography.labelSmall,
                     tracking: 1.0
                 )
-            case .paused:
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(LiquidDesignTokens.Spectral.amber)
-                        .frame(width: 5, height: 5)
-                    TrackedLabel(
-                        text: "Today's Total",
-                        font: LiquidDesignTokens.Typography.labelSmall,
-                        tracking: 1.0
-                    )
-                }
-            default:
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 10))
-                        .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                    Text("Today's Total")
-                        .font(LiquidDesignTokens.Typography.labelSmall)
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                }
             }
+        case .onBreak:
+            TrackedLabel(
+                text: "FocusFlow macOS",
+                font: LiquidDesignTokens.Typography.labelSmall,
+                tracking: 1.0
+            )
+        default:
+            HStack(spacing: 4) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                Text("Today's Total")
+                    .font(LiquidDesignTokens.Typography.labelSmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+            }
+        }
+    }
+
+    private var footerTimeColor: Color {
+        switch timerVM.state {
+        case .focusing:
+            LiquidDesignTokens.Spectral.electricBlue
+        case .paused:
+            LiquidDesignTokens.Surface.onSurface
+        default:
+            LiquidDesignTokens.Surface.onSurface
         }
     }
 
@@ -246,9 +251,21 @@ private struct IdlePopoverContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // PROJECT label
+            HStack {
+                TrackedLabel(
+                    text: "Project",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                Spacer()
+            }
+            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+            .padding(.top, 16)
+
             ProjectPickerView(selectedProject: $selectedProject)
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 16)
+                .padding(.top, 6)
 
             presetsRow
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -404,23 +421,23 @@ private struct IdlePopoverContent: View {
 private struct FocusingPopoverContent: View {
     @Binding var showStopConfirmation: Bool
     let onPause: () -> Void
-    let onExtend: () -> Void
     let onShowStopConfirmation: () -> Void
     let onSaveStop: () -> Void
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
-    let projectName: String?
 
     var body: some View {
         VStack(spacing: 12) {
-            controlButtons
-                .padding(.top, 14)
-
-            extendButton
-
-            if let projectName {
-                nextUpCard(projectName: projectName)
+            // Pause / Stop buttons
+            HStack(spacing: 8) {
+                glassControlButton(title: "Pause", icon: "pause.fill", color: LiquidDesignTokens.Surface.onSurface) {
+                    onPause()
+                }
+                glassControlButton(title: "Stop", icon: "stop.fill", color: LiquidDesignTokens.Spectral.salmon) {
+                    withAnimation { onShowStopConfirmation() }
+                }
             }
+            .padding(.top, 14)
 
             if showStopConfirmation {
                 stopConfirmation
@@ -428,17 +445,6 @@ private struct FocusingPopoverContent: View {
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
-    }
-
-    private var controlButtons: some View {
-        HStack(spacing: 8) {
-            glassControlButton(title: "Pause", icon: "pause.fill", color: LiquidDesignTokens.Surface.onSurface) {
-                onPause()
-            }
-            glassControlButton(title: "Stop", icon: "stop.fill", color: LiquidDesignTokens.Spectral.salmon) {
-                withAnimation { onShowStopConfirmation() }
-            }
-        }
     }
 
     private func glassControlButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -456,63 +462,6 @@ private struct FocusingPopoverContent: View {
             .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
         }
         .buttonStyle(.plain)
-    }
-
-    private var extendButton: some View {
-        Button(action: onExtend) {
-            HStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .medium))
-                Text("+5m Glass Extension")
-                    .font(LiquidDesignTokens.Typography.controlSmall)
-            }
-            .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
-                    .fill(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
-                            .stroke(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.2), lineWidth: 0.5)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func nextUpCard(projectName: String) -> some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.purple.opacity(0.3))
-                .frame(width: 28, height: 28)
-                .overlay(
-                    Image(systemName: "arrow.right.square")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.purple)
-                )
-
-            VStack(alignment: .leading, spacing: 1) {
-                TrackedLabel(
-                    text: "Next Up",
-                    font: .system(size: 9, weight: .medium),
-                    tracking: 1.2
-                )
-                Text(projectName)
-                    .font(LiquidDesignTokens.Typography.bodySmall)
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
     }
 
     private var stopConfirmation: some View {
@@ -733,14 +682,12 @@ extension MenuBarPopoverView {
         FocusingPopoverContent(
             showStopConfirmation: $showStopConfirmation,
             onPause: { timerVM.pause() },
-            onExtend: { timerVM.extendTimer() },
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
             },
             onSaveStop: { timerVM.stop() },
             onDiscardStop: { timerVM.abandonSession() },
-            onCancelStop: { showStopConfirmation = false },
-            projectName: timerVM.selectedProject?.name
+            onCancelStop: { showStopConfirmation = false }
         )
         .transition(.opacity)
     }
