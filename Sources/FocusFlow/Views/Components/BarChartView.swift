@@ -4,30 +4,53 @@ struct BarChartView: View {
     let data: [(label: String, value: Double)]
     let accentColor: Color
 
-    private var maxValue: Double { data.map(\.value).max() ?? 1 }
+    private let chartHeight: CGFloat = 112
+    private var maxValue: Double { max(data.map(\.value).max() ?? 0, 1) }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            ForEach(data.indices, id: \.self) { index in
-                VStack(spacing: 4) {
-                    if data[index].value > 0 {
-                        Text(formattedHours(data[index].value))
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(data[index].value > 0 ? accentColor : Color.primary.opacity(0.05))
-                        .frame(height: max(2, CGFloat(data[index].value / maxValue) * 100))
-
-                    Text(data[index].label)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
+        HStack(alignment: .bottom, spacing: LiquidDesignTokens.Spacing.small) {
+            ForEach(Array(data.enumerated()), id: \.offset) { _, item in
+                chartBar(item)
             }
         }
-        .frame(height: 140)
+        .frame(height: 154)
+        .padding(.horizontal, 2)
+    }
+
+    private func chartBar(_ item: (label: String, value: Double)) -> some View {
+        VStack(spacing: 6) {
+            Text(item.value > 0 ? formattedHours(item.value) : "")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .frame(height: 12)
+
+            ZStack(alignment: .bottom) {
+                Capsule(style: .continuous)
+                    .fill(.primary.opacity(0.07))
+
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                accentColor.opacity(0.42),
+                                accentColor.opacity(item.value > 0 ? 0.95 : 0.08)
+                            ],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                    )
+                    .frame(height: max(4, CGFloat(item.value / maxValue) * chartHeight))
+            }
+            .frame(height: chartHeight)
+
+            Text(item.label)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(height: 12)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func formattedHours(_ seconds: Double) -> String {
