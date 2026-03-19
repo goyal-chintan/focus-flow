@@ -7,10 +7,9 @@ struct TimerRingView: View {
     let state: TimerState
 
     private let ringSize: CGFloat = 178
-    private let strokeWidth: CGFloat = 5
-    private let discInset: CGFloat = 14
+    private let strokeWidth: CGFloat = 8
+    private let discInset: CGFloat = 16
 
-    // Breathing glow animation state
     @State private var glowPulse: Bool = false
 
     private var isActive: Bool {
@@ -22,23 +21,23 @@ struct TimerRingView: View {
 
     var body: some View {
         ZStack {
-            // Inner disc — uses dark fill with slight transparency for glass compatibility
+            // Inner disc
             Circle()
                 .fill(.black.opacity(0.55))
                 .background(.ultraThinMaterial, in: Circle())
                 .frame(width: ringSize - discInset * 2, height: ringSize - discInset * 2)
                 .clipShape(Circle())
 
-            // Track ring (subtle)
+            // Track ring
             Circle()
-                .stroke(Color.white.opacity(0.06), lineWidth: strokeWidth)
+                .stroke(Color.white.opacity(0.1), lineWidth: strokeWidth)
 
-            // Specular highlight on track (top-left edge)
+            // Specular highlight on track (top-left)
             Circle()
                 .trim(from: 0.62, to: 0.88)
-                .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
+                .stroke(Color.white.opacity(0.12), lineWidth: strokeWidth)
 
-            // Progress ring with gradient
+            // Progress ring — fills as time elapses
             Circle()
                 .trim(from: 0, to: max(0.001, progress))
                 .stroke(
@@ -46,9 +45,21 @@ struct TimerRingView: View {
                     style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.55 : 0.3), radius: glowPulse ? 16 : 10)
-                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.3 : 0.12), radius: glowPulse ? 28 : 20)
+                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.6 : 0.3), radius: glowPulse ? 18 : 10)
+                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.35 : 0.12), radius: glowPulse ? 30 : 20)
                 .animation(.easeInOut(duration: 0.75), value: progress)
+
+            // Remaining ring — shows what's left (dimmer version of progress color)
+            if isActive && progress < 1.0 {
+                Circle()
+                    .trim(from: max(0.001, progress), to: 1.0)
+                    .stroke(
+                        ringColor.opacity(0.15),
+                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeInOut(duration: 0.75), value: progress)
+            }
 
             // Center text
             VStack(spacing: 4) {

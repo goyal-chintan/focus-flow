@@ -68,10 +68,11 @@ struct ProjectPickerView: View {
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 11)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
         }
         .popover(isPresented: $showCreateSheet) {
             createProjectPopover
