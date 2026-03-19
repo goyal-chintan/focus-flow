@@ -7,23 +7,11 @@ struct StatCard: View {
     let color: Color
 
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
-
-            Text(value)
-                .font(.system(.title2, weight: .semibold))
-                .contentTransition(.numericText())
-
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .textCase(.uppercase)
-                .tracking(0.5)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14))
+        LiquidMetricCard(
+            title: title,
+            value: value,
+            icon: icon,
+            color: color
+        )
     }
 }
