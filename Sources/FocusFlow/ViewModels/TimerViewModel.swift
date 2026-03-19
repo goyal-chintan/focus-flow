@@ -294,6 +294,13 @@ final class TimerViewModel {
         startPauseTimer()
     }
 
+    func extendTimer(by seconds: TimeInterval = 300) {
+        guard state == .focusing, !isOvertime else { return }
+        remainingSeconds += seconds
+        totalSeconds += seconds
+        currentSession?.duration += seconds
+    }
+
     func resume() {
         guard state == .paused else { return }
         pauseTimer?.invalidate()

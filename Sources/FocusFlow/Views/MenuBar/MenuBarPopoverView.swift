@@ -28,166 +28,198 @@ struct MenuBarPopoverView: View {
 
     private var popoverShell: some View {
         VStack(spacing: 0) {
+            headerBar
+
             timerHeroSection
 
             stateSection
-                .padding(.top, 14)
 
-            Divider()
-                .padding(.top, 16)
+            Spacer().frame(height: 8)
 
             footerSection
         }
-        .frame(width: 316)
+        .frame(width: 300)
+        .background(LiquidDesignTokens.Surface.background)
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: timerVM.state)
     }
 
+    // MARK: - Header Bar
+
+    @ViewBuilder
+    private var headerBar: some View {
+        switch timerVM.state {
+        case .paused, .onBreak:
+            HStack {
+                Text("FocusFlow")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+
+                Spacer()
+
+                Button {
+                    openWindow(id: "stats")
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+            .padding(.top, 16)
+            .padding(.bottom, 4)
+        case .focusing:
+            focusingHeader
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 16)
+                .padding(.bottom, 4)
+        default:
+            EmptyView()
+        }
+    }
+
+    private var focusingHeader: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                TrackedLabel(
+                    text: "Focusing",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    color: LiquidDesignTokens.Spectral.salmon,
+                    tracking: 1.5
+                )
+                Text(timerVM.sessionLabel)
+                    .font(LiquidDesignTokens.Typography.headlineMedium)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button {} label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 13))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .frame(width: 28, height: 28)
+                    .obsidianGlass(cornerRadius: 14)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Timer Hero
+
     private var timerHeroSection: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             TimerRingView(
                 progress: timerVM.progress,
                 timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
                 label: stateLabel,
                 state: timerVM.state
             )
-            .padding(.top, 22)
+            .padding(.top, timerVM.state == .idle ? 28 : 16)
 
             SessionDotsView(
                 completed: timerVM.completedFocusSessions % timerVM.sessionsBeforeLongBreak,
                 total: timerVM.sessionsBeforeLongBreak
             )
-            .opacity(timerVM.state == .idle && timerVM.completedFocusSessions == 0 ? 0.45 : 1)
+            .opacity(timerVM.state == .idle && timerVM.completedFocusSessions == 0 ? 0.3 : 1)
         }
     }
+
+    // MARK: - State Section
 
     @ViewBuilder
     private var stateSection: some View {
         switch timerVM.state {
         case .idle:
-            idleStateSection
+            idleContent
         case .focusing:
-            focusingStateSection
+            focusingContent
         case .paused:
-            pausedStateSection
+            pausedContent
         case .onBreak:
-            breakStateSection
+            breakContent
         }
     }
 
-    private var idleStateSection: some View {
-        @Bindable var timerVM = timerVM
-
-        return IdlePopoverStateView(
-            selectedProject: $timerVM.selectedProject,
-            selectedMinutes: $timerVM.selectedMinutes
-        ) {
-            timerVM.ensureConfigured(modelContext: modelContext)
-            timerVM.startFocus()
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    private var focusingStateSection: some View {
-        FocusingPopoverStateView(
-            showStopConfirmation: $showStopConfirmation,
-            onPause: { timerVM.pause() },
-            onShowStopConfirmation: {
-                withAnimation {
-                    showStopConfirmation = true
-                }
-            },
-            onSaveStop: {
-                timerVM.stop()
-            },
-            onDiscardStop: {
-                timerVM.abandonSession()
-            },
-            onCancelStop: { showStopConfirmation = false }
-        )
-        .padding(.horizontal, 20)
-        .transition(.opacity)
-    }
-
-    private var pausedStateSection: some View {
-        PausedPopoverStateView(
-            pauseTimeString: timerVM.pauseTimeString,
-            pauseWarningColor: timerVM.pauseWarningLevel.color,
-            showStopConfirmation: $showStopConfirmation,
-            onResume: { timerVM.resume() },
-            onShowStopConfirmation: {
-                withAnimation {
-                    showStopConfirmation = true
-                }
-            },
-            onSaveStop: {
-                timerVM.stop()
-            },
-            onDiscardStop: {
-                timerVM.abandonSession()
-            },
-            onCancelStop: { showStopConfirmation = false }
-        )
-        .padding(.horizontal, 20)
-        .transition(.opacity)
-    }
-
-    private var breakStateSection: some View {
-        BreakPopoverStateView {
-            timerVM.skipBreak()
-        }
-        .padding(.horizontal, 20)
-        .transition(.opacity)
-    }
+    // MARK: - Footer
 
     private var footerSection: some View {
-        HStack(spacing: 8) {
-            if timerVM.isBlockingActive {
-                HStack(spacing: 4) {
-                    Image(systemName: "shield.checkered")
-                        .font(.caption)
-                    Text("Blocking")
-                        .font(.caption)
-                }
-                .foregroundStyle(.green)
-
-                Text("·")
-                    .foregroundStyle(.tertiary)
+        HStack(spacing: 6) {
+            if timerVM.state == .focusing {
+                Circle()
+                    .fill(LiquidDesignTokens.Spectral.mint)
+                    .frame(width: 5, height: 5)
             }
 
-            Label {
-                Text(footerText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            } icon: {
-                Image(systemName: "flame.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
+            footerLeadingText
 
             Spacer()
+
+            Text(timerVM.todayFocusTime.formattedFocusTime)
+                .font(LiquidDesignTokens.Typography.labelMedium)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                .monospacedDigit()
 
             Button {
                 openWindow(id: "stats")
                 NSApplication.shared.activate(ignoringOtherApps: true)
             } label: {
-                Label("Stats", systemImage: "chart.bar.fill")
-                    .font(.caption)
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.vertical, 10)
+        .background(Color.white.opacity(0.02))
     }
+
+    private var footerLeadingText: some View {
+        Group {
+            switch timerVM.state {
+            case .focusing:
+                TrackedLabel(
+                    text: "Live Session",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.0
+                )
+            case .paused:
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(LiquidDesignTokens.Spectral.amber)
+                        .frame(width: 5, height: 5)
+                    TrackedLabel(
+                        text: "Today's Total",
+                        font: LiquidDesignTokens.Typography.labelSmall,
+                        tracking: 1.0
+                    )
+                }
+            default:
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                    Text("Today's Total")
+                        .font(LiquidDesignTokens.Typography.labelSmall)
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                }
+            }
+        }
+    }
+
+    // MARK: - Helpers
 
     private var stateLabel: String {
         switch timerVM.state {
         case .idle:
-            "Ready to Focus"
+            "Focus Session"
         case .focusing:
-            timerVM.sessionLabel
+            "Remaining"
         case .paused:
-            "Paused"
+            "Focus Paused"
         case .onBreak(let type):
             type.displayName
         }
@@ -197,142 +229,331 @@ struct MenuBarPopoverView: View {
         let mins = max(5, timerVM.selectedMinutes)
         return String(format: "%02d:00", mins)
     }
-
-    private var footerText: String {
-        let sessions = timerVM.todaySessionCount
-        let time = timerVM.todayFocusTime.formattedFocusTime
-        if sessions == 0 {
-            return "No sessions yet today"
-        }
-        return "\(sessions) session\(sessions == 1 ? "" : "s") · \(time) focused"
-    }
 }
 
-private struct IdlePopoverStateView: View {
+// MARK: - Idle State
+
+private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
+    @State private var showCustomInput = false
+    let isBlockingActive: Bool
+    let blockingProfileName: String?
     let onStartFocus: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ProjectPickerView(selectedProject: $selectedProject)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
-
-            DurationPresetRow(selectedMinutes: $selectedMinutes)
-                .padding(.horizontal, 20)
-
-            CustomDurationInput(selectedMinutes: $selectedMinutes)
-                .padding(.horizontal, 20)
-                .padding(.top, 6)
-
-            GlassEffectContainer {
-                ControlButton(title: "Start Focus", icon: "play.fill", role: .primary, action: onStartFocus)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-        }
-    }
-}
-
-private struct DurationPresetRow: View {
-    @Binding var selectedMinutes: Int
+    let onToggleBlocking: () -> Void
 
     private let presets = [15, 25, 45, 60]
 
     var body: some View {
+        VStack(spacing: 0) {
+            ProjectPickerView(selectedProject: $selectedProject)
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 16)
+
+            presetsRow
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 14)
+
+            if showCustomInput {
+                customInput
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            blockingProfileRow
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 14)
+
+            startButton
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+        }
+    }
+
+    private var presetsRow: some View {
         HStack(spacing: 0) {
-            ForEach(presets, id: \.self) { minutes in
-                DurationPresetButton(minutes: minutes, selectedMinutes: $selectedMinutes)
+            ForEach(presets, id: \.self) { mins in
+                presetButton(mins)
             }
-        }
-    }
-}
 
-private struct DurationPresetButton: View {
-    let minutes: Int
-    @Binding var selectedMinutes: Int
-
-    private var isSelected: Bool { selectedMinutes == minutes }
-
-    var body: some View {
-        let label = Text("\(minutes)")
-            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-
-        if isSelected {
+            // CUST button
             Button {
-                selectedMinutes = minutes
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showCustomInput.toggle()
+                }
             } label: {
-                label
+                Text("CUST")
+                    .font(.system(size: 12, weight: showCustomInput ? .semibold : .regular))
+                    .italic()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .foregroundStyle(showCustomInput
+                        ? LiquidDesignTokens.Spectral.electricBlue
+                        : LiquidDesignTokens.Surface.onSurfaceMuted)
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-        } else {
-            Button {
-                selectedMinutes = minutes
-            } label: {
-                label
-            }
-            .buttonStyle(.glass)
+            .buttonStyle(.plain)
         }
+        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
     }
-}
 
-private struct CustomDurationInput: View {
-    @Binding var selectedMinutes: Int
+    @ViewBuilder
+    private func presetButton(_ mins: Int) -> some View {
+        let isSelected = selectedMinutes == mins && !showCustomInput
+        Button {
+            showCustomInput = false
+            selectedMinutes = mins
+        } label: {
+            Text("\(mins)")
+                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .foregroundStyle(isSelected
+                    ? LiquidDesignTokens.Surface.onSurface
+                    : LiquidDesignTokens.Surface.onSurfaceMuted)
+                .background(
+                    isSelected
+                        ? Capsule(style: .continuous)
+                            .fill(Color.white.opacity(0.1))
+                        : nil
+                )
+        }
+        .buttonStyle(.plain)
+    }
 
-    var body: some View {
-        HStack {
-            Text("or")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-
-            TextField("Custom min", value: $selectedMinutes, format: .number)
+    private var customInput: some View {
+        HStack(spacing: 8) {
+            TextField("Min", value: $selectedMinutes, format: .number)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .frame(width: 58)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
+                .font(LiquidDesignTokens.Typography.bodyMedium)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                .frame(width: 50)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(LiquidDesignTokens.Surface.containerLow)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(LiquidDesignTokens.Spectral.electricBlue.opacity(0.3), lineWidth: 1)
+                        )
+                )
 
-            Text("min")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            Text("minutes")
+                .font(LiquidDesignTokens.Typography.labelMedium)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
         }
+    }
+
+    private var blockingProfileRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                TrackedLabel(
+                    text: "Blocking Profile",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.2
+                )
+                Text(blockingProfileName ?? "None")
+                    .font(LiquidDesignTokens.Typography.bodySmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: .constant(isBlockingActive))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .scaleEffect(0.75)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+        .opacity(blockingProfileName != nil ? 1 : 0.5)
+    }
+
+    private var startButton: some View {
+        Button(action: onStartFocus) {
+            HStack(spacing: 8) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 12))
+                Text("Start Focus Session")
+                    .font(LiquidDesignTokens.Typography.controlLabel)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
+                    .fill(ObsidianGradients.blueCTA())
+                    .shadow(color: LiquidDesignTokens.Spectral.primaryContainer.opacity(0.3), radius: 16, y: 4)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
-private struct FocusingPopoverStateView: View {
+// MARK: - Focusing State
+
+private struct FocusingPopoverContent: View {
     @Binding var showStopConfirmation: Bool
     let onPause: () -> Void
+    let onExtend: () -> Void
     let onShowStopConfirmation: () -> Void
     let onSaveStop: () -> Void
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
+    let projectName: String?
 
     var body: some View {
-        GlassEffectContainer {
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    ControlButton(title: "Pause", icon: "pause.fill", role: .secondary, action: onPause)
-                    ControlButton(title: "Stop", icon: "stop.fill", role: .destructive, action: onShowStopConfirmation)
-                }
+        VStack(spacing: 12) {
+            controlButtons
+                .padding(.top, 14)
 
-                if showStopConfirmation {
-                    StopConfirmationView(
-                        onSaveStop: onSaveStop,
-                        onDiscardStop: onDiscardStop,
-                        onCancel: onCancelStop
-                    )
-                }
+            extendButton
+
+            if let projectName {
+                nextUpCard(projectName: projectName)
+            }
+
+            if showStopConfirmation {
+                stopConfirmation
+            }
+        }
+        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+        .padding(.bottom, 12)
+    }
+
+    private var controlButtons: some View {
+        HStack(spacing: 8) {
+            glassControlButton(title: "Pause", icon: "pause.fill", color: LiquidDesignTokens.Surface.onSurface) {
+                onPause()
+            }
+            glassControlButton(title: "Stop", icon: "stop.fill", color: LiquidDesignTokens.Spectral.salmon) {
+                withAnimation { onShowStopConfirmation() }
             }
         }
     }
+
+    private func glassControlButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(LiquidDesignTokens.Typography.controlSmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var extendButton: some View {
+        Button(action: onExtend) {
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .medium))
+                Text("+5m Glass Extension")
+                    .font(LiquidDesignTokens.Typography.controlSmall)
+            }
+            .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
+                    .fill(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
+                            .stroke(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.2), lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func nextUpCard(projectName: String) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.purple.opacity(0.3))
+                .frame(width: 28, height: 28)
+                .overlay(
+                    Image(systemName: "arrow.right.square")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.purple)
+                )
+
+            VStack(alignment: .leading, spacing: 1) {
+                TrackedLabel(
+                    text: "Next Up",
+                    font: .system(size: 9, weight: .medium),
+                    tracking: 1.2
+                )
+                Text(projectName)
+                    .font(LiquidDesignTokens.Typography.bodySmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+    }
+
+    private var stopConfirmation: some View {
+        VStack(spacing: 8) {
+            Text("End this session?")
+                .font(LiquidDesignTokens.Typography.labelLarge)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+
+            HStack(spacing: 8) {
+                obsidianTextButton("Save", icon: "square.and.arrow.down", action: onSaveStop)
+                obsidianTextButton("Discard", icon: "trash", color: LiquidDesignTokens.Spectral.destructive, action: onDiscardStop)
+                obsidianTextButton("Cancel", action: onCancelStop)
+            }
+        }
+        .padding(12)
+        .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.card)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func obsidianTextButton(_ title: String, icon: String? = nil, color: Color = LiquidDesignTokens.Surface.onSurface, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group {
+                if let icon {
+                    Label(title, systemImage: icon)
+                } else {
+                    Text(title)
+                }
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .obsidianGlass(cornerRadius: 8)
+        }
+        .buttonStyle(.plain)
+    }
 }
 
-private struct PausedPopoverStateView: View {
+// MARK: - Paused State
+
+private struct PausedPopoverContent: View {
     let pauseTimeString: String
     let pauseWarningColor: Color
     @Binding var showStopConfirmation: Bool
@@ -342,86 +563,209 @@ private struct PausedPopoverStateView: View {
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
 
+    private var motivationText: String {
+        // Basic motivation based on pause duration
+        "Deep work momentum is fading..."
+    }
+
     var body: some View {
-        GlassEffectContainer {
-            VStack(spacing: 10) {
-                VStack(spacing: 4) {
-                    Text("Paused for")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        VStack(spacing: 14) {
+            // Pause info
+            VStack(spacing: 4) {
+                Text("Paused for \(pauseTimeString)")
+                    .font(LiquidDesignTokens.Typography.headlineLarge)
+                    .foregroundStyle(LiquidDesignTokens.Spectral.amber)
 
-                    Text(pauseTimeString)
-                        .font(.system(size: 20, weight: .light, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(pauseWarningColor)
-                        .contentTransition(.numericText())
-                        .animation(.smooth, value: pauseTimeString)
-                }
+                Text(motivationText)
+                    .font(LiquidDesignTokens.Typography.bodySmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .italic()
+            }
+            .padding(.top, 8)
 
+            // Resume CTA (amber gradient)
+            Button(action: onResume) {
                 HStack(spacing: 8) {
-                    ControlButton(title: "Resume", icon: "play.fill", role: .primary, action: onResume)
-                    ControlButton(title: "Stop", icon: "stop.fill", role: .destructive, action: onShowStopConfirmation)
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 12))
+                    Text("RESUME FOCUS")
+                        .font(.system(size: 15, weight: .bold))
+                        .tracking(0.5)
                 }
+                .foregroundStyle(LiquidDesignTokens.Surface.background)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
+                        .fill(ObsidianGradients.amberCTA())
+                        .shadow(color: LiquidDesignTokens.Spectral.amber.opacity(0.35), radius: 16, y: 4)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                )
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
 
-                if showStopConfirmation {
-                    StopConfirmationView(
-                        onSaveStop: onSaveStop,
-                        onDiscardStop: onDiscardStop,
-                        onCancel: onCancelStop
-                    )
-                }
+            // End Session text link
+            Button {
+                withAnimation { onShowStopConfirmation() }
+            } label: {
+                TrackedLabel(
+                    text: "End Session",
+                    font: LiquidDesignTokens.Typography.labelMedium,
+                    color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                    tracking: 2.0
+                )
+            }
+            .buttonStyle(.plain)
+
+            if showStopConfirmation {
+                pausedStopConfirmation
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             }
         }
+        .padding(.bottom, 12)
+    }
+
+    private var pausedStopConfirmation: some View {
+        HStack(spacing: 8) {
+            Button(action: onSaveStop) {
+                Text("Save & End")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .obsidianGlass(cornerRadius: 8)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onDiscardStop) {
+                Text("Discard")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.destructive)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .obsidianGlass(cornerRadius: 8)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onCancelStop) {
+                Text("Cancel")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .obsidianGlass(cornerRadius: 8)
+            }
+            .buttonStyle(.plain)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 
-private struct BreakPopoverStateView: View {
+// MARK: - Break State
+
+private struct BreakPopoverContent: View {
+    let projectName: String?
     let onSkipBreak: () -> Void
 
     var body: some View {
-        GlassEffectContainer {
-            ControlButton(title: "Skip Break", icon: "forward.fill", role: .secondary, action: onSkipBreak)
+        VStack(spacing: 14) {
+            // Next session context
+            VStack(spacing: 3) {
+                TrackedLabel(
+                    text: "Next Session",
+                    tracking: 2.0
+                )
+                if let projectName {
+                    Text("Project: \(projectName)")
+                        .font(LiquidDesignTokens.Typography.headlineMedium)
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                }
+            }
+            .padding(.top, 8)
+
+            // Skip Break button
+            Button(action: onSkipBreak) {
+                HStack(spacing: 6) {
+                    Text("SKIP BREAK")
+                        .font(LiquidDesignTokens.Typography.controlSmall)
+                        .tracking(1.0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10))
+                }
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         }
+        .padding(.bottom, 12)
     }
 }
 
-private struct StopConfirmationView: View {
-    let onSaveStop: () -> Void
-    let onDiscardStop: () -> Void
-    let onCancel: () -> Void
+// MARK: - MenuBarPopoverView State Wiring
 
-    var body: some View {
-        VStack(spacing: 8) {
-            Text("End this session?")
-                .font(.caption.weight(.medium))
-
-            HStack(spacing: 8) {
-                Button(action: onSaveStop) {
-                    Label("Save", systemImage: "square.and.arrow.down")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.glass)
-
-                Button(action: onDiscardStop) {
-                    Label("Discard", systemImage: "trash")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.glass)
-                .tint(.red)
-
-                Button(action: onCancel) {
-                    Text("Cancel")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.glass)
+extension MenuBarPopoverView {
+    fileprivate var idleContent: some View {
+        @Bindable var vm = timerVM
+        return IdlePopoverContent(
+            selectedProject: $vm.selectedProject,
+            selectedMinutes: $vm.selectedMinutes,
+            isBlockingActive: timerVM.isBlockingActive,
+            blockingProfileName: timerVM.selectedProject?.blockProfile?.name,
+            onStartFocus: {
+                timerVM.ensureConfigured(modelContext: modelContext)
+                timerVM.startFocus()
+            },
+            onToggleBlocking: {
+                // Blocking activates automatically when focus starts
             }
-        }
+        )
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    fileprivate var focusingContent: some View {
+        FocusingPopoverContent(
+            showStopConfirmation: $showStopConfirmation,
+            onPause: { timerVM.pause() },
+            onExtend: { timerVM.extendTimer() },
+            onShowStopConfirmation: {
+                withAnimation { showStopConfirmation = true }
+            },
+            onSaveStop: { timerVM.stop() },
+            onDiscardStop: { timerVM.abandonSession() },
+            onCancelStop: { showStopConfirmation = false },
+            projectName: timerVM.selectedProject?.name
+        )
+        .transition(.opacity)
+    }
+
+    fileprivate var pausedContent: some View {
+        PausedPopoverContent(
+            pauseTimeString: timerVM.pauseTimeString,
+            pauseWarningColor: timerVM.pauseWarningLevel.color,
+            showStopConfirmation: $showStopConfirmation,
+            onResume: { timerVM.resume() },
+            onShowStopConfirmation: {
+                withAnimation { showStopConfirmation = true }
+            },
+            onSaveStop: { timerVM.stop() },
+            onDiscardStop: { timerVM.abandonSession() },
+            onCancelStop: { showStopConfirmation = false }
+        )
+        .transition(.opacity)
+    }
+
+    fileprivate var breakContent: some View {
+        BreakPopoverContent(
+            projectName: timerVM.selectedProject?.name,
+            onSkipBreak: { timerVM.skipBreak() }
+        )
+        .transition(.opacity)
     }
 }

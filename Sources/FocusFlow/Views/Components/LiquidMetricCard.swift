@@ -7,24 +7,24 @@ struct LiquidMetricCard: View {
     let color: Color
 
     var body: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.metricCard) {
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.card) {
             VStack(spacing: LiquidDesignTokens.Spacing.small) {
                 Image(systemName: icon)
-                    .font(LiquidDesignTokens.Typography.icon)
+                    .font(.title3)
                     .foregroundStyle(color)
 
                 Text(value)
-                    .font(LiquidDesignTokens.Typography.metricValue)
+                    .font(.system(.title2, weight: .semibold))
                     .contentTransition(.numericText())
 
                 Text(title)
-                    .font(LiquidDesignTokens.Typography.metricLabel)
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .textCase(.uppercase)
                     .tracking(0.5)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, LiquidDesignTokens.Padding.metricCardVertical)
+            .padding(.vertical, 16)
         }
     }
 }
