@@ -16,8 +16,6 @@ struct ProjectPickerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TrackedLabel(text: "Project")
-
             Menu {
                 Button {
                     selectedProject = nil

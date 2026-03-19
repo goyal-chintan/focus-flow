@@ -10,6 +10,16 @@ struct TimerRingView: View {
     private let strokeWidth: CGFloat = 5
     private let discInset: CGFloat = 14
 
+    // Breathing glow animation state
+    @State private var glowPulse: Bool = false
+
+    private var isActive: Bool {
+        switch state {
+        case .focusing, .paused, .onBreak: true
+        case .idle: false
+        }
+    }
+
     var body: some View {
         ZStack {
             // Inner dark disc (recessed look)
@@ -35,7 +45,6 @@ struct TimerRingView: View {
             Circle()
                 .trim(from: 0.62, to: 0.88)
                 .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
-                .rotationEffect(.degrees(0))
 
             // Progress ring with gradient
             Circle()
@@ -45,8 +54,8 @@ struct TimerRingView: View {
                     style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: ringGlowColor.opacity(0.4), radius: 12)
-                .shadow(color: ringGlowColor.opacity(0.2), radius: 24)
+                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.55 : 0.3), radius: glowPulse ? 16 : 10)
+                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.3 : 0.12), radius: glowPulse ? 28 : 20)
                 .animation(.easeInOut(duration: 0.75), value: progress)
 
             // Center text
@@ -67,6 +76,17 @@ struct TimerRingView: View {
             .padding(.horizontal, 10)
         }
         .frame(width: ringSize, height: ringSize)
+        .onChange(of: isActive, initial: true) { _, active in
+            if active {
+                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                    glowPulse = true
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.4)) {
+                    glowPulse = false
+                }
+            }
+        }
     }
 
     private var ringGradient: AngularGradient {
