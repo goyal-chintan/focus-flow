@@ -10,7 +10,13 @@ struct ProjectPickerView: View {
     @State private var newProjectName = ""
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Project")
+                .font(.caption2.weight(.medium))
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .foregroundStyle(.secondary)
+
             Menu {
                 Button {
                     selectedProject = nil
@@ -48,13 +54,17 @@ struct ProjectPickerView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: selectedProject?.icon ?? "tag")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(selectedProject != nil ? .blue : .secondary)
                         .frame(width: 16)
+
                     Text(selectedProject?.name ?? "No Project")
                         .font(.subheadline)
                         .foregroundStyle(selectedProject != nil ? .primary : .secondary)
+                        .lineLimit(1)
+
                     Spacer()
+
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
@@ -66,23 +76,35 @@ struct ProjectPickerView: View {
             .buttonStyle(.plain)
         }
         .popover(isPresented: $showCreateSheet) {
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("New Project")
                     .font(.subheadline.weight(.medium))
+
                 TextField("Project name", text: $newProjectName)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
                     .onSubmit { createProject() }
-                HStack {
-                    Button("Cancel") { showCreateSheet = false }
-                        .buttonStyle(.plain)
-                    Spacer()
-                    Button("Create") { createProject() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                HStack(spacing: 8) {
+                    Button("Cancel") {
+                        showCreateSheet = false
+                    }
+                    .buttonStyle(.glass)
+
+                    Spacer(minLength: 0)
+
+                    Button("Create") {
+                        createProject()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(.blue)
+                    .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .padding(16)
-            .frame(width: 250)
+            .frame(width: 260)
         }
     }
 
