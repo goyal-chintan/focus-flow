@@ -9,13 +9,14 @@ struct ProjectPickerView: View {
     @State private var showCreateSheet = false
     @State private var newProjectName = ""
 
+    private var projectColor: Color {
+        guard let colorName = selectedProject?.color else { return LiquidDesignTokens.Spectral.electricBlue }
+        return colorFromName(colorName)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Project")
-                .font(.caption2.weight(.medium))
-                .textCase(.uppercase)
-                .tracking(0.8)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            TrackedLabel(text: "Project")
 
             Menu {
                 Button {
@@ -52,60 +53,72 @@ struct ProjectPickerView: View {
                     Label("New Project...", systemImage: "plus.circle")
                 }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: selectedProject?.icon ?? "tag")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(selectedProject != nil ? .blue : .secondary)
-                        .frame(width: 16)
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(projectColor)
+                        .frame(width: 8, height: 8)
 
                     Text(selectedProject?.name ?? "No Project")
-                        .font(.subheadline)
-                        .foregroundStyle(selectedProject != nil ? .primary : .secondary)
+                        .font(LiquidDesignTokens.Typography.bodyMedium)
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                         .lineLimit(1)
 
                     Spacer()
 
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
             }
             .buttonStyle(.plain)
         }
         .popover(isPresented: $showCreateSheet) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("New Project")
-                    .font(.subheadline.weight(.medium))
-
-                TextField("Project name", text: $newProjectName)
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-                    .onSubmit { createProject() }
-
-                HStack(spacing: 8) {
-                    Button("Cancel") {
-                        showCreateSheet = false
-                    }
-                    .buttonStyle(.glass)
-
-                    Spacer(minLength: 0)
-
-                    Button("Create") {
-                        createProject()
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(.blue)
-                    .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            .padding(16)
-            .frame(width: 260)
+            createProjectPopover
         }
+    }
+
+    private var createProjectPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Project")
+                .font(LiquidDesignTokens.Typography.headlineMedium)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+
+            TextField("Project name", text: $newProjectName)
+                .textFieldStyle(.plain)
+                .font(LiquidDesignTokens.Typography.bodyMedium)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(LiquidDesignTokens.Surface.containerLow)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                        )
+                )
+                .onSubmit { createProject() }
+
+            HStack(spacing: 8) {
+                Button("Cancel") {
+                    showCreateSheet = false
+                }
+                .buttonStyle(.glass)
+
+                Spacer(minLength: 0)
+
+                Button("Create") {
+                    createProject()
+                }
+                .buttonStyle(.glassProminent)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 260)
     }
 
     private func createProject() {
@@ -117,5 +130,21 @@ struct ProjectPickerView: View {
         selectedProject = project
         newProjectName = ""
         showCreateSheet = false
+    }
+
+    private func colorFromName(_ name: String) -> Color {
+        switch name {
+        case "blue": return .blue
+        case "indigo": return .indigo
+        case "purple": return .purple
+        case "pink": return .pink
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "teal": return .teal
+        case "mint": return .mint
+        default: return LiquidDesignTokens.Spectral.electricBlue
+        }
     }
 }

@@ -7,9 +7,9 @@ enum LiquidActionRole {
 
     var tint: Color? {
         switch self {
-        case .primary: LiquidDesignTokens.Tint.primary
+        case .primary: LiquidDesignTokens.Spectral.primaryContainer
         case .secondary: nil
-        case .destructive: LiquidDesignTokens.Tint.destructive
+        case .destructive: LiquidDesignTokens.Spectral.destructive
         }
     }
 

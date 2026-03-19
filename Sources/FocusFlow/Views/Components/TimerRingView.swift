@@ -7,58 +7,116 @@ struct TimerRingView: View {
     let state: TimerState
 
     private let ringSize: CGFloat = 178
-    private let lineWidth: CGFloat = 6
+    private let strokeWidth: CGFloat = 5
+    private let discInset: CGFloat = 14
 
     var body: some View {
         ZStack {
+            // Inner dark disc (recessed look)
             Circle()
-                .fill(Color.primary.opacity(0.03))
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            LiquidDesignTokens.Surface.containerLow,
+                            LiquidDesignTokens.Surface.background
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: ringSize / 2 - discInset
+                    )
+                )
+                .frame(width: ringSize - discInset * 2, height: ringSize - discInset * 2)
 
+            // Track ring (subtle)
             Circle()
-                .stroke(Color.primary.opacity(0.08), lineWidth: lineWidth)
+                .stroke(Color.white.opacity(0.06), lineWidth: strokeWidth)
 
+            // Specular highlight on track (top-left edge)
+            Circle()
+                .trim(from: 0.62, to: 0.88)
+                .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
+                .rotationEffect(.degrees(0))
+
+            // Progress ring with gradient
             Circle()
                 .trim(from: 0, to: max(0.001, progress))
                 .stroke(
-                    AngularGradient(
-                        colors: [ringColor.opacity(0.35), ringColor, ringColor.opacity(0.6)],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                    ringGradient,
+                    style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: ringColor.opacity(0.25), radius: 8)
+                .shadow(color: ringGlowColor.opacity(0.4), radius: 12)
+                .shadow(color: ringGlowColor.opacity(0.2), radius: 24)
                 .animation(.easeInOut(duration: 0.75), value: progress)
 
+            // Center text
             VStack(spacing: 4) {
                 Text(timeString)
-                    .font(.system(size: 42, weight: .ultraLight, design: .rounded))
+                    .font(LiquidDesignTokens.Typography.displayLarge)
                     .monospacedDigit()
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                     .contentTransition(.numericText(countsDown: true))
 
-                Text(label)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(1.2)
-                    .lineLimit(1)
+                TrackedLabel(
+                    text: label,
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    color: labelColor,
+                    tracking: 2.0
+                )
             }
             .padding(.horizontal, 10)
         }
         .frame(width: ringSize, height: ringSize)
     }
 
+    private var ringGradient: AngularGradient {
+        AngularGradient(
+            colors: [
+                ringColor.opacity(0.3),
+                ringColor,
+                ringColor.opacity(0.8),
+                ringColor
+            ],
+            center: .center
+        )
+    }
+
     private var ringColor: Color {
         switch state {
         case .focusing:
-            .blue
+            LiquidDesignTokens.Spectral.primaryContainer
         case .paused:
-            .orange
+            LiquidDesignTokens.Spectral.amberDark
         case .onBreak(let type):
-            type == .longBreak ? .purple : .green
+            type == .longBreak ? .purple : LiquidDesignTokens.Spectral.mintDark
         case .idle:
-            .secondary.opacity(0.35)
+            Color.white.opacity(0.15)
+        }
+    }
+
+    private var ringGlowColor: Color {
+        switch state {
+        case .focusing:
+            LiquidDesignTokens.Spectral.electricBlue
+        case .paused:
+            LiquidDesignTokens.Spectral.amber
+        case .onBreak:
+            LiquidDesignTokens.Spectral.mint
+        case .idle:
+            .clear
+        }
+    }
+
+    private var labelColor: Color {
+        switch state {
+        case .focusing:
+            LiquidDesignTokens.Surface.onSurfaceMuted
+        case .paused:
+            LiquidDesignTokens.Spectral.amber
+        case .onBreak:
+            LiquidDesignTokens.Spectral.mint
+        case .idle:
+            LiquidDesignTokens.Surface.onSurfaceMuted
         }
     }
 }

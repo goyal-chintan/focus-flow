@@ -93,7 +93,7 @@ struct ManualSessionView: View {
                         .frame(width: 58)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
-                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.input))
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
                         .onChange(of: duration) {
                             startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
                         }

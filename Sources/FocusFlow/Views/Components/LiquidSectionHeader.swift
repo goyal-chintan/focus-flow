@@ -15,11 +15,11 @@ struct LiquidSectionHeader<Trailing: View>: View {
         HStack(alignment: .firstTextBaseline, spacing: LiquidDesignTokens.Spacing.small) {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.xSmall) {
                 Text(title)
-                    .font(LiquidDesignTokens.Typography.sectionTitle)
+                    .font(LiquidDesignTokens.Typography.headlineMedium)
 
                 if let subtitle {
                     Text(subtitle)
-                        .font(LiquidDesignTokens.Typography.sectionSubtitle)
+                        .font(LiquidDesignTokens.Typography.bodySmall)
                         .foregroundStyle(.secondary)
                 }
             }
