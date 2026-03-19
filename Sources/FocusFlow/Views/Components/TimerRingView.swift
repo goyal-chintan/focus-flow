@@ -11,6 +11,9 @@ struct TimerRingView: View {
     private let discInset: CGFloat = 16
 
     @State private var glowPulse: Bool = false
+    @State private var breatheScale: CGFloat = 1.0
+    @State private var breatheOpacity: Double = 1.0
+    @State private var specularRotation: Double = 0
 
     private var isActive: Bool {
         switch state {
@@ -21,21 +24,36 @@ struct TimerRingView: View {
 
     var body: some View {
         ZStack {
-            // Inner disc
+            // Inner disc — breathing when active
             Circle()
                 .fill(.black.opacity(0.55))
                 .background(.ultraThinMaterial, in: Circle())
                 .frame(width: ringSize - discInset * 2, height: ringSize - discInset * 2)
                 .clipShape(Circle())
+                .scaleEffect(breatheScale)
+                .opacity(breatheOpacity)
 
             // Track ring
             Circle()
                 .stroke(Color.white.opacity(0.1), lineWidth: strokeWidth)
 
-            // Specular highlight on track (top-left)
+            // Rotating specular highlight on track
             Circle()
                 .trim(from: 0.62, to: 0.88)
                 .stroke(Color.white.opacity(0.12), lineWidth: strokeWidth)
+                .rotationEffect(.degrees(specularRotation))
+
+            // Remaining ring — shows what's left
+            if isActive && progress < 1.0 {
+                Circle()
+                    .trim(from: max(0.001, progress), to: 1.0)
+                    .stroke(
+                        ringColor.opacity(0.25),
+                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(FFMotion.progress, value: progress)
+            }
 
             // Progress ring — fills as time elapses
             Circle()
@@ -47,19 +65,7 @@ struct TimerRingView: View {
                 .rotationEffect(.degrees(-90))
                 .shadow(color: ringGlowColor.opacity(glowPulse ? 0.6 : 0.3), radius: glowPulse ? 18 : 10)
                 .shadow(color: ringGlowColor.opacity(glowPulse ? 0.35 : 0.12), radius: glowPulse ? 30 : 20)
-                .animation(.easeInOut(duration: 0.75), value: progress)
-
-            // Remaining ring — shows what's left (dimmer version of progress color)
-            if isActive && progress < 1.0 {
-                Circle()
-                    .trim(from: max(0.001, progress), to: 1.0)
-                    .stroke(
-                        ringColor.opacity(0.15),
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.75), value: progress)
-            }
+                .animation(FFMotion.progress, value: progress)
 
             // Center text
             VStack(spacing: 4) {
@@ -81,12 +87,25 @@ struct TimerRingView: View {
         .frame(width: ringSize, height: ringSize)
         .onChange(of: isActive, initial: true) { _, active in
             if active {
+                // Breathing disc animation
+                withAnimation(FFMotion.breathing) {
+                    breatheScale = 1.03
+                    breatheOpacity = 0.85
+                }
+                // Glow pulse
                 withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                     glowPulse = true
+                }
+                // Slow specular rotation
+                withAnimation(.linear(duration: 8.0).repeatForever(autoreverses: false)) {
+                    specularRotation = 360
                 }
             } else {
                 withAnimation(.easeOut(duration: 0.4)) {
                     glowPulse = false
+                    breatheScale = 1.0
+                    breatheOpacity = 1.0
+                    specularRotation = 0
                 }
             }
         }
