@@ -12,53 +12,79 @@ struct WeeklyStatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Period picker
+            VStack(spacing: 20) {
+                periodSection
+                chartSection
+                summarySection
+            }
+            .padding(24)
+        }
+        .background(.background)
+        .animation(.smooth, value: selectedPeriod)
+    }
+
+    private var periodSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                LiquidSectionHeader(
+                    "Trends",
+                    subtitle: "Track consistency and workload over time"
+                )
+
                 Picker("Period", selection: $selectedPeriod) {
                     ForEach(Period.allCases, id: \.self) { period in
                         Text(period.rawValue).tag(period)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
-                // Bar chart
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(selectedPeriod == .week ? "This Week" : "Last 30 Days")
-                        .font(.headline)
-
-                    BarChartView(data: chartData, accentColor: .blue)
-                }
-                .padding(16)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
-
-                // Summary cards
-                HStack(spacing: 12) {
-                    StatCard(
-                        title: "Daily Average",
-                        value: dailyAverage.formattedFocusTime,
-                        icon: "chart.line.uptrend.xyaxis",
-                        color: .purple
-                    )
-                    StatCard(
-                        title: "Best Day",
-                        value: bestDayDuration.formattedFocusTime,
-                        icon: "star.fill",
-                        color: .yellow
-                    )
-                    StatCard(
-                        title: "Total",
-                        value: periodTotal.formattedFocusTime,
-                        icon: "sum",
-                        color: .blue
-                    )
-                }
+                .frame(maxWidth: 230)
             }
-            .padding(24)
+            .padding(16)
         }
-        .background(.background)
-        .animation(.smooth, value: selectedPeriod)
+    }
+
+    private var chartSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    selectedPeriod == .week ? "This Week" : "Last 30 Days",
+                    subtitle: chartSubtitle
+                )
+
+                BarChartView(data: chartData, accentColor: .blue)
+            }
+            .padding(16)
+        }
+    }
+
+    private var summarySection: some View {
+        HStack(spacing: 12) {
+            StatCard(
+                title: "Daily Average",
+                value: dailyAverage.formattedFocusTime,
+                icon: "chart.line.uptrend.xyaxis",
+                color: .purple
+            )
+            StatCard(
+                title: "Best Day",
+                value: bestDayDuration.formattedFocusTime,
+                icon: "star.fill",
+                color: .yellow
+            )
+            StatCard(
+                title: "Total",
+                value: periodTotal.formattedFocusTime,
+                icon: "sum",
+                color: .blue
+            )
+        }
+    }
+
+    private var chartSubtitle: String {
+        if bestDayDuration <= 0 {
+            return "No focus time logged in this period"
+        }
+        return "Best day: \(bestDayLabel) · \(bestDayDuration.formattedFocusTime)"
     }
 
     private var days: Int { selectedPeriod == .week ? 7 : 30 }
