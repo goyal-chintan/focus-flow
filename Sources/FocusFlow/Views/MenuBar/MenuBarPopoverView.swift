@@ -44,7 +44,7 @@ struct MenuBarPopoverView: View {
         }
         .frame(width: 300)
         .background(.regularMaterial)
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: timerVM.state)
+        .animation(FFMotion.section, value: timerVM.state)
     }
 
     // MARK: - Header Bar (focusing, paused, break only)
@@ -102,7 +102,7 @@ struct MenuBarPopoverView: View {
                     color: LiquidDesignTokens.Spectral.electricBlue,
                     tracking: 1.5
                 )
-                Text("Project: \(timerVM.selectedProject?.name ?? "Focus")")
+                Text(timerVM.selectedProject?.name ?? "Focus")
                     .font(LiquidDesignTokens.Typography.headlineMedium)
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                     .lineLimit(1)
@@ -244,10 +244,7 @@ private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
     @State private var showCustomInput = false
-    let isBlockingActive: Bool
-    let blockingProfileName: String?
     let onStartFocus: () -> Void
-    let onToggleBlocking: () -> Void
 
     private let presets = [15, 25, 45, 60]
 
@@ -280,10 +277,6 @@ private struct IdlePopoverContent: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            blockingProfileRow
-                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 14)
-
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 16)
@@ -292,57 +285,47 @@ private struct IdlePopoverContent: View {
     }
 
     private var presetsRow: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 6) {
             ForEach(presets, id: \.self) { mins in
                 presetButton(mins)
             }
 
             // CUST button
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(FFMotion.control) {
                     showCustomInput.toggle()
                 }
             } label: {
                 Text("CUST")
                     .font(.system(size: 12, weight: showCustomInput ? .semibold : .regular))
                     .italic()
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .foregroundStyle(showCustomInput
-                        ? LiquidDesignTokens.Spectral.electricBlue
-                        : LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, minHeight: 32)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+            .tint(showCustomInput ? LiquidDesignTokens.Spectral.electricBlue : nil)
         }
-        .padding(3)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
     }
 
     @ViewBuilder
     private func presetButton(_ mins: Int) -> some View {
         let isSelected = selectedMinutes == mins && !showCustomInput
         Button {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            withAnimation(FFMotion.control) {
                 showCustomInput = false
                 selectedMinutes = mins
             }
         } label: {
             Text("\(mins)")
                 .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
-                .frame(maxWidth: .infinity, minHeight: 36)
-                .foregroundStyle(isSelected
-                    ? LiquidDesignTokens.Surface.onSurface
-                    : LiquidDesignTokens.Surface.onSurfaceMuted)
-                .background {
-                    if isSelected {
-                        Capsule(style: .continuous)
-                            .fill(Color.white.opacity(0.12))
-                            .transition(.scale.combined(with: .opacity))
-                    }
-                }
-                .contentShape(Rectangle())
+                .frame(maxWidth: .infinity, minHeight: 32)
         }
-        .buttonStyle(.plain)
+        .if(isSelected) { view in
+            view.buttonStyle(.glassProminent)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+        }
+        .if(!isSelected) { view in
+            view.buttonStyle(.glass)
+        }
     }
 
     private var customInput: some View {
@@ -367,35 +350,6 @@ private struct IdlePopoverContent: View {
                 .font(LiquidDesignTokens.Typography.labelMedium)
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
         }
-    }
-
-    private var blockingProfileRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                TrackedLabel(
-                    text: "Blocking Profile",
-                    font: LiquidDesignTokens.Typography.labelSmall,
-                    tracking: 1.2
-                )
-                Text(blockingProfileName ?? "None")
-                    .font(LiquidDesignTokens.Typography.bodySmall)
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Toggle("", isOn: .constant(isBlockingActive))
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .scaleEffect(0.75)
-                .tint(LiquidDesignTokens.Spectral.primaryContainer)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-        .opacity(blockingProfileName != nil ? 1 : 0.5)
     }
 
     private var startButton: some View {
@@ -435,14 +389,22 @@ private struct FocusingPopoverContent: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Pause / Stop buttons
+            // Pause / Stop buttons — native glass
             HStack(spacing: 8) {
-                glassControlButton(title: "Pause", icon: "pause.fill", color: LiquidDesignTokens.Surface.onSurface) {
-                    onPause()
+                Button(action: onPause) {
+                    Label("Pause", systemImage: "pause.fill")
+                        .frame(maxWidth: .infinity, minHeight: 36)
                 }
-                glassControlButton(title: "Stop", icon: "stop.fill", color: LiquidDesignTokens.Spectral.salmon) {
-                    withAnimation { onShowStopConfirmation() }
+                .buttonStyle(.glass)
+
+                Button {
+                    withAnimation(FFMotion.section) { onShowStopConfirmation() }
+                } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity, minHeight: 36)
                 }
+                .buttonStyle(.glass)
+                .tint(LiquidDesignTokens.Spectral.salmon)
             }
             .padding(.top, 14)
 
@@ -454,23 +416,6 @@ private struct FocusingPopoverContent: View {
         .padding(.bottom, 12)
     }
 
-    private func glassControlButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundStyle(color)
-                Text(title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-            }
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .contentShape(Rectangle())
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-        }
-        .buttonStyle(.plain)
-    }
-
     private var stopConfirmation: some View {
         VStack(spacing: 8) {
             Text("End this session?")
@@ -478,32 +423,26 @@ private struct FocusingPopoverContent: View {
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
             HStack(spacing: 8) {
-                obsidianTextButton("Save", icon: "square.and.arrow.down", action: onSaveStop)
-                obsidianTextButton("Discard", icon: "trash", color: LiquidDesignTokens.Spectral.destructive, action: onDiscardStop)
-                obsidianTextButton("Cancel", action: onCancelStop)
+                Button(action: onSaveStop) {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(.glass)
+
+                Button(action: onDiscardStop) {
+                    Label("Discard", systemImage: "trash")
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(.glass)
+                .tint(LiquidDesignTokens.Spectral.destructive)
+
+                Button("Cancel", action: onCancelStop)
+                    .frame(maxWidth: .infinity, minHeight: 30)
+                    .buttonStyle(.glass)
             }
         }
         .padding(12)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.card))
         .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    private func obsidianTextButton(_ title: String, icon: String? = nil, color: Color = LiquidDesignTokens.Surface.onSurface, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Group {
-                if let icon {
-                    Label(title, systemImage: icon)
-                } else {
-                    Text(title)
-                }
-            }
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -519,11 +458,6 @@ private struct PausedPopoverContent: View {
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
 
-    private var motivationText: String {
-        // Basic motivation based on pause duration
-        "Deep work momentum is fading..."
-    }
-
     var body: some View {
         VStack(spacing: 14) {
             // Pause info
@@ -532,14 +466,14 @@ private struct PausedPopoverContent: View {
                     .font(LiquidDesignTokens.Typography.headlineLarge)
                     .foregroundStyle(LiquidDesignTokens.Spectral.amber)
 
-                Text(motivationText)
+                Text("Deep work momentum is fading...")
                     .font(LiquidDesignTokens.Typography.bodySmall)
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     .italic()
             }
             .padding(.top, 8)
 
-            // Resume CTA — uses blue gradient (consistent with Start Focus)
+            // Resume CTA — blue gradient
             Button(action: onResume) {
                 HStack(spacing: 8) {
                     Image(systemName: "play.fill")
@@ -563,9 +497,9 @@ private struct PausedPopoverContent: View {
             .buttonStyle(.plain)
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
 
-            // End Session text link
+            // End Session — native glass button
             Button {
-                withAnimation { onShowStopConfirmation() }
+                withAnimation(FFMotion.section) { onShowStopConfirmation() }
             } label: {
                 TrackedLabel(
                     text: "End Session",
@@ -586,35 +520,18 @@ private struct PausedPopoverContent: View {
 
     private var pausedStopConfirmation: some View {
         HStack(spacing: 8) {
-            Button(action: onSaveStop) {
-                Text("Save & End")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
+            Button("Save & End", action: onSaveStop)
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .buttonStyle(.glass)
 
-            Button(action: onDiscardStop) {
-                Text("Discard")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Spectral.destructive)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
+            Button("Discard", action: onDiscardStop)
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .buttonStyle(.glass)
+                .tint(LiquidDesignTokens.Spectral.destructive)
 
-            Button(action: onCancelStop) {
-                Text("Cancel")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
+            Button("Cancel", action: onCancelStop)
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .buttonStyle(.glass)
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -635,28 +552,24 @@ private struct BreakPopoverContent: View {
                     tracking: 2.0
                 )
                 if let projectName {
-                    Text("Project: \(projectName)")
+                    Text(projectName)
                         .font(LiquidDesignTokens.Typography.headlineMedium)
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                 }
             }
             .padding(.top, 8)
 
-            // Skip Break button
+            // Skip Break — native glass button
             Button(action: onSkipBreak) {
                 HStack(spacing: 6) {
                     Text("Skip Break")
-                        .font(.system(size: 14, weight: .medium))
                         .tracking(0.5)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10))
                 }
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                .frame(maxWidth: .infinity, minHeight: 40)
-                .contentShape(Rectangle())
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+                .frame(maxWidth: .infinity, minHeight: 36)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         }
         .padding(.bottom, 12)
@@ -671,14 +584,9 @@ extension MenuBarPopoverView {
         return IdlePopoverContent(
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
-            isBlockingActive: timerVM.isBlockingActive,
-            blockingProfileName: timerVM.selectedProject?.blockProfile?.name,
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
-            },
-            onToggleBlocking: {
-                // Blocking activates automatically when focus starts
             }
         )
         .transition(.move(edge: .bottom).combined(with: .opacity))

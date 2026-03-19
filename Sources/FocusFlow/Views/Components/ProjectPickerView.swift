@@ -63,6 +63,13 @@ struct ProjectPickerView: View {
 
                     Spacer()
 
+                    // Shield icon if blocking profile attached
+                    if selectedProject?.blockProfile != nil {
+                        Image(systemName: "shield.checkered")
+                            .font(.system(size: 10))
+                            .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue.opacity(0.7))
+                    }
+
                     Image(systemName: "chevron.down")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)

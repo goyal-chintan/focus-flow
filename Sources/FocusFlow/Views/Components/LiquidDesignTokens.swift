@@ -163,6 +163,35 @@ extension View {
     func obsidianGlass(cornerRadius: CGFloat = LiquidDesignTokens.CornerRadius.card) -> some View {
         modifier(ObsidianGlassContainer(cornerRadius: cornerRadius))
     }
+
+    /// Conditionally apply a view modifier
+    @ViewBuilder
+    func `if`<Transform: View>(_ condition: Bool, transform: (Self) -> Transform) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: - Motion System (Standardized Springs)
+
+enum FFMotion {
+    /// Popover entry/exit — gentle spring with slight overshoot
+    static let popover: Animation = .spring(response: 0.36, dampingFraction: 0.82)
+
+    /// Section/state transitions — medium spring
+    static let section: Animation = .spring(response: 0.34, dampingFraction: 0.84)
+
+    /// Control interactions — snappy spring for buttons, toggles
+    static let control: Animation = .spring(response: 0.26, dampingFraction: 0.82)
+
+    /// Breathing ambient animation — slow, meditative loop
+    static let breathing: Animation = .easeInOut(duration: 1.8).repeatForever(autoreverses: true)
+
+    /// Progress ring updates — smooth easing
+    static let progress: Animation = .easeInOut(duration: 0.75)
 }
 
 // MARK: - Uppercase Tracked Label
