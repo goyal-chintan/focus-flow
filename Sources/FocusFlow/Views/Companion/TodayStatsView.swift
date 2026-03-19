@@ -174,7 +174,7 @@ struct TodayStatsView: View {
                 let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
                 if !achievements.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        ForEach(achievements, id: \.self) { achievement in
+                        ForEach(Array(achievements.enumerated()), id: \.offset) { _, achievement in
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.caption)

@@ -55,7 +55,6 @@ struct ProjectTimeBar: View {
     }
 
     private var percentage: Int {
-        guard maxDuration > 0 else { return 0 }
-        return Int((duration / maxDuration * 100).rounded())
+        Int((ratio * 100).rounded())
     }
 }
