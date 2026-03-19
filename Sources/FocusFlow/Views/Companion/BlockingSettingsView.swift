@@ -4,18 +4,22 @@ import SwiftData
 struct BlockingSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \BlockProfile.createdAt) private var profiles: [BlockProfile]
+
     @State private var editingProfile: BlockProfile?
     @State private var showNewProfile = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: LiquidDesignTokens.Spacing.large) {
             header
+
             if profiles.isEmpty {
                 emptyState
             } else {
                 profileList
             }
         }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.background)
         .sheet(isPresented: $showNewProfile) {
             BlockProfileFormView(profile: nil)
@@ -26,88 +30,93 @@ struct BlockingSettingsView: View {
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Blocking Profiles")
-                    .font(.title2.weight(.bold))
-                Text("\(profiles.count) profiles")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+        LiquidSectionHeader("Blocking Profiles", subtitle: "\(profiles.count) profile\(profiles.count == 1 ? "" : "s")") {
             Button {
                 showNewProfile = true
             } label: {
                 Label("New Profile", systemImage: "plus")
-                    .font(.subheadline.weight(.medium))
+                    .font(LiquidDesignTokens.Typography.controlLabel)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
         }
-        .padding(24)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "shield.checkered")
-                .font(.system(size: 48))
-                .foregroundStyle(.tertiary)
-            Text("No blocking profiles")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("Create profiles to block distracting websites and apps during focus sessions")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+        LiquidGlassPanel {
+            VStack(spacing: 14) {
+                Image(systemName: "shield.checkered")
+                    .font(.system(size: 42, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text("No blocking profiles")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Text("Create profiles to block distracting websites and apps during focus sessions.")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(24)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 
     private var profileList: some View {
         List {
             ForEach(profiles) { profile in
                 profileRow(profile)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
             }
         }
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
     }
 
     private func profileRow(_ profile: BlockProfile) -> some View {
-        HStack(spacing: 14) {
-            profileIcon(profile)
-            profileInfo(profile)
-            Spacer()
-            profileActions(profile)
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            HStack(spacing: 14) {
+                profileIcon(profile)
+                profileInfo(profile)
+                Spacer()
+                profileActions(profile)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
-        .padding(.vertical, 4)
     }
 
     private func profileIcon(_ profile: BlockProfile) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
-                .fill(profile.isDefault ? Color.blue.opacity(0.15) : Color.secondary.opacity(0.1))
+                .fill(profile.isDefault ? Color.blue.opacity(0.18) : Color.secondary.opacity(0.12))
                 .frame(width: 40, height: 40)
+
             Image(systemName: profile.isDefault ? "shield.checkered" : "shield")
                 .foregroundStyle(profile.isDefault ? .blue : .secondary)
-                .font(.system(size: 18))
+                .font(.system(size: 17, weight: .semibold))
         }
     }
 
     private func profileInfo(_ profile: BlockProfile) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(profile.name)
                     .font(.body.weight(.medium))
+
                 if profile.isDefault {
                     Text("DEFAULT")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.blue)
-                        .padding(.horizontal, 5)
+                        .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                        .background(.blue.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
                 }
             }
+
             Text(profileSummary(profile))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -116,35 +125,38 @@ struct BlockingSettingsView: View {
 
     @ViewBuilder
     private func profileActions(_ profile: BlockProfile) -> some View {
-        if !profile.isDefault {
-            Button {
-                setDefault(profile)
-            } label: {
-                Image(systemName: "star")
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 6) {
+            if !profile.isDefault {
+                actionIconButton("star", helpText: "Set as default") {
+                    setDefault(profile)
+                }
             }
-            .buttonStyle(.plain)
-            .help("Set as default")
-        }
 
-        Button {
-            editingProfile = profile
-        } label: {
-            Image(systemName: "pencil")
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help("Edit profile")
+            actionIconButton("pencil", helpText: "Edit profile") {
+                editingProfile = profile
+            }
 
-        Button {
-            modelContext.delete(profile)
-            try? modelContext.save()
-        } label: {
-            Image(systemName: "trash")
-                .foregroundStyle(.red.opacity(0.7))
+            actionIconButton("trash", tint: .red, helpText: "Delete profile") {
+                modelContext.delete(profile)
+                try? modelContext.save()
+            }
         }
-        .buttonStyle(.plain)
-        .help("Delete profile")
+    }
+
+    private func actionIconButton(
+        _ systemName: String,
+        tint: Color = .secondary,
+        helpText: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.glass)
+        .tint(tint)
+        .help(helpText)
     }
 
     private func profileSummary(_ profile: BlockProfile) -> String {
@@ -154,11 +166,13 @@ struct BlockingSettingsView: View {
         if wc > 0 { parts.append("\(wc) website\(wc == 1 ? "" : "s")") }
         if ac > 0 { parts.append("\(ac) app\(ac == 1 ? "" : "s")") }
         if parts.isEmpty { return "No blocks configured" }
-        return parts.joined(separator: " \u{00B7} ")
+        return parts.joined(separator: " · ")
     }
 
     private func setDefault(_ profile: BlockProfile) {
-        for p in profiles { p.isDefault = false }
+        for existing in profiles {
+            existing.isDefault = false
+        }
         profile.isDefault = true
         try? modelContext.save()
     }
