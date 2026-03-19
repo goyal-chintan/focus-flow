@@ -22,7 +22,22 @@ struct LiquidActionButton: View {
     let title: String
     let icon: String
     let role: LiquidActionRole
+    let tint: Color?
     let action: () -> Void
+
+    init(
+        title: String,
+        icon: String,
+        role: LiquidActionRole,
+        tint: Color? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.icon = icon
+        self.role = role
+        self.tint = tint
+        self.action = action
+    }
 
     var body: some View {
         let label = Label(title, systemImage: icon)
@@ -33,11 +48,11 @@ struct LiquidActionButton: View {
         if role.isProminent {
             Button(action: action) { label }
                 .buttonStyle(.glassProminent)
-                .tint(role.tint)
+                .tint(tint ?? role.tint)
         } else {
             Button(action: action) { label }
                 .buttonStyle(.glass)
-                .tint(role.tint)
+                .tint(tint ?? role.tint)
         }
     }
 }

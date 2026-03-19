@@ -30,21 +30,18 @@ struct SessionCompleteWindowView: View {
     // MARK: - Focus Completion
 
     private var focusContent: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             focusHeaderSection
-            Divider()
-            moodSection
-            achievementSection
+            reflectionSection
             splitSection
-            Divider()
             focusActionsSection
         }
-        .padding(20)
-        .frame(width: 380)
+        .padding(18)
+        .frame(width: 420)
     }
 
     private var focusHeaderSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.green)
@@ -52,24 +49,50 @@ struct SessionCompleteWindowView: View {
             Text("Focus Complete")
                 .font(.system(size: 20, weight: .semibold))
 
-            Text("\(Int((timerVM.lastCompletedDuration ?? 0) / 60)) minutes \u{00B7} \(timerVM.lastCompletedLabel ?? "Focus")")
+            Text("\(Int((timerVM.lastCompletedDuration ?? 0) / 60)) minutes · \(timerVM.lastCompletedLabel ?? "Focus")")
                 .font(.subheadline)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
 
-            if timerVM.isOvertime {
-                Text(timerVM.overtimeTimeString)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .foregroundStyle(.orange)
+            HStack(spacing: 10) {
+                LiquidMetricCard(
+                    title: "Duration",
+                    value: "\(Int((timerVM.lastCompletedDuration ?? 0) / 60))m",
+                    icon: "timer",
+                    color: .blue
+                )
+
+                LiquidMetricCard(
+                    title: "Session",
+                    value: timerVM.lastCompletedLabel ?? "Focus",
+                    icon: "scope",
+                    color: .green
+                )
+
+                if timerVM.isOvertime {
+                    LiquidMetricCard(
+                        title: "Overtime",
+                        value: timerVM.overtimeTimeString,
+                        icon: "plus.circle.fill",
+                        color: .orange
+                    )
+                }
             }
         }
         .padding(.top, 8)
     }
 
-    private var moodSection: some View {
+    private var reflectionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
+            LiquidSectionHeader("Reflection", subtitle: "Capture how this focus session felt")
+
+            moodSection
+            achievementSection
+        }
+    }
+
+    private var moodSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text("How was your focus?")
                 .font(.subheadline.weight(.medium))
 
@@ -110,12 +133,14 @@ struct SessionCompleteWindowView: View {
             TextField("e.g. Finished the API integration", text: $achievement)
                 .textFieldStyle(.plain)
                 .padding(10)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         }
     }
 
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
+            LiquidSectionHeader("Project Allocation", subtitle: "Optionally split this session")
+
             Button {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                     showSplits.toggle()
@@ -129,16 +154,20 @@ struct SessionCompleteWindowView: View {
                     }
                 }
             } label: {
-                HStack {
-                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
-                        .font(.caption)
-                    Text("Split across projects")
-                        .font(.caption)
-                    Spacer()
-                    Image(systemName: showSplits ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
+                LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+                    HStack {
+                        Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
+                            .font(.caption)
+                        Text("Split across projects")
+                            .font(.caption)
+                        Spacer()
+                        Image(systemName: showSplits ? "chevron.up" : "chevron.down")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
                 }
-                .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
 
@@ -155,35 +184,31 @@ struct SessionCompleteWindowView: View {
     private var focusActionsSection: some View {
         GlassEffectContainer {
             VStack(spacing: 8) {
-                Button {
+                LiquidActionButton(
+                    title: "Take a Break",
+                    icon: "cup.and.saucer.fill",
+                    role: .primary,
+                    tint: .green
+                ) {
                     saveAndDismiss(action: .takeBreak)
-                } label: {
-                    Label("Take a Break", systemImage: "cup.and.saucer.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(.green)
 
                 HStack(spacing: 8) {
-                    Button {
+                    LiquidActionButton(
+                        title: "Continue Focusing",
+                        icon: "arrow.clockwise",
+                        role: .secondary
+                    ) {
                         saveAndDismiss(action: .continueFocusing)
-                    } label: {
-                        Label("Continue Focusing", systemImage: "arrow.clockwise")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
                     }
-                    .buttonStyle(.glass)
 
-                    Button {
+                    LiquidActionButton(
+                        title: "End Session",
+                        icon: "stop.fill",
+                        role: .destructive
+                    ) {
                         saveAndDismiss(action: .endSession)
-                    } label: {
-                        Label("End Session", systemImage: "stop.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
                     }
-                    .buttonStyle(.glass)
-                    .tint(.red)
                 }
             }
         }
@@ -202,17 +227,16 @@ struct SessionCompleteWindowView: View {
     // MARK: - Break Completion
 
     private var breakContent: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             breakHeaderSection
-            Divider()
             breakActionsSection
         }
-        .padding(20)
-        .frame(width: 320)
+        .padding(18)
+        .frame(width: 340)
     }
 
     private var breakHeaderSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.blue)
@@ -221,11 +245,13 @@ struct SessionCompleteWindowView: View {
                 .font(.system(size: 20, weight: .semibold))
 
             if timerVM.isOvertime {
-                Text(timerVM.overtimeTimeString)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .foregroundStyle(.orange)
+                LiquidMetricCard(
+                    title: "Overtime",
+                    value: timerVM.overtimeTimeString,
+                    icon: "plus.circle.fill",
+                    color: .orange
+                )
+                .frame(maxWidth: 180)
             }
         }
         .padding(.top, 8)
@@ -234,26 +260,24 @@ struct SessionCompleteWindowView: View {
     private var breakActionsSection: some View {
         GlassEffectContainer {
             VStack(spacing: 8) {
-                Button {
+                LiquidActionButton(
+                    title: "Start Focusing",
+                    icon: "play.fill",
+                    role: .primary,
+                    tint: .blue
+                ) {
                     timerVM.continueAfterCompletion(action: .continueFocusing)
                     dismissWindow(id: "session-complete")
-                } label: {
-                    Label("Start Focusing", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(.blue)
 
-                Button {
+                LiquidActionButton(
+                    title: "End",
+                    icon: "stop.fill",
+                    role: .secondary
+                ) {
                     timerVM.continueAfterCompletion(action: .endSession)
                     dismissWindow(id: "session-complete")
-                } label: {
-                    Label("End", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
                 }
-                .buttonStyle(.glass)
             }
         }
     }
