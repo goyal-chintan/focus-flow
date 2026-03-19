@@ -98,11 +98,9 @@ struct MenuBarPopoverView: View {
             },
             onSaveStop: {
                 timerVM.stop()
-                showStopConfirmation = false
             },
             onDiscardStop: {
                 timerVM.abandonSession()
-                showStopConfirmation = false
             },
             onCancelStop: { showStopConfirmation = false }
         )
@@ -123,11 +121,9 @@ struct MenuBarPopoverView: View {
             },
             onSaveStop: {
                 timerVM.stop()
-                showStopConfirmation = false
             },
             onDiscardStop: {
                 timerVM.abandonSession()
-                showStopConfirmation = false
             },
             onCancelStop: { showStopConfirmation = false }
         )
