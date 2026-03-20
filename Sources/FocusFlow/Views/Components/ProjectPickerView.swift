@@ -54,32 +54,22 @@ struct ProjectPickerView: View {
                 HStack(spacing: 10) {
                     Circle()
                         .fill(projectColor)
-                        .frame(width: 8, height: 8)
+                        .frame(width: 7, height: 7)
 
                     Text(selectedProject?.name ?? "No Project")
-                        .font(LiquidDesignTokens.Typography.bodyMedium)
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                         .lineLimit(1)
 
                     Spacer()
-
-                    // Shield icon if blocking profile attached
-                    if selectedProject?.blockProfile != nil {
-                        Image(systemName: "shield.checkered")
-                            .font(.system(size: 10))
-                            .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue.opacity(0.7))
-                    }
-
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .contentShape(Rectangle())
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+                .padding(.vertical, 10)
             }
             .menuStyle(.borderlessButton)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
         }
         .popover(isPresented: $showCreateSheet) {
             createProjectPopover

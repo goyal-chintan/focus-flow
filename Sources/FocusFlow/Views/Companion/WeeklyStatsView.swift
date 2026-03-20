@@ -19,8 +19,8 @@ struct WeeklyStatsView: View {
             }
             .padding(24)
         }
-        .background(.background)
-        .animation(.smooth, value: selectedPeriod)
+        .background(.ultraThinMaterial)
+        .animation(FFMotion.section, value: selectedPeriod)
     }
 
     private var periodSection: some View {
@@ -31,13 +31,26 @@ struct WeeklyStatsView: View {
                     subtitle: "Track consistency and workload over time"
                 )
 
-                Picker("Period", selection: $selectedPeriod) {
+                HStack(spacing: 6) {
                     ForEach(Period.allCases, id: \.self) { period in
-                        Text(period.rawValue).tag(period)
+                        Button {
+                            selectedPeriod = period
+                        } label: {
+                            Text(period.rawValue)
+                                .font(.system(size: 13, weight: selectedPeriod == period ? .semibold : .medium))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                        }
+                        .if(selectedPeriod == period) { view in
+                            view.buttonStyle(.glassProminent)
+                                .tint(.purple)
+                        }
+                        .if(selectedPeriod != period) { view in
+                            view.buttonStyle(.glass)
+                        }
+                        .buttonBorderShape(.capsule)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 230)
             }
             .padding(16)
         }
@@ -63,21 +76,28 @@ struct WeeklyStatsView: View {
                 title: "Daily Average",
                 value: dailyAverage.formattedFocusTime,
                 icon: "chart.line.uptrend.xyaxis",
-                color: .purple
+                color: .purple,
+                subtitle: activeDays > 0 ? "\(activeDays) active day\(activeDays == 1 ? "" : "s")" : nil
             )
             StatCard(
                 title: "Best Day",
                 value: bestDayDuration.formattedFocusTime,
                 icon: "star.fill",
-                color: .yellow
+                color: .yellow,
+                subtitle: bestDayLabel.isEmpty ? nil : bestDayLabel
             )
             StatCard(
                 title: "Total",
                 value: periodTotal.formattedFocusTime,
                 icon: "sum",
-                color: .blue
+                color: .blue,
+                subtitle: "\(selectedPeriod == .week ? "7" : "30") day period"
             )
         }
+    }
+
+    private var activeDays: Int {
+        chartData.filter { $0.value > 0 }.count
     }
 
     private var chartSubtitle: String {

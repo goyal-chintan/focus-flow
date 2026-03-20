@@ -87,12 +87,9 @@ struct CompanionWindowView: View {
     }
 
     private var windowBackground: some View {
-        LinearGradient(
-            colors: [Color.clear, Color.secondary.opacity(0.06)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .ignoresSafeArea()
     }
 }
 
@@ -100,15 +97,17 @@ private struct CompanionSidebarRow: View {
     let tab: CompanionTab
     let isSelected: Bool
 
+    private let pillRadius: CGFloat = LiquidDesignTokens.CornerRadius.picker
+
     var body: some View {
         HStack(spacing: LiquidDesignTokens.Spacing.medium) {
             ZStack {
                 RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control)
                     .fill(tab.tint.opacity(isSelected ? 0.22 : 0.1))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 30, height: 30)
 
                 Image(systemName: tab.icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(isSelected ? tab.tint : .secondary)
             }
 
@@ -126,14 +125,15 @@ private struct CompanionSidebarRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background {
-            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+            RoundedRectangle(cornerRadius: pillRadius, style: .continuous)
                 .fill(isSelected ? tab.tint.opacity(0.12) : .clear)
                 .overlay(
-                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+                    RoundedRectangle(cornerRadius: pillRadius, style: .continuous)
                         .stroke(isSelected ? tab.tint.opacity(0.26) : .clear, lineWidth: 1)
                 )
+                .shadow(color: isSelected ? tab.tint.opacity(0.15) : .clear, radius: 6, y: 2)
         }
-        .contentShape(RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .contentShape(RoundedRectangle(cornerRadius: pillRadius))
+        .animation(FFMotion.control, value: isSelected)
     }
 }

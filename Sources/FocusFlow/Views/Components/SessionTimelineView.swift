@@ -8,14 +8,14 @@ struct SessionTimelineView: View {
         if sessions.isEmpty {
             emptyState
         } else {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 0) {
                 ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
-                    sessionRow(session, isLast: index == sessions.count - 1)
+                    sessionRow(session)
 
                     if index != sessions.count - 1 {
                         Divider()
-                            .padding(.leading, 24)
-                            .padding(.vertical, 8)
+                            .padding(.leading, 52)
+                            .padding(.vertical, 2)
                     }
                 }
             }
@@ -30,7 +30,6 @@ struct SessionTimelineView: View {
             Image(systemName: "timer")
                 .font(.title2)
                 .foregroundStyle(.tertiary)
-
             Text("No sessions yet today")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -39,43 +38,47 @@ struct SessionTimelineView: View {
         .padding(.vertical, 22)
     }
 
-    private func sessionRow(_ session: FocusSession, isLast: Bool) -> some View {
+    private func sessionRow(_ session: FocusSession) -> some View {
         Button {
             editingSession = session
         } label: {
-            HStack(alignment: .top, spacing: 10) {
-                timelineIndicator(session: session, isLast: isLast)
+            HStack(spacing: 12) {
+                // Project icon badge
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(sessionColor(session).opacity(0.15))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: session.project?.icon ?? "timer")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(sessionColor(session))
+                }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
                         Text(session.label)
                             .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                             .lineLimit(1)
 
                         if session.completed {
-                            Label("Done", systemImage: "checkmark.circle.fill")
-                                .font(.caption2.weight(.semibold))
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption2)
                                 .foregroundStyle(.green)
-                                .labelStyle(.iconOnly)
-                        }
-
-                        Spacer(minLength: 0)
-
-                        if let mood = session.mood {
-                            Image(systemName: mood.icon)
-                                .font(.caption)
-                                .foregroundStyle(moodColor(mood))
                         }
                     }
 
-                    HStack(spacing: 6) {
+                    HStack(spacing: 4) {
                         Text(session.startedAt.formatted(date: .omitted, time: .shortened))
+                        if let end = session.endedAt {
+                            Text("–")
+                            Text(end.formatted(date: .omitted, time: .shortened))
+                        }
                         Text("·")
                         Text("\(Int(session.actualDuration / 60))m")
                             .monospacedDigit()
 
                         if !session.completed {
-                            Text("· stopped early")
+                            Text("· incomplete")
                                 .foregroundStyle(.orange)
                         }
                     }
@@ -83,32 +86,47 @@ struct SessionTimelineView: View {
                     .foregroundStyle(.secondary)
                 }
 
+                Spacer(minLength: 0)
+
+                if let mood = session.mood {
+                    Image(systemName: mood.icon)
+                        .font(.system(size: 12))
+                        .foregroundStyle(moodColor(mood))
+                        .padding(.trailing, 4)
+                }
+
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)
-                    .padding(.top, 4)
             }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
             .contentShape(Rectangle())
-            .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
     }
 
-    private func timelineIndicator(session: FocusSession, isLast: Bool) -> some View {
-        VStack(spacing: 0) {
-            Circle()
-                .fill(session.completed ? Color.green : Color.orange)
-                .frame(width: 9, height: 9)
-
-            if !isLast {
-                Rectangle()
-                    .fill(.tertiary.opacity(0.4))
-                    .frame(width: 1)
-                    .frame(maxHeight: .infinity)
-                    .padding(.vertical, 3)
-            }
+    private func sessionColor(_ session: FocusSession) -> Color {
+        if let colorName = session.project?.color {
+            return colorFromName(colorName)
         }
-        .frame(width: 14)
+        return .blue
+    }
+
+    private func colorFromName(_ name: String) -> Color {
+        switch name {
+        case "blue": .blue
+        case "indigo": .indigo
+        case "purple": .purple
+        case "pink": .pink
+        case "red": .red
+        case "orange": .orange
+        case "yellow": .yellow
+        case "green": .green
+        case "teal": .teal
+        case "mint": .mint
+        default: .blue
+        }
     }
 
     private func moodColor(_ mood: FocusMood) -> Color {

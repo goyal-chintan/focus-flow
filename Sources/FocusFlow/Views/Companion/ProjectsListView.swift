@@ -26,7 +26,7 @@ struct ProjectsListView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.background)
+        .background(.ultraThinMaterial)
         .sheet(isPresented: $showingAddSheet) {
             ProjectFormView(
                 name: $formName,
@@ -74,6 +74,7 @@ struct ProjectsListView: View {
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
+            .buttonBorderShape(.capsule)
         }
     }
 
@@ -97,89 +98,83 @@ struct ProjectsListView: View {
     }
 
     private var projectsList: some View {
-        List {
-            ForEach(projects) { project in
-                projectRow(project)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-            }
-            .onDelete { indexSet in
-                withAnimation {
-                    for index in indexSet {
-                        let project = projects[index]
-                        if timerVM.selectedProject?.id == project.id {
-                            timerVM.selectedProject = nil
-                        }
-                        projects[index].archived = true
-                    }
-                    try? modelContext.save()
+        ScrollView {
+            VStack(spacing: 8) {
+                ForEach(projects) { project in
+                    projectRow(project)
                 }
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
     }
 
     private func projectRow(_ project: Project) -> some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(colorFromName(project.color))
-                    .frame(width: 10, height: 10)
-
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(colorFromName(project.color).opacity(0.15))
+                    .frame(width: 36, height: 36)
                 Image(systemName: project.icon ?? "folder.fill")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(colorFromName(project.color))
-                    .frame(width: 22)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(project.name)
-                        .font(.body.weight(.medium))
-
-                    let count = project.sessions.filter { $0.type == .focus && $0.completed }.count
-                    Text("\(count) focus session\(count == 1 ? "" : "s")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    rowIconButton(systemName: "pencil", helpText: "Edit project") {
-                        formName = project.name
-                        formColor = project.color
-                        formIcon = project.icon ?? "folder.fill"
-                        formBlockProfile = project.blockProfile
-                        editingProject = project
-                        showingAddSheet = true
-                    }
-
-                    rowIconButton(systemName: "archivebox", helpText: "Archive project") {
-                        withAnimation {
-                            project.archived = true
-                            if timerVM.selectedProject?.id == project.id {
-                                timerVM.selectedProject = nil
-                            }
-                            try? modelContext.save()
-                        }
-                    }
-                }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-        }
-    }
 
-    private func rowIconButton(systemName: String, helpText: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(project.name)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+
+                let count = project.sessions.filter { $0.type == .focus && $0.completed }.count
+                Text("\(count) focus session\(count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                Button {
+                    formName = project.name
+                    formColor = project.color
+                    formIcon = project.icon ?? "folder.fill"
+                    formBlockProfile = project.blockProfile
+                    editingProject = project
+                    showingAddSheet = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Edit project")
+
+                Button {
+                    withAnimation {
+                        project.archived = true
+                        if timerVM.selectedProject?.id == project.id {
+                            timerVM.selectedProject = nil
+                        }
+                        try? modelContext.save()
+                    }
+                } label: {
+                    Image(systemName: "archivebox")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Archive project")
+            }
+            .opacity(0.6)
         }
-        .buttonStyle(.glass)
-        .tint(.secondary)
-        .help(helpText)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 
     private func resetForm() {

@@ -43,7 +43,32 @@ struct MenuBarPopoverView: View {
             }
         }
         .frame(width: 300)
-        .background(.regularMaterial)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.black.opacity(0.52))
+                .background(
+                    .ultraThinMaterial,
+                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                )
+                .overlay(
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.16),
+                            Color(hex: 0x0C1322).opacity(0.1),
+                            Color.black.opacity(0.2)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.09), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.28), radius: 12, y: 8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .animation(FFMotion.section, value: timerVM.state)
     }
 
@@ -55,7 +80,7 @@ struct MenuBarPopoverView: View {
         case .focusing, .paused, .onBreak:
             HStack {
                 Text("FocusFlow")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
                 Spacer()
@@ -65,19 +90,22 @@ struct MenuBarPopoverView: View {
                         openWindow(id: "stats")
                         NSApplication.shared.activate(ignoringOtherApps: true)
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "chart.bar.fill")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
 
                     Button {
-                        // Close popover — sends dismiss action
                         NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -97,10 +125,10 @@ struct MenuBarPopoverView: View {
         if case .focusing = timerVM.state {
             VStack(spacing: 3) {
                 TrackedLabel(
-                    text: "Active Context",
+                    text: "Focusing",
                     font: LiquidDesignTokens.Typography.labelSmall,
                     color: LiquidDesignTokens.Spectral.electricBlue,
-                    tracking: 1.5
+                    tracking: 1.8
                 )
                 Text(timerVM.selectedProject?.name ?? "Focus")
                     .font(LiquidDesignTokens.Typography.headlineMedium)
@@ -121,7 +149,8 @@ struct MenuBarPopoverView: View {
             label: stateLabel,
             state: timerVM.state
         )
-        .padding(.top, timerVM.state == .idle ? 28 : 16)
+        .padding(.top, timerVM.state == .idle ? 18 : 10)
+        .padding(.bottom, timerVM.state == .idle ? 6 : 2)
     }
 
     // MARK: - State Section
@@ -160,12 +189,18 @@ struct MenuBarPopoverView: View {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.vertical, 10)
-        .background(Color.white.opacity(0.02))
+        .background(
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.26))
+        )
     }
 
     @ViewBuilder
@@ -190,7 +225,7 @@ struct MenuBarPopoverView: View {
             }
         case .onBreak:
             TrackedLabel(
-                text: "FocusFlow macOS",
+                text: "Today's Total",
                 font: LiquidDesignTokens.Typography.labelSmall,
                 tracking: 1.0
             )
@@ -200,8 +235,8 @@ struct MenuBarPopoverView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
                 Text("Today's Total")
-                    .font(LiquidDesignTokens.Typography.labelSmall)
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .font(LiquidDesignTokens.Typography.labelLarge)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.88))
             }
         }
     }
@@ -244,6 +279,7 @@ private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
     @State private var showCustomInput = false
+
     let onStartFocus: () -> Void
 
     private let presets = [15, 25, 45, 60]
@@ -255,7 +291,7 @@ private struct IdlePopoverContent: View {
                 TrackedLabel(
                     text: "Project",
                     font: LiquidDesignTokens.Typography.labelSmall,
-                    tracking: 1.5
+                    tracking: 1.8
                 )
                 Spacer()
             }
@@ -279,7 +315,7 @@ private struct IdlePopoverContent: View {
 
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 16)
+                .padding(.top, 14)
                 .padding(.bottom, 12)
         }
     }
@@ -289,20 +325,7 @@ private struct IdlePopoverContent: View {
             ForEach(presets, id: \.self) { mins in
                 presetButton(mins)
             }
-
-            // CUST button
-            Button {
-                withAnimation(FFMotion.control) {
-                    showCustomInput.toggle()
-                }
-            } label: {
-                Text("CUST")
-                    .font(.system(size: 12, weight: showCustomInput ? .semibold : .regular))
-                    .italic()
-                    .frame(maxWidth: .infinity, minHeight: 32)
-            }
-            .buttonStyle(.glass)
-            .tint(showCustomInput ? LiquidDesignTokens.Spectral.electricBlue : nil)
+            customButton
         }
     }
 
@@ -316,8 +339,9 @@ private struct IdlePopoverContent: View {
             }
         } label: {
             Text("\(mins)")
-                .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
-                .frame(maxWidth: .infinity, minHeight: 32)
+                .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
         }
         .if(isSelected) { view in
             view.buttonStyle(.glassProminent)
@@ -326,6 +350,30 @@ private struct IdlePopoverContent: View {
         .if(!isSelected) { view in
             view.buttonStyle(.glass)
         }
+        .buttonBorderShape(.capsule)
+    }
+
+    private var customButton: some View {
+        let isSelected = showCustomInput
+        return Button {
+            withAnimation(FFMotion.control) {
+                showCustomInput.toggle()
+            }
+        } label: {
+            Text("CUST")
+                .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                .italic()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
+        .if(isSelected) { view in
+            view.buttonStyle(.glassProminent)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+        }
+        .if(!isSelected) { view in
+            view.buttonStyle(.glass)
+        }
+        .buttonBorderShape(.capsule)
     }
 
     private var customInput: some View {
@@ -335,14 +383,18 @@ private struct IdlePopoverContent: View {
                 .font(LiquidDesignTokens.Typography.bodyMedium)
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                 .frame(width: 50)
+                .onChange(of: selectedMinutes) { _, newValue in
+                    selectedMinutes = max(5, min(180, newValue))
+                }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(LiquidDesignTokens.Surface.containerLow)
+                        .fill(.ultraThinMaterial)
+                        .overlay(Color.black.opacity(0.36))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(LiquidDesignTokens.Spectral.electricBlue.opacity(0.3), lineWidth: 1)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 0.6)
                         )
                 )
 
@@ -356,24 +408,39 @@ private struct IdlePopoverContent: View {
         Button(action: onStartFocus) {
             HStack(spacing: 8) {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 12))
+                    .font(.system(size: 13, weight: .bold))
                 Text("Start Focus Session")
-                    .font(LiquidDesignTokens.Typography.controlLabel)
+                    .font(.system(size: 16, weight: .semibold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
-                    .fill(ObsidianGradients.blueCTA())
-                    .shadow(color: LiquidDesignTokens.Spectral.primaryContainer.opacity(0.3), radius: 16, y: 4)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
-                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-            )
+            .padding(.vertical, 15)
         }
         .buttonStyle(.plain)
+        .background(
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(hex: 0x5B9EF8),
+                            Color(hex: 0x6AABFF),
+                            Color(hex: 0xA5C4FF)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.28), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+        )
     }
 }
 
@@ -393,18 +460,22 @@ private struct FocusingPopoverContent: View {
             HStack(spacing: 8) {
                 Button(action: onPause) {
                     Label("Pause", systemImage: "pause.fill")
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
                 }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
 
                 Button {
                     withAnimation(FFMotion.section) { onShowStopConfirmation() }
                 } label: {
                     Label("Stop", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
                 }
                 .buttonStyle(.glass)
                 .tint(LiquidDesignTokens.Spectral.salmon)
+                .buttonBorderShape(.capsule)
             }
             .padding(.top, 14)
 
@@ -428,6 +499,7 @@ private struct FocusingPopoverContent: View {
                         .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
 
                 Button(action: onDiscardStop) {
                     Label("Discard", systemImage: "trash")
@@ -435,10 +507,12 @@ private struct FocusingPopoverContent: View {
                 }
                 .buttonStyle(.glass)
                 .tint(LiquidDesignTokens.Spectral.destructive)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
 
                 Button("Cancel", action: onCancelStop)
                     .frame(maxWidth: .infinity, minHeight: 30)
                     .buttonStyle(.glass)
+                    .buttonBorderShape(.roundedRectangle(radius: 10))
             }
         }
         .padding(12)
@@ -477,24 +551,40 @@ private struct PausedPopoverContent: View {
             Button(action: onResume) {
                 HStack(spacing: 8) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 12))
-                    Text("Resume Focus")
-                        .font(LiquidDesignTokens.Typography.controlLabel)
+                        .font(.system(size: 13, weight: .bold))
+                    Text("RESUME FOCUS")
+                        .font(.system(size: 15, weight: .bold))
+                        .tracking(1.0)
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(Color(hex: 0x1A1200))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
-                        .fill(ObsidianGradients.blueCTA())
-                        .shadow(color: LiquidDesignTokens.Spectral.primaryContainer.opacity(0.3), radius: 16, y: 4)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.cta, style: .continuous)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
-                )
+                .padding(.vertical, 13)
             }
             .buttonStyle(.plain)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: 0xD4940A),
+                                Color(hex: 0xFFC07A),
+                                Color(hex: 0xFFD89E)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.28), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    )
+            )
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
 
             // End Session — native glass button
@@ -523,15 +613,18 @@ private struct PausedPopoverContent: View {
             Button("Save & End", action: onSaveStop)
                 .frame(maxWidth: .infinity, minHeight: 30)
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
 
             Button("Discard", action: onDiscardStop)
                 .frame(maxWidth: .infinity, minHeight: 30)
                 .buttonStyle(.glass)
                 .tint(LiquidDesignTokens.Spectral.destructive)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
 
             Button("Cancel", action: onCancelStop)
                 .frame(maxWidth: .infinity, minHeight: 30)
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -552,7 +645,7 @@ private struct BreakPopoverContent: View {
                     tracking: 2.0
                 )
                 if let projectName {
-                    Text(projectName)
+                    Text("Project: \(projectName)")
                         .font(LiquidDesignTokens.Typography.headlineMedium)
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                 }
@@ -562,14 +655,16 @@ private struct BreakPopoverContent: View {
             // Skip Break — native glass button
             Button(action: onSkipBreak) {
                 HStack(spacing: 6) {
-                    Text("Skip Break")
-                        .tracking(0.5)
+                    Text("SKIP BREAK")
+                        .font(.system(size: 13, weight: .medium))
+                        .tracking(1.5)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, weight: .medium))
                 }
                 .frame(maxWidth: .infinity, minHeight: 36)
             }
             .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         }
         .padding(.bottom, 12)

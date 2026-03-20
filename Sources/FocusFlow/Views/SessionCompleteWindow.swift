@@ -36,56 +36,45 @@ struct SessionCompleteWindowView: View {
             splitSection
             focusActionsSection
         }
-        .padding(18)
-        .frame(width: 420)
+        .padding(24)
+        .frame(width: 440)
     }
 
     private var focusHeaderSection: some View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 40))
-                .foregroundStyle(.green)
+                .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
 
-            Text("Focus Complete")
-                .font(.system(size: 20, weight: .semibold))
+            Text("Session Complete")
+                .font(.system(size: 24, weight: .bold))
 
-            Text("\(Int((timerVM.lastCompletedDuration ?? 0) / 60)) minutes · \(timerVM.lastCompletedLabel ?? "Focus")")
-                .font(.subheadline)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            TrackedLabel(
+                text: "FocusFlow macOS Experience",
+                font: .system(size: 10, weight: .medium),
+                color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                tracking: 2.0
+            )
 
             HStack(spacing: 10) {
-                LiquidMetricCard(
-                    title: "Duration",
-                    value: "\(Int((timerVM.lastCompletedDuration ?? 0) / 60))m",
-                    icon: "timer",
-                    color: .blue
+                statCard(
+                    label: "Time Elapsed",
+                    value: "\(Int((timerVM.lastCompletedDuration ?? 0) / 60))m Session",
+                    valueColor: LiquidDesignTokens.Spectral.electricBlue
                 )
 
-                LiquidMetricCard(
-                    title: "Session",
+                statCard(
+                    label: "Active Project",
                     value: timerVM.lastCompletedLabel ?? "Focus",
-                    icon: "scope",
-                    color: .green
+                    valueColor: LiquidDesignTokens.Surface.onSurface
                 )
-
-                if timerVM.isOvertime {
-                    LiquidMetricCard(
-                        title: "Overtime",
-                        value: timerVM.overtimeTimeString,
-                        icon: "plus.circle.fill",
-                        color: .orange
-                    )
-                }
             }
         }
         .padding(.top, 8)
     }
 
     private var reflectionSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            LiquidSectionHeader("Reflection", subtitle: "Capture how this focus session felt")
-
+        VStack(alignment: .leading, spacing: 14) {
             moodSection
             achievementSection
         }
@@ -93,8 +82,11 @@ struct SessionCompleteWindowView: View {
 
     private var moodSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("How was your focus?")
-                .font(.subheadline.weight(.medium))
+            TrackedLabel(
+                text: "How Was Your Focus?",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
 
             HStack(spacing: 8) {
                 ForEach(FocusMood.allCases, id: \.self) { mood in
@@ -118,19 +110,26 @@ struct SessionCompleteWindowView: View {
         if selectedMood == mood {
             Button { selectedMood = nil } label: { label }
                 .buttonStyle(.glassProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 14))
                 .tint(moodColor(mood))
+                .accessibilityLabel("\(mood.rawValue), selected")
         } else {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 14))
+                .accessibilityLabel(mood.rawValue)
         }
     }
 
     private var achievementSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("What did you achieve?")
-                .font(.subheadline.weight(.medium))
+            TrackedLabel(
+                text: "What Did You Finish?",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
 
-            TextField("e.g. Finished the API integration", text: $achievement)
+            TextField("Log your wins...", text: $achievement)
                 .textFieldStyle(.plain)
                 .padding(10)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
@@ -139,7 +138,11 @@ struct SessionCompleteWindowView: View {
 
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            LiquidSectionHeader("Project Allocation", subtitle: "Optionally split this session")
+            TrackedLabel(
+                text: "Project Allocation",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
 
             Button {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
@@ -154,22 +157,21 @@ struct SessionCompleteWindowView: View {
                     }
                 }
             } label: {
-                LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-                    HStack {
-                        Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
-                            .font(.caption)
-                        Text("Split across projects")
-                            .font(.caption)
-                        Spacer()
-                        Image(systemName: showSplits ? "chevron.up" : "chevron.down")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                HStack {
+                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
+                        .font(.caption)
+                    Text("Split across projects")
+                        .font(.caption)
+                    Spacer()
+                    Image(systemName: showSplits ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
                 }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
 
             if showSplits {
                 TimeSplitView(
@@ -182,35 +184,53 @@ struct SessionCompleteWindowView: View {
     }
 
     private var focusActionsSection: some View {
-        GlassEffectContainer {
-            VStack(spacing: 8) {
-                LiquidActionButton(
-                    title: "Take a Break",
-                    icon: "cup.and.saucer.fill",
-                    role: .primary,
-                    tint: .green
-                ) {
-                    saveAndDismiss(action: .takeBreak)
-                }
-
+        VStack(spacing: 12) {
+            GlassEffectContainer {
                 HStack(spacing: 8) {
-                    LiquidActionButton(
-                        title: "Continue Focusing",
-                        icon: "arrow.clockwise",
-                        role: .secondary
-                    ) {
-                        saveAndDismiss(action: .continueFocusing)
+                    Button {
+                        saveAndDismiss(action: .takeBreak)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "cup.and.saucer.fill")
+                                .font(.system(size: 12))
+                            Text("Take a Break")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
                     }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
 
-                    LiquidActionButton(
-                        title: "End Session",
-                        icon: "stop.fill",
-                        role: .destructive
-                    ) {
-                        saveAndDismiss(action: .endSession)
+                    Button {
+                        saveAndDismiss(action: .continueFocusing)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Keep Focusing")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                    .buttonBorderShape(.capsule)
                 }
             }
+
+            Button {
+                saveAndDismiss(action: .endSession)
+            } label: {
+                TrackedLabel(
+                    text: "Done",
+                    font: .system(size: 11, weight: .medium),
+                    color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                    tracking: 2.5
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -291,6 +311,24 @@ struct SessionCompleteWindowView: View {
         case .focused: .blue
         case .deepFocus: .purple
         }
+    }
+
+    private func statCard(label: String, value: String, valueColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TrackedLabel(
+                text: label,
+                font: .system(size: 10, weight: .semibold),
+                tracking: 1.5
+            )
+
+            Text(value)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func bringWindowToFront() {

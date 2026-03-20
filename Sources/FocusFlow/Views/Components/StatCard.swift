@@ -5,13 +5,45 @@ struct StatCard: View {
     let value: String
     let icon: String
     let color: Color
+    var subtitle: String? = nil
 
     var body: some View {
-        LiquidMetricCard(
-            title: title,
-            value: value,
-            icon: icon,
-            color: color
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            Text(value)
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            TrackedLabel(
+                text: title,
+                font: .system(size: 10, weight: .semibold),
+                tracking: 1.5
+            )
+
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
         )
     }
 }
