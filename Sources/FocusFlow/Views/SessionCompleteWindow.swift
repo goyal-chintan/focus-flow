@@ -116,7 +116,6 @@ struct SessionCompleteWindowView: View {
             Button { selectedMood = nil } label: { label }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.roundedRectangle(radius: 14))
-                .tint(moodColor(mood))
                 .accessibilityLabel("\(mood.rawValue), selected")
         } else {
             Button { selectedMood = mood } label: { label }
