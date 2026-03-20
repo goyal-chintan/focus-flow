@@ -485,6 +485,20 @@ final class TimerViewModel {
             let label = currentSession?.label ?? "Focus"
             let duration = currentSession?.duration ?? 0
             NotificationService.shared.sendSessionCompletePrompt(duration: duration, label: label, sound: sound)
+
+            // Calendar integration
+            if settings?.calendarIntegrationEnabled == true, let session = currentSession {
+                let calName = settings?.calendarName ?? "FocusFlow"
+                let eventId = CalendarService.shared.createEvent(
+                    title: session.label,
+                    startDate: session.startedAt,
+                    endDate: session.endedAt ?? Date(),
+                    notes: session.achievement,
+                    calendarName: calName
+                )
+                session.calendarEventId = eventId
+                try? modelContext?.save()
+            }
         } else {
             NotificationService.shared.sendBreakComplete(sound: settings?.completionSound ?? "Glass")
         }

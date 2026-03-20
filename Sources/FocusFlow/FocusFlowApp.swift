@@ -19,6 +19,9 @@ struct FocusFlowApp: App {
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
                 .background(CompletionWindowLauncher(timerVM: timerVM))
+                .onAppear {
+                    AppUsageTracker.shared.start(timerVM: timerVM)
+                }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: menuBarIconName)
