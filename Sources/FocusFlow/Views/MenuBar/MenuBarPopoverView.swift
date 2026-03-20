@@ -143,7 +143,9 @@ struct MenuBarPopoverView: View {
             timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
             label: stateLabel,
             state: timerVM.state,
-            isOvertime: timerVM.isOvertime
+            isOvertime: timerVM.isOvertime,
+            pauseDuration: timerVM.pauseElapsed,
+            pauseTimeString: timerVM.pauseTimeString
         )
         .padding(.top, timerVM.state == .idle ? 20 : 10)
         .padding(.bottom, timerVM.state == .idle ? 8 : 4)
@@ -429,6 +431,9 @@ private struct FocusingPopoverContent: View {
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
 
+    @State private var saveAnimating = false
+    @State private var discardAnimating = false
+
     var body: some View {
         VStack(spacing: 12) {
             // Pause / Stop buttons — native glass
@@ -517,35 +522,52 @@ private struct FocusingPopoverContent: View {
     }
 
     private var stopConfirmation: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Text("End this session?")
                 .font(LiquidDesignTokens.Typography.labelLarge)
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
-            HStack(spacing: 8) {
-                Button(action: onSaveStop) {
-                    Label("Save", systemImage: "square.and.arrow.down")
-                        .frame(maxWidth: .infinity, minHeight: 30)
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    saveAnimating = true
                 }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-
-                Button(action: onDiscardStop) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "trash")
-                        Text("Discard")
-                    }
-                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                    .frame(maxWidth: .infinity, minHeight: 30)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    onSaveStop()
                 }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-
-                Button("Cancel", action: onCancelStop)
-                    .frame(maxWidth: .infinity, minHeight: 30)
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
+            } label: {
+                Label("Save & End", systemImage: "square.and.arrow.down")
+                    .frame(maxWidth: .infinity, minHeight: 34)
             }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .scaleEffect(saveAnimating ? 0.92 : 1.0)
+            .opacity(saveAnimating ? 0.7 : 1.0)
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    discardAnimating = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    onDiscardStop()
+                }
+            } label: {
+                Label("Discard Session", systemImage: "trash")
+                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .scaleEffect(discardAnimating ? 0.92 : 1.0)
+            .opacity(discardAnimating ? 0.5 : 1.0)
+
+            Button {
+                withAnimation(FFMotion.control) { onCancelStop() }
+            } label: {
+                Text("Cancel")
+                    .frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
         }
         .padding(12)
         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -564,20 +586,17 @@ private struct PausedPopoverContent: View {
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
 
+    @State private var saveAnimating = false
+    @State private var discardAnimating = false
+
     var body: some View {
         VStack(spacing: 14) {
-            // Pause info
-            VStack(spacing: 4) {
-                Text("Paused for \(pauseTimeString)")
-                    .font(LiquidDesignTokens.Typography.headlineLarge)
-                    .foregroundStyle(Color(hex: 0xE6A820))
-
-                Text("Deep work momentum is fading...")
-                    .font(LiquidDesignTokens.Typography.bodySmall)
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .italic()
-            }
-            .padding(.top, 8)
+            // Motivational nudge — pause time is now shown in the ring
+            Text("Deep work momentum is fading...")
+                .font(LiquidDesignTokens.Typography.bodySmall)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .italic()
+                .padding(.top, 8)
 
             // Resume CTA — blue gradient
             Button(action: onResume) {
@@ -640,24 +659,48 @@ private struct PausedPopoverContent: View {
     }
 
     private var pausedStopConfirmation: some View {
-        HStack(spacing: 8) {
-            Button("Save & End", action: onSaveStop)
-                .frame(maxWidth: .infinity, minHeight: 30)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-
-            Button(action: onDiscardStop) {
-                Text("Discard")
-                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                    .frame(maxWidth: .infinity, minHeight: 30)
+        VStack(spacing: 8) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    saveAnimating = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    onSaveStop()
+                }
+            } label: {
+                Text("Save & End")
+                    .frame(maxWidth: .infinity, minHeight: 34)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .scaleEffect(saveAnimating ? 0.92 : 1.0)
+            .opacity(saveAnimating ? 0.7 : 1.0)
 
-            Button("Cancel", action: onCancelStop)
-                .frame(maxWidth: .infinity, minHeight: 30)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    discardAnimating = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    onDiscardStop()
+                }
+            } label: {
+                Label("Discard Session", systemImage: "trash")
+                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .scaleEffect(discardAnimating ? 0.92 : 1.0)
+            .opacity(discardAnimating ? 0.5 : 1.0)
+
+            Button {
+                withAnimation(FFMotion.control) { onCancelStop() }
+            } label: {
+                Text("Cancel")
+                    .frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
