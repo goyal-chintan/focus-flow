@@ -169,13 +169,13 @@ struct MenuBarPopoverView: View {
 
     private var footerSection: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 footerLeadingContent
 
                 Spacer()
 
                 Text(timerVM.todayFocusTime.formattedFocusTime)
-                    .font(LiquidDesignTokens.Typography.labelMedium)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(footerTimeColor)
                     .monospacedDigit()
 
@@ -184,9 +184,9 @@ struct MenuBarPopoverView: View {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 28, height: 28)
+                        .font(.system(size: 12))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
+                        .frame(width: 30, height: 30)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -205,36 +205,30 @@ struct MenuBarPopoverView: View {
     private var footerLeadingContent: some View {
         switch timerVM.state {
         case .focusing:
-            TrackedLabel(
-                text: "Today's Total",
-                font: LiquidDesignTokens.Typography.labelSmall,
-                tracking: 1.0
-            )
+            Text("TODAY'S TOTAL")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
         case .paused:
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Circle()
-                    .fill(LiquidDesignTokens.Spectral.amber)
-                    .frame(width: 5, height: 5)
-                TrackedLabel(
-                    text: "Today's Total",
-                    font: LiquidDesignTokens.Typography.labelSmall,
-                    tracking: 1.0
-                )
+                    .fill(Color(hex: 0xE6A820))
+                    .frame(width: 6, height: 6)
+                Text("TODAY'S TOTAL")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
             }
         case .onBreak:
-            TrackedLabel(
-                text: "Today's Total",
-                font: LiquidDesignTokens.Typography.labelSmall,
-                tracking: 1.0
-            )
+            Text("TODAY'S TOTAL")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
         default:
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
                 Text("Today's Total")
-                    .font(LiquidDesignTokens.Typography.labelLarge)
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.88))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.8))
             }
         }
     }
