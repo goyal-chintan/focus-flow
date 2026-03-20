@@ -13,6 +13,7 @@ final class FocusSession {
     var completed: Bool
     var moodRawValue: String?
     var achievement: String?
+    var calendarEventId: String?
 
     @Relationship(deleteRule: .cascade)
     var splits: [TimeSplit]
@@ -31,6 +32,7 @@ final class FocusSession {
         self.startedAt = Date()
         self.endedAt = nil
         self.completed = false
+        self.calendarEventId = nil
         self.splits = []
     }
 
