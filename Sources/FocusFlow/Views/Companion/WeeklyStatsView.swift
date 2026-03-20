@@ -4,6 +4,7 @@ import SwiftData
 struct WeeklyStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @State private var selectedPeriod: Period = .week
+    @State private var selectedDayIndex: Int? = nil
 
     enum Period: String, CaseIterable {
         case week = "7 Days"
@@ -21,6 +22,8 @@ struct WeeklyStatsView: View {
         }
         .background(.ultraThinMaterial)
         .animation(FFMotion.section, value: selectedPeriod)
+        .animation(FFMotion.section, value: selectedDayIndex)
+        .onChange(of: selectedPeriod) { _, _ in selectedDayIndex = nil }
     }
 
     private var periodSection: some View {
@@ -64,10 +67,90 @@ struct WeeklyStatsView: View {
                     subtitle: chartSubtitle
                 )
 
-                BarChartView(data: chartData, accentColor: .blue)
+                BarChartView(
+                    data: chartData,
+                    accentColor: .blue,
+                    selectedIndex: selectedDayIndex,
+                    onSelect: { index in
+                        selectedDayIndex = selectedDayIndex == index ? nil : index
+                    }
+                )
+
+                if let detail = selectedDayDetail {
+                    dayDetailCard(detail)
+                        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+                }
             }
             .padding(16)
         }
+    }
+
+    // MARK: - Day Detail Card
+
+    private struct DayDetail {
+        let dayLabel: String
+        let totalFocus: TimeInterval
+        let sessionCount: Int
+        let averageLength: TimeInterval
+    }
+
+    private var selectedDayDetail: DayDetail? {
+        guard let idx = selectedDayIndex, idx < chartData.count else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let day = calendar.date(byAdding: .day, value: -(days - 1 - idx), to: today)!
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
+
+        let focusSessions = allSessions.filter { $0.type == .focus }
+        var totalSeconds: TimeInterval = 0
+        var completedCount = 0
+
+        for session in focusSessions {
+            let sessionStart = session.startedAt
+            let sessionEnd = session.endedAt ?? sessionStart.addingTimeInterval(session.actualDuration)
+            guard sessionEnd > day && sessionStart < nextDay else { continue }
+            let overlapStart = max(sessionStart, day)
+            let overlapEnd = min(sessionEnd, nextDay)
+            totalSeconds += overlapEnd.timeIntervalSince(overlapStart)
+            if session.completed { completedCount += 1 }
+        }
+
+        let dayLabel = day.formatted(.dateTime.weekday(.wide).month(.wide).day())
+
+        return DayDetail(
+            dayLabel: dayLabel,
+            totalFocus: totalSeconds,
+            sessionCount: completedCount,
+            averageLength: completedCount > 0 ? totalSeconds / Double(completedCount) : 0
+        )
+    }
+
+    private func dayDetailCard(_ detail: DayDetail) -> some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(detail.dayLabel)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+
+                Text(detail.totalFocus.formattedFocusTime)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                Label("\(detail.sessionCount) session\(detail.sessionCount == 1 ? "" : "s")", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                Label("Avg \(detail.averageLength.formattedFocusTime)", systemImage: "timer")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var summarySection: some View {
@@ -117,13 +200,10 @@ struct WeeklyStatsView: View {
         return (0..<days).map { offset in
             let day = calendar.date(byAdding: .day, value: -(days - 1 - offset), to: today)!
             let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
-            // Attribute time correctly for sessions spanning midnight
             let total = focusSessions.reduce(0.0) { sum, session in
                 let sessionStart = session.startedAt
                 let sessionEnd = session.endedAt ?? sessionStart.addingTimeInterval(session.actualDuration)
-                // Skip sessions that don't overlap this day at all
                 guard sessionEnd > day && sessionStart < nextDay else { return sum }
-                // Clamp to this day's boundaries
                 let overlapStart = max(sessionStart, day)
                 let overlapEnd = min(sessionEnd, nextDay)
                 return sum + overlapEnd.timeIntervalSince(overlapStart)
