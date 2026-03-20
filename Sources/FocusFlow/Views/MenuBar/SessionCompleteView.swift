@@ -64,7 +64,6 @@ struct SessionCompleteView: View {
         if selectedMood == mood {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glassProminent)
-                .tint(moodColor(mood))
         } else {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glass)
@@ -143,7 +142,7 @@ struct SessionCompleteView: View {
                 .padding(.vertical, 8)
         }
         .buttonStyle(.glassProminent)
-        .tint(.green)
+        .tint(LiquidDesignTokens.Spectral.primaryContainer)
     }
 
     private var continueFocusingButton: some View {
@@ -168,7 +167,6 @@ struct SessionCompleteView: View {
                 .padding(.vertical, 8)
         }
         .buttonStyle(.glass)
-        .tint(.red)
     }
 
     private func moodColor(_ mood: FocusMood) -> Color {

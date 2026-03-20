@@ -30,48 +30,68 @@ struct SessionCompleteWindowView: View {
     // MARK: - Focus Completion
 
     private var focusContent: some View {
-        VStack(spacing: 20) {
-            focusHeaderSection
-            Divider()
-            moodSection
-            achievementSection
-            splitSection
-            Divider()
-            focusActionsSection
+        VStack(spacing: 0) {
+            VStack(spacing: 20) {
+                focusHeaderSection
+                reflectionSection
+                splitSection
+                focusActionsSection
+            }
+            .padding(24)
+
+            footerBar
         }
-        .padding(20)
-        .frame(width: 380)
+        .frame(width: 480)
     }
 
     private var focusHeaderSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(.green)
+                .font(.system(size: 48))
+                .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
 
-            Text("Focus Complete")
-                .font(.system(size: 20, weight: .semibold))
+            Text("Session Complete")
+                .font(.system(size: 32, weight: .bold, design: .serif))
+                .italic()
 
-            Text("\(Int((timerVM.lastCompletedDuration ?? 0) / 60)) minutes \u{00B7} \(timerVM.lastCompletedLabel ?? "Focus")")
-                .font(.subheadline)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            TrackedLabel(
+                text: "FocusFlow macOS Experience",
+                font: .system(size: 10, weight: .medium),
+                color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                tracking: 2.0
+            )
 
-            if timerVM.isOvertime {
-                Text(timerVM.overtimeTimeString)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .foregroundStyle(.orange)
+            HStack(spacing: 10) {
+                statCard(
+                    label: "Time Elapsed",
+                    value: "\(Int((timerVM.lastCompletedDuration ?? 0) / 60))m Session",
+                    valueColor: LiquidDesignTokens.Spectral.electricBlue
+                )
+
+                statCard(
+                    label: "Active Project",
+                    value: timerVM.lastCompletedLabel ?? "Focus",
+                    valueColor: LiquidDesignTokens.Surface.onSurface
+                )
             }
         }
         .padding(.top, 8)
     }
 
+    private var reflectionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            moodSection
+            achievementSection
+        }
+    }
+
     private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("How was your focus?")
-                .font(.subheadline.weight(.medium))
+        VStack(alignment: .leading, spacing: 8) {
+            TrackedLabel(
+                text: "How Was Your Focus?",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
 
             HStack(spacing: 8) {
                 ForEach(FocusMood.allCases, id: \.self) { mood in
@@ -85,37 +105,49 @@ struct SessionCompleteWindowView: View {
     private func moodButton(for mood: FocusMood) -> some View {
         let label = VStack(spacing: 4) {
             Image(systemName: mood.icon)
-                .font(.system(size: 16))
+                .font(.system(size: 20))
             Text(mood.rawValue)
-                .font(.system(size: 10))
+                .font(.system(size: 10, weight: .medium))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
 
         if selectedMood == mood {
             Button { selectedMood = nil } label: { label }
                 .buttonStyle(.glassProminent)
-                .tint(moodColor(mood))
+                .buttonBorderShape(.roundedRectangle(radius: 14))
+                .accessibilityLabel("\(mood.rawValue), selected")
         } else {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 14))
+                .accessibilityLabel(mood.rawValue)
         }
     }
 
     private var achievementSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("What did you achieve?")
-                .font(.subheadline.weight(.medium))
+            TrackedLabel(
+                text: "What Did You Finish?",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
 
-            TextField("e.g. Finished the API integration", text: $achievement)
+            TextField("Log your wins...", text: $achievement)
                 .textFieldStyle(.plain)
                 .padding(10)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         }
     }
 
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
+            TrackedLabel(
+                text: "Project Allocation",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
+
             Button {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                     showSplits.toggle()
@@ -139,8 +171,11 @@ struct SessionCompleteWindowView: View {
                         .font(.caption2)
                 }
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
 
             if showSplits {
                 TimeSplitView(
@@ -153,39 +188,53 @@ struct SessionCompleteWindowView: View {
     }
 
     private var focusActionsSection: some View {
-        GlassEffectContainer {
-            VStack(spacing: 8) {
-                Button {
-                    saveAndDismiss(action: .takeBreak)
-                } label: {
-                    Label("Take a Break", systemImage: "cup.and.saucer.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(.green)
-
+        VStack(spacing: 12) {
+            GlassEffectContainer {
                 HStack(spacing: 8) {
+                    Button {
+                        saveAndDismiss(action: .takeBreak)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "cup.and.saucer.fill")
+                                .font(.system(size: 12))
+                            Text("Take a Break")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+
                     Button {
                         saveAndDismiss(action: .continueFocusing)
                     } label: {
-                        Label("Continue Focusing", systemImage: "arrow.clockwise")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("Keep Focusing")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
                     }
-                    .buttonStyle(.glass)
-
-                    Button {
-                        saveAndDismiss(action: .endSession)
-                    } label: {
-                        Label("End Session", systemImage: "stop.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                    }
-                    .buttonStyle(.glass)
-                    .tint(.red)
+                    .buttonStyle(.glassProminent)
+                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                    .buttonBorderShape(.capsule)
                 }
             }
+
+            Button {
+                saveAndDismiss(action: .endSession)
+            } label: {
+                TrackedLabel(
+                    text: "Done",
+                    font: .system(size: 11, weight: .medium),
+                    color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                    tracking: 2.5
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -202,17 +251,16 @@ struct SessionCompleteWindowView: View {
     // MARK: - Break Completion
 
     private var breakContent: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             breakHeaderSection
-            Divider()
             breakActionsSection
         }
-        .padding(20)
-        .frame(width: 320)
+        .padding(18)
+        .frame(width: 340)
     }
 
     private var breakHeaderSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.blue)
@@ -221,11 +269,13 @@ struct SessionCompleteWindowView: View {
                 .font(.system(size: 20, weight: .semibold))
 
             if timerVM.isOvertime {
-                Text(timerVM.overtimeTimeString)
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .foregroundStyle(.orange)
+                LiquidMetricCard(
+                    title: "Overtime",
+                    value: timerVM.overtimeTimeString,
+                    icon: "plus.circle.fill",
+                    color: .orange
+                )
+                .frame(maxWidth: 180)
             }
         }
         .padding(.top, 8)
@@ -234,27 +284,63 @@ struct SessionCompleteWindowView: View {
     private var breakActionsSection: some View {
         GlassEffectContainer {
             VStack(spacing: 8) {
-                Button {
+                LiquidActionButton(
+                    title: "Start Focusing",
+                    icon: "play.fill",
+                    role: .primary,
+                    tint: .blue
+                ) {
                     timerVM.continueAfterCompletion(action: .continueFocusing)
                     dismissWindow(id: "session-complete")
-                } label: {
-                    Label("Start Focusing", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(.blue)
 
-                Button {
+                LiquidActionButton(
+                    title: "End",
+                    icon: "stop.fill",
+                    role: .secondary
+                ) {
                     timerVM.continueAfterCompletion(action: .endSession)
                     dismissWindow(id: "session-complete")
-                } label: {
-                    Label("End", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
                 }
-                .buttonStyle(.glass)
             }
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footerBar: some View {
+        HStack(spacing: 12) {
+            TrackedLabel(
+                text: "FocusFlow macOS",
+                font: .system(size: 10, weight: .medium),
+                color: LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.5),
+                tracking: 1.5
+            )
+
+            Spacer()
+
+            Text(formattedTodayTotal)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue.opacity(0.7))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.2))
+        )
+    }
+
+    private var formattedTodayTotal: String {
+        let total = timerVM.todayFocusTime
+        let hours = Int(total) / 3600
+        let minutes = (Int(total) % 3600) / 60
+        if hours > 0 {
+            return "TODAY'S TOTAL: \(hours)H \(minutes)M"
+        } else {
+            return "TODAY'S TOTAL: \(minutes)M"
         }
     }
 
@@ -267,6 +353,24 @@ struct SessionCompleteWindowView: View {
         case .focused: .blue
         case .deepFocus: .purple
         }
+    }
+
+    private func statCard(label: String, value: String, valueColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TrackedLabel(
+                text: label,
+                font: .system(size: 10, weight: .semibold),
+                tracking: 1.5
+            )
+
+            Text(value)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func bringWindowToFront() {

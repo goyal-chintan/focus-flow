@@ -21,56 +21,73 @@ struct BlockProfileFormView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(profile == nil ? "New Blocking Profile" : "Edit Profile")
-                .font(.title3.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.large) {
+                LiquidSectionHeader(
+                    profile == nil ? "New Blocking Profile" : "Edit Profile",
+                    subtitle: "Control websites and apps allowed during focus"
+                )
 
-            nameSection
-            websiteSection
-            appSection
-            quickFillSection
-
-            Divider()
-            actionButtons
+                nameSection
+                websiteSection
+                appSection
+                quickFillSection
+                actionButtons
+            }
+            .padding(24)
         }
-        .padding(24)
-        .frame(width: 440, height: 580)
+        .frame(width: 460)
+        .frame(minHeight: 620)
+        .background(.background)
         .onAppear {
             installedApps = AppBlocker.installedApps()
         }
     }
 
-    // MARK: - Sections
-
     private var nameSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Name")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            TextField("e.g. Social Media, Full Focus", text: $name)
-                .textFieldStyle(.roundedBorder)
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("Name")
+                TextField("e.g. Social Media, Full Focus", text: $name)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            }
+            .padding(12)
         }
     }
 
     private var websiteSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Blocked Websites")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            websiteAddRow
-            websiteList
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("Blocked Websites")
+                websiteAddRow
+                websiteList
+            }
+            .padding(12)
         }
     }
 
     private var websiteAddRow: some View {
-        HStack {
+        HStack(spacing: 8) {
             TextField("domain.com", text: $newWebsite)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
                 .onSubmit { addWebsite() }
-            Button("Add") { addWebsite() }
-                .buttonStyle(.glass)
-                .disabled(newWebsite.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            Button {
+                addWebsite()
+            } label: {
+                Label("Add", systemImage: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.glass)
+            .disabled(newWebsite.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 
@@ -78,12 +95,19 @@ struct BlockProfileFormView: View {
     private var websiteList: some View {
         if !websites.isEmpty {
             ScrollView {
-                VStack(spacing: 4) {
+                LazyVStack(spacing: 6) {
                     ForEach(websites, id: \.self) { site in
-                        HStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "globe")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
                             Text(site)
                                 .font(.subheadline)
+                                .lineLimit(1)
+
                             Spacer()
+
                             Button {
                                 websites.removeAll { $0 == site }
                             } label: {
@@ -92,23 +116,24 @@ struct BlockProfileFormView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
                     }
                 }
             }
-            .frame(maxHeight: 120)
+            .frame(maxHeight: 160)
         }
     }
 
     private var appSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Blocked Apps")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            appPickerMenu
-            blockedAppsList
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("Blocked Apps")
+                appPickerMenu
+                blockedAppsList
+            }
+            .padding(12)
         }
     }
 
@@ -121,7 +146,9 @@ struct BlockProfileFormView: View {
             }
         } label: {
             Label("Add App", systemImage: "plus.app")
-                .font(.subheadline)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
         }
         .buttonStyle(.glass)
     }
@@ -129,15 +156,20 @@ struct BlockProfileFormView: View {
     @ViewBuilder
     private var blockedAppsList: some View {
         if !blockedApps.isEmpty {
-            VStack(spacing: 4) {
+            LazyVStack(spacing: 6) {
                 ForEach(blockedApps, id: \.self) { bundleID in
-                    HStack {
-                        Text(appName(for: bundleID))
-                            .font(.subheadline)
-                        Text(bundleID)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(appName(for: bundleID))
+                                .font(.subheadline)
+                            Text(bundleID)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+
                         Spacer()
+
                         Button {
                             blockedApps.removeAll { $0 == bundleID }
                         } label: {
@@ -146,63 +178,87 @@ struct BlockProfileFormView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
                 }
             }
         }
     }
 
     private var quickFillSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Quick Fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Button("Social Media") {
-                    let social = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
-                    for site in social where !websites.contains(site) {
-                        websites.append(site)
-                    }
-                }
-                .buttonStyle(.glass)
+        let columns = [GridItem(.adaptive(minimum: 120), spacing: 8)]
 
-                Button("Entertainment") {
-                    let ent = ["netflix.com", "twitch.tv", "disneyplus.com", "hulu.com"]
-                    for site in ent where !websites.contains(site) {
-                        websites.append(site)
-                    }
-                }
-                .buttonStyle(.glass)
+        return LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+                sectionLabel("Quick Fill")
 
-                Button("News") {
-                    let news = ["news.ycombinator.com", "cnn.com", "bbc.com"]
-                    for site in news where !websites.contains(site) {
-                        websites.append(site)
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    quickFillButton("Social Media") {
+                        let social = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
+                        for site in social where !websites.contains(site) {
+                            websites.append(site)
+                        }
+                    }
+
+                    quickFillButton("Entertainment") {
+                        let entertainment = ["netflix.com", "twitch.tv", "disneyplus.com", "hulu.com"]
+                        for site in entertainment where !websites.contains(site) {
+                            websites.append(site)
+                        }
+                    }
+
+                    quickFillButton("News") {
+                        let news = ["news.ycombinator.com", "cnn.com", "bbc.com"]
+                        for site in news where !websites.contains(site) {
+                            websites.append(site)
+                        }
                     }
                 }
-                .buttonStyle(.glass)
             }
+            .padding(12)
         }
+    }
+
+    private func quickFillButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.glass)
     }
 
     private var actionButtons: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Text("Cancel").frame(maxWidth: .infinity).padding(.vertical, 8)
-            }
-            .buttonStyle(.glass)
+        GlassEffectContainer {
+            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+                LiquidActionButton(
+                    title: "Cancel",
+                    icon: "xmark",
+                    role: .secondary
+                ) {
+                    dismiss()
+                }
 
-            Button { save(); dismiss() } label: {
-                Text("Save").frame(maxWidth: .infinity).padding(.vertical, 8)
+                LiquidActionButton(
+                    title: "Save",
+                    icon: "checkmark",
+                    role: .primary
+                ) {
+                    save()
+                    dismiss()
+                }
+                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 
-    // MARK: - Helpers
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
 
     private func addWebsite() {
         let site = newWebsite.trimmingCharacters(in: .whitespaces).lowercased()

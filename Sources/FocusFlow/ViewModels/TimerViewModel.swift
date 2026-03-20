@@ -94,6 +94,10 @@ final class TimerViewModel {
     // MARK: - Computed
     var progress: Double {
         guard totalSeconds > 0 else { return 0 }
+        if isOvertime {
+            // During overtime, progress exceeds 1.0 — used by TimerRingView for overtime ring fill
+            return 1.0 + (Double(overtimeSeconds) / totalSeconds)
+        }
         return 1 - (remainingSeconds / totalSeconds)
     }
 
@@ -233,8 +237,9 @@ final class TimerViewModel {
     // MARK: - Actions
     func startFocus() {
         guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
+        guard state == .idle else { log("startFocus: not idle (state=\(state)), aborting"); return }
         let duration = focusDuration
-        guard duration >= 30 else { log("startFocus: duration \(duration) < 30, aborting"); return }
+        guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
@@ -292,6 +297,13 @@ final class TimerViewModel {
         pauseStartTime = Date()
         pauseElapsed = 0
         startPauseTimer()
+    }
+
+    func extendTimer(by seconds: TimeInterval = 300) {
+        guard state == .focusing, !isOvertime else { return }
+        remainingSeconds += seconds
+        totalSeconds += seconds
+        currentSession?.duration += seconds
     }
 
     func resume() {
@@ -382,11 +394,8 @@ final class TimerViewModel {
     }
 
     private func deactivateBlocking() {
+        guard BlockingService.shared.isActive else { return }
         BlockingService.shared.deactivate()
-        // Always clean up hosts file as fallback
-        if BlockingHelper.isBlockingActive() {
-            BlockingHelper.unblockWebsites()
-        }
     }
 
     // MARK: - Timer
