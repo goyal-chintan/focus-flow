@@ -63,10 +63,11 @@ struct SessionEditView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
-            .tint(.secondary)
+            .buttonStyle(.plain)
         }
     }
 
@@ -91,14 +92,12 @@ struct SessionEditView: View {
         VStack(alignment: .leading, spacing: 6) {
             sectionLabel("Planned Duration")
 
-            GlassEffectContainer {
-                HStack(spacing: 0) {
-                    durationPresetButton(mins: 15)
-                    durationPresetButton(mins: 25)
-                    durationPresetButton(mins: 45)
-                    durationPresetButton(mins: 60)
-                    customDurationButton
-                }
+            HStack(spacing: 6) {
+                durationPresetButton(mins: 15)
+                durationPresetButton(mins: 25)
+                durationPresetButton(mins: 45)
+                durationPresetButton(mins: 60)
+                customDurationButton
             }
         }
     }
@@ -120,6 +119,7 @@ struct SessionEditView: View {
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
+            .buttonBorderShape(.capsule)
         } else {
             Button {
                 selectedDurationMinutes = mins
@@ -128,6 +128,7 @@ struct SessionEditView: View {
                 label
             }
             .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
         }
     }
 
@@ -143,6 +144,7 @@ struct SessionEditView: View {
                 Button {} label: { label }
                     .buttonStyle(.glassProminent)
                     .tint(.blue)
+                    .buttonBorderShape(.capsule)
             } else {
                 Button {
                     selectedDurationMinutes = Int(editedDuration / 60)
@@ -150,6 +152,7 @@ struct SessionEditView: View {
                     label
                 }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
             }
         }
     }
@@ -249,11 +252,9 @@ struct SessionEditView: View {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
                 sectionLabel("Focus Quality")
 
-                GlassEffectContainer {
-                    HStack(spacing: 6) {
-                        ForEach(FocusMood.allCases, id: \.self) { mood in
-                            moodButton(mood)
-                        }
+                HStack(spacing: 6) {
+                    ForEach(FocusMood.allCases, id: \.self) { mood in
+                        moodButton(mood)
                     }
                 }
             }
@@ -277,9 +278,11 @@ struct SessionEditView: View {
             Button { selectedMood = nil } label: { label }
                 .buttonStyle(.glassProminent)
                 .tint(moodColor(mood))
+                .buttonBorderShape(.roundedRectangle(radius: 12))
         } else {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
         }
     }
 
@@ -298,27 +301,25 @@ struct SessionEditView: View {
     }
 
     private var actionsSection: some View {
-        GlassEffectContainer {
-            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-                LiquidActionButton(
-                    title: "Cancel",
-                    icon: "xmark",
-                    role: .secondary
-                ) {
-                    dismiss()
-                }
-
-                LiquidActionButton(
-                    title: "Save",
-                    icon: "checkmark",
-                    role: .primary
-                ) {
-                    save()
-                    dismiss()
-                }
-                .disabled(!isValid)
-                .opacity(isValid ? 1 : 0.55)
+        HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+            LiquidActionButton(
+                title: "Cancel",
+                icon: "xmark",
+                role: .secondary
+            ) {
+                dismiss()
             }
+
+            LiquidActionButton(
+                title: "Save",
+                icon: "checkmark",
+                role: .primary
+            ) {
+                save()
+                dismiss()
+            }
+            .disabled(!isValid)
+            .opacity(isValid ? 1 : 0.55)
         }
     }
 
