@@ -14,6 +14,8 @@ struct SessionEditView: View {
     @State private var editedStartedAt: Date
     @State private var editedEndedAt: Date
     @State private var selectedDurationMinutes: Int
+    @State private var showSplits = false
+    @State private var splits: [TimeSplitView.SplitEntry] = []
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
@@ -27,6 +29,19 @@ struct SessionEditView: View {
         _editedStartedAt = State(initialValue: session.startedAt)
         _editedEndedAt = State(initialValue: session.endedAt ?? session.startedAt.addingTimeInterval(session.duration))
         _selectedDurationMinutes = State(initialValue: Int(session.duration / 60))
+
+        // Pre-populate splits from existing session data
+        if !session.splits.isEmpty {
+            let entries = session.splits.map { split in
+                TimeSplitView.SplitEntry(
+                    project: split.project,
+                    customLabel: split.customLabel ?? "",
+                    minutes: max(1, Int(split.duration / 60))
+                )
+            }
+            _splits = State(initialValue: entries)
+            _showSplits = State(initialValue: true)
+        }
     }
 
     private var isValid: Bool {
@@ -45,6 +60,7 @@ struct SessionEditView: View {
                 projectSection
                 moodSection
                 achievementSection
+                splitSection
                 actionsSection
             }
             .padding(20)
@@ -63,27 +79,25 @@ struct SessionEditView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
-            .tint(.secondary)
+            .buttonStyle(.plain)
         }
     }
 
     private var timingSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
-                sectionLabel("Timing")
-                durationPresetsRow
-                datePickersRow
-                actualDurationRow
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
+            sectionLabel("Timing")
+            durationPresetsRow
+            datePickersRow
+            actualDurationRow
 
-                if !isValid {
-                    validationWarning
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
+            if !isValid {
+                validationWarning
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
-            .padding(12)
         }
     }
 
@@ -91,14 +105,12 @@ struct SessionEditView: View {
         VStack(alignment: .leading, spacing: 6) {
             sectionLabel("Planned Duration")
 
-            GlassEffectContainer {
-                HStack(spacing: 0) {
-                    durationPresetButton(mins: 15)
-                    durationPresetButton(mins: 25)
-                    durationPresetButton(mins: 45)
-                    durationPresetButton(mins: 60)
-                    customDurationButton
-                }
+            HStack(spacing: 6) {
+                durationPresetButton(mins: 15)
+                durationPresetButton(mins: 25)
+                durationPresetButton(mins: 45)
+                durationPresetButton(mins: 60)
+                customDurationButton
             }
         }
     }
@@ -120,6 +132,7 @@ struct SessionEditView: View {
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
+            .buttonBorderShape(.capsule)
         } else {
             Button {
                 selectedDurationMinutes = mins
@@ -128,6 +141,7 @@ struct SessionEditView: View {
                 label
             }
             .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
         }
     }
 
@@ -143,6 +157,7 @@ struct SessionEditView: View {
                 Button {} label: { label }
                     .buttonStyle(.glassProminent)
                     .tint(.blue)
+                    .buttonBorderShape(.capsule)
             } else {
                 Button {
                     selectedDurationMinutes = Int(editedDuration / 60)
@@ -150,6 +165,7 @@ struct SessionEditView: View {
                     label
                 }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
             }
         }
     }
@@ -211,53 +227,45 @@ struct SessionEditView: View {
     }
 
     private var projectSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Project")
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Project")
 
-                Menu {
-                    Button("None") { selectedProject = nil }
-                    Divider()
-                    ForEach(projects) { project in
-                        Button {
-                            selectedProject = project
-                        } label: {
-                            Label(project.name, systemImage: project.icon ?? "folder.fill")
-                        }
+            Menu {
+                Button("None") { selectedProject = nil }
+                Divider()
+                ForEach(projects) { project in
+                    Button {
+                        selectedProject = project
+                    } label: {
+                        Label(project.name, systemImage: project.icon ?? "folder.fill")
                     }
-                } label: {
-                    HStack {
-                        Text(selectedProject?.name ?? "No Project")
-                            .font(.subheadline)
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
                 }
-                .buttonStyle(.plain)
+            } label: {
+                HStack {
+                    Text(selectedProject?.name ?? "No Project")
+                        .font(.subheadline)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
-            .padding(12)
+            .buttonStyle(.plain)
         }
     }
 
     private var moodSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Focus Quality")
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Focus Quality")
 
-                GlassEffectContainer {
-                    HStack(spacing: 6) {
-                        ForEach(FocusMood.allCases, id: \.self) { mood in
-                            moodButton(mood)
-                        }
-                    }
+            HStack(spacing: 6) {
+                ForEach(FocusMood.allCases, id: \.self) { mood in
+                    moodButton(mood)
                 }
             }
-            .padding(12)
         }
     }
 
@@ -277,48 +285,81 @@ struct SessionEditView: View {
             Button { selectedMood = nil } label: { label }
                 .buttonStyle(.glassProminent)
                 .tint(moodColor(mood))
+                .buttonBorderShape(.roundedRectangle(radius: 12))
         } else {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
         }
     }
 
     private var achievementSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Achievement")
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Achievement")
 
-                TextField("What did you achieve?", text: $achievement)
-                    .textFieldStyle(.plain)
-                    .padding(8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            TextField("What did you achieve?", text: $achievement)
+                .textFieldStyle(.plain)
+                .padding(8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+        }
+    }
+
+    private var splitSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showSplits.toggle()
+                    if showSplits && splits.isEmpty {
+                        splits = [TimeSplitView.SplitEntry(
+                            project: selectedProject,
+                            minutes: max(1, Int(calculatedActualDuration / 60))
+                        )]
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
+                        .font(.caption)
+                    Text("Split time across projects")
+                        .font(.caption)
+                    Spacer()
+                    Image(systemName: showSplits ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
             }
-            .padding(12)
+            .buttonStyle(.plain)
+
+            if showSplits {
+                TimeSplitView(
+                    totalDuration: calculatedActualDuration,
+                    splits: $splits
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
     }
 
     private var actionsSection: some View {
-        GlassEffectContainer {
-            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-                LiquidActionButton(
-                    title: "Cancel",
-                    icon: "xmark",
-                    role: .secondary
-                ) {
-                    dismiss()
-                }
-
-                LiquidActionButton(
-                    title: "Save",
-                    icon: "checkmark",
-                    role: .primary
-                ) {
-                    save()
-                    dismiss()
-                }
-                .disabled(!isValid)
-                .opacity(isValid ? 1 : 0.55)
+        HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+            LiquidActionButton(
+                title: "Cancel",
+                icon: "xmark",
+                role: .secondary
+            ) {
+                dismiss()
             }
+
+            LiquidActionButton(
+                title: "Save",
+                icon: "checkmark",
+                role: .primary
+            ) {
+                save()
+                dismiss()
+            }
+            .disabled(!isValid)
+            .opacity(isValid ? 1 : 0.55)
         }
     }
 
@@ -335,6 +376,25 @@ struct SessionEditView: View {
         session.duration = editedDuration
         session.startedAt = editedStartedAt
         session.endedAt = editedEndedAt
+
+        // Update splits: clear existing, insert new ones if split mode active
+        for existing in session.splits {
+            modelContext.delete(existing)
+        }
+        session.splits = []
+
+        if showSplits && splits.count > 1 {
+            for entry in splits {
+                let timeSplit = TimeSplit(
+                    project: entry.project,
+                    customLabel: entry.customLabel.isEmpty ? nil : entry.customLabel,
+                    duration: TimeInterval(entry.minutes * 60)
+                )
+                timeSplit.session = session
+                modelContext.insert(timeSplit)
+            }
+        }
+
         try? modelContext.save()
     }
 
