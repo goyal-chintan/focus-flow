@@ -13,6 +13,8 @@ struct ManualSessionView: View {
     @State private var startTime: Date = Date().addingTimeInterval(-25 * 60)
     @State private var selectedMood: FocusMood?
     @State private var achievement: String = ""
+    @State private var showSplits = false
+    @State private var splits: [TimeSplitView.SplitEntry] = []
 
     var body: some View {
         ScrollView {
@@ -24,6 +26,7 @@ struct ManualSessionView: View {
                 whenSection
                 moodSection
                 achievementSection
+                splitSection
                 actionButtons
             }
             .padding(20)
@@ -137,6 +140,42 @@ struct ManualSessionView: View {
         }
     }
 
+    private var splitSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showSplits.toggle()
+                    if showSplits && splits.isEmpty {
+                        splits = [TimeSplitView.SplitEntry(
+                            project: selectedProject,
+                            minutes: max(1, duration)
+                        )]
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
+                        .font(.caption)
+                    Text("Split time across projects")
+                        .font(.caption)
+                    Spacer()
+                    Image(systemName: showSplits ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if showSplits {
+                TimeSplitView(
+                    totalDuration: TimeInterval(max(5, duration) * 60),
+                    splits: $splits
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+
     private var actionButtons: some View {
         HStack(spacing: LiquidDesignTokens.Spacing.medium) {
             LiquidActionButton(
@@ -178,6 +217,19 @@ struct ManualSessionView: View {
         session.mood = selectedMood
         session.achievement = achievement.isEmpty ? nil : achievement
         modelContext.insert(session)
+
+        if showSplits && splits.count > 1 {
+            for entry in splits {
+                let timeSplit = TimeSplit(
+                    project: entry.project,
+                    customLabel: entry.customLabel.isEmpty ? nil : entry.customLabel,
+                    duration: TimeInterval(entry.minutes * 60)
+                )
+                timeSplit.session = session
+                modelContext.insert(timeSplit)
+            }
+        }
+
         try? modelContext.save()
     }
 }

@@ -14,6 +14,8 @@ struct SessionEditView: View {
     @State private var editedStartedAt: Date
     @State private var editedEndedAt: Date
     @State private var selectedDurationMinutes: Int
+    @State private var showSplits = false
+    @State private var splits: [TimeSplitView.SplitEntry] = []
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
@@ -27,6 +29,19 @@ struct SessionEditView: View {
         _editedStartedAt = State(initialValue: session.startedAt)
         _editedEndedAt = State(initialValue: session.endedAt ?? session.startedAt.addingTimeInterval(session.duration))
         _selectedDurationMinutes = State(initialValue: Int(session.duration / 60))
+
+        // Pre-populate splits from existing session data
+        if !session.splits.isEmpty {
+            let entries = session.splits.map { split in
+                TimeSplitView.SplitEntry(
+                    project: split.project,
+                    customLabel: split.customLabel ?? "",
+                    minutes: max(1, Int(split.duration / 60))
+                )
+            }
+            _splits = State(initialValue: entries)
+            _showSplits = State(initialValue: true)
+        }
     }
 
     private var isValid: Bool {
@@ -45,6 +60,7 @@ struct SessionEditView: View {
                 projectSection
                 moodSection
                 achievementSection
+                splitSection
                 actionsSection
             }
             .padding(20)
@@ -288,6 +304,42 @@ struct SessionEditView: View {
         }
     }
 
+    private var splitSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showSplits.toggle()
+                    if showSplits && splits.isEmpty {
+                        splits = [TimeSplitView.SplitEntry(
+                            project: selectedProject,
+                            minutes: max(1, Int(calculatedActualDuration / 60))
+                        )]
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
+                        .font(.caption)
+                    Text("Split time across projects")
+                        .font(.caption)
+                    Spacer()
+                    Image(systemName: showSplits ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if showSplits {
+                TimeSplitView(
+                    totalDuration: calculatedActualDuration,
+                    splits: $splits
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+
     private var actionsSection: some View {
         HStack(spacing: LiquidDesignTokens.Spacing.medium) {
             LiquidActionButton(
@@ -324,6 +376,25 @@ struct SessionEditView: View {
         session.duration = editedDuration
         session.startedAt = editedStartedAt
         session.endedAt = editedEndedAt
+
+        // Update splits: clear existing, insert new ones if split mode active
+        for existing in session.splits {
+            modelContext.delete(existing)
+        }
+        session.splits = []
+
+        if showSplits && splits.count > 1 {
+            for entry in splits {
+                let timeSplit = TimeSplit(
+                    project: entry.project,
+                    customLabel: entry.customLabel.isEmpty ? nil : entry.customLabel,
+                    duration: TimeInterval(entry.minutes * 60)
+                )
+                timeSplit.session = session
+                modelContext.insert(timeSplit)
+            }
+        }
+
         try? modelContext.save()
     }
 
