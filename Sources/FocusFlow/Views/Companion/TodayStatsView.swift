@@ -32,7 +32,7 @@ struct TodayStatsView: View {
         ScrollView {
             VStack(spacing: 20) {
                 headerSection
-                goalProgressSection
+                goalProgressBar
                 summarySection
 
                 if !projectBreakdown.isEmpty {
@@ -55,77 +55,63 @@ struct TodayStatsView: View {
     }
 
     private var headerSection: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Today")
-                    .font(.system(size: 28, weight: .bold))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Today,")
+                    .font(.system(size: 42, weight: .light))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-
-                Text(Date().formatted(.dateTime.weekday(.wide) .day() .month(.abbreviated)))
-                    .font(.system(size: 14, weight: .medium))
+                Text(Date().formatted(.dateTime.month(.wide).day()))
+                    .font(.system(size: 42, weight: .light))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
             }
 
-            Spacer()
+            // Goal subtitle directly under title
+            let goalMinutes: Double = 120
+            let actualMinutes = totalFocusTime / 60
+            let percentage = min(100, Int(actualMinutes / goalMinutes * 100))
 
-            Button {
-                showManualEntry = true
-            } label: {
-                Label("Log Session", systemImage: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
+            Text("You've reached **\(percentage)%** of your daily deep work goal.")
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+
+            HStack {
+                Spacer()
+                Button {
+                    showManualEntry = true
+                } label: {
+                    Label("Log Session", systemImage: "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
+                .buttonBorderShape(.capsule)
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-            .buttonBorderShape(.capsule)
         }
     }
 
-    private var goalProgressSection: some View {
+    private var goalProgressBar: some View {
         let goalMinutes: Double = 120
         let actualMinutes = totalFocusTime / 60
         let progress = min(1.0, actualMinutes / goalMinutes)
-        let percentage = Int(progress * 100)
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("You've reached **\(percentage)%** of your daily focus goal")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                Spacer()
-                Text("\(Int(actualMinutes))m / \(Int(goalMinutes))m")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                    .monospacedDigit()
-            }
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [LiquidDesignTokens.Spectral.primaryContainer, LiquidDesignTokens.Spectral.electricBlue],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [LiquidDesignTokens.Spectral.primaryContainer, LiquidDesignTokens.Spectral.electricBlue],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
-                        .frame(width: max(4, geo.size.width * progress))
-                }
+                    )
+                    .frame(width: max(4, geo.size.width * progress))
             }
-            .frame(height: 6)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.03))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
-        )
+        .frame(height: 4)
     }
 
     private var summarySection: some View {

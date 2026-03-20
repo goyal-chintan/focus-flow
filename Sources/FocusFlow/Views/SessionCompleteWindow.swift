@@ -30,24 +30,29 @@ struct SessionCompleteWindowView: View {
     // MARK: - Focus Completion
 
     private var focusContent: some View {
-        VStack(spacing: 16) {
-            focusHeaderSection
-            reflectionSection
-            splitSection
-            focusActionsSection
+        VStack(spacing: 0) {
+            VStack(spacing: 20) {
+                focusHeaderSection
+                reflectionSection
+                splitSection
+                focusActionsSection
+            }
+            .padding(24)
+
+            footerBar
         }
-        .padding(24)
-        .frame(width: 440)
+        .frame(width: 480)
     }
 
     private var focusHeaderSection: some View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 40))
+                .font(.system(size: 48))
                 .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
 
             Text("Session Complete")
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: 32, weight: .bold, design: .serif))
+                .italic()
 
             TrackedLabel(
                 text: "FocusFlow macOS Experience",
@@ -100,12 +105,12 @@ struct SessionCompleteWindowView: View {
     private func moodButton(for mood: FocusMood) -> some View {
         let label = VStack(spacing: 4) {
             Image(systemName: mood.icon)
-                .font(.system(size: 16))
+                .font(.system(size: 20))
             Text(mood.rawValue)
-                .font(.system(size: 10))
+                .font(.system(size: 10, weight: .medium))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
 
         if selectedMood == mood {
             Button { selectedMood = nil } label: { label }
@@ -197,7 +202,7 @@ struct SessionCompleteWindowView: View {
                                 .font(.system(size: 14, weight: .medium))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 16)
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
@@ -212,7 +217,7 @@ struct SessionCompleteWindowView: View {
                                 .font(.system(size: 14, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 16)
                     }
                     .buttonStyle(.glassProminent)
                     .tint(LiquidDesignTokens.Spectral.primaryContainer)
@@ -302,6 +307,44 @@ struct SessionCompleteWindowView: View {
         }
     }
 
+    // MARK: - Footer
+
+    private var footerBar: some View {
+        HStack(spacing: 12) {
+            TrackedLabel(
+                text: "FocusFlow macOS",
+                font: .system(size: 10, weight: .medium),
+                color: LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.5),
+                tracking: 1.5
+            )
+
+            Spacer()
+
+            Text(formattedTodayTotal)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue.opacity(0.7))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.2))
+        )
+    }
+
+    private var formattedTodayTotal: String {
+        let total = timerVM.todayFocusTime
+        let hours = Int(total) / 3600
+        let minutes = (Int(total) % 3600) / 60
+        if hours > 0 {
+            return "TODAY'S TOTAL: \(hours)H \(minutes)M"
+        } else {
+            return "TODAY'S TOTAL: \(minutes)M"
+        }
+    }
+
     // MARK: - Helpers
 
     private func moodColor(_ mood: FocusMood) -> Color {
@@ -322,12 +365,12 @@ struct SessionCompleteWindowView: View {
             )
 
             Text(value)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(valueColor)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(16)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 

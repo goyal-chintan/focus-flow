@@ -268,7 +268,7 @@ struct SessionEditView: View {
             Image(systemName: mood.icon)
                 .font(.system(size: 14))
             Text(mood.rawValue)
-                .font(.system(size: 9))
+                .font(.system(size: 10))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
