@@ -300,6 +300,7 @@ struct MenuBarPopoverView: View {
 private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
+    @Binding var blockUntilGoalMet: Bool
 
     let onStartFocus: () -> Void
 
@@ -328,6 +329,28 @@ private struct IdlePopoverContent: View {
             durationPillSelector
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
+
+            // Block until goal toggle
+            if selectedProject?.blockProfile != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: blockUntilGoalMet ? "shield.checkered" : "shield")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(blockUntilGoalMet ? .green : .secondary)
+
+                    Text("Block until daily goal met")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Toggle("", isOn: $blockUntilGoalMet)
+                        .toggleStyle(.switch)
+                        .scaleEffect(0.75)
+                        .frame(width: 40)
+                }
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 8)
+            }
 
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -898,6 +921,7 @@ extension MenuBarPopoverView {
         return IdlePopoverContent(
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
+            blockUntilGoalMet: $vm.blockUntilGoalMet,
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
