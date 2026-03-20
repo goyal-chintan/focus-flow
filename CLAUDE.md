@@ -82,6 +82,20 @@ FocusFlow embraces macOS Tahoe's Liquid Glass as a core design language, not jus
 - **`.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))`** for text fields and passive containers — gives subtle depth without interactive affordance.
 - **Standalone windows** (e.g., Session Complete) use `.windowStyle(.hiddenTitleBar)` to let glass compositing extend edge-to-edge.
 
+### UI Design Rules (Hard-Won Lessons)
+These rules were established through iterative visual review and must not be violated:
+
+- **Reference images are source of truth** — Stitch folder (`stitch_popover_break_light 2/`) has PNG references for all screens. Match them before code convenience.
+- **Never use `.buttonStyle(.glass)` on icon-only buttons** — renders as ugly gray rectangles. Use `.buttonStyle(.plain)` with `.frame(width: 28-30)` and `.contentShape(Rectangle())`.
+- **Never use `LiquidGlassPanel` on list rows** — creates visible bordered wireframes. Use `Color.white.opacity(0.04)` fills for rows. Reserve glass panels for SECTION containers.
+- **Popover background opacity: 0.45-0.55** — higher kills glass translucency. Don't exceed 0.55.
+- **Timer ring: 160pt, 6pt stroke, 36pt text** — these are locked proportions for the 300pt popover.
+- **Don't add chevrons to Menu labels** — native Menu renders its own. Double chevrons = broken.
+- **Minimum text: 10pt** — Apple HIG floor. No exceptions.
+- **Minimum click target: 30pt** — use `.frame()` + `.contentShape(Rectangle())` on icon buttons.
+- **Custom matchedGeometryEffect pills look foreign** — use per-button `.glass`/`.glassProminent` + `.capsule` instead.
+- **3-Gate review before presenting:** (1) Pixel match ≥80%, (2) Apple design checklist, (3) Apple UX checklist. If any gate fails, fix before showing user.
+
 ### SwiftUI Type-Check Timeout
 Complex view bodies trigger "unable to type-check this expression in reasonable time." Fix by extracting sections into `private var someSection: some View` computed properties or separate structs. This has affected `MenuBarPopoverView`, `ProjectFormView`, and `ManualSessionView`.
 
