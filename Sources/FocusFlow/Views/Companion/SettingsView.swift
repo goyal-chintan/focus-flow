@@ -20,7 +20,7 @@ struct SettingsView: View {
             }
             .padding(24)
         }
-        .background(.background)
+        .background(.ultraThinMaterial)
     }
 
     private var durationsSection: some View {
@@ -187,9 +187,16 @@ struct SettingsView: View {
                     .font(.system(size: 36, weight: .light))
                     .foregroundStyle(.tint)
 
-                VStack(spacing: 4) {
+                VStack(spacing: 6) {
                     Text("FocusFlow")
-                        .font(.headline)
+                        .font(.system(size: 18, weight: .bold))
+
+                    TrackedLabel(
+                        text: "Tahoe Edition",
+                        font: .system(size: 10, weight: .semibold),
+                        color: LiquidDesignTokens.Spectral.electricBlue,
+                        tracking: 2.0
+                    )
 
                     Text("Pomodoro focus timer for macOS")
                         .font(.caption)

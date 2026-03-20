@@ -18,10 +18,10 @@ struct LiquidMetricCard: View {
                     .contentTransition(.numericText())
 
                 Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(LiquidDesignTokens.Typography.labelSmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     .textCase(.uppercase)
-                    .tracking(0.5)
+                    .tracking(1.2)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)

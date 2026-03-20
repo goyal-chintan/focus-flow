@@ -20,7 +20,7 @@ struct BlockingSettingsView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.background)
+        .background(.ultraThinMaterial)
         .sheet(isPresented: $showNewProfile) {
             BlockProfileFormView(profile: nil)
         }
@@ -41,6 +41,7 @@ struct BlockingSettingsView: View {
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
+            .buttonBorderShape(.capsule)
         }
     }
 
@@ -64,29 +65,28 @@ struct BlockingSettingsView: View {
     }
 
     private var profileList: some View {
-        List {
-            ForEach(profiles) { profile in
-                profileRow(profile)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+        ScrollView {
+            VStack(spacing: 8) {
+                ForEach(profiles) { profile in
+                    profileRow(profile)
+                }
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
     }
 
     private func profileRow(_ profile: BlockProfile) -> some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            HStack(spacing: 14) {
-                profileIcon(profile)
-                profileInfo(profile)
-                Spacer()
-                profileActions(profile)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+        HStack(spacing: 14) {
+            profileIcon(profile)
+            profileInfo(profile)
+            Spacer()
+            profileActions(profile)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 
     private func profileIcon(_ profile: BlockProfile) -> some View {
@@ -109,7 +109,7 @@ struct BlockingSettingsView: View {
 
                 if profile.isDefault {
                     Text("DEFAULT")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.blue)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -125,38 +125,47 @@ struct BlockingSettingsView: View {
 
     @ViewBuilder
     private func profileActions(_ profile: BlockProfile) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             if !profile.isDefault {
-                actionIconButton("star", helpText: "Set as default") {
+                Button {
                     setDefault(profile)
+                } label: {
+                    Image(systemName: "star")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help("Set as default")
             }
 
-            actionIconButton("pencil", helpText: "Edit profile") {
+            Button {
                 editingProfile = profile
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help("Edit profile")
 
-            actionIconButton("trash", tint: .red, helpText: "Delete profile") {
+            Button {
                 modelContext.delete(profile)
                 try? modelContext.save()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.7))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help("Delete profile")
         }
-    }
-
-    private func actionIconButton(
-        _ systemName: String,
-        tint: Color = .secondary,
-        helpText: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 28, height: 28)
-        }
-        .buttonStyle(.glass)
-        .tint(tint)
-        .help(helpText)
+        .opacity(0.7)
     }
 
     private func profileSummary(_ profile: BlockProfile) -> String {

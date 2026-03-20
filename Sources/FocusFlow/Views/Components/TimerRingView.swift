@@ -6,14 +6,10 @@ struct TimerRingView: View {
     let label: String
     let state: TimerState
 
-    private let ringSize: CGFloat = 178
-    private let strokeWidth: CGFloat = 8
-    private let discInset: CGFloat = 16
+    private let ringSize: CGFloat = 160
+    private let strokeWidth: CGFloat = 6
 
     @State private var glowPulse: Bool = false
-    @State private var breatheScale: CGFloat = 1.0
-    @State private var breatheOpacity: Double = 1.0
-    @State private var specularRotation: Double = 0
 
     private var isActive: Bool {
         switch state {
@@ -24,122 +20,162 @@ struct TimerRingView: View {
 
     var body: some View {
         ZStack {
-            // Inner disc — breathing when active
             Circle()
-                .fill(.black.opacity(0.55))
-                .background(.ultraThinMaterial, in: Circle())
-                .frame(width: ringSize - discInset * 2, height: ringSize - discInset * 2)
-                .clipShape(Circle())
-                .scaleEffect(breatheScale)
-                .opacity(breatheOpacity)
+                .fill(Color.black.opacity(0.5))
+                .frame(width: ringSize, height: ringSize)
 
-            // Track ring
+            // Full circle track for all states
             Circle()
-                .stroke(Color.white.opacity(0.1), lineWidth: strokeWidth)
+                .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
 
-            // Rotating specular highlight on track
-            Circle()
-                .trim(from: 0.62, to: 0.88)
-                .stroke(Color.white.opacity(0.12), lineWidth: strokeWidth)
-                .rotationEffect(.degrees(specularRotation))
-
-            // Remaining ring — shows what's left
-            if isActive && progress < 1.0 {
+            if state == .idle {
+                // Subtle highlight arc
                 Circle()
-                    .trim(from: max(0.001, progress), to: 1.0)
+                    .trim(from: 0.72, to: 0.97)
                     .stroke(
-                        ringColor.opacity(0.25),
+                        ringColor.opacity(0.55),
                         style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
+            } else if state == .paused {
+                pausedRings
+            } else {
+                // Remaining ring
+                if isActive && progress < 1.0 {
+                    Circle()
+                        .trim(from: max(0.001, progress), to: 1.0)
+                        .stroke(
+                            ringColor.opacity(0.2),
+                            style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .animation(FFMotion.progress, value: progress)
+                }
+
+                // Progress ring
+                Circle()
+                    .trim(from: 0, to: max(0.001, progress))
+                    .stroke(
+                        ringGradient,
+                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .if(state == .focusing) { view in
+                        view.shadow(color: ringGlowColor.opacity(glowPulse ? 0.58 : 0.22), radius: glowPulse ? 12 : 7)
+                            .shadow(color: ringGlowColor.opacity(glowPulse ? 0.2 : 0.05), radius: glowPulse ? 18 : 12)
+                    }
                     .animation(FFMotion.progress, value: progress)
             }
 
-            // Progress ring — fills as time elapses
-            Circle()
-                .trim(from: 0, to: max(0.001, progress))
-                .stroke(
-                    ringGradient,
-                    style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.6 : 0.3), radius: glowPulse ? 18 : 10)
-                .shadow(color: ringGlowColor.opacity(glowPulse ? 0.35 : 0.12), radius: glowPulse ? 30 : 20)
-                .animation(FFMotion.progress, value: progress)
-
             // Center text
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Text(timeString)
-                    .font(LiquidDesignTokens.Typography.displayLarge)
+                    .font(.system(size: 36, weight: .ultraLight, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .foregroundStyle(timeTextColor)
                     .contentTransition(.numericText(countsDown: true))
 
                 TrackedLabel(
                     text: label,
-                    font: LiquidDesignTokens.Typography.labelSmall,
-                    color: labelColor,
-                    tracking: 2.0
+                    font: .system(size: 10, weight: .medium),
+                    color: labelColor.opacity(0.65),
+                    tracking: 2.2
                 )
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
         }
         .frame(width: ringSize, height: ringSize)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label), \(timeString)")
+        .accessibilityValue(state == .idle ? "Ready" : "\(Int(progress * 100)) percent complete")
         .onChange(of: isActive, initial: true) { _, active in
             if active {
-                // Breathing disc animation
                 withAnimation(FFMotion.breathing) {
-                    breatheScale = 1.03
-                    breatheOpacity = 0.85
-                }
-                // Glow pulse
-                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                     glowPulse = true
-                }
-                // Slow specular rotation
-                withAnimation(.linear(duration: 8.0).repeatForever(autoreverses: false)) {
-                    specularRotation = 360
                 }
             } else {
                 withAnimation(.easeOut(duration: 0.4)) {
                     glowPulse = false
-                    breatheScale = 1.0
-                    breatheOpacity = 1.0
-                    specularRotation = 0
                 }
             }
+        }
+    }
+
+    private var timeTextColor: Color {
+        switch state {
+        case .idle: LiquidDesignTokens.Surface.onSurface.opacity(0.72)
+        case .focusing: .white
+        case .paused: LiquidDesignTokens.Spectral.amber
+        case .onBreak: LiquidDesignTokens.Spectral.mint
         }
     }
 
     private var ringGradient: AngularGradient {
         AngularGradient(
             colors: [
-                ringColor.opacity(0.3),
+                ringColor.opacity(0.18),
                 ringColor,
-                ringColor.opacity(0.8),
+                ringColor.opacity(0.72),
                 ringColor
             ],
             center: .center
         )
     }
 
+    private var pausedRings: some View {
+        ZStack {
+            Circle()
+                .trim(from: 0.06, to: 0.86)
+                .stroke(
+                    Color.white.opacity(0.84),
+                    style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .shadow(color: Color.white.opacity(0.2), radius: 7, y: 1)
+
+            Circle()
+                .trim(from: 0.84, to: 1.0)
+                .stroke(
+                    AngularGradient(
+                        colors: [
+                            LiquidDesignTokens.Spectral.amber.opacity(0.95),
+                            LiquidDesignTokens.Spectral.amberDark.opacity(0.95)
+                        ],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .shadow(color: LiquidDesignTokens.Spectral.amber.opacity(0.5), radius: 9, y: 2)
+
+            Circle()
+                .trim(from: 0.84, to: 1.0)
+                .stroke(
+                    LiquidDesignTokens.Spectral.amber.opacity(0.35),
+                    style: StrokeStyle(lineWidth: strokeWidth + 2, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .blur(radius: 1.8)
+        }
+    }
+
     private var ringColor: Color {
         switch state {
         case .focusing:
-            LiquidDesignTokens.Spectral.primaryContainer
+            Color(hex: 0x506392)
         case .paused:
             LiquidDesignTokens.Spectral.amberDark
         case .onBreak(let type):
             type == .longBreak ? .purple : LiquidDesignTokens.Spectral.mintDark
         case .idle:
-            Color.white.opacity(0.15)
+            Color(hex: 0x4C5A80)
         }
     }
 
     private var ringGlowColor: Color {
         switch state {
         case .focusing:
-            LiquidDesignTokens.Spectral.electricBlue
+            Color(hex: 0x5B96F8)
         case .paused:
             LiquidDesignTokens.Spectral.amber
         case .onBreak:

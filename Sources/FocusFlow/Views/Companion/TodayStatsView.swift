@@ -32,6 +32,7 @@ struct TodayStatsView: View {
         ScrollView {
             VStack(spacing: 20) {
                 headerSection
+                goalProgressSection
                 summarySection
 
                 if !projectBreakdown.isEmpty {
@@ -47,28 +48,84 @@ struct TodayStatsView: View {
             }
             .padding(24)
         }
-        .background(.background)
+        .background(.ultraThinMaterial)
         .sheet(isPresented: $showManualEntry) {
             ManualSessionView()
         }
     }
 
     private var headerSection: some View {
-        LiquidSectionHeader(
-            "Today",
-            subtitle: Date().formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-        ) {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Today")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+
+                Text(Date().formatted(.dateTime.weekday(.wide) .day() .month(.abbreviated)))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+            }
+
+            Spacer()
+
             Button {
                 showManualEntry = true
             } label: {
                 Label("Log Session", systemImage: "plus")
-                    .font(LiquidDesignTokens.Typography.controlLabel)
+                    .font(.system(size: 14, weight: .semibold))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
             }
             .buttonStyle(.glassProminent)
             .tint(.blue)
+            .buttonBorderShape(.capsule)
         }
+    }
+
+    private var goalProgressSection: some View {
+        let goalMinutes: Double = 120
+        let actualMinutes = totalFocusTime / 60
+        let progress = min(1.0, actualMinutes / goalMinutes)
+        let percentage = Int(progress * 100)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("You've reached **\(percentage)%** of your daily focus goal")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                Spacer()
+                Text("\(Int(actualMinutes))m / \(Int(goalMinutes))m")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                    .monospacedDigit()
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [LiquidDesignTokens.Spectral.primaryContainer, LiquidDesignTokens.Spectral.electricBlue],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(4, geo.size.width * progress))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.03))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
+        )
     }
 
     private var summarySection: some View {
@@ -77,23 +134,31 @@ struct TodayStatsView: View {
                 title: "Focus Time",
                 value: totalFocusTime.formattedFocusTime,
                 icon: "timer",
-                color: .blue
+                color: .blue,
+                subtitle: completedCount > 0 ? "Avg \(averageSessionLength)m/session" : nil
             )
 
             StatCard(
                 title: "Sessions",
                 value: "\(completedCount)",
                 icon: "checkmark.circle.fill",
-                color: .green
+                color: .green,
+                subtitle: completedCount > 0 ? "\(completedCount) completed" : nil
             )
 
             StatCard(
                 title: "Streak",
                 value: "\(currentStreak)",
                 icon: "flame.fill",
-                color: .orange
+                color: .orange,
+                subtitle: currentStreak > 0 ? "Keep it going!" : nil
             )
         }
+    }
+
+    private var averageSessionLength: Int {
+        guard completedCount > 0 else { return 0 }
+        return Int(totalFocusTime / Double(completedCount) / 60)
     }
 
     private var projectsSection: some View {
@@ -163,10 +228,7 @@ struct TodayStatsView: View {
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(.primary.opacity(0.07))
-                            )
+                            .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
                         }
                     }
                 }
