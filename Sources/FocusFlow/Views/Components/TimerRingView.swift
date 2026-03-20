@@ -64,23 +64,9 @@ struct TimerRingView: View {
 
     var body: some View {
         ZStack {
-            // Outer halo ring — static track
-            Circle()
-                .stroke(Color.white.opacity(0.04), lineWidth: 1)
-                .frame(width: ringSize + 6, height: ringSize + 6)
-
-            // Outer halo ring — animated progress arc
+            // Outer halo — only visible when active (no gray track in idle)
             if isActive {
-                Circle()
-                    .trim(from: 0, to: max(0.001, outerProgress))
-                    .stroke(
-                        outerGlowColor.opacity(0.6),
-                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
-                    )
-                    .frame(width: ringSize + 6, height: ringSize + 6)
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: outerGlowColor.opacity(outerGlowOpacity), radius: outerGlowRadius)
-                    .animation(FFMotion.progress, value: progress)
+                outerHaloArc
             }
 
             // Tick marks (watch-face aesthetic)
@@ -102,28 +88,17 @@ struct TimerRingView: View {
                         )
                 )
 
-            // Full circle track for all states
-            Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
-
+            // Main ring — state-dependent
             if state == .idle {
-                // No partial highlight arc — clean full circle track only
+                // Idle: very subtle track only (no heavy gray)
+                Circle()
+                    .stroke(Color.white.opacity(0.04), lineWidth: strokeWidth)
             } else if state == .paused {
                 pausedRings
+            } else if isOvertime {
+                overtimeRings
             } else {
-                // Remaining ring
-                if isActive && progress < 1.0 {
-                    Circle()
-                        .trim(from: max(0.001, progress), to: 1.0)
-                        .stroke(
-                            ringColor.opacity(0.2),
-                            style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                        .animation(FFMotion.progress, value: progress)
-                }
-
-                // Progress ring
+                // Focusing / Break: progress arc only, no gray remaining
                 Circle()
                     .trim(from: 0, to: max(0.001, progress))
                     .stroke(
@@ -131,10 +106,8 @@ struct TimerRingView: View {
                         style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .if(state == .focusing) { view in
-                        view.shadow(color: ringGlowColor.opacity(glowPulse ? 0.58 : 0.22), radius: glowPulse ? 16 : 9)
-                            .shadow(color: ringGlowColor.opacity(glowPulse ? 0.2 : 0.05), radius: glowPulse ? 24 : 16)
-                    }
+                    .shadow(color: ringGlowColor.opacity(glowPulse ? 0.65 : 0.28), radius: glowPulse ? 18 : 10)
+                    .shadow(color: ringGlowColor.opacity(glowPulse ? 0.25 : 0.08), radius: glowPulse ? 28 : 18)
                     .animation(FFMotion.progress, value: progress)
             }
 
@@ -221,41 +194,95 @@ struct TimerRingView: View {
         }
     }
 
+    // Paused: single amber arc showing how far timer reached, with breathing pulse
     private var pausedRings: some View {
         ZStack {
+            // Amber progress arc — shows where timer was when paused
             Circle()
-                .trim(from: 0.06, to: 0.86)
-                .stroke(
-                    Color.white.opacity(0.84),
-                    style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .shadow(color: Color.white.opacity(0.2), radius: 7, y: 1)
-
-            Circle()
-                .trim(from: 0.84, to: 1.0)
+                .trim(from: 0, to: max(0.001, progress))
                 .stroke(
                     AngularGradient(
                         colors: [
-                            LiquidDesignTokens.Spectral.amber.opacity(0.95),
-                            LiquidDesignTokens.Spectral.amberDark.opacity(0.95)
+                            Color(hex: 0xE6A820).opacity(0.6),
+                            Color(hex: 0xE6A820),
+                            LiquidDesignTokens.Spectral.amber
                         ],
                         center: .center
                     ),
                     style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: LiquidDesignTokens.Spectral.amber.opacity(0.5), radius: 9, y: 2)
-
-            Circle()
-                .trim(from: 0.84, to: 1.0)
-                .stroke(
-                    LiquidDesignTokens.Spectral.amber.opacity(0.35),
-                    style: StrokeStyle(lineWidth: strokeWidth + 2, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .blur(radius: 1.8)
+                .shadow(color: Color(hex: 0xE6A820).opacity(glowPulse ? 0.55 : 0.2), radius: glowPulse ? 14 : 6)
+                .animation(FFMotion.progress, value: progress)
         }
+    }
+
+    // Overtime: different treatment for break vs focus
+    private var overtimeRings: some View {
+        ZStack {
+            if case .onBreak = state {
+                // Break overtime: full yellow ring + dark yellow overlay filling from 12:00
+                Circle()
+                    .stroke(
+                        Color(hex: 0xE6A820).opacity(0.6),
+                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    )
+                    .shadow(color: Color(hex: 0xE6A820).opacity(0.3), radius: 8)
+
+                // Dark yellow overtime fill — progress beyond 1.0, map to 0→1 range
+                let overtimeProgress = min(max(progress - 1.0, 0) / 0.5, 1.0)
+                Circle()
+                    .trim(from: 0, to: max(0.001, overtimeProgress))
+                    .stroke(
+                        Color(hex: 0xCC8800).opacity(0.9),
+                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: Color(hex: 0xCC8800).opacity(0.5), radius: 10)
+                    .animation(FFMotion.progress, value: progress)
+            } else {
+                // Focus overtime: full green ring showing achievement
+                Circle()
+                    .stroke(
+                        AngularGradient(
+                            colors: [
+                                Color(hex: 0x2D8B57).opacity(0.7),
+                                Color(hex: 0x3DA86A),
+                                Color(hex: 0x2D8B57).opacity(0.7)
+                            ],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    )
+                    .shadow(color: Color(hex: 0x3DA86A).opacity(glowPulse ? 0.5 : 0.2), radius: glowPulse ? 14 : 8)
+
+                // Dark green overtime fill from 12:00
+                let overtimeProgress = min(max(progress - 1.0, 0) / 0.5, 1.0)
+                Circle()
+                    .trim(from: 0, to: max(0.001, overtimeProgress))
+                    .stroke(
+                        Color(hex: 0x1A6B3D).opacity(0.9),
+                        style: StrokeStyle(lineWidth: strokeWidth + 1, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: Color(hex: 0x1A6B3D).opacity(0.4), radius: 8)
+                    .animation(FFMotion.progress, value: progress)
+            }
+        }
+    }
+
+    // Outer halo arc — glowing progress indicator outside the main ring
+    private var outerHaloArc: some View {
+        Circle()
+            .trim(from: 0, to: max(0.001, outerProgress))
+            .stroke(
+                outerGlowColor.opacity(0.5),
+                style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+            )
+            .frame(width: ringSize + 6, height: ringSize + 6)
+            .rotationEffect(.degrees(-90))
+            .shadow(color: outerGlowColor.opacity(outerGlowOpacity), radius: outerGlowRadius)
+            .animation(FFMotion.progress, value: progress)
     }
 
     private var ringColor: Color {
