@@ -769,7 +769,7 @@ extension MenuBarPopoverView {
             projectName: timerVM.selectedProject?.name,
             onPause: { timerVM.pause() },
             onExtendTime: {
-                // TODO: Add extendFocusTime(by:) to TimerViewModel
+                timerVM.extendTimer()
             },
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
