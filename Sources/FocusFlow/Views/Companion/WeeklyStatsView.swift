@@ -43,7 +43,7 @@ struct WeeklyStatsView: View {
                         }
                         .if(selectedPeriod == period) { view in
                             view.buttonStyle(.glassProminent)
-                                .tint(.purple)
+                                .tint(LiquidDesignTokens.Spectral.primaryContainer)
                         }
                         .if(selectedPeriod != period) { view in
                             view.buttonStyle(.glass)
