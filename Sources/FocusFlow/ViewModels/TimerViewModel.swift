@@ -385,6 +385,8 @@ final class TimerViewModel {
     }
 
     // MARK: - Blocking
+    var blockUntilGoalMet: Bool = false
+
     private func activateBlocking() {
         log("activateBlocking called")
         if let profile = selectedProject?.blockProfile {
@@ -397,6 +399,14 @@ final class TimerViewModel {
 
     private func deactivateBlocking() {
         guard BlockingService.shared.isActive else { return }
+        // If block-until-goal is enabled, keep blocking until daily goal is met
+        if blockUntilGoalMet {
+            let goal = settings?.dailyFocusGoal ?? 7200
+            if todayFocusTime < goal {
+                log("Block-until-goal: \(Int(todayFocusTime))s < \(Int(goal))s goal — keeping blocks active")
+                return
+            }
+        }
         BlockingService.shared.deactivate()
     }
 
