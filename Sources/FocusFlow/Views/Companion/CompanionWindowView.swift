@@ -3,6 +3,7 @@ import SwiftUI
 enum CompanionTab: String, CaseIterable, Identifiable {
     case today = "Today"
     case weekly = "Week"
+    case insights = "Insights"
     case projects = "Projects"
     case settings = "Settings"
 
@@ -12,6 +13,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: "sun.max.fill"
         case .weekly: "chart.bar.fill"
+        case .insights: "brain.head.profile"
         case .projects: "folder.fill"
         case .settings: "gearshape.fill"
         }
@@ -21,6 +23,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: "Daily progress"
         case .weekly: "Trends and history"
+        case .insights: "Patterns and tips"
         case .projects: "Manage projects"
         case .settings: "Timer preferences"
         }
@@ -30,6 +33,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: .blue
         case .weekly: .purple
+        case .insights: .indigo
         case .projects: .mint
         case .settings: .orange
         }
@@ -73,6 +77,8 @@ struct CompanionWindowView: View {
             TodayStatsView()
         case .weekly:
             WeeklyStatsView()
+        case .insights:
+            InsightsView()
         case .projects:
             ProjectsListView()
         case .settings:
