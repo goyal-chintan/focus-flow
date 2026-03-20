@@ -42,7 +42,7 @@ struct MenuBarPopoverView: View {
                 footerSection
             }
         }
-        .frame(width: 300)
+        .frame(width: 340)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Color.black.opacity(0.52))
@@ -149,8 +149,8 @@ struct MenuBarPopoverView: View {
             label: stateLabel,
             state: timerVM.state
         )
-        .padding(.top, timerVM.state == .idle ? 18 : 10)
-        .padding(.bottom, timerVM.state == .idle ? 6 : 2)
+        .padding(.top, timerVM.state == .idle ? 28 : 16)
+        .padding(.bottom, timerVM.state == .idle ? 14 : 8)
     }
 
     // MARK: - State Section
@@ -172,35 +172,46 @@ struct MenuBarPopoverView: View {
     // MARK: - Footer
 
     private var footerSection: some View {
-        HStack(spacing: 6) {
-            footerLeadingContent
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                footerLeadingContent
 
-            Spacer()
+                Spacer()
 
-            Text(timerVM.todayFocusTime.formattedFocusTime)
-                .font(LiquidDesignTokens.Typography.labelMedium)
-                .foregroundStyle(footerTimeColor)
-                .monospacedDigit()
+                Text(timerVM.todayFocusTime.formattedFocusTime)
+                    .font(LiquidDesignTokens.Typography.labelMedium)
+                    .foregroundStyle(footerTimeColor)
+                    .monospacedDigit()
 
-            Button {
-                openWindow(id: "stats")
-                NSApplication.shared.activate(ignoringOtherApps: true)
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+                Button {
+                    openWindow(id: "stats")
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+            .padding(.vertical, 10)
+            .background(
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.26))
+            )
+
+            TrackedLabel(
+                text: "FocusFlow Tahoe Edition",
+                font: .system(size: 10, weight: .medium),
+                color: LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.4),
+                tracking: 3.0
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
         }
-        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-        .padding(.vertical, 10)
-        .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(Color.black.opacity(0.26))
-        )
     }
 
     @ViewBuilder
@@ -304,7 +315,7 @@ private struct IdlePopoverContent: View {
 
             presetsRow
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 14)
+                .padding(.top, 18)
 
             if showCustomInput {
                 customInput
@@ -313,10 +324,14 @@ private struct IdlePopoverContent: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            blockingProfileCard
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 12)
+
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 14)
-                .padding(.bottom, 12)
+                .padding(.top, 18)
+                .padding(.bottom, 16)
         }
     }
 
@@ -442,13 +457,38 @@ private struct IdlePopoverContent: View {
                 )
         )
     }
+
+    private var blockingProfileCard: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                TrackedLabel(
+                    text: "Blocking Profile",
+                    font: .system(size: 10, weight: .medium),
+                    tracking: 1.8
+                )
+                Text("Deep Work")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+            }
+            Spacer()
+            Toggle("", isOn: .constant(true))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+        }
+        .padding(14)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
 }
 
 // MARK: - Focusing State
 
 private struct FocusingPopoverContent: View {
     @Binding var showStopConfirmation: Bool
+    let projectName: String?
     let onPause: () -> Void
+    let onExtendTime: () -> Void
     let onShowStopConfirmation: () -> Void
     let onSaveStop: () -> Void
     let onDiscardStop: () -> Void
@@ -479,12 +519,60 @@ private struct FocusingPopoverContent: View {
             }
             .padding(.top, 14)
 
+            // +5m Extension button
+            extensionButton
+
             if showStopConfirmation {
                 stopConfirmation
             }
+
+            nextUpCard
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
+    }
+
+    private var extensionButton: some View {
+        Button(action: onExtendTime) {
+            HStack(spacing: 6) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("+5m Glass Extension")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.roundedRectangle(radius: 12))
+    }
+
+    private var nextUpCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.right.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(.purple.opacity(0.7))
+
+            VStack(alignment: .leading, spacing: 2) {
+                TrackedLabel(
+                    text: "Next Up",
+                    font: .system(size: 10, weight: .medium),
+                    tracking: 2.0
+                )
+                Text(projectName ?? "Break Time")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(12)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var stopConfirmation: some View {
@@ -690,7 +778,11 @@ extension MenuBarPopoverView {
     fileprivate var focusingContent: some View {
         FocusingPopoverContent(
             showStopConfirmation: $showStopConfirmation,
+            projectName: timerVM.selectedProject?.name,
             onPause: { timerVM.pause() },
+            onExtendTime: {
+                // TODO: Add extendFocusTime(by:) to TimerViewModel
+            },
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
             },

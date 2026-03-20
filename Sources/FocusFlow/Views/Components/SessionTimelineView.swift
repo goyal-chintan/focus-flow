@@ -18,6 +18,22 @@ struct SessionTimelineView: View {
                             .padding(.vertical, 2)
                     }
                 }
+
+                if sessions.contains(where: { !($0.completed) && $0.endedAt == nil }) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 6, height: 6)
+                        TrackedLabel(
+                            text: "Ongoing Session",
+                            font: .system(size: 10, weight: .semibold),
+                            color: .green,
+                            tracking: 2.0
+                        )
+                    }
+                    .padding(.top, 8)
+                    .padding(.leading, 4)
+                }
             }
             .sheet(item: $editingSession) { session in
                 SessionEditView(session: session)
@@ -47,59 +63,56 @@ struct SessionTimelineView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(sessionColor(session).opacity(0.15))
-                        .frame(width: 38, height: 38)
+                        .frame(width: 40, height: 40)
                     Image(systemName: session.project?.icon ?? "timer")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(sessionColor(session))
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(session.label)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    Text(session.label)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                        .lineLimit(1)
+
+                    // Achievement or generated description
+                    if let achievement = session.achievement, !achievement.isEmpty {
+                        Text(achievement)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
-
-                        if session.completed {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.green)
-                        }
+                    } else {
+                        Text("\(Int(session.actualDuration / 60))m \(session.completed ? "completed" : "incomplete") session")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
-
-                    HStack(spacing: 4) {
-                        Text(session.startedAt.formatted(date: .omitted, time: .shortened))
-                        if let end = session.endedAt {
-                            Text("–")
-                            Text(end.formatted(date: .omitted, time: .shortened))
-                        }
-                        Text("·")
-                        Text("\(Int(session.actualDuration / 60))m")
-                            .monospacedDigit()
-
-                        if !session.completed {
-                            Text("· incomplete")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 0)
 
-                if let mood = session.mood {
-                    Image(systemName: mood.icon)
-                        .font(.system(size: 12))
-                        .foregroundStyle(moodColor(mood))
-                        .padding(.trailing, 4)
-                }
+                // Time range on right
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 3) {
+                        Text(session.startedAt.formatted(date: .omitted, time: .shortened))
+                        Text("→")
+                            .foregroundStyle(.tertiary)
+                        if let end = session.endedAt {
+                            Text(end.formatted(date: .omitted, time: .shortened))
+                        }
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    if let mood = session.mood {
+                        Image(systemName: mood.icon)
+                            .font(.system(size: 11))
+                            .foregroundStyle(moodColor(mood))
+                    }
+                }
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }

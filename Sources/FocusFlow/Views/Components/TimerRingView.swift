@@ -6,7 +6,7 @@ struct TimerRingView: View {
     let label: String
     let state: TimerState
 
-    private let ringSize: CGFloat = 160
+    private let ringSize: CGFloat = 190
     private let strokeWidth: CGFloat = 6
 
     @State private var glowPulse: Bool = false
@@ -20,9 +20,29 @@ struct TimerRingView: View {
 
     var body: some View {
         ZStack {
+            // Outer halo ring (premium watch bezel)
+            Circle()
+                .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                .frame(width: ringSize + 6, height: ringSize + 6)
+
+            // Tick marks (watch-face aesthetic)
+            tickMarks
+
+            // Inner disc with shadow
             Circle()
                 .fill(Color.black.opacity(0.5))
                 .frame(width: ringSize, height: ringSize)
+                .overlay(
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.clear, Color.black.opacity(0.3)],
+                                center: .center,
+                                startRadius: ringSize * 0.2,
+                                endRadius: ringSize * 0.5
+                            )
+                        )
+                )
 
             // Full circle track for all states
             Circle()
@@ -61,16 +81,16 @@ struct TimerRingView: View {
                     )
                     .rotationEffect(.degrees(-90))
                     .if(state == .focusing) { view in
-                        view.shadow(color: ringGlowColor.opacity(glowPulse ? 0.58 : 0.22), radius: glowPulse ? 12 : 7)
-                            .shadow(color: ringGlowColor.opacity(glowPulse ? 0.2 : 0.05), radius: glowPulse ? 18 : 12)
+                        view.shadow(color: ringGlowColor.opacity(glowPulse ? 0.58 : 0.22), radius: glowPulse ? 16 : 9)
+                            .shadow(color: ringGlowColor.opacity(glowPulse ? 0.2 : 0.05), radius: glowPulse ? 24 : 16)
                     }
                     .animation(FFMotion.progress, value: progress)
             }
 
             // Center text
-            VStack(spacing: 3) {
+            VStack(spacing: 5) {
                 Text(timeString)
-                    .font(.system(size: 36, weight: .ultraLight, design: .rounded))
+                    .font(.system(size: 40, weight: .ultraLight, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(timeTextColor)
                     .contentTransition(.numericText(countsDown: true))
@@ -84,7 +104,7 @@ struct TimerRingView: View {
             }
             .padding(.horizontal, 8)
         }
-        .frame(width: ringSize, height: ringSize)
+        .frame(width: ringSize + 6, height: ringSize + 6)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(timeString)")
         .accessibilityValue(state == .idle ? "Ready" : "\(Int(progress * 100)) percent complete")
@@ -111,15 +131,43 @@ struct TimerRingView: View {
     }
 
     private var ringGradient: AngularGradient {
-        AngularGradient(
-            colors: [
-                ringColor.opacity(0.18),
-                ringColor,
-                ringColor.opacity(0.72),
-                ringColor
-            ],
-            center: .center
-        )
+        switch state {
+        case .focusing:
+            AngularGradient(
+                colors: [
+                    Color(hex: 0x3A4F85),
+                    Color(hex: 0x5B96F8),
+                    Color(hex: 0x7DB4FF),
+                    Color(hex: 0x5B96F8),
+                    Color(hex: 0x3A4F85)
+                ],
+                center: .center
+            )
+        default:
+            AngularGradient(
+                colors: [
+                    ringColor.opacity(0.18),
+                    ringColor,
+                    ringColor.opacity(0.72),
+                    ringColor
+                ],
+                center: .center
+            )
+        }
+    }
+
+    private var tickMarks: some View {
+        ForEach(0..<60, id: \.self) { tick in
+            let isMajor = tick % 5 == 0
+            let tickLength: CGFloat = isMajor ? 6 : 4
+            let tickColor = Color.white.opacity(isMajor ? 0.12 : 0.06)
+
+            Rectangle()
+                .fill(tickColor)
+                .frame(width: 1, height: tickLength)
+                .offset(y: -(ringSize / 2) + tickLength / 2 - 1)
+                .rotationEffect(.degrees(Double(tick) * 6))
+        }
     }
 
     private var pausedRings: some View {
