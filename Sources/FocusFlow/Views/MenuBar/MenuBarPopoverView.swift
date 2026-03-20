@@ -142,7 +142,8 @@ struct MenuBarPopoverView: View {
             progress: timerVM.progress,
             timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
             label: stateLabel,
-            state: timerVM.state
+            state: timerVM.state,
+            isOvertime: timerVM.isOvertime
         )
         .padding(.top, timerVM.state == .idle ? 20 : 10)
         .padding(.bottom, timerVM.state == .idle ? 8 : 4)
@@ -278,6 +279,10 @@ private struct IdlePopoverContent: View {
 
     let onStartFocus: () -> Void
 
+    @State private var showCustomSlider: Bool = false
+
+    private static let presetMinutes: [Int] = [15, 25, 30, 45]
+
     var body: some View {
         VStack(spacing: 0) {
             // PROJECT label
@@ -296,7 +301,7 @@ private struct IdlePopoverContent: View {
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 6)
 
-            durationSlider
+            durationPillSelector
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
 
@@ -307,7 +312,7 @@ private struct IdlePopoverContent: View {
         }
     }
 
-    private var durationSlider: some View {
+    private var durationPillSelector: some View {
         VStack(spacing: 8) {
             HStack {
                 TrackedLabel(
@@ -323,13 +328,58 @@ private struct IdlePopoverContent: View {
                     .contentTransition(.numericText())
             }
 
-            Slider(value: Binding(
-                get: { Double(selectedMinutes) },
-                set: { selectedMinutes = Int($0) }
-            ), in: 5...120, step: 5)
-            .tint(LiquidDesignTokens.Spectral.primaryContainer)
+            durationPillRow
 
+            if showCustomSlider {
+                customSlider
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+    }
+
+    private var durationPillRow: some View {
+        HStack(spacing: 6) {
+            ForEach(Self.presetMinutes, id: \.self) { mins in
+                durationPill(label: "\(mins)", isSelected: !showCustomSlider && selectedMinutes == mins) {
+                    withAnimation(FFMotion.control) {
+                        selectedMinutes = mins
+                    }
+                    withAnimation(FFMotion.section) {
+                        showCustomSlider = false
+                    }
+                }
+            }
+
+            durationPill(label: "CUST", isSelected: showCustomSlider) {
+                withAnimation(FFMotion.section) {
+                    showCustomSlider = true
+                }
+            }
+        }
+    }
+
+    private func durationPill(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonBorderShape(.capsule)
+        .if(isSelected) { view in
+            view.buttonStyle(.glassProminent)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+        }
+        .if(!isSelected) { view in
+            view.buttonStyle(.glass)
+        }
+    }
+
+    private var customSlider: some View {
+        Slider(value: Binding(
+            get: { Double(selectedMinutes) },
+            set: { selectedMinutes = Int($0) }
+        ), in: 5...120, step: 1)
+        .tint(LiquidDesignTokens.Spectral.primaryContainer)
     }
 
     private var startButton: some View {

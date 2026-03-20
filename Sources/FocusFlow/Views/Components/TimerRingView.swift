@@ -5,6 +5,8 @@ struct TimerRingView: View {
     let timeString: String
     let label: String
     let state: TimerState
+    let isOvertime: Bool
+    var pauseDuration: TimeInterval = 0
 
     private let ringSize: CGFloat = 170
     private let strokeWidth: CGFloat = 6
@@ -18,12 +20,68 @@ struct TimerRingView: View {
         }
     }
 
+    // MARK: - Outer Ring Computed Properties
+
+    private var outerProgress: Double {
+        guard isActive else { return 0 }
+        return min(max(progress, 0), 1)
+    }
+
+    private var outerGlowColor: Color {
+        switch state {
+        case .paused:
+            if pauseDuration > 300 { return .red }
+            if pauseDuration > 180 { return Color(hex: 0xE6A820) }
+            return ringGlowColor
+        case .onBreak:
+            if isOvertime {
+                // Escalate: >1.0 progress means overtime; use progress magnitude for severity
+                if progress > 1.5 { return .red }
+                if progress > 1.0 { return Color(hex: 0xE6A820) }
+            }
+            return ringGlowColor
+        default:
+            return ringGlowColor
+        }
+    }
+
+    private var outerGlowOpacity: Double {
+        if progress >= 0.75 && isActive {
+            // Lerp from 0.3 at 0.75 to 0.6 at 1.0
+            let t = min((progress - 0.75) / 0.25, 1.0)
+            return 0.3 + t * 0.3
+        }
+        return 0.3
+    }
+
+    private var outerGlowRadius: CGFloat {
+        if progress >= 0.75 && isActive {
+            let t = min((progress - 0.75) / 0.25, 1.0)
+            return 4 + CGFloat(t) * 4
+        }
+        return 4
+    }
+
     var body: some View {
         ZStack {
-            // Outer halo ring (premium watch bezel)
+            // Outer halo ring — static track
             Circle()
                 .stroke(Color.white.opacity(0.04), lineWidth: 1)
                 .frame(width: ringSize + 6, height: ringSize + 6)
+
+            // Outer halo ring — animated progress arc
+            if isActive {
+                Circle()
+                    .trim(from: 0, to: max(0.001, outerProgress))
+                    .stroke(
+                        outerGlowColor.opacity(0.6),
+                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                    )
+                    .frame(width: ringSize + 6, height: ringSize + 6)
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: outerGlowColor.opacity(outerGlowOpacity), radius: outerGlowRadius)
+                    .animation(FFMotion.progress, value: progress)
+            }
 
             // Tick marks (watch-face aesthetic)
             tickMarks

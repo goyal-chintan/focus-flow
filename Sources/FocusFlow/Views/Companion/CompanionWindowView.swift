@@ -4,7 +4,6 @@ enum CompanionTab: String, CaseIterable, Identifiable {
     case today = "Today"
     case weekly = "Week"
     case projects = "Projects"
-    case blocking = "Blocking"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -14,7 +13,6 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         case .today: "sun.max.fill"
         case .weekly: "chart.bar.fill"
         case .projects: "folder.fill"
-        case .blocking: "shield.checkered"
         case .settings: "gearshape.fill"
         }
     }
@@ -24,7 +22,6 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         case .today: "Daily progress"
         case .weekly: "Trends and history"
         case .projects: "Manage projects"
-        case .blocking: "Profiles and controls"
         case .settings: "Timer preferences"
         }
     }
@@ -34,7 +31,6 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         case .today: .blue
         case .weekly: .purple
         case .projects: .mint
-        case .blocking: .green
         case .settings: .orange
         }
     }
@@ -79,8 +75,6 @@ struct CompanionWindowView: View {
             WeeklyStatsView()
         case .projects:
             ProjectsListView()
-        case .blocking:
-            BlockingSettingsView()
         case .settings:
             SettingsView()
         }
