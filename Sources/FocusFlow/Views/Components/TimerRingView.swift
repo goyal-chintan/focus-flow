@@ -6,7 +6,7 @@ struct TimerRingView: View {
     let label: String
     let state: TimerState
 
-    private let ringSize: CGFloat = 190
+    private let ringSize: CGFloat = 170
     private let strokeWidth: CGFloat = 6
 
     @State private var glowPulse: Bool = false
@@ -90,7 +90,7 @@ struct TimerRingView: View {
             // Center text
             VStack(spacing: 5) {
                 Text(timeString)
-                    .font(.system(size: 40, weight: .ultraLight, design: .rounded))
+                    .font(.system(size: 36, weight: .ultraLight, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(timeTextColor)
                     .contentTransition(.numericText(countsDown: true))
