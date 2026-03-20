@@ -49,10 +49,11 @@ struct LiquidActionButton: View {
             Button(action: action) { label }
                 .buttonStyle(.glassProminent)
                 .tint(tint ?? role.tint)
+                .buttonBorderShape(.capsule)
         } else {
             Button(action: action) { label }
                 .buttonStyle(.glass)
-                .tint(tint ?? role.tint)
+                .buttonBorderShape(.capsule)
         }
     }
 }

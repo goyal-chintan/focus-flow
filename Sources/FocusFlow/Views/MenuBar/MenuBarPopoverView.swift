@@ -532,7 +532,7 @@ private struct FocusingPopoverContent: View {
                         .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 10))
+                .buttonBorderShape(.capsule)
 
                 Button(action: onDiscardStop) {
                     HStack(spacing: 4) {
@@ -543,12 +543,12 @@ private struct FocusingPopoverContent: View {
                     .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 10))
+                .buttonBorderShape(.capsule)
 
                 Button("Cancel", action: onCancelStop)
                     .frame(maxWidth: .infinity, minHeight: 30)
                     .buttonStyle(.glass)
-                    .buttonBorderShape(.roundedRectangle(radius: 10))
+                    .buttonBorderShape(.capsule)
             }
         }
         .padding(12)
@@ -649,7 +649,7 @@ private struct PausedPopoverContent: View {
             Button("Save & End", action: onSaveStop)
                 .frame(maxWidth: .infinity, minHeight: 30)
                 .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 10))
+                .buttonBorderShape(.capsule)
 
             Button(action: onDiscardStop) {
                 Text("Discard")
@@ -657,12 +657,12 @@ private struct PausedPopoverContent: View {
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
             .buttonStyle(.glass)
-            .buttonBorderShape(.roundedRectangle(radius: 10))
+            .buttonBorderShape(.capsule)
 
             Button("Cancel", action: onCancelStop)
                 .frame(maxWidth: .infinity, minHeight: 30)
                 .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 10))
+                .buttonBorderShape(.capsule)
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
