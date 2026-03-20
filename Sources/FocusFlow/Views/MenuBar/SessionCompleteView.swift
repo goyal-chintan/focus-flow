@@ -64,9 +64,11 @@ struct SessionCompleteView: View {
         if selectedMood == mood {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glassProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
         } else {
             Button { selectedMood = mood } label: { label }
                 .buttonStyle(.glass)
+                .buttonBorderShape(.roundedRectangle(radius: 12))
         }
     }
 
@@ -121,13 +123,11 @@ struct SessionCompleteView: View {
     }
 
     private var actionsSection: some View {
-        GlassEffectContainer {
-            VStack(spacing: 8) {
-                takeBreakButton
-                HStack(spacing: 8) {
-                    continueFocusingButton
-                    endSessionButton
-                }
+        VStack(spacing: 8) {
+            takeBreakButton
+            HStack(spacing: 8) {
+                continueFocusingButton
+                endSessionButton
             }
         }
     }
@@ -143,6 +143,7 @@ struct SessionCompleteView: View {
         }
         .buttonStyle(.glassProminent)
         .tint(LiquidDesignTokens.Spectral.primaryContainer)
+        .buttonBorderShape(.capsule)
     }
 
     private var continueFocusingButton: some View {
@@ -155,6 +156,7 @@ struct SessionCompleteView: View {
                 .padding(.vertical, 8)
         }
         .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
     }
 
     private var endSessionButton: some View {
@@ -167,6 +169,7 @@ struct SessionCompleteView: View {
                 .padding(.vertical, 8)
         }
         .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
     }
 
     private func moodColor(_ mood: FocusMood) -> Color {
