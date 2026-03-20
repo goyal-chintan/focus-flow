@@ -11,27 +11,19 @@ struct ControlButton: View {
     }
 
     var body: some View {
-        let label = Label(title, systemImage: icon)
-            .font(.system(size: 13, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-
-        if role == .primary {
-            Button(action: action) { label }
-                .buttonStyle(.glassProminent)
-                .tint(buttonTint)
-        } else {
-            Button(action: action) { label }
-                .buttonStyle(.glass)
-                .tint(buttonTint)
-        }
+        LiquidActionButton(
+            title: title,
+            icon: icon,
+            role: liquidRole,
+            action: action
+        )
     }
 
-    private var buttonTint: Color? {
+    private var liquidRole: LiquidActionRole {
         switch role {
-        case .primary: .blue
-        case .secondary: nil
-        case .destructive: .red
+        case .primary: .primary
+        case .secondary: .secondary
+        case .destructive: .destructive
         }
     }
 }

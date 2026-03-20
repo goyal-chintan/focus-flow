@@ -30,128 +30,214 @@ struct TodayStatsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Header with log button
-                HStack {
-                    Spacer()
-                    Button {
-                        showManualEntry = true
-                    } label: {
-                        Label("Log Session", systemImage: "plus.circle")
-                            .font(.subheadline)
-                    }
-                    .buttonStyle(.glass)
-                }
+            VStack(spacing: 20) {
+                headerSection
+                goalProgressBar
+                summarySection
 
-                // Summary cards
-                HStack(spacing: 12) {
-                    StatCard(
-                        title: "Focus Time",
-                        value: totalFocusTime.formattedFocusTime,
-                        icon: "timer",
-                        color: .blue
-                    )
-
-                    StatCard(
-                        title: "Sessions",
-                        value: "\(completedCount)",
-                        icon: "checkmark.circle.fill",
-                        color: .green
-                    )
-
-                    StatCard(
-                        title: "Streak",
-                        value: "\(currentStreak)",
-                        icon: "flame.fill",
-                        color: .orange
-                    )
-                }
-
-                // Per-project breakdown
                 if !projectBreakdown.isEmpty {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Projects")
-                            .font(.headline)
-
-                        ForEach(projectBreakdown, id: \.name) { item in
-                            ProjectTimeBar(
-                                name: item.name,
-                                duration: item.duration,
-                                maxDuration: totalFocusTime,
-                                color: item.color
-                            )
-                        }
-                    }
-                    .padding(16)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+                    projectsSection
                 }
 
-                // Session timeline
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Timeline")
-                        .font(.headline)
+                timelineSection
 
-                    SessionTimelineView(sessions: todaySessions)
-                }
-                .padding(16)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
-
-                // Reflections section
                 let reflectedSessions = todaySessions.filter { $0.mood != nil || $0.achievement != nil }
                 if !reflectedSessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Reflections")
-                            .font(.headline)
-
-                        // Mood distribution
-                        let moodCounts = Dictionary(grouping: todaySessions.compactMap(\.mood), by: { $0 })
-                            .mapValues(\.count)
-                            .sorted { $0.value > $1.value }
-
-                        if !moodCounts.isEmpty {
-                            HStack(spacing: 12) {
-                                ForEach(moodCounts, id: \.key) { mood, count in
-                                    HStack(spacing: 4) {
-                                        Image(systemName: mood.icon)
-                                            .font(.caption)
-                                            .foregroundStyle(moodColor(mood))
-                                        Text("\(count)")
-                                            .font(.subheadline.weight(.medium))
-                                        Text(mood.rawValue)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Achievements list
-                        let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
-                        if !achievements.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(achievements, id: \.self) { achievement in
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.caption)
-                                            .foregroundStyle(.green)
-                                            .padding(.top, 2)
-                                        Text(achievement)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+                    reflectionsSection(reflectedSessions: reflectedSessions)
                 }
             }
             .padding(24)
         }
-        .background(.background)
+        .background(.ultraThinMaterial)
         .sheet(isPresented: $showManualEntry) {
             ManualSessionView()
+        }
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Today,")
+                    .font(.system(size: 42, weight: .light))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                Text(Date().formatted(.dateTime.month(.wide).day()))
+                    .font(.system(size: 42, weight: .light))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+            }
+
+            // Goal subtitle directly under title
+            let goalMinutes: Double = 120
+            let actualMinutes = totalFocusTime / 60
+            let percentage = min(100, Int(actualMinutes / goalMinutes * 100))
+
+            Text("You've reached **\(percentage)%** of your daily deep work goal.")
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+
+            HStack {
+                Spacer()
+                Button {
+                    showManualEntry = true
+                } label: {
+                    Label("Log Session", systemImage: "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
+                .buttonBorderShape(.capsule)
+            }
+        }
+    }
+
+    private var goalProgressBar: some View {
+        let goalMinutes: Double = 120
+        let actualMinutes = totalFocusTime / 60
+        let progress = min(1.0, actualMinutes / goalMinutes)
+
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [LiquidDesignTokens.Spectral.primaryContainer, LiquidDesignTokens.Spectral.electricBlue],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(4, geo.size.width * progress))
+            }
+        }
+        .frame(height: 4)
+    }
+
+    private var summarySection: some View {
+        HStack(spacing: 12) {
+            StatCard(
+                title: "Focus Time",
+                value: totalFocusTime.formattedFocusTime,
+                icon: "timer",
+                color: .blue,
+                subtitle: completedCount > 0 ? "Avg \(averageSessionLength)m/session" : nil
+            )
+
+            StatCard(
+                title: "Sessions",
+                value: "\(completedCount)",
+                icon: "checkmark.circle.fill",
+                color: .green,
+                subtitle: completedCount > 0 ? "\(completedCount) completed" : nil
+            )
+
+            StatCard(
+                title: "Streak",
+                value: "\(currentStreak)",
+                icon: "flame.fill",
+                color: .orange,
+                subtitle: currentStreak > 0 ? "Keep it going!" : nil
+            )
+        }
+    }
+
+    private var averageSessionLength: Int {
+        guard completedCount > 0 else { return 0 }
+        return Int(totalFocusTime / Double(completedCount) / 60)
+    }
+
+    private var projectsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "Projects",
+                    subtitle: "How today’s focus time was allocated"
+                )
+
+                VStack(spacing: 10) {
+                    ForEach(projectBreakdown, id: \.name) { item in
+                        ProjectTimeBar(
+                            name: item.name,
+                            duration: item.duration,
+                            maxDuration: totalFocusTime,
+                            color: item.color
+                        )
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private var timelineSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "Timeline",
+                    subtitle: "\(todaySessions.count) focus session\(todaySessions.count == 1 ? "" : "s")"
+                )
+
+                SessionTimelineView(sessions: todaySessions)
+            }
+            .padding(16)
+        }
+    }
+
+    private func reflectionsSection(reflectedSessions: [FocusSession]) -> some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "Reflections",
+                    subtitle: "Mood patterns and session notes"
+                )
+
+                let moodCounts = Dictionary(grouping: todaySessions.compactMap(\.mood), by: { $0 })
+                    .mapValues(\.count)
+                    .sorted { $0.value > $1.value }
+
+                if !moodCounts.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(moodCounts, id: \.key) { entry in
+                            HStack(spacing: 5) {
+                                Image(systemName: entry.key.icon)
+                                    .font(.caption)
+                                    .foregroundStyle(moodColor(entry.key))
+
+                                Text("\(entry.value)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+
+                                Text(entry.key.rawValue)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .obsidianGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+                        }
+                    }
+                }
+
+                let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
+                if !achievements.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(achievements.enumerated()), id: \.offset) { _, achievement in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                                    .padding(.top, 2)
+
+                                Text(achievement)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(16)
         }
     }
 

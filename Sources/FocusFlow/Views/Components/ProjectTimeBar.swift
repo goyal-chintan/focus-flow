@@ -7,32 +7,54 @@ struct ProjectTimeBar: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+
                 Text(name)
-                    .font(.subheadline)
-                Spacer()
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
                 Text(duration.formattedFocusTime)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+
+                Text("\(percentage)%")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.primary.opacity(0.06))
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(color)
-                        .frame(width: max(2, geo.size.width * ratio))
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(.primary.opacity(0.07))
+
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [color.opacity(0.45), color],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(4, geo.size.width * ratio))
                 }
             }
-            .frame(height: 4)
+            .frame(height: 8)
         }
     }
 
     private var ratio: Double {
         guard maxDuration > 0 else { return 0 }
         return min(1, duration / maxDuration)
+    }
+
+    private var percentage: Int {
+        Int((ratio * 100).rounded())
     }
 }
