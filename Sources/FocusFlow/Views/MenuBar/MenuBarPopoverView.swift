@@ -42,7 +42,7 @@ struct MenuBarPopoverView: View {
                 footerSection
             }
         }
-        .frame(width: 340)
+        .frame(width: 310)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Color.black.opacity(0.52))
@@ -79,12 +79,7 @@ struct MenuBarPopoverView: View {
         switch timerVM.state {
         case .focusing, .paused, .onBreak:
             HStack {
-                Text("FocusFlow")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-
                 Spacer()
-
                 HStack(spacing: 12) {
                     Button {
                         openWindow(id: "stats")
@@ -149,8 +144,8 @@ struct MenuBarPopoverView: View {
             label: stateLabel,
             state: timerVM.state
         )
-        .padding(.top, timerVM.state == .idle ? 28 : 16)
-        .padding(.bottom, timerVM.state == .idle ? 14 : 8)
+        .padding(.top, timerVM.state == .idle ? 20 : 10)
+        .padding(.bottom, timerVM.state == .idle ? 8 : 4)
     }
 
     // MARK: - State Section
@@ -202,15 +197,6 @@ struct MenuBarPopoverView: View {
                     .fill(.ultraThinMaterial)
                     .overlay(Color.black.opacity(0.26))
             )
-
-            TrackedLabel(
-                text: "FocusFlow Tahoe Edition",
-                font: .system(size: 10, weight: .medium),
-                color: LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.4),
-                tracking: 3.0
-            )
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
         }
     }
 
@@ -289,11 +275,8 @@ struct MenuBarPopoverView: View {
 private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
-    @State private var showCustomInput = false
 
     let onStartFocus: () -> Void
-
-    private let presets = [15, 25, 45, 60]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -313,16 +296,9 @@ private struct IdlePopoverContent: View {
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 6)
 
-            presetsRow
+            durationSlider
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 18)
-
-            if showCustomInput {
-                customInput
-                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
+                .padding(.top, 14)
 
             blockingProfileCard
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -330,92 +306,55 @@ private struct IdlePopoverContent: View {
 
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 18)
-                .padding(.bottom, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
         }
     }
 
-    private var presetsRow: some View {
-        HStack(spacing: 6) {
-            ForEach(presets, id: \.self) { mins in
-                presetButton(mins)
-            }
-            customButton
-        }
-    }
-
-    @ViewBuilder
-    private func presetButton(_ mins: Int) -> some View {
-        let isSelected = selectedMinutes == mins && !showCustomInput
-        Button {
-            withAnimation(FFMotion.control) {
-                showCustomInput = false
-                selectedMinutes = mins
-            }
-        } label: {
-            Text("\(mins)")
-                .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-        }
-        .if(isSelected) { view in
-            view.buttonStyle(.glassProminent)
-                .tint(LiquidDesignTokens.Spectral.primaryContainer)
-        }
-        .if(!isSelected) { view in
-            view.buttonStyle(.glass)
-        }
-        .buttonBorderShape(.capsule)
-    }
-
-    private var customButton: some View {
-        let isSelected = showCustomInput
-        return Button {
-            withAnimation(FFMotion.control) {
-                showCustomInput.toggle()
-            }
-        } label: {
-            Text("CUST")
-                .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                .italic()
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-        }
-        .if(isSelected) { view in
-            view.buttonStyle(.glassProminent)
-                .tint(LiquidDesignTokens.Spectral.primaryContainer)
-        }
-        .if(!isSelected) { view in
-            view.buttonStyle(.glass)
-        }
-        .buttonBorderShape(.capsule)
-    }
-
-    private var customInput: some View {
-        HStack(spacing: 8) {
-            TextField("Min", value: $selectedMinutes, format: .number)
-                .textFieldStyle(.plain)
-                .font(LiquidDesignTokens.Typography.bodyMedium)
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                .frame(width: 50)
-                .onChange(of: selectedMinutes) { _, newValue in
-                    selectedMinutes = max(5, min(180, newValue))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay(Color.black.opacity(0.36))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.white.opacity(0.12), lineWidth: 0.6)
-                        )
+    private var durationSlider: some View {
+        VStack(spacing: 8) {
+            HStack {
+                TrackedLabel(
+                    text: "Duration",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.8
                 )
+                Spacer()
+                Text("\(selectedMinutes) min")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
 
-            Text("minutes")
-                .font(LiquidDesignTokens.Typography.labelMedium)
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+            Slider(value: Binding(
+                get: { Double(selectedMinutes) },
+                set: { selectedMinutes = Int($0) }
+            ), in: 5...120, step: 5)
+            .tint(LiquidDesignTokens.Spectral.primaryContainer)
+
+            HStack(spacing: 6) {
+                ForEach([15, 25, 45, 60], id: \.self) { mins in
+                    Button {
+                        withAnimation(FFMotion.control) {
+                            selectedMinutes = mins
+                        }
+                    } label: {
+                        Text("\(mins)")
+                            .font(.system(size: 12, weight: selectedMinutes == mins ? .semibold : .medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                    }
+                    .if(selectedMinutes == mins) { view in
+                        view.buttonStyle(.glassProminent)
+                            .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                    }
+                    .if(selectedMinutes != mins) { view in
+                        view.buttonStyle(.glass)
+                    }
+                    .buttonBorderShape(.capsule)
+                }
+            }
         }
     }
 
@@ -509,12 +448,15 @@ private struct FocusingPopoverContent: View {
                 Button {
                     withAnimation(FFMotion.section) { onShowStopConfirmation() }
                 } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                    HStack(spacing: 6) {
+                        Image(systemName: "stop.fill")
+                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                        Text("Stop")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
                 }
                 .buttonStyle(.glass)
-                .tint(LiquidDesignTokens.Spectral.salmon)
                 .buttonBorderShape(.capsule)
             }
             .padding(.top, 14)
@@ -544,7 +486,7 @@ private struct FocusingPopoverContent: View {
             .padding(.vertical, 10)
         }
         .buttonStyle(.glass)
-        .buttonBorderShape(.roundedRectangle(radius: 12))
+        .buttonBorderShape(.capsule)
     }
 
     private var nextUpCard: some View {
@@ -572,7 +514,10 @@ private struct FocusingPopoverContent: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(12)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 
     private var stopConfirmation: some View {
@@ -590,11 +535,14 @@ private struct FocusingPopoverContent: View {
                 .buttonBorderShape(.roundedRectangle(radius: 10))
 
                 Button(action: onDiscardStop) {
-                    Label("Discard", systemImage: "trash")
-                        .frame(maxWidth: .infinity, minHeight: 30)
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                        Text("Discard")
+                    }
+                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                    .frame(maxWidth: .infinity, minHeight: 30)
                 }
                 .buttonStyle(.glass)
-                .tint(LiquidDesignTokens.Spectral.destructive)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
 
                 Button("Cancel", action: onCancelStop)
@@ -703,11 +651,13 @@ private struct PausedPopoverContent: View {
                 .buttonStyle(.glass)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
 
-            Button("Discard", action: onDiscardStop)
-                .frame(maxWidth: .infinity, minHeight: 30)
-                .buttonStyle(.glass)
-                .tint(LiquidDesignTokens.Spectral.destructive)
-                .buttonBorderShape(.roundedRectangle(radius: 10))
+            Button(action: onDiscardStop) {
+                Text("Discard")
+                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                    .frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.roundedRectangle(radius: 10))
 
             Button("Cancel", action: onCancelStop)
                 .frame(maxWidth: .infinity, minHeight: 30)
