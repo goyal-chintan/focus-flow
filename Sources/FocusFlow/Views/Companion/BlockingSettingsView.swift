@@ -46,126 +46,151 @@ struct BlockingSettingsView: View {
     }
 
     private var emptyState: some View {
-        LiquidGlassPanel {
-            VStack(spacing: 14) {
-                Image(systemName: "shield.checkered")
-                    .font(.system(size: 42, weight: .light))
-                    .foregroundStyle(.tertiary)
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "shield.checkered")
+                .font(.system(size: 52, weight: .ultraLight))
+                .foregroundStyle(.tertiary)
+
+            VStack(spacing: 8) {
                 Text("No blocking profiles")
-                    .font(.headline)
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Text("Create profiles to block distracting websites and apps during focus sessions.")
-                    .font(.subheadline)
+                Text("Create profiles to block distracting\nwebsites and apps during focus sessions.")
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
+                    .lineSpacing(2)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(24)
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var profileList: some View {
         ScrollView {
-            VStack(spacing: 8) {
+            VStack(spacing: 16) {
                 ForEach(profiles) { profile in
-                    profileRow(profile)
+                    profileCard(profile)
                 }
             }
         }
     }
 
-    private func profileRow(_ profile: BlockProfile) -> some View {
-        HStack(spacing: 14) {
-            profileIcon(profile)
-            profileInfo(profile)
-            Spacer()
-            profileActions(profile)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
-    }
-
-    private func profileIcon(_ profile: BlockProfile) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(profile.isDefault ? Color.blue.opacity(0.18) : Color.secondary.opacity(0.12))
-                .frame(width: 40, height: 40)
-
-            Image(systemName: profile.isDefault ? "shield.checkered" : "shield")
-                .foregroundStyle(profile.isDefault ? .blue : .secondary)
-                .font(.system(size: 17, weight: .semibold))
-        }
-    }
-
-    private func profileInfo(_ profile: BlockProfile) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(profile.name)
-                    .font(.body.weight(.medium))
-
-                if profile.isDefault {
-                    Text("DEFAULT")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.blue)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.blue.opacity(0.15), in: RoundedRectangle(cornerRadius: 5))
+    private func profileCard(_ profile: BlockProfile) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header: icon + name + default badge + actions
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(profile.isDefault ? Color.green.opacity(0.12) : Color.secondary.opacity(0.10))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: profile.isDefault ? "shield.checkered" : "shield")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(profile.isDefault ? .green : .secondary)
                 }
-            }
 
-            Text(profileSummary(profile))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(profile.name)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
-    @ViewBuilder
-    private func profileActions(_ profile: BlockProfile) -> some View {
-        HStack(spacing: 4) {
-            if !profile.isDefault {
-                Button {
-                    setDefault(profile)
-                } label: {
-                    Image(systemName: "star")
+                        if profile.isDefault {
+                            Text("DEFAULT")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(1.0)
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.green.opacity(0.12))
+                                )
+                        }
+                    }
+
+                    Text(profileSummary(profile))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help("Set as default")
+
+                Spacer()
+
+                // Actions
+                HStack(spacing: 4) {
+                    if !profile.isDefault {
+                        Button {
+                            setDefault(profile)
+                        } label: {
+                            Image(systemName: "star")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Set as default")
+                    }
+
+                    Button {
+                        editingProfile = profile
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit profile")
+
+                    Button {
+                        modelContext.delete(profile)
+                        try? modelContext.save()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon.opacity(0.6))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete profile")
+                }
             }
 
-            Button {
-                editingProfile = profile
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Edit profile")
+            // Blocked items preview chips
+            if !profile.blockedWebsites.isEmpty || !profile.blockedApps.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(profile.blockedWebsites.prefix(3)), id: \.self) { website in
+                        Text(website)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(Color.white.opacity(0.06))
+                            )
+                    }
 
-            Button {
-                modelContext.delete(profile)
-                try? modelContext.save()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.red.opacity(0.7))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+                    let remaining = max(0, profile.blockedWebsites.count + profile.blockedApps.count - 3)
+                    if remaining > 0 {
+                        Text("+\(remaining) more")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
-            .buttonStyle(.plain)
-            .help("Delete profile")
         }
-        .opacity(0.7)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 
     private func profileSummary(_ profile: BlockProfile) -> String {
