@@ -7,6 +7,7 @@ struct TimerRingView: View {
     let state: TimerState
     let isOvertime: Bool
     var pauseDuration: TimeInterval = 0
+    var pauseTimeString: String = "0:00"
 
     private let ringSize: CGFloat = 170
     private let strokeWidth: CGFloat = 6
@@ -113,18 +114,41 @@ struct TimerRingView: View {
 
             // Center text
             VStack(spacing: 5) {
-                Text(timeString)
-                    .font(.system(size: 36, weight: .ultraLight, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(timeTextColor)
-                    .contentTransition(.numericText(countsDown: true))
+                if state == .paused {
+                    // Show pause elapsed time prominently
+                    Text(pauseTimeString)
+                        .font(.system(size: 36, weight: .ultraLight, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color(hex: 0xE6A820))
+                        .contentTransition(.numericText(countsDown: false))
 
-                TrackedLabel(
-                    text: label,
-                    font: .system(size: 10, weight: .medium),
-                    color: labelColor.opacity(0.65),
-                    tracking: 2.2
-                )
+                    TrackedLabel(
+                        text: "PAUSED",
+                        font: .system(size: 10, weight: .medium),
+                        color: Color(hex: 0xE6A820).opacity(0.65),
+                        tracking: 2.2
+                    )
+
+                    // Show frozen focus time smaller below
+                    Text(timeString)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.5))
+                        .padding(.top, 2)
+                } else {
+                    Text(timeString)
+                        .font(.system(size: 36, weight: .ultraLight, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(timeTextColor)
+                        .contentTransition(.numericText(countsDown: true))
+
+                    TrackedLabel(
+                        text: label,
+                        font: .system(size: 10, weight: .medium),
+                        color: labelColor.opacity(0.65),
+                        tracking: 2.2
+                    )
+                }
             }
             .padding(.horizontal, 8)
         }
