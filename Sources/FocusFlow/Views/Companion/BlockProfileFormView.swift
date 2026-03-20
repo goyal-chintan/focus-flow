@@ -45,27 +45,21 @@ struct BlockProfileFormView: View {
     }
 
     private var nameSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Name")
-                TextField("e.g. Social Media, Full Focus", text: $name)
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-            }
-            .padding(12)
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Name")
+            TextField("e.g. Social Media, Full Focus", text: $name)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         }
     }
 
     private var websiteSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Blocked Websites")
-                websiteAddRow
-                websiteList
-            }
-            .padding(12)
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Blocked Websites")
+            websiteAddRow
+            websiteList
         }
     }
 
@@ -87,6 +81,7 @@ struct BlockProfileFormView: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
             .disabled(newWebsite.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
@@ -127,13 +122,10 @@ struct BlockProfileFormView: View {
     }
 
     private var appSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Blocked Apps")
-                appPickerMenu
-                blockedAppsList
-            }
-            .padding(12)
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Blocked Apps")
+            appPickerMenu
+            blockedAppsList
         }
     }
 
@@ -151,6 +143,7 @@ struct BlockProfileFormView: View {
                 .padding(.vertical, 8)
         }
         .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
     }
 
     @ViewBuilder
@@ -189,34 +182,31 @@ struct BlockProfileFormView: View {
     private var quickFillSection: some View {
         let columns = [GridItem(.adaptive(minimum: 120), spacing: 8)]
 
-        return LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Quick Fill")
+        return VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Quick Fill")
 
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                    quickFillButton("Social Media") {
-                        let social = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
-                        for site in social where !websites.contains(site) {
-                            websites.append(site)
-                        }
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                quickFillButton("Social Media") {
+                    let social = ["youtube.com", "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com"]
+                    for site in social where !websites.contains(site) {
+                        websites.append(site)
                     }
+                }
 
-                    quickFillButton("Entertainment") {
-                        let entertainment = ["netflix.com", "twitch.tv", "disneyplus.com", "hulu.com"]
-                        for site in entertainment where !websites.contains(site) {
-                            websites.append(site)
-                        }
+                quickFillButton("Entertainment") {
+                    let entertainment = ["netflix.com", "twitch.tv", "disneyplus.com", "hulu.com"]
+                    for site in entertainment where !websites.contains(site) {
+                        websites.append(site)
                     }
+                }
 
-                    quickFillButton("News") {
-                        let news = ["news.ycombinator.com", "cnn.com", "bbc.com"]
-                        for site in news where !websites.contains(site) {
-                            websites.append(site)
-                        }
+                quickFillButton("News") {
+                    let news = ["news.ycombinator.com", "cnn.com", "bbc.com"]
+                    for site in news where !websites.contains(site) {
+                        websites.append(site)
                     }
                 }
             }
-            .padding(12)
         }
     }
 
@@ -228,29 +218,28 @@ struct BlockProfileFormView: View {
                 .padding(.vertical, 8)
         }
         .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
     }
 
     private var actionButtons: some View {
-        GlassEffectContainer {
-            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-                LiquidActionButton(
-                    title: "Cancel",
-                    icon: "xmark",
-                    role: .secondary
-                ) {
-                    dismiss()
-                }
+        HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+            LiquidActionButton(
+                title: "Cancel",
+                icon: "xmark",
+                role: .secondary
+            ) {
+                dismiss()
+            }
 
-                LiquidActionButton(
-                    title: "Save",
-                    icon: "checkmark",
-                    role: .primary
+            LiquidActionButton(
+                title: "Save",
+                icon: "checkmark",
+                role: .primary
                 ) {
                     save()
                     dismiss()
                 }
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
         }
     }
 
