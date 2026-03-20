@@ -668,7 +668,7 @@ private struct PausedPopoverContent: View {
                     onSaveStop()
                 }
             } label: {
-                Text("Save & End")
+                Label("Save & End", systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity, minHeight: 34)
             }
             .buttonStyle(.glass)

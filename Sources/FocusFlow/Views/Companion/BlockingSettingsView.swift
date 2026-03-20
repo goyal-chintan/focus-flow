@@ -100,7 +100,7 @@ struct BlockingSettingsView: View {
 
                         if profile.isDefault {
                             Text("DEFAULT")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                                 .tracking(1.0)
                                 .foregroundStyle(.green)
                                 .padding(.horizontal, 6)
