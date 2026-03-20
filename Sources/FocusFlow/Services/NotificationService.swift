@@ -84,4 +84,8 @@ final class NotificationService {
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
+
+    func sendGenericNotification(title: String, body: String, sound: String) {
+        send(title: title, body: body, sound: sound)
+    }
 }
