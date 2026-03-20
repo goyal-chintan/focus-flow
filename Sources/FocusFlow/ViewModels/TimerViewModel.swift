@@ -239,7 +239,7 @@ final class TimerViewModel {
         guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
         guard state == .idle else { log("startFocus: not idle (state=\(state)), aborting"); return }
         let duration = focusDuration
-        guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
+        guard duration >= 10 else { log("startFocus: duration \(duration) < 10, aborting"); return }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
@@ -301,6 +301,8 @@ final class TimerViewModel {
 
     func extendTimer(by seconds: TimeInterval = 300) {
         guard state == .focusing, !isOvertime else { return }
+        // Don't allow reducing below 60 seconds remaining
+        if seconds < 0 && remainingSeconds + seconds < 60 { return }
         remainingSeconds += seconds
         totalSeconds += seconds
         currentSession?.duration += seconds
@@ -446,6 +448,18 @@ final class TimerViewModel {
         }
         guard remainingSeconds > 0 else { return }
         remainingSeconds -= 1
+
+        // Break duration monitoring — send warnings for long breaks
+        if case .onBreak = state, let session = currentSession {
+            let breakElapsed = Date().timeIntervalSince(session.startedAt)
+            let breakElapsedInt = Int(breakElapsed)
+            if breakElapsedInt == 120 {
+                NotificationService.shared.sendBreakWarning(minutes: 2)
+            } else if breakElapsedInt == 300 {
+                NotificationService.shared.sendBreakCritical(minutes: 5)
+            }
+        }
+
         if remainingSeconds <= 0 {
             timerCompleted()
         }

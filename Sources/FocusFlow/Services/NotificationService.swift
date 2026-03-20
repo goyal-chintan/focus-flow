@@ -52,6 +52,28 @@ final class NotificationService {
         UNUserNotificationCenter.current().add(request)
     }
 
+    func sendBreakWarning(minutes: Int) {
+        NSSound(named: NSSound.Name("Bottle"))?.play()
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Break getting long"
+        content.body = "You've been on break for \(minutes) minutes. Ready to get back to focusing?"
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "break-warning", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func sendBreakCritical(minutes: Int) {
+        NSSound(named: NSSound.Name("Sosumi"))?.play()
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Long break!"
+        content.body = "You've been on break for \(minutes) minutes. Time to get back to work!"
+        content.sound = UNNotificationSound.defaultCritical
+        let request = UNNotificationRequest(identifier: "break-critical", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     private func send(title: String, body: String, sound: String) {
         NSSound(named: NSSound.Name(sound))?.play()
         guard Bundle.main.bundleIdentifier != nil else { return }
