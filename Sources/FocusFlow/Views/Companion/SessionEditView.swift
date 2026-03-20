@@ -72,19 +72,16 @@ struct SessionEditView: View {
     }
 
     private var timingSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
-                sectionLabel("Timing")
-                durationPresetsRow
-                datePickersRow
-                actualDurationRow
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
+            sectionLabel("Timing")
+            durationPresetsRow
+            datePickersRow
+            actualDurationRow
 
-                if !isValid {
-                    validationWarning
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
+            if !isValid {
+                validationWarning
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
-            .padding(12)
         }
     }
 
@@ -214,51 +211,45 @@ struct SessionEditView: View {
     }
 
     private var projectSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Project")
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Project")
 
-                Menu {
-                    Button("None") { selectedProject = nil }
-                    Divider()
-                    ForEach(projects) { project in
-                        Button {
-                            selectedProject = project
-                        } label: {
-                            Label(project.name, systemImage: project.icon ?? "folder.fill")
-                        }
+            Menu {
+                Button("None") { selectedProject = nil }
+                Divider()
+                ForEach(projects) { project in
+                    Button {
+                        selectedProject = project
+                    } label: {
+                        Label(project.name, systemImage: project.icon ?? "folder.fill")
                     }
-                } label: {
-                    HStack {
-                        Text(selectedProject?.name ?? "No Project")
-                            .font(.subheadline)
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
                 }
-                .buttonStyle(.plain)
+            } label: {
+                HStack {
+                    Text(selectedProject?.name ?? "No Project")
+                        .font(.subheadline)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
-            .padding(12)
+            .buttonStyle(.plain)
         }
     }
 
     private var moodSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Focus Quality")
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Focus Quality")
 
-                HStack(spacing: 6) {
-                    ForEach(FocusMood.allCases, id: \.self) { mood in
-                        moodButton(mood)
-                    }
+            HStack(spacing: 6) {
+                ForEach(FocusMood.allCases, id: \.self) { mood in
+                    moodButton(mood)
                 }
             }
-            .padding(12)
         }
     }
 
@@ -287,16 +278,13 @@ struct SessionEditView: View {
     }
 
     private var achievementSection: some View {
-        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.control) {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-                sectionLabel("Achievement")
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Achievement")
 
-                TextField("What did you achieve?", text: $achievement)
-                    .textFieldStyle(.plain)
-                    .padding(8)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-            }
-            .padding(12)
+            TextField("What did you achieve?", text: $achievement)
+                .textFieldStyle(.plain)
+                .padding(8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
         }
     }
 
