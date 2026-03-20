@@ -12,6 +12,17 @@ final class AppSettings {
     var launchAtLogin: Bool
     var completionSound: String
 
+    // Goals
+    var dailyFocusGoal: TimeInterval
+
+    // Integrations
+    var calendarIntegrationEnabled: Bool
+    var calendarName: String
+
+    // Focus Coach
+    var antiProcrastinationEnabled: Bool
+    var antiProcrastinationThresholdMinutes: Int
+
     init() {
         self.focusDuration = 25 * 60
         self.shortBreakDuration = 5 * 60
@@ -21,5 +32,10 @@ final class AppSettings {
         self.autoStartNextSession = false
         self.launchAtLogin = false
         self.completionSound = "Glass"
+        self.dailyFocusGoal = 7200  // 120 min
+        self.calendarIntegrationEnabled = false
+        self.calendarName = "FocusFlow"
+        self.antiProcrastinationEnabled = true
+        self.antiProcrastinationThresholdMinutes = 5
     }
 }

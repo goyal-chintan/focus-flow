@@ -3,6 +3,11 @@ import SwiftData
 
 struct TodayStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
+    @Query private var allSettings: [AppSettings]
+
+    private var dailyGoal: TimeInterval {
+        allSettings.first?.dailyFocusGoal ?? 7200
+    }
 
     /// Sessions that overlap with today (includes cross-midnight sessions from yesterday)
     private var todaySessions: [FocusSession] {
@@ -66,7 +71,7 @@ struct TodayStatsView: View {
             }
 
             // Goal subtitle directly under title
-            let goalMinutes: Double = 120
+            let goalMinutes = dailyGoal / 60
             let actualMinutes = totalFocusTime / 60
             let percentage = min(100, Int(actualMinutes / goalMinutes * 100))
 
@@ -92,7 +97,7 @@ struct TodayStatsView: View {
     }
 
     private var goalProgressBar: some View {
-        let goalMinutes: Double = 120
+        let goalMinutes = dailyGoal / 60
         let actualMinutes = totalFocusTime / 60
         let progress = min(1.0, actualMinutes / goalMinutes)
 
