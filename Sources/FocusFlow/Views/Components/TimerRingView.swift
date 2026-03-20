@@ -49,14 +49,7 @@ struct TimerRingView: View {
                 .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
 
             if state == .idle {
-                // Subtle highlight arc
-                Circle()
-                    .trim(from: 0.72, to: 0.97)
-                    .stroke(
-                        ringColor.opacity(0.55),
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
+                // No partial highlight arc — clean full circle track only
             } else if state == .paused {
                 pausedRings
             } else {

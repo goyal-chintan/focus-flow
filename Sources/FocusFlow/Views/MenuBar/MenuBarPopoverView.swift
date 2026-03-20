@@ -300,10 +300,6 @@ private struct IdlePopoverContent: View {
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
 
-            blockingProfileCard
-                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 12)
-
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
@@ -333,28 +329,6 @@ private struct IdlePopoverContent: View {
             ), in: 5...120, step: 5)
             .tint(LiquidDesignTokens.Spectral.primaryContainer)
 
-            HStack(spacing: 6) {
-                ForEach([15, 25, 45, 60], id: \.self) { mins in
-                    Button {
-                        withAnimation(FFMotion.control) {
-                            selectedMinutes = mins
-                        }
-                    } label: {
-                        Text("\(mins)")
-                            .font(.system(size: 12, weight: selectedMinutes == mins ? .semibold : .medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                    }
-                    .if(selectedMinutes == mins) { view in
-                        view.buttonStyle(.glassProminent)
-                            .tint(LiquidDesignTokens.Spectral.primaryContainer)
-                    }
-                    .if(selectedMinutes != mins) { view in
-                        view.buttonStyle(.glass)
-                    }
-                    .buttonBorderShape(.capsule)
-                }
-            }
         }
     }
 
@@ -397,28 +371,6 @@ private struct IdlePopoverContent: View {
         )
     }
 
-    private var blockingProfileCard: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                TrackedLabel(
-                    text: "Blocking Profile",
-                    font: .system(size: 10, weight: .medium),
-                    tracking: 1.8
-                )
-                Text("Deep Work")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-            }
-            Spacer()
-            Toggle("", isOn: .constant(true))
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .controlSize(.small)
-                .tint(LiquidDesignTokens.Spectral.primaryContainer)
-        }
-        .padding(14)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
 }
 
 // MARK: - Focusing State
@@ -479,7 +431,7 @@ private struct FocusingPopoverContent: View {
             HStack(spacing: 6) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
-                Text("+5m Glass Extension")
+                Text("+5 Minutes")
                     .font(.system(size: 13, weight: .medium))
             }
             .frame(maxWidth: .infinity)
@@ -574,7 +526,7 @@ private struct PausedPopoverContent: View {
             VStack(spacing: 4) {
                 Text("Paused for \(pauseTimeString)")
                     .font(LiquidDesignTokens.Typography.headlineLarge)
-                    .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                    .foregroundStyle(Color(hex: 0xE6A820))
 
                 Text("Deep work momentum is fading...")
                     .font(LiquidDesignTokens.Typography.bodySmall)
@@ -592,7 +544,7 @@ private struct PausedPopoverContent: View {
                         .font(.system(size: 15, weight: .bold))
                         .tracking(1.0)
                 }
-                .foregroundStyle(Color(hex: 0x1A1200))
+                .foregroundStyle(Color(hex: 0x332200))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
             }
@@ -602,9 +554,9 @@ private struct PausedPopoverContent: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(hex: 0xD4940A),
-                                Color(hex: 0xFFC07A),
-                                Color(hex: 0xFFD89E)
+                                Color(hex: 0xCC8800),
+                                Color(hex: 0xE6A820),
+                                Color(hex: 0xF0C040)
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
@@ -621,7 +573,6 @@ private struct PausedPopoverContent: View {
                             )
                     )
             )
-            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
 
             // End Session — native glass button
             Button {
@@ -638,9 +589,9 @@ private struct PausedPopoverContent: View {
 
             if showStopConfirmation {
                 pausedStopConfirmation
-                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             }
         }
+        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
     }
 
