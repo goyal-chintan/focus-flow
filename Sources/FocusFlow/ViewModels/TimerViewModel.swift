@@ -94,6 +94,10 @@ final class TimerViewModel {
     // MARK: - Computed
     var progress: Double {
         guard totalSeconds > 0 else { return 0 }
+        if isOvertime {
+            // During overtime, progress exceeds 1.0 — used by TimerRingView for overtime ring fill
+            return 1.0 + (Double(overtimeSeconds) / totalSeconds)
+        }
         return 1 - (remainingSeconds / totalSeconds)
     }
 
@@ -233,8 +237,9 @@ final class TimerViewModel {
     // MARK: - Actions
     func startFocus() {
         guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
+        guard state == .idle else { log("startFocus: not idle (state=\(state)), aborting"); return }
         let duration = focusDuration
-        guard duration >= 30 else { log("startFocus: duration \(duration) < 30, aborting"); return }
+        guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
