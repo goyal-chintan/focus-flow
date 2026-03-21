@@ -5,6 +5,7 @@ struct InsightsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
     @Query(sort: \AppUsageRecord.date) private var usageRecords: [AppUsageRecord]
+    @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
     @State private var selectedHour: Int? = nil
 
     private var dailyGoal: TimeInterval {
@@ -20,6 +21,7 @@ struct InsightsView: View {
             VStack(spacing: 20) {
                 headerSection
                 behavioralInsightsSection
+                appUsageSection
                 productiveHoursSection
                 durationDistributionSection
                 breakBehaviorSection
@@ -239,6 +241,185 @@ struct InsightsView: View {
                         .stroke(insight.color.opacity(0.1), lineWidth: 0.5)
                 )
         )
+    }
+
+    // MARK: - App Usage
+
+    private var appUsageSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "App Usage",
+                    subtitle: appUsageSummary
+                )
+
+                let topApps = todayTopApps
+                if topApps.isEmpty {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 6) {
+                            Image(systemName: "app.dashed")
+                                .font(.system(size: 20, weight: .light))
+                                .foregroundStyle(.tertiary)
+                            Text("App tracking will appear as you use your Mac")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 12)
+                        Spacer()
+                    }
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(Array(topApps.enumerated()), id: \.offset) { _, app in
+                            appUsageRow(app)
+                        }
+                    }
+
+                    // Category breakdown
+                    Divider()
+                    categoryBreakdown
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private struct AppUsageSummaryItem {
+        let name: String
+        let bundleId: String
+        let totalSeconds: Int
+        let duringFocus: Int
+        let category: AppUsageEntry.AppCategory
+    }
+
+    private var todayTopApps: [AppUsageSummaryItem] {
+        let today = Calendar.current.startOfDay(for: Date())
+        let todayEntries = appUsageEntries.filter { Calendar.current.isDate($0.date, inSameDayAs: today) }
+
+        // Aggregate by app name
+        var grouped = [String: (name: String, bundleId: String, total: Int, focus: Int, category: AppUsageEntry.AppCategory)]()
+        for entry in todayEntries {
+            let key = entry.bundleIdentifier
+            if var existing = grouped[key] {
+                existing.total += entry.totalSeconds
+                existing.focus += entry.duringFocusSeconds
+                grouped[key] = existing
+            } else {
+                grouped[key] = (entry.appName, entry.bundleIdentifier, entry.totalSeconds, entry.duringFocusSeconds, entry.category)
+            }
+        }
+
+        return grouped.values
+            .map { AppUsageSummaryItem(name: $0.name, bundleId: $0.bundleId, totalSeconds: $0.total, duringFocus: $0.focus, category: $0.category) }
+            .sorted { $0.totalSeconds > $1.totalSeconds }
+            .prefix(8)
+            .map { $0 }
+    }
+
+    private var appUsageSummary: String {
+        let apps = todayTopApps
+        guard !apps.isEmpty else { return "Tracking app usage throughout the day" }
+        let totalMinutes = apps.reduce(0) { $0 + $1.totalSeconds } / 60
+        return "\(apps.count) apps tracked · \(totalMinutes)m total today"
+    }
+
+    private func appUsageRow(_ app: AppUsageSummaryItem) -> some View {
+        let maxSeconds = todayTopApps.first?.totalSeconds ?? 1
+
+        return HStack(spacing: 10) {
+            // Category indicator
+            Circle()
+                .fill(categoryColor(app.category))
+                .frame(width: 8, height: 8)
+
+            Text(app.name)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 100, alignment: .leading)
+                .lineLimit(1)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(categoryColor(app.category).opacity(0.6))
+                        .frame(width: max(2, geo.size.width * CGFloat(app.totalSeconds) / CGFloat(max(maxSeconds, 1))))
+                }
+            }
+            .frame(height: 12)
+
+            Text(formatDuration(app.totalSeconds))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .frame(width: 45, alignment: .trailing)
+                .monospacedDigit()
+        }
+        .frame(height: 24)
+    }
+
+    private var categoryBreakdown: some View {
+        let apps = todayTopApps
+        let productive = apps.filter { $0.category == .productive }.reduce(0) { $0 + $1.totalSeconds }
+        let neutral = apps.filter { $0.category == .neutral }.reduce(0) { $0 + $1.totalSeconds }
+        let distracting = apps.filter { $0.category == .distracting }.reduce(0) { $0 + $1.totalSeconds }
+        let total = max(productive + neutral + distracting, 1)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            // Stacked bar
+            GeometryReader { geo in
+                HStack(spacing: 1) {
+                    if productive > 0 {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.green.opacity(0.7))
+                            .frame(width: geo.size.width * CGFloat(productive) / CGFloat(total))
+                    }
+                    if neutral > 0 {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.blue.opacity(0.5))
+                            .frame(width: geo.size.width * CGFloat(neutral) / CGFloat(total))
+                    }
+                    if distracting > 0 {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.orange.opacity(0.6))
+                            .frame(width: geo.size.width * CGFloat(distracting) / CGFloat(total))
+                    }
+                }
+            }
+            .frame(height: 8)
+            .clipShape(Capsule())
+
+            // Legend
+            HStack(spacing: 16) {
+                categoryLegend("Productive", color: .green, seconds: productive)
+                categoryLegend("Neutral", color: .blue, seconds: neutral)
+                categoryLegend("Distracting", color: .orange, seconds: distracting)
+            }
+        }
+    }
+
+    private func categoryLegend(_ label: String, color: Color, seconds: Int) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color.opacity(0.7)).frame(width: 6, height: 6)
+            Text("\(label) \(formatDuration(seconds))")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func categoryColor(_ category: AppUsageEntry.AppCategory) -> Color {
+        switch category {
+        case .productive: .green
+        case .neutral: .blue
+        case .distracting: .orange
+        }
+    }
+
+    private func formatDuration(_ seconds: Int) -> String {
+        let hours = seconds / 3600
+        let mins = (seconds % 3600) / 60
+        if hours > 0 { return "\(hours)h\(mins)m" }
+        return "\(mins)m"
     }
 
     // MARK: - Productive Hours

@@ -2,8 +2,7 @@ import AppKit
 import Foundation
 import SwiftData
 
-/// Tracks app foreground time and sends nudge notifications when the user has FocusFlow
-/// open without an active session for too long.
+/// Tracks app foreground time, records per-app usage, and sends nudge notifications.
 @MainActor
 final class AppUsageTracker {
     static let shared = AppUsageTracker()
@@ -13,14 +12,20 @@ final class AppUsageTracker {
     private var isTracking = false
     private var hasNudgedThisIdle = false
     private weak var timerVM: TimerViewModel?
+    private var modelContext: ModelContext?
+
+    // Per-app tracking state
+    private var currentAppBundleId: String = ""
+    private var currentAppName: String = ""
 
     private init() {}
 
     // MARK: - Lifecycle
 
-    func start(timerVM: TimerViewModel) {
+    func start(timerVM: TimerViewModel, modelContext: ModelContext) {
         trackingTimer?.invalidate()
         self.timerVM = timerVM
+        self.modelContext = modelContext
         isTracking = true
         idleSeconds = 0
         hasNudgedThisIdle = false
@@ -48,12 +53,13 @@ final class AppUsageTracker {
     private func tick() {
         guard let vm = timerVM else { return }
 
+        trackFrontmostApp(isFocusing: vm.state == .focusing)
+
         // Only count idle time when not in a session
         let isIdle = vm.state == .idle && !vm.isOvertime
         if isIdle {
             idleSeconds += 1
 
-            // Check threshold for nudge
             let threshold = vm.settings?.antiProcrastinationThresholdMinutes ?? 5
             let enabled = vm.settings?.antiProcrastinationEnabled ?? true
 
@@ -62,11 +68,59 @@ final class AppUsageTracker {
                 hasNudgedThisIdle = true
             }
         } else {
-            // Reset when user starts a session
             if idleSeconds > 0 {
                 idleSeconds = 0
                 hasNudgedThisIdle = false
             }
+        }
+    }
+
+    // MARK: - App Tracking
+
+    private func trackFrontmostApp(isFocusing: Bool) {
+        guard let ctx = modelContext else { return }
+
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
+        let bundleId = frontApp.bundleIdentifier ?? "unknown"
+        let appName = frontApp.localizedName ?? "Unknown"
+
+        // Skip FocusFlow itself
+        if bundleId == Bundle.main.bundleIdentifier { return }
+
+        let today = Calendar.current.startOfDay(for: Date())
+
+        // Find or create entry for this app + today
+        let descriptor = FetchDescriptor<AppUsageEntry>(
+            predicate: #Predicate { entry in
+                entry.date == today && entry.bundleIdentifier == bundleId
+            }
+        )
+
+        do {
+            let existing = try ctx.fetch(descriptor)
+            if let entry = existing.first {
+                if isFocusing {
+                    entry.duringFocusSeconds += 1
+                } else {
+                    entry.outsideFocusSeconds += 1
+                }
+            } else {
+                let entry = AppUsageEntry(
+                    date: today,
+                    appName: appName,
+                    bundleIdentifier: bundleId,
+                    duringFocusSeconds: isFocusing ? 1 : 0,
+                    outsideFocusSeconds: isFocusing ? 0 : 1
+                )
+                ctx.insert(entry)
+            }
+
+            // Save periodically (every 30 seconds) to avoid constant writes
+            if Int.random(in: 0..<30) == 0 {
+                try ctx.save()
+            }
+        } catch {
+            log("Failed to track app usage: \(error)")
         }
     }
 
