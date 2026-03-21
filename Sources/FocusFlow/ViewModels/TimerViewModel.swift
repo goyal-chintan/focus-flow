@@ -586,12 +586,14 @@ final class TimerViewModel {
         }
 
         if remainingSeconds <= 0 {
-            timerCompleted()
+            Task { @MainActor in
+                await timerCompleted()
+            }
         }
     }
 
     @MainActor
-    private func timerCompleted() {
+    private func timerCompleted() async {
         // Don't invalidate timer — continues for overtime
         currentSession?.endedAt = Date()
         currentSession?.completed = true
@@ -615,7 +617,7 @@ final class TimerViewModel {
             if settings?.calendarIntegrationEnabled == true, let session = currentSession {
                 let calName = settings?.calendarName ?? "FocusFlow"
                 let calId = settings?.selectedCalendarId
-                let eventId = CalendarService.shared.createEvent(
+                let eventId = await CalendarService.shared.createEvent(
                     title: session.label,
                     startDate: session.startedAt,
                     endDate: session.endedAt ?? Date(),
@@ -649,7 +651,7 @@ final class TimerViewModel {
         achievement: String?,
         reminderIdsToComplete: [String] = [],
         splits: [TimeSplitView.SplitEntry]? = nil
-    ) {
+    ) async {
         guard let session = lastCompletedSession else { return }
         session.mood = mood
         session.achievement = achievement
@@ -671,7 +673,7 @@ final class TimerViewModel {
 
         if !reminderIdsToComplete.isEmpty {
             for reminderId in reminderIdsToComplete {
-                _ = RemindersService.shared.completeReminder(identifier: reminderId)
+                _ = await RemindersService.shared.completeReminder(identifier: reminderId)
             }
         }
 
@@ -694,7 +696,7 @@ final class TimerViewModel {
             noteLines.append("")
             noteLines.append("Duration: \(duration) minutes")
             noteLines.append("Recorded by FocusFlow")
-            _ = CalendarService.shared.updateEvent(
+            _ = await CalendarService.shared.updateEvent(
                 eventId: eventId,
                 title: session.label,
                 notes: noteLines.joined(separator: "\n"),

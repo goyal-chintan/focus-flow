@@ -32,6 +32,14 @@ final class CalendarService {
     }
 
     func requestAccess() async -> Bool {
+        switch authStatus {
+        case .authorized:
+            return true
+        case .denied:
+            return false
+        case .notDetermined:
+            break
+        }
         // Guard against concurrent permission requests — EventKit behaviour is undefined
         // if requestFullAccessToEvents() is called while another request is in flight.
         guard !isRequestingAccess else {
@@ -39,30 +47,36 @@ final class CalendarService {
         }
         isRequestingAccess = true
         defer { isRequestingAccess = false }
-        do {
-            let granted = try await store.requestFullAccessToEvents()
-            // Brief yield so EventKit can finish updating its internal state after grant.
-            if granted { try? await Task.sleep(for: .milliseconds(100)) }
-            return granted
-        } catch {
-            log("Calendar access request failed: \(error)")
-            return false
+        return await EventStoreManager.shared.withExclusiveAccess(operation: "calendar.requestAccess") {
+            do {
+                let granted = try await store.requestFullAccessToEvents()
+                // Brief yield so EventKit can finish updating its internal state after grant.
+                if granted { try? await Task.sleep(for: .milliseconds(100)) }
+                let effectiveGranted = granted || authStatus == .authorized
+                log("requestFullAccessToEvents granted=\(granted), postStatus=\(authStatus), effectiveGranted=\(effectiveGranted)")
+                return effectiveGranted
+            } catch {
+                log("Calendar access request failed: \(error)")
+                return false
+            }
         }
     }
 
     // MARK: - Calendar Discovery
 
     /// Returns all available calendars grouped by source (iCloud, Gmail, Local, etc.)
-    func availableCalendars() -> [(source: String, calendars: [(id: String, title: String)])] {
-        guard authStatus == .authorized else { return [] }
-        let allCalendars = store.calendars(for: .event)
-        var grouped = [String: [(id: String, title: String)]]()
-        for cal in allCalendars {
-            let sourceName = cal.source?.title ?? "Local"
-            grouped[sourceName, default: []].append((id: cal.calendarIdentifier, title: cal.title))
+    func availableCalendars() async -> [(source: String, calendars: [(id: String, title: String)])] {
+        await EventStoreManager.shared.withExclusiveAccess(operation: "calendar.availableCalendars") {
+            guard authStatus == .authorized else { return [] }
+            let allCalendars = store.calendars(for: .event)
+            var grouped = [String: [(id: String, title: String)]]()
+            for cal in allCalendars {
+                let sourceName = cal.source?.title ?? "Local"
+                grouped[sourceName, default: []].append((id: cal.calendarIdentifier, title: cal.title))
+            }
+            return grouped.map { (source: $0.key, calendars: $0.value.sorted { $0.title < $1.title }) }
+                .sorted { $0.source < $1.source }
         }
-        return grouped.map { (source: $0.key, calendars: $0.value.sorted { $0.title < $1.title }) }
-            .sorted { $0.source < $1.source }
     }
 
     /// Finds a calendar by its identifier
@@ -121,39 +135,41 @@ final class CalendarService {
         notes: String?,
         calendarName: String = "FocusFlow",
         calendarId: String? = nil
-    ) -> String? {
-        guard authStatus == .authorized else {
-            log("Calendar not authorized")
-            return nil
-        }
+    ) async -> String? {
+        await EventStoreManager.shared.withExclusiveAccess(operation: "calendar.createEvent") {
+            guard authStatus == .authorized else {
+                log("Calendar not authorized")
+                return nil
+            }
 
-        guard let calendar = resolveCalendar(calendarId: calendarId, calendarName: calendarName) else {
-            log("Could not resolve calendar")
-            return nil
-        }
+            guard let calendar = resolveCalendar(calendarId: calendarId, calendarName: calendarName) else {
+                log("Could not resolve calendar")
+                return nil
+            }
 
-        let event = EKEvent(eventStore: store)
-        event.title = "🎯 \(title)"
-        event.startDate = startDate
-        event.endDate = endDate
-        event.calendar = calendar
+            let event = EKEvent(eventStore: store)
+            event.title = "🎯 \(title)"
+            event.startDate = startDate
+            event.endDate = endDate
+            event.calendar = calendar
 
-        var noteLines = [String]()
-        if let notes, !notes.isEmpty {
-            noteLines.append(notes)
-        }
-        let duration = endDate.timeIntervalSince(startDate)
-        noteLines.append("Duration: \(Int(duration / 60)) minutes")
-        noteLines.append("Recorded by FocusFlow")
-        event.notes = noteLines.joined(separator: "\n")
+            var noteLines = [String]()
+            if let notes, !notes.isEmpty {
+                noteLines.append(notes)
+            }
+            let duration = endDate.timeIntervalSince(startDate)
+            noteLines.append("Duration: \(Int(duration / 60)) minutes")
+            noteLines.append("Recorded by FocusFlow")
+            event.notes = noteLines.joined(separator: "\n")
 
-        do {
-            try store.save(event, span: .thisEvent, commit: true)
-            log("Created calendar event: \(event.eventIdentifier ?? "unknown")")
-            return event.eventIdentifier
-        } catch {
-            log("Failed to save calendar event: \(error)")
-            return nil
+            do {
+                try store.save(event, span: .thisEvent, commit: true)
+                log("Created calendar event: \(event.eventIdentifier ?? "unknown")")
+                return event.eventIdentifier
+            } catch {
+                log("Failed to save calendar event: \(error)")
+                return nil
+            }
         }
     }
 
@@ -165,23 +181,25 @@ final class CalendarService {
         notes: String?,
         startDate: Date? = nil,
         endDate: Date? = nil
-    ) -> Bool {
-        guard authStatus == .authorized else { return false }
-        guard let event = store.event(withIdentifier: eventId) else { return false }
+    ) async -> Bool {
+        await EventStoreManager.shared.withExclusiveAccess(operation: "calendar.updateEvent") {
+            guard authStatus == .authorized else { return false }
+            guard let event = store.event(withIdentifier: eventId) else { return false }
 
-        if let title, !title.isEmpty {
-            event.title = "🎯 \(title)"
-        }
-        if let startDate { event.startDate = startDate }
-        if let endDate { event.endDate = endDate }
-        event.notes = notes
+            if let title, !title.isEmpty {
+                event.title = "🎯 \(title)"
+            }
+            if let startDate { event.startDate = startDate }
+            if let endDate { event.endDate = endDate }
+            event.notes = notes
 
-        do {
-            try store.save(event, span: .thisEvent, commit: true)
-            return true
-        } catch {
-            log("Failed to update event: \(error)")
-            return false
+            do {
+                try store.save(event, span: .thisEvent, commit: true)
+                return true
+            } catch {
+                log("Failed to update event: \(error)")
+                return false
+            }
         }
     }
 

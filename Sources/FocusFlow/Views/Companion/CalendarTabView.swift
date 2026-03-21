@@ -49,20 +49,17 @@ struct CalendarTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
             guard settings?.remindersIntegrationEnabled == true else { return }
             reminderLoadTask?.cancel()
-            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
+            reminderLoadTask = Task { @MainActor in
+                // Coalesce noisy EventKit change bursts into one reload.
+                try? await Task.sleep(for: .milliseconds(180))
+                guard !Task.isCancelled else { return }
+                await loadRemindersInternal()
+            }
         }
         .animation(FFMotion.section, value: selectedDate)
         .animation(FFMotion.section, value: displayedMonth)
         .task { await loadReminders() }
-        .onChange(of: settings?.selectedReminderListId) { _, _ in
-            reminderLoadTask?.cancel()
-            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
-        }
         .onChange(of: settings?.remindersIntegrationEnabled) { _, _ in
-            reminderLoadTask?.cancel()
-            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
-        }
-        .onChange(of: selectedDate) { _, _ in
             reminderLoadTask?.cancel()
             reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
         }
@@ -483,8 +480,11 @@ struct CalendarTabView: View {
     private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
         HStack(spacing: 10) {
             Button {
-                _ = RemindersService.shared.completeReminder(identifier: reminder.id)
-                Task { await loadReminders() }
+                Task {
+                    let didComplete = await RemindersService.shared.completeReminder(identifier: reminder.id)
+                    guard didComplete else { return }
+                    await loadReminders()
+                }
             } label: {
                 Image(systemName: "checkmark.circle")
                     .font(.system(size: 16, weight: .regular))
@@ -636,43 +636,43 @@ struct CalendarTabView: View {
                 .buttonBorderShape(.capsule)
 
                 Button(isCreating ? "Add Reminder" : "Save Changes") {
-                    if isCreating {
-                        let id = RemindersService.shared.createReminder(
-                            title: reminderDraftTitle,
-                            notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
-                            dueDate: reminderDraftDueDate,
-                            listId: settings?.selectedReminderListId
-                        )
-                        if id != nil {
+                    Task {
+                        if isCreating {
+                            let id = await RemindersService.shared.createReminder(
+                                title: reminderDraftTitle,
+                                notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
+                                dueDate: reminderDraftDueDate,
+                                listId: settings?.selectedReminderListId
+                            )
+                            guard id != nil else {
+                                reminderSaveError = "Could not create reminder. Check Reminders permission in System Settings."
+                                return
+                            }
                             showReminderEditor = false
                             showCreateReminder = false
                             reminderSaveError = nil
-                            // Brief settle delay so EventKit can commit before we re-fetch
-                            Task {
-                                try? await Task.sleep(for: .milliseconds(400))
-                                await loadRemindersInternal()
-                            }
-                        } else {
-                            reminderSaveError = "Could not create reminder. Check Reminders permission in System Settings."
+                            // Brief settle delay so EventKit can commit before we re-fetch.
+                            try? await Task.sleep(for: .milliseconds(400))
+                            await loadRemindersInternal()
+                            return
                         }
-                    } else if let editingReminder {
-                        let ok = RemindersService.shared.updateReminder(
+
+                        guard let editingReminder else { return }
+                        let ok = await RemindersService.shared.updateReminder(
                             identifier: editingReminder.id,
                             title: reminderDraftTitle,
                             notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
                             dueDate: reminderDraftDueDate
                         )
-                        if ok {
-                            showReminderEditor = false
-                            showCreateReminder = false
-                            reminderSaveError = nil
-                            Task {
-                                try? await Task.sleep(for: .milliseconds(400))
-                                await loadRemindersInternal()
-                            }
-                        } else {
+                        guard ok else {
                             reminderSaveError = "Could not update reminder."
+                            return
                         }
+                        showReminderEditor = false
+                        showCreateReminder = false
+                        reminderSaveError = nil
+                        try? await Task.sleep(for: .milliseconds(400))
+                        await loadRemindersInternal()
                     }
                 }
                 .buttonStyle(.glassProminent)
@@ -724,7 +724,8 @@ struct CalendarTabView: View {
     }
 
     private func formatFocusDuration(_ minutes: Double) -> String {
-        let totalMinutes = Int(minutes)
+        let safeMinutes = minutes.isFinite ? max(0, minutes) : 0
+        let totalMinutes = Int(safeMinutes.rounded(.down))
         let hours = totalMinutes / 60
         let mins = totalMinutes % 60
         if hours > 0 { return "\(hours)h \(mins)m" }
@@ -737,7 +738,8 @@ struct CalendarTabView: View {
         let dayStart = calendar.startOfDay(for: date)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
         return allSessions.filter { session in
-            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            let safeDuration = session.actualDuration.isFinite ? max(0, session.actualDuration) : 0
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(safeDuration)
             return sessionEnd > dayStart && session.startedAt < dayEnd
         }.sorted { $0.startedAt < $1.startedAt }
     }
@@ -745,13 +747,18 @@ struct CalendarTabView: View {
     private func focusMinutesForDay(_ date: Date) -> Double {
         let dayStart = calendar.startOfDay(for: date)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return 0 }
-        return allSessions.filter { $0.type == .focus }.reduce(0.0) { sum, session in
-            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+        let total = allSessions.filter { $0.type == .focus }.reduce(0.0) { sum, session in
+            let safeDuration = session.actualDuration.isFinite ? max(0, session.actualDuration) : 0
+            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(safeDuration)
             guard sessionEnd > dayStart && session.startedAt < dayEnd else { return sum }
             let overlapStart = max(session.startedAt, dayStart)
             let overlapEnd = min(sessionEnd, dayEnd)
-            return sum + max(0, overlapEnd.timeIntervalSince(overlapStart)) / 60
+            let increment = max(0, overlapEnd.timeIntervalSince(overlapStart)) / 60
+            guard increment.isFinite else { return sum }
+            let next = sum + increment
+            return next.isFinite ? next : sum
         }
+        return total.isFinite ? total : 0
     }
 
     private func shiftDisplayedMonth(by monthDelta: Int) {
@@ -800,6 +807,7 @@ struct CalendarTabView: View {
         }
         isLoadingReminders = true
         remindersError = nil
+        defer { isLoadingReminders = false }
         // Fetch from ALL reminder lists — selectedReminderListId is only used when
         // CREATING new reminders, not as a display filter. Filtering here would hide
         // the user's reminders that live in other lists.
@@ -810,6 +818,5 @@ struct CalendarTabView: View {
         }
         reminders = fetched
         Self.logger.debug("loadReminders success: fetched=\(fetched.count, privacy: .public)")
-        isLoadingReminders = false
     }
 }
