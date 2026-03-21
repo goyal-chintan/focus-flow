@@ -362,8 +362,8 @@ struct SessionCompleteWindowView: View {
                 LiquidMetricCard(
                     title: "Overtime",
                     value: timerVM.overtimeTimeString,
-                    icon: "plus.circle.fill",
-                    color: .orange
+                    icon: "exclamationmark.triangle.fill",
+                    color: timerVM.overtimeSeconds > 120 ? .red : .orange
                 )
                 .frame(maxWidth: 180)
             }

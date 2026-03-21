@@ -63,6 +63,14 @@ final class TimerViewModel {
         return .normal
     }
 
+    var pauseWarningMessage: String {
+        switch pauseWarningLevel {
+        case .normal:   return "Deep work momentum is fading..."
+        case .warning:  return "2 min paused — focus is slipping away"
+        case .critical: return "5+ min paused — consider restarting"
+        }
+    }
+
     // MARK: - Start Error Feedback
     var startError: String? = nil
 
@@ -75,6 +83,11 @@ final class TimerViewModel {
     // MARK: - Overtime
     var isOvertime: Bool = false
     var overtimeSeconds: Int = 0
+
+    /// True when the completed session was a focus session (not a break).
+    var isFocusOvertime: Bool { isOvertime && lastCompletedSession?.type == .focus }
+    /// True when the completed session was a break (break ran past its duration).
+    var isBreakOvertime: Bool { isOvertime && lastCompletedSession?.type != .focus }
 
     // MARK: - Today Stats
     var todayFocusTime: TimeInterval = 0

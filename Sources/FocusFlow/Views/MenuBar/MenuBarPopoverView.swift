@@ -166,12 +166,12 @@ struct MenuBarPopoverView: View {
         } else if timerVM.isOvertime {
             VStack(spacing: 3) {
                 TrackedLabel(
-                    text: "Overtime",
+                    text: timerVM.isFocusOvertime ? "Overtime" : "Break Over",
                     font: LiquidDesignTokens.Typography.labelSmall,
-                    color: Color(hex: 0x3DA86A),
+                    color: timerVM.isFocusOvertime ? Color(hex: 0x3DA86A) : Color.orange,
                     tracking: 1.8
                 )
-                Text(timerVM.selectedProject?.name ?? "Focus")
+                Text(timerVM.isFocusOvertime ? (timerVM.selectedProject?.name ?? "Focus") : "Break")
                     .font(LiquidDesignTokens.Typography.headlineMedium)
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                     .lineLimit(1)
@@ -202,7 +202,11 @@ struct MenuBarPopoverView: View {
     @ViewBuilder
     private var stateSection: some View {
         if timerVM.isOvertime {
-            overtimeContent
+            if timerVM.isFocusOvertime {
+                overtimeContent
+            } else {
+                breakOvertimeContent
+            }
         } else {
             switch timerVM.state {
             case .idle:
@@ -300,7 +304,7 @@ struct MenuBarPopoverView: View {
     // MARK: - Helpers
 
     private var stateLabel: String {
-        if timerVM.isOvertime { return "Overtime" }
+        if timerVM.isOvertime { return timerVM.isFocusOvertime ? "Overtime" : "Break Over" }
         switch timerVM.state {
         case .idle:
             return "Focus Session"
@@ -619,6 +623,7 @@ private struct FocusingPopoverContent: View {
 private struct PausedPopoverContent: View {
     let pauseTimeString: String
     let pauseWarningColor: Color
+    let pauseWarningMessage: String
     @Binding var showStopConfirmation: Bool
     let onResume: () -> Void
     let onShowStopConfirmation: () -> Void
@@ -631,12 +636,13 @@ private struct PausedPopoverContent: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            // Motivational nudge — pause time is now shown in the ring
-            Text("Deep work momentum is fading...")
+            // Escalating motivational nudge based on pause duration
+            Text(pauseWarningMessage)
                 .font(LiquidDesignTokens.Typography.bodySmall)
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .foregroundStyle(pauseWarningColor)
                 .italic()
                 .padding(.top, 8)
+                .animation(.easeInOut(duration: 0.4), value: pauseWarningMessage)
 
             // Resume CTA — amber gradient
             GradientCTAButton(
@@ -813,6 +819,65 @@ private struct OvertimePopoverContent: View {
     }
 }
 
+// MARK: - Break Overtime State
+
+private struct BreakOvertimePopoverContent: View {
+    let overtimeString: String
+    let onStartFocusing: () -> Void
+    let onEnd: () -> Void
+
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(spacing: 14) {
+            // Escalating overtime badge — orange to signal urgency
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                Text(overtimeString)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.orange)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(Capsule(style: .continuous).fill(Color.orange.opacity(0.12)))
+            .scaleEffect(pulse ? 1.04 : 1.0)
+            .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: pulse)
+            .onAppear { pulse = true }
+
+            Text("Break time is up — time to focus!")
+                .font(LiquidDesignTokens.Typography.bodySmall)
+                .foregroundStyle(.orange.opacity(0.85))
+                .italic()
+
+            GlassEffectContainer {
+                VStack(spacing: 8) {
+                    GradientCTAButton(
+                        title: "Start Focusing",
+                        icon: "play.fill",
+                        gradient: LiquidDesignTokens.Gradient.focus,
+                        action: onStartFocusing
+                    )
+
+                    Button(action: onEnd) {
+                        TrackedLabel(
+                            text: "End Break",
+                            font: LiquidDesignTokens.Typography.labelMedium,
+                            color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                            tracking: 2.0
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+        .padding(.bottom, 12)
+    }
+}
+
 // MARK: - Break State
 
 private struct BreakPopoverContent: View {
@@ -898,6 +963,7 @@ extension MenuBarPopoverView {
         PausedPopoverContent(
             pauseTimeString: timerVM.pauseTimeString,
             pauseWarningColor: timerVM.pauseWarningLevel.color,
+            pauseWarningMessage: timerVM.pauseWarningMessage,
             showStopConfirmation: $showStopConfirmation,
             onResume: { timerVM.resume() },
             onShowStopConfirmation: {
@@ -915,6 +981,19 @@ extension MenuBarPopoverView {
         return BreakPopoverContent(
             selectedProject: $vm.selectedProject,
             onSkipBreak: { timerVM.skipBreak() }
+        )
+        .transition(.opacity)
+    }
+
+    fileprivate var breakOvertimeContent: some View {
+        BreakOvertimePopoverContent(
+            overtimeString: timerVM.overtimeTimeString,
+            onStartFocusing: {
+                timerVM.continueAfterCompletion(action: .continueFocusing)
+            },
+            onEnd: {
+                timerVM.continueAfterCompletion(action: .endSession)
+            }
         )
         .transition(.opacity)
     }

@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var saveError: String?
     @State private var isEnablingCalendar = false
     @State private var isEnablingReminders = false
+    @State private var showBlockingSheet = false
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
