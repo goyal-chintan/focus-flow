@@ -26,6 +26,7 @@ struct CalendarTabView: View {
     @State private var showCreateReminder = false
     @State private var reminderLoadTask: Task<Void, Never>?
     @State private var completingReminderId: String? = nil
+    @State private var needsReminderRefresh = false
 
     private var calendar: Calendar { Calendar.current }
     private var settings: AppSettings? { allSettings.first }
@@ -51,17 +52,19 @@ struct CalendarTabView: View {
         // or when permission is just granted — EventKit posts this automatically).
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
             guard settings?.remindersIntegrationEnabled == true else { return }
-            reminderLoadTask?.cancel()
-            reminderLoadTask = Task { @MainActor in
-                // Coalesce noisy EventKit change bursts into one reload.
-                try? await Task.sleep(for: .milliseconds(180))
-                guard !Task.isCancelled else { return }
-                let fetched = await RemindersService.shared.fetchIncompleteReminders(
-                    listId: settings?.selectedReminderListId
-                )
-                guard !Task.isCancelled else { return }
-                withAnimation(.none) {
-                    reminders = fetched
+            // Mark that a refresh is needed; the periodic timer will pick it up
+            needsReminderRefresh = true
+        }
+        .task(id: settings?.remindersIntegrationEnabled) {
+            guard settings?.remindersIntegrationEnabled == true else { return }
+            // Periodic graceful refresh every 30 seconds
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled else { break }
+                guard settings?.remindersIntegrationEnabled == true else { break }
+                if needsReminderRefresh {
+                    needsReminderRefresh = false
+                    await refreshRemindersGracefully()
                 }
             }
         }
@@ -504,8 +507,11 @@ struct CalendarTabView: View {
                         }
                         return
                     }
-                    await loadReminders()
                     await MainActor.run {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            reminders.removeAll { $0.id == reminder.id }
+                        }
+                        needsReminderRefresh = true
                         completingReminderId = nil
                     }
                 }
@@ -831,6 +837,26 @@ struct CalendarTabView: View {
         return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
+
+    private func refreshRemindersGracefully() async {
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(
+            listId: settings?.selectedReminderListId
+        )
+        guard !Task.isCancelled else { return }
+
+        let oldIds = Set(reminders.map(\.id))
+        let newIds = Set(fetched.map(\.id))
+
+        // Only animate if there are actual changes
+        if oldIds != newIds {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                reminders = fetched
+            }
+        } else {
+            // No visible change — update silently (e.g., due date changes)
+            reminders = fetched
+        }
+    }
 
     private func loadReminders() async {
         reminderLoadTask?.cancel()
