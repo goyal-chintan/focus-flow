@@ -21,6 +21,7 @@ struct CalendarTabView: View {
     @State private var reminderDraftDueDate: Date = Date()
     @State private var showReminderEditor = false
     @State private var showCreateReminder = false
+    @State private var reminderLoadTask: Task<Void, Never>?
 
     private var calendar: Calendar { Calendar.current }
     private var settings: AppSettings? { allSettings.first }
@@ -666,6 +667,14 @@ struct CalendarTabView: View {
     }
 
     private func loadReminders() async {
+        reminderLoadTask?.cancel()
+        reminderLoadTask = Task { @MainActor in
+            await loadRemindersInternal()
+        }
+        await reminderLoadTask?.value
+    }
+
+    private func loadRemindersInternal() async {
         guard settings?.remindersIntegrationEnabled == true else {
             reminders = []
             remindersError = nil
@@ -683,9 +692,27 @@ struct CalendarTabView: View {
         isLoadingReminders = true
         remindersError = nil
         let listId = settings?.selectedReminderListId.isEmpty == true ? nil : settings?.selectedReminderListId
-        let fetched = await RemindersService.shared.fetchIncompleteReminders(listId: listId)
+        let dayStart = calendar.startOfDay(for: selectedDate)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+            remindersError = "Unable to resolve selected date."
+            reminders = []
+            isLoadingReminders = false
+            Self.logger.error("loadReminders failed: invalid day boundary")
+            return
+        }
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(
+            listId: listId,
+            dueDateStarting: dayStart,
+            dueDateEnding: dayEnd
+        )
+        guard !Task.isCancelled else {
+            Self.logger.debug("loadReminders cancelled before state update")
+            return
+        }
         reminders = fetched
-        Self.logger.debug("loadReminders success: fetched=\(fetched.count, privacy: .public) filteredDay=\(self.remindersForSelectedDate.count, privacy: .public) listIdProvided=\(listId != nil, privacy: .public)")
+        Self.logger.debug(
+            "loadReminders success: fetched=\(fetched.count, privacy: .public) selectedDate=\(dayStart.timeIntervalSince1970, privacy: .public) listIdProvided=\(listId != nil, privacy: .public)"
+        )
         isLoadingReminders = false
     }
 }
