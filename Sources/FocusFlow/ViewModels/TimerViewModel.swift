@@ -617,7 +617,7 @@ final class TimerViewModel {
             if settings?.calendarIntegrationEnabled == true, let session = currentSession {
                 let calName = settings?.calendarName ?? "FocusFlow"
                 let calId = settings?.selectedCalendarId
-                let eventId = await CalendarService.shared.createEvent(
+                let eventId = CalendarService.shared.createEvent(
                     title: session.label,
                     startDate: session.startedAt,
                     endDate: session.endedAt ?? Date(),
@@ -673,7 +673,7 @@ final class TimerViewModel {
 
         if !reminderIdsToComplete.isEmpty {
             for reminderId in reminderIdsToComplete {
-                _ = await RemindersService.shared.completeReminder(identifier: reminderId)
+                _ = RemindersService.shared.completeReminder(identifier: reminderId)
             }
         }
 
@@ -696,7 +696,7 @@ final class TimerViewModel {
             noteLines.append("")
             noteLines.append("Duration: \(duration) minutes")
             noteLines.append("Recorded by FocusFlow")
-            _ = await CalendarService.shared.updateEvent(
+            _ = CalendarService.shared.updateEvent(
                 eventId: eventId,
                 title: session.label,
                 notes: noteLines.joined(separator: "\n"),
