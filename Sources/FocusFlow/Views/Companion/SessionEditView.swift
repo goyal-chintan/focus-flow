@@ -297,10 +297,29 @@ struct SessionEditView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Achievement")
 
-            TextField("What did you achieve?", text: $achievement)
+            TextField("Log your wins — one per line...", text: $achievement, axis: .vertical)
+                .lineLimit(4...8)
                 .textFieldStyle(.plain)
                 .padding(8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+
+            if !achievement.isEmpty {
+                let items = achievement.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                                .padding(.top, 2)
+                            Text(item.trimmingCharacters(in: .whitespaces))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
         }
     }
 

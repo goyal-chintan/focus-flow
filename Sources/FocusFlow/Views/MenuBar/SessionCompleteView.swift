@@ -77,11 +77,28 @@ struct SessionCompleteView: View {
             Text("What did you achieve?")
                 .font(.subheadline.weight(.medium))
 
-            TextField("e.g. Finished the API integration", text: $achievement, axis: .vertical)
-                .lineLimit(3...5)
+            TextField("Log your wins — one per line...", text: $achievement, axis: .vertical)
+                .lineLimit(4...8)
                 .textFieldStyle(.plain)
                 .padding(10)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+
+            if !achievement.isEmpty {
+                let items = achievement.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        HStack(alignment: .top, spacing: 5) {
+                            Text("•")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.green)
+                            Text(item.trimmingCharacters(in: .whitespaces))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
         }
     }
 
