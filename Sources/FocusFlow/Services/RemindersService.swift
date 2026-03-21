@@ -1,11 +1,13 @@
 @preconcurrency import EventKit
 import Foundation
+import OSLog
 
 /// Manages Apple Reminders integration — read/complete reminders during focus sessions.
 @MainActor
 final class RemindersService {
     static let shared = RemindersService()
     private let store = EKEventStore()
+    private let logger = Logger(subsystem: "FocusFlow", category: "RemindersService")
     private init() {}
 
     // MARK: - Authorization
@@ -99,7 +101,7 @@ final class RemindersService {
             }
         }
 
-        return data
+        let results = data
             .sorted { a, b in
                 let aDate = a.dueDateComponents?.date ?? .distantFuture
                 let bDate = b.dueDateComponents?.date ?? .distantFuture
@@ -121,6 +123,16 @@ final class RemindersService {
                     acc.append(item)
                 }
             }
+            .sorted {
+                let lhs = $0.dueDate ?? .distantFuture
+                let rhs = $1.dueDate ?? .distantFuture
+                if lhs != rhs { return lhs < rhs }
+                if $0.list != $1.list { return $0.list < $1.list }
+                return $0.title < $1.title
+            }
+
+        logger.debug("fetchIncompleteReminders done: total=\(data.count, privacy: .public) returned=\(results.count, privacy: .public) listFiltered=\(listId != nil, privacy: .public)")
+        return results
     }
 
     // MARK: - Complete Reminder
