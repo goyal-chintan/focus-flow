@@ -40,10 +40,10 @@ struct SettingsView: View {
         .saveErrorOverlay($saveError)
         .onAppear {
             if settings.calendarIntegrationEnabled {
-                Task { await loadCalendars() }
+                loadCalendars()
             }
             if settings.remindersIntegrationEnabled {
-                Task { await loadReminderLists() }
+                loadReminderLists()
             }
         }
     }
@@ -444,10 +444,6 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Divider()
 
-            Text("Select which calendar to record sessions to:")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-
             if isLoadingCalendars {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -463,7 +459,7 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
 
                     Button("Retry Calendar Sync") {
-                        Task { await loadCalendars() }
+                        loadCalendars()
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
@@ -475,30 +471,53 @@ struct SettingsView: View {
                         .foregroundStyle(.tertiary)
 
                     Button("Reload Calendars") {
-                        Task { await loadCalendars() }
+                        loadCalendars()
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
                 }
             } else {
-                ForEach(availableCalendars, id: \.source) { group in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(group.source)
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                            .textCase(.uppercase)
-                            .padding(.top, 4)
+                HStack {
+                    Label("Record sessions to", systemImage: "calendar")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
 
-                        ForEach(group.calendars, id: \.id) { cal in
-                            calendarRow(cal, isSelected: settings.selectedCalendarId == cal.id)
+                    Spacer()
+
+                    Picker("", selection: Binding(
+                        get: { settings.selectedCalendarId.isEmpty ? "__create_new__" : settings.selectedCalendarId },
+                        set: { newValue in
+                            if newValue == "__create_new__" {
+                                settings.selectedCalendarId = ""
+                                settings.calendarName = "FocusFlow"
+                            } else {
+                                settings.selectedCalendarId = newValue
+                                // Find the title for this calendar
+                                for group in availableCalendars {
+                                    if let cal = group.calendars.first(where: { $0.id == newValue }) {
+                                        settings.calendarName = cal.title
+                                        break
+                                    }
+                                }
+                            }
+                            save()
                         }
+                    )) {
+                        ForEach(availableCalendars, id: \.source) { group in
+                            Section(group.source) {
+                                ForEach(group.calendars, id: \.id) { cal in
+                                    Text(cal.title).tag(cal.id)
+                                }
+                            }
+                        }
+                        Divider()
+                        Text("Create \"FocusFlow\" Calendar").tag("__create_new__")
                     }
+                    .frame(maxWidth: 220)
                 }
-
-                // Option to create a dedicated FocusFlow calendar
-                Divider()
-                calendarRow((id: "__create_new__", title: "Create \"FocusFlow\" Calendar"),
-                            isSelected: settings.selectedCalendarId.isEmpty || settings.selectedCalendarId == "__create_new__")
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
 
             // Discoverability hint — where to find events
@@ -597,15 +616,6 @@ struct SettingsView: View {
 
     private var reminderPickerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Default list for new reminders created in FocusFlow:")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("All incomplete reminders from every list are shown in the Calendar tab regardless of this selection.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-
             if isLoadingReminderLists {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -621,78 +631,42 @@ struct SettingsView: View {
                         .foregroundStyle(.tertiary)
 
                     Button("Reload Reminder Lists") {
-                        Task { await loadReminderLists() }
+                        loadReminderLists()
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
                 }
             } else {
-                ForEach(availableReminderLists, id: \.id) { list in
-                    reminderListRow(list, isSelected: settings.selectedReminderListId == list.id)
+                HStack {
+                    Label("Default list for new reminders", systemImage: "list.bullet")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Picker("", selection: Binding(
+                        get: { settings.selectedReminderListId },
+                        set: {
+                            settings.selectedReminderListId = $0
+                            save()
+                        }
+                    )) {
+                        ForEach(availableReminderLists, id: \.id) { list in
+                            Text(list.title).tag(list.id)
+                        }
+                    }
+                    .frame(maxWidth: 200)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+
+                Text("All incomplete reminders from every list are shown in the Calendar tab.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 4)
             }
         }
-    }
-
-    private func reminderListRow(_ list: (id: String, title: String, source: String), isSelected: Bool) -> some View {
-        Button {
-            settings.selectedReminderListId = list.id
-            save()
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(isSelected ? .blue : .secondary)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(list.title)
-                        .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelected ? .primary : .secondary)
-                    Text(list.source)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                }
-
-                Spacer()
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(list.title), \(isSelected ? "selected" : "not selected")")
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
-
-    private func calendarRow(_ cal: (id: String, title: String), isSelected: Bool) -> some View {
-        Button {
-            if cal.id == "__create_new__" {
-                settings.selectedCalendarId = ""
-                settings.calendarName = "FocusFlow"
-            } else {
-                settings.selectedCalendarId = cal.id
-                settings.calendarName = cal.title
-            }
-            save()
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(isSelected ? .blue : .secondary)
-
-                Text(cal.title)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? .primary : .secondary)
-
-                Spacer()
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(cal.title), \(isSelected ? "selected" : "not selected")")
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private func enableCalendarIntegration() async {

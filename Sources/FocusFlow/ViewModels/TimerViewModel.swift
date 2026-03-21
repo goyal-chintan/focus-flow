@@ -161,7 +161,14 @@ final class TimerViewModel {
         seedDefaultProfiles()
         loadTodayStats()
         cleanupOrphanedSessions()
-        BlockingService.shared.cleanupIfNeeded()
+        // Don't call BlockingService.cleanupIfNeeded() here — it prompts for
+        // admin password if stale /etc/hosts entries exist, which is jarring on
+        // app launch. Instead, cleanup happens in deactivateBlocking().
+        // Refresh notification authorization on the main actor so the Settings
+        // banner accurately reflects whether notifications are enabled.
+        Task { @MainActor in
+            NotificationService.shared.refreshAuthorizationStatus()
+        }
         scheduleMidnightRefresh()
         log("configure() complete")
     }
