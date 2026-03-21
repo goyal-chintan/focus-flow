@@ -68,19 +68,31 @@ final class RemindersService {
     }
 
     /// Fetches incomplete reminders from all lists with full details.
-    func fetchIncompleteReminders(listId: String? = nil) async -> [ReminderItem] {
-        guard authStatus == .authorized else { return [] }
+    func fetchIncompleteReminders(
+        listId: String? = nil,
+        dueDateStarting: Date? = nil,
+        dueDateEnding: Date? = nil
+    ) async -> [ReminderItem] {
+        guard authStatus == .authorized else {
+            logger.error("fetchIncompleteReminders blocked: reminders not authorized")
+            return []
+        }
 
         let calendars: [EKCalendar]?
         if let listId, !listId.isEmpty {
-            calendars = store.calendars(for: .reminder).filter { $0.calendarIdentifier == listId }
+            let matched = store.calendars(for: .reminder).filter { $0.calendarIdentifier == listId }
+            guard !matched.isEmpty else {
+                logger.error("fetchIncompleteReminders list missing: selectedListId=\(listId, privacy: .public)")
+                return []
+            }
+            calendars = matched
         } else {
             calendars = nil
         }
 
         let predicate = store.predicateForIncompleteReminders(
-            withDueDateStarting: nil,
-            ending: nil,
+            withDueDateStarting: dueDateStarting,
+            ending: dueDateEnding,
             calendars: calendars
         )
 
@@ -131,7 +143,9 @@ final class RemindersService {
                 return $0.title < $1.title
             }
 
-        logger.debug("fetchIncompleteReminders done: total=\(data.count, privacy: .public) returned=\(results.count, privacy: .public) listFiltered=\(listId != nil, privacy: .public)")
+        logger.debug(
+            "fetchIncompleteReminders done: total=\(data.count, privacy: .public) returned=\(results.count, privacy: .public) listFiltered=\(listId != nil, privacy: .public) dateFiltered=\((dueDateStarting != nil || dueDateEnding != nil), privacy: .public)"
+        )
         return results
     }
 
