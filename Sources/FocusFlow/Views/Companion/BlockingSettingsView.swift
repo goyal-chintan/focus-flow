@@ -7,6 +7,7 @@ struct BlockingSettingsView: View {
 
     @State private var editingProfile: BlockProfile?
     @State private var showNewProfile = false
+    @State private var profileToDelete: BlockProfile?
 
     var body: some View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
@@ -26,6 +27,27 @@ struct BlockingSettingsView: View {
         }
         .sheet(item: $editingProfile) { profile in
             BlockProfileFormView(profile: profile)
+        }
+        .confirmationDialog(
+            "Delete Blocking Profile",
+            isPresented: Binding(
+                get: { profileToDelete != nil },
+                set: { if !$0 { profileToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let profile = profileToDelete {
+                    modelContext.delete(profile)
+                    try? modelContext.save()
+                }
+                profileToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                profileToDelete = nil
+            }
+        } message: {
+            Text("This will permanently delete the blocking profile and remove it from any linked projects.")
         }
     }
 
@@ -148,8 +170,7 @@ struct BlockingSettingsView: View {
                     .help("Edit profile")
 
                     Button {
-                        modelContext.delete(profile)
-                        try? modelContext.save()
+                        profileToDelete = profile
                     } label: {
                         Image(systemName: "trash")
                             .font(.system(size: 12, weight: .medium))
