@@ -596,9 +596,14 @@ struct SettingsView: View {
 
     private var reminderPickerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Choose which reminder list to use in FocusFlow:")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Default list for new reminders created in FocusFlow:")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("All incomplete reminders from every list are shown in the Calendar tab regardless of this selection.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
 
             if isLoadingReminderLists {
                 HStack(spacing: 8) {

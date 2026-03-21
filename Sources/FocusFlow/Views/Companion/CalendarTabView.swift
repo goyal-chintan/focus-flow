@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import OSLog
 import AppKit
+import EventKit
 
 struct CalendarTabView: View {
     private struct MonthDayCell: Identifiable {
@@ -16,6 +17,7 @@ struct CalendarTabView: View {
     @State private var reminders: [RemindersService.ReminderItem] = []
     @State private var isLoadingReminders = false
     @State private var remindersError: String?
+    @State private var reminderSaveError: String?
     @State private var editingReminder: RemindersService.ReminderItem?
     @State private var reminderDraftTitle = ""
     @State private var reminderDraftNotes = ""
@@ -43,6 +45,12 @@ struct CalendarTabView: View {
             Self.logger.debug("Calendar tab appeared. remindersEnabled=\(self.settings?.remindersIntegrationEnabled == true, privacy: .public) selectedListEmpty=\(self.settings?.selectedReminderListId.isEmpty ?? true, privacy: .public)")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            reminderLoadTask?.cancel()
+            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
+        }
+        // Reload when EventKit store changes (e.g., user adds/edits reminders in Reminders.app)
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
+            guard settings?.remindersIntegrationEnabled == true else { return }
             reminderLoadTask?.cancel()
             reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
         }
@@ -362,6 +370,7 @@ struct CalendarTabView: View {
                             reminderDraftTitle = ""
                             reminderDraftNotes = ""
                             reminderDraftDueDate = selectedDate
+                            reminderSaveError = nil
                             showCreateReminder = true
                         } label: {
                             Image(systemName: "plus")
@@ -603,6 +612,23 @@ struct CalendarTabView: View {
 
             // Action buttons
             Divider().opacity(0.3)
+
+            // Error banner
+            if let reminderSaveError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 12))
+                    Text(reminderSaveError)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .transition(.opacity)
+            }
+
             HStack(spacing: 12) {
                 Spacer()
                 Button("Cancel") {
@@ -614,23 +640,43 @@ struct CalendarTabView: View {
 
                 Button(isCreating ? "Add Reminder" : "Save Changes") {
                     if isCreating {
-                        _ = RemindersService.shared.createReminder(
+                        let id = RemindersService.shared.createReminder(
                             title: reminderDraftTitle,
                             notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
                             dueDate: reminderDraftDueDate,
                             listId: settings?.selectedReminderListId
                         )
+                        if id != nil {
+                            showReminderEditor = false
+                            showCreateReminder = false
+                            reminderSaveError = nil
+                            // Brief settle delay so EventKit can commit before we re-fetch
+                            Task {
+                                try? await Task.sleep(for: .milliseconds(400))
+                                await loadRemindersInternal()
+                            }
+                        } else {
+                            reminderSaveError = "Could not create reminder. Check Reminders permission in System Settings."
+                        }
                     } else if let editingReminder {
-                        _ = RemindersService.shared.updateReminder(
+                        let ok = RemindersService.shared.updateReminder(
                             identifier: editingReminder.id,
                             title: reminderDraftTitle,
                             notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
                             dueDate: reminderDraftDueDate
                         )
+                        if ok {
+                            showReminderEditor = false
+                            showCreateReminder = false
+                            reminderSaveError = nil
+                            Task {
+                                try? await Task.sleep(for: .milliseconds(400))
+                                await loadRemindersInternal()
+                            }
+                        } else {
+                            reminderSaveError = "Could not update reminder."
+                        }
                     }
-                    showReminderEditor = false
-                    showCreateReminder = false
-                    Task { await loadReminders() }
                 }
                 .buttonStyle(.glassProminent)
                 .tint(.blue)
@@ -757,20 +803,16 @@ struct CalendarTabView: View {
         }
         isLoadingReminders = true
         remindersError = nil
-        let listId = settings?.selectedReminderListId.isEmpty == true ? nil : settings?.selectedReminderListId
-        // Fetch ALL incomplete reminders — no date filter at the EventKit level.
-        // The UI groups them into Due Today / Upcoming / No Due Date client-side.
-        // Passing date constraints to EventKit's predicate silently excludes reminders
-        // with no due date and reminders due outside the selected window.
-        let fetched = await RemindersService.shared.fetchIncompleteReminders(listId: listId)
+        // Fetch from ALL reminder lists — selectedReminderListId is only used when
+        // CREATING new reminders, not as a display filter. Filtering here would hide
+        // the user's reminders that live in other lists.
+        let fetched = await RemindersService.shared.fetchIncompleteReminders()
         guard !Task.isCancelled else {
             Self.logger.debug("loadReminders cancelled before state update")
             return
         }
         reminders = fetched
-        Self.logger.debug(
-            "loadReminders success: fetched=\(fetched.count, privacy: .public) listIdProvided=\(listId != nil, privacy: .public)"
-        )
+        Self.logger.debug("loadReminders success: fetched=\(fetched.count, privacy: .public)")
         isLoadingReminders = false
     }
 }

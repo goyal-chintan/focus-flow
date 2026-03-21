@@ -129,10 +129,13 @@ final class RemindersService {
             }
         }
 
+        // EventKit returns dueDateComponents without .calendar set — calling .date on such a
+        // DateComponents returns a sentinel year-4001 value instead of the actual date.
+        // Always resolve via Calendar.current.date(from:) to get the correct date.
         let results = data
             .sorted { a, b in
-                let aDate = a.dueDateComponents?.date ?? .distantFuture
-                let bDate = b.dueDateComponents?.date ?? .distantFuture
+                let aDate = a.dueDateComponents.flatMap { Calendar.current.date(from: $0) } ?? .distantFuture
+                let bDate = b.dueDateComponents.flatMap { Calendar.current.date(from: $0) } ?? .distantFuture
                 return aDate < bDate
             }
             .map {
@@ -141,7 +144,7 @@ final class RemindersService {
                     title: $0.title,
                     list: $0.listTitle,
                     listId: $0.reminderListIdentifier,
-                    dueDate: $0.dueDateComponents?.date,
+                    dueDate: $0.dueDateComponents.flatMap { Calendar.current.date(from: $0) },
                     isCompleted: $0.isCompleted,
                     notes: $0.notes
                 )
