@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import OSLog
 
 struct CalendarTabView: View {
     private struct MonthDayCell: Identifiable {
@@ -23,6 +24,7 @@ struct CalendarTabView: View {
 
     private var calendar: Calendar { Calendar.current }
     private var settings: AppSettings? { allSettings.first }
+    private static let logger = Logger(subsystem: "FocusFlow", category: "CalendarTabView")
 
     var body: some View {
         ScrollView {
@@ -35,6 +37,9 @@ struct CalendarTabView: View {
             .padding(24)
         }
         .background(.ultraThinMaterial)
+        .onAppear {
+            Self.logger.debug("Calendar tab appeared. remindersEnabled=\(self.settings?.remindersIntegrationEnabled == true, privacy: .public) selectedListEmpty=\(self.settings?.selectedReminderListId.isEmpty ?? true, privacy: .public)")
+        }
         .animation(FFMotion.section, value: selectedDate)
         .animation(FFMotion.section, value: displayedMonth)
         .task { await loadReminders() }
@@ -665,19 +670,22 @@ struct CalendarTabView: View {
             reminders = []
             remindersError = nil
             isLoadingReminders = false
+            Self.logger.debug("loadReminders skipped: integration disabled")
             return
         }
         guard RemindersService.shared.authStatus == .authorized else {
             remindersError = "Reminders permission is not granted."
             reminders = []
             isLoadingReminders = false
+            Self.logger.error("loadReminders failed: reminders permission missing")
             return
         }
         isLoadingReminders = true
         remindersError = nil
-        reminders = await RemindersService.shared.fetchIncompleteReminders(
-            listId: settings?.selectedReminderListId.isEmpty == true ? nil : settings?.selectedReminderListId
-        )
+        let listId = settings?.selectedReminderListId.isEmpty == true ? nil : settings?.selectedReminderListId
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(listId: listId)
+        reminders = fetched
+        Self.logger.debug("loadReminders success: fetched=\(fetched.count, privacy: .public) filteredDay=\(self.remindersForSelectedDate.count, privacy: .public) listIdProvided=\(listId != nil, privacy: .public)")
         isLoadingReminders = false
     }
 }
