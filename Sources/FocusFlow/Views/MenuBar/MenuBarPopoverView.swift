@@ -120,7 +120,7 @@ struct MenuBarPopoverView: View {
                     Image(systemName: "chart.bar.fill")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -132,7 +132,7 @@ struct MenuBarPopoverView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -242,7 +242,7 @@ struct MenuBarPopoverView: View {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-                        .frame(width: 30, height: 30)
+                        .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -464,6 +464,7 @@ private struct FocusingPopoverContent: View {
                 .frame(minHeight: 34)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
+                .tint(Color.red.opacity(0.6))
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)

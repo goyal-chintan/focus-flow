@@ -214,12 +214,16 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("Open Settings") {
-                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!)
+                        Button {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        } label: {
+                            Label("Open Notification Settings", systemImage: "arrow.up.forward.app")
+                                .font(.system(size: 12, weight: .medium))
                         }
-                        .font(.system(size: 11, weight: .medium))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.blue)
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
                     }
                     .padding(10)
                     .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
