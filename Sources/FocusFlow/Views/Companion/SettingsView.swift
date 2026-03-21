@@ -7,6 +7,10 @@ struct SettingsView: View {
     @Query private var allSettings: [AppSettings]
     @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
     @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
+    @State private var isLoadingCalendars = false
+    @State private var calendarLoadError: String?
+    @State private var isLoadingReminderLists = false
+    @State private var reminderLoadError: String?
     @State private var reminderAuthError: String?
 
     private var settings: AppSettings {
@@ -357,7 +361,7 @@ struct SettingsView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            if availableCalendars.isEmpty {
+            if isLoadingCalendars {
                 HStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(0.7)
@@ -365,7 +369,30 @@ struct SettingsView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.tertiary)
                 }
-                .onAppear { loadCalendars() }
+            } else if let calendarLoadError {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(calendarLoadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.orange)
+
+                    Button("Retry Calendar Sync") {
+                        loadCalendars()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                }
+            } else if availableCalendars.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No calendars found.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+
+                    Button("Reload Calendars") {
+                        loadCalendars()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                }
             } else {
                 ForEach(availableCalendars, id: \.source) { group in
                     VStack(alignment: .leading, spacing: 4) {
@@ -457,6 +484,12 @@ struct SettingsView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.orange)
             }
+
+            if let reminderLoadError {
+                Label(reminderLoadError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
@@ -467,7 +500,7 @@ struct SettingsView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            if availableReminderLists.isEmpty {
+            if isLoadingReminderLists {
                 HStack(spacing: 8) {
                     ProgressView()
                         .scaleEffect(0.7)
@@ -475,7 +508,18 @@ struct SettingsView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.tertiary)
                 }
-                .onAppear { loadReminderLists() }
+            } else if availableReminderLists.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No reminder lists found.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+
+                    Button("Reload Reminder Lists") {
+                        loadReminderLists()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                }
             } else {
                 ForEach(availableReminderLists, id: \.id) { list in
                     reminderListRow(list, isSelected: settings.selectedReminderListId == list.id)
@@ -549,24 +593,63 @@ struct SettingsView: View {
         let granted = await CalendarService.shared.requestAccess()
         if granted {
             settings.calendarIntegrationEnabled = true
+            calendarLoadError = nil
             save()
             loadCalendars()
         } else {
             settings.calendarIntegrationEnabled = false
+            availableCalendars = []
+            calendarLoadError = "FocusFlow needs Calendar access. Enable it in System Settings → Privacy & Security → Calendars."
             save()
         }
     }
 
     private func loadCalendars() {
+        guard settings.calendarIntegrationEnabled else {
+            isLoadingCalendars = false
+            calendarLoadError = nil
+            availableCalendars = []
+            return
+        }
+        guard CalendarService.shared.authStatus == .authorized else {
+            isLoadingCalendars = false
+            availableCalendars = []
+            calendarLoadError = "Calendar permission is not granted."
+            return
+        }
+        isLoadingCalendars = true
+        calendarLoadError = nil
         availableCalendars = CalendarService.shared.availableCalendars()
+        isLoadingCalendars = false
+        if availableCalendars.isEmpty {
+            calendarLoadError = "No writable calendars found in your connected accounts."
+        }
     }
 
     private func loadReminderLists() {
+        guard settings.remindersIntegrationEnabled else {
+            isLoadingReminderLists = false
+            reminderLoadError = nil
+            availableReminderLists = []
+            return
+        }
+        guard RemindersService.shared.authStatus == .authorized else {
+            isLoadingReminderLists = false
+            availableReminderLists = []
+            reminderLoadError = "Reminders permission is not granted."
+            return
+        }
+        isLoadingReminderLists = true
+        reminderLoadError = nil
         availableReminderLists = RemindersService.shared.reminderLists()
+        isLoadingReminderLists = false
         if settings.selectedReminderListId.isEmpty,
            let first = availableReminderLists.first {
             settings.selectedReminderListId = first.id
             save()
+        }
+        if availableReminderLists.isEmpty {
+            reminderLoadError = "No reminder lists are available for this account."
         }
     }
 
@@ -575,11 +658,13 @@ struct SettingsView: View {
         if granted {
             settings.remindersIntegrationEnabled = true
             reminderAuthError = nil
+            reminderLoadError = nil
             save()
             loadReminderLists()
         } else {
             reminderAuthError = "FocusFlow needs Reminders access. Enable it in System Settings → Privacy & Security → Reminders."
             settings.remindersIntegrationEnabled = false
+            availableReminderLists = []
             save()
         }
     }

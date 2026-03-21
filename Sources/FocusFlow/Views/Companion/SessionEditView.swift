@@ -297,11 +297,26 @@ struct SessionEditView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Achievement")
 
-            TextField("Log your wins — one per line...", text: $achievement, axis: .vertical)
-                .lineLimit(4...8)
-                .textFieldStyle(.plain)
-                .padding(8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $achievement)
+                    .font(.system(size: 13, weight: .regular))
+                    .scrollContentBackground(.hidden)
+                    .background(.clear)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
+
+                if achievement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Log your wins — one per line...")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(minHeight: 94, maxHeight: 170)
+            .padding(2)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
 
             if !achievement.isEmpty {
                 let items = achievement.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
