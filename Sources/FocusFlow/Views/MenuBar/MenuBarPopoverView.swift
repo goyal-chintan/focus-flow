@@ -457,6 +457,7 @@ private struct FocusingPopoverContent: View {
                         Image(systemName: "stop.fill")
                             .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                         Text("Stop")
+                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -464,7 +465,6 @@ private struct FocusingPopoverContent: View {
                 .frame(minHeight: 34)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
-                .tint(Color.red.opacity(0.6))
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)

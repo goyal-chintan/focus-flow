@@ -31,7 +31,7 @@ struct TimeSplitView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(remainingText)
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundStyle(remainingMinutes == 0 ? .green : (remainingMinutes < 0 ? .red : .secondary))
             }
 
@@ -44,7 +44,7 @@ struct TimeSplitView: View {
                     splits.append(SplitEntry(minutes: remainingMinutes))
                 } label: {
                     Label("Add Split", systemImage: "plus.circle")
-                        .font(.caption.weight(.medium))
+                        .font(.system(size: 12, weight: .medium))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
@@ -60,7 +60,7 @@ struct TimeSplitView: View {
             if editingCustomIndex == index {
                 TextField("Custom label", text: $customLabelText)
                     .textFieldStyle(.plain)
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
@@ -88,7 +88,7 @@ struct TimeSplitView: View {
                     }
                 } label: {
                     Text(splits[index].label)
-                        .font(.caption)
+                        .font(.system(size: 12))
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 8)
@@ -136,7 +136,7 @@ struct TimeSplitView: View {
                     splits.remove(at: index)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
+                        .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
@@ -145,7 +145,7 @@ struct TimeSplitView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.03))

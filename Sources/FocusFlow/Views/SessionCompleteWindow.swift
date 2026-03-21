@@ -166,7 +166,7 @@ struct SessionCompleteWindowView: View {
         VStack(alignment: .leading, spacing: 8) {
             TrackedLabel(
                 text: "Project Allocation",
-                font: .system(size: 11, weight: .semibold),
+                font: .system(size: 12, weight: .semibold),
                 tracking: 1.8
             )
 
@@ -185,16 +185,16 @@ struct SessionCompleteWindowView: View {
             } label: {
                 HStack {
                     Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
-                        .font(.caption)
+                        .font(.system(size: 13))
                     Text("Split across projects")
-                        .font(.caption)
+                        .font(.system(size: 13, weight: .medium))
                     Spacer()
                     Image(systemName: showSplits ? "chevron.up" : "chevron.down")
                         .font(.caption2)
                 }
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.vertical, 14)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.roundedRectangle(radius: 12))
@@ -268,7 +268,6 @@ struct SessionCompleteWindowView: View {
         }
         .sheet(isPresented: $showReminderPicker) {
             ReminderSelectionSheet(
-                selectedDate: Date(),
                 selectedListId: settings?.selectedReminderListId,
                 initialSelectedIds: Set(selectedReminderItems.map(\.id))
             ) { chosen in
