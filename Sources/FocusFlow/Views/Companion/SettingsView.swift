@@ -768,23 +768,15 @@ struct SettingsView: View {
 
     @MainActor
     private func restoreCompanionWindow() {
-        // After OS permission dialog, aggressively restore companion window.
-        // Find the stats window and force it key+front, or open a new one.
-        if let statsWindow = NSApp.windows.first(where: {
-            $0.identifier?.rawValue == "stats"
-        }) {
-            statsWindow.makeKeyAndOrderFront(nil)
-            statsWindow.orderFrontRegardless()
-        } else {
-            openWindow(id: "stats")
-            // Give SwiftUI a moment to create the window, then front it
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                if let statsWindow = NSApp.windows.first(where: {
-                    $0.identifier?.rawValue == "stats"
-                }) {
-                    statsWindow.makeKeyAndOrderFront(nil)
-                    statsWindow.orderFrontRegardless()
-                }
+        // Activate the entire app first (brings all windows forward)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        
+        // Then make the stats window key after a brief delay for window ordering
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            if let statsWindow = NSApp.windows.first(where: {
+                $0.identifier?.rawValue == "stats"
+            }) {
+                statsWindow.makeKeyAndOrderFront(nil)
             }
         }
     }
