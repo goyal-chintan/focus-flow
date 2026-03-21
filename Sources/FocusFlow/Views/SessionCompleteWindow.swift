@@ -4,10 +4,15 @@ import SwiftData
 struct SessionCompleteWindowView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.dismissWindow) private var dismissWindow
+    @Query private var allSettings: [AppSettings]
     @State private var selectedMood: FocusMood? = nil
     @State private var achievement: String = ""
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
+    @State private var selectedReminderItems: [RemindersService.ReminderItem] = []
+    @State private var showReminderPicker = false
+
+    private var settings: AppSettings? { allSettings.first }
 
     private var isBreakCompletion: Bool {
         timerVM.lastCompletedSession?.type != .focus
@@ -82,6 +87,7 @@ struct SessionCompleteWindowView: View {
         VStack(alignment: .leading, spacing: 14) {
             moodSection
             achievementSection
+            remindersSection
         }
     }
 
@@ -211,6 +217,71 @@ struct SessionCompleteWindowView: View {
         }
     }
 
+    private var remindersSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                TrackedLabel(
+                    text: "Linked Reminders",
+                    font: .system(size: 11, weight: .semibold),
+                    tracking: 1.8
+                )
+                Spacer()
+                if settings?.remindersIntegrationEnabled == true {
+                    Button {
+                        showReminderPicker = true
+                    } label: {
+                        Label("Attach", systemImage: "plus")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if settings?.remindersIntegrationEnabled != true {
+                Text("Enable Reminders sync in Settings to link tasks.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            } else if selectedReminderItems.isEmpty {
+                Text("No reminders linked")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(selectedReminderItems, id: \.id) { item in
+                        HStack(spacing: 6) {
+                            Image(systemName: "checklist")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.blue)
+                            Text(item.title)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Button {
+                                selectedReminderItems.removeAll(where: { $0.id == item.id })
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("Remove reminder")
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showReminderPicker) {
+            ReminderSelectionSheet(
+                selectedDate: Date(),
+                selectedListId: settings?.selectedReminderListId,
+                initialSelectedIds: Set(selectedReminderItems.map(\.id))
+            ) { chosen in
+                selectedReminderItems = chosen
+            }
+        }
+    }
+
     private var focusActionsSection: some View {
         VStack(spacing: 12) {
             GlassEffectContainer {
@@ -285,6 +356,7 @@ struct SessionCompleteWindowView: View {
         timerVM.saveReflection(
             mood: selectedMood,
             achievement: achievement.isEmpty ? nil : achievement,
+            reminderIdsToComplete: selectedReminderItems.map(\.id),
             splits: showSplits ? splits : nil
         )
         timerVM.showSessionComplete = false
@@ -295,6 +367,7 @@ struct SessionCompleteWindowView: View {
         timerVM.saveReflection(
             mood: selectedMood,
             achievement: achievement.isEmpty ? nil : achievement,
+            reminderIdsToComplete: selectedReminderItems.map(\.id),
             splits: showSplits ? splits : nil
         )
         timerVM.continueAfterCompletion(action: action)

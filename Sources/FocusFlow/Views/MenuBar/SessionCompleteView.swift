@@ -1,11 +1,17 @@
 import SwiftUI
+import SwiftData
 
 struct SessionCompleteView: View {
     @Environment(TimerViewModel.self) private var timerVM
+    @Query private var allSettings: [AppSettings]
     @State private var selectedMood: FocusMood? = nil
     @State private var achievement: String = ""
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
+    @State private var selectedReminderItems: [RemindersService.ReminderItem] = []
+    @State private var showReminderPicker = false
+
+    private var settings: AppSettings? { allSettings.first }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -13,6 +19,7 @@ struct SessionCompleteView: View {
             Divider()
             moodSection
             achievementSection
+            remindersSection
             splitSection
             Divider()
             actionsSection
@@ -102,6 +109,68 @@ struct SessionCompleteView: View {
         }
     }
 
+    private var remindersSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Linked reminders")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                if settings?.remindersIntegrationEnabled == true {
+                    Button {
+                        showReminderPicker = true
+                    } label: {
+                        Label("Attach", systemImage: "plus")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if settings?.remindersIntegrationEnabled != true {
+                Text("Enable Reminders sync in Settings to link tasks.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            } else if selectedReminderItems.isEmpty {
+                Text("No reminders linked")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(selectedReminderItems, id: \.id) { item in
+                        HStack(spacing: 6) {
+                            Image(systemName: "checklist")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.blue)
+                            Text(item.title)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Button {
+                                selectedReminderItems.removeAll(where: { $0.id == item.id })
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("Remove reminder")
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showReminderPicker) {
+            ReminderSelectionSheet(
+                selectedDate: Date(),
+                selectedListId: settings?.selectedReminderListId,
+                initialSelectedIds: Set(selectedReminderItems.map(\.id))
+            ) { chosen in
+                selectedReminderItems = chosen
+            }
+        }
+    }
+
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -153,7 +222,12 @@ struct SessionCompleteView: View {
 
     private var takeBreakButton: some View {
         Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
+            timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
             timerVM.continueAfterCompletion(action: .takeBreak)
         } label: {
             Label("Take a Break", systemImage: "cup.and.saucer.fill")
@@ -167,7 +241,12 @@ struct SessionCompleteView: View {
 
     private var skipBreakButton: some View {
         Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
+            timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
             timerVM.continueAfterCompletion(action: .continueFocusing)
         } label: {
             Label("Skip Break", systemImage: "forward.fill")
@@ -180,7 +259,12 @@ struct SessionCompleteView: View {
 
     private var continueFocusingButton: some View {
         Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
+            timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
             timerVM.showSessionComplete = false
         } label: {
             Label("Continue Focusing", systemImage: "arrow.clockwise")
@@ -193,7 +277,12 @@ struct SessionCompleteView: View {
 
     private var endSessionButton: some View {
         Button {
-            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
+            timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
             timerVM.continueAfterCompletion(action: .endSession)
         } label: {
             Label("Finish Session", systemImage: "checkmark.circle.fill")

@@ -40,8 +40,11 @@ final class StoreMigratorTests: XCTestCase {
         XCTAssertTrue(columns.contains("ZDAILYFOCUSGOAL"))
         XCTAssertTrue(columns.contains("ZCALENDARINTEGRATIONENABLED"))
         XCTAssertTrue(columns.contains("ZCALENDARNAME"))
+        XCTAssertTrue(columns.contains("ZSELECTEDCALENDARID"))
         XCTAssertTrue(columns.contains("ZANTIPROCRASTINATIONENABLED"))
         XCTAssertTrue(columns.contains("ZANTIPROCRASTINATIONTHRESHOLDMINUTES"))
+        XCTAssertTrue(columns.contains("ZREMINDERSINTEGRATIONENABLED"))
+        XCTAssertTrue(columns.contains("ZSELECTEDREMINDERLISTID"))
 
         let calendarValues = try querySingleCalendarColumns(
             db,
@@ -51,12 +54,25 @@ final class StoreMigratorTests: XCTestCase {
         XCTAssertEqual(calendarValues.1, 0)
         XCTAssertEqual(calendarValues.2, "FocusFlow")
 
+        let selectedCalendarId = try querySingleText(
+            db,
+            sql: "SELECT ZSELECTEDCALENDARID FROM ZAPPSETTINGS WHERE Z_PK = 1;"
+        )
+        XCTAssertEqual(selectedCalendarId, "")
+
         let values = try querySingleIntPair(
             db,
             sql: "SELECT ZANTIPROCRASTINATIONENABLED, ZANTIPROCRASTINATIONTHRESHOLDMINUTES FROM ZAPPSETTINGS WHERE Z_PK = 1;"
         )
         XCTAssertEqual(values.0, 1)
         XCTAssertEqual(values.1, 5)
+
+        let remindersValues = try querySingleReminderColumns(
+            db,
+            sql: "SELECT ZREMINDERSINTEGRATIONENABLED, ZSELECTEDREMINDERLISTID FROM ZAPPSETTINGS WHERE Z_PK = 1;"
+        )
+        XCTAssertEqual(remindersValues.0, 0)
+        XCTAssertEqual(remindersValues.1, "")
 
         let original = try querySingleText(db, sql: "SELECT ZCOMPLETIONSOUND FROM ZAPPSETTINGS WHERE Z_PK = 1;")
         XCTAssertEqual(original, "Glass")
@@ -91,8 +107,11 @@ final class StoreMigratorTests: XCTestCase {
         XCTAssertEqual(columns.filter { $0 == "ZDAILYFOCUSGOAL" }.count, 1)
         XCTAssertEqual(columns.filter { $0 == "ZCALENDARINTEGRATIONENABLED" }.count, 1)
         XCTAssertEqual(columns.filter { $0 == "ZCALENDARNAME" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZSELECTEDCALENDARID" }.count, 1)
         XCTAssertEqual(columns.filter { $0 == "ZANTIPROCRASTINATIONENABLED" }.count, 1)
         XCTAssertEqual(columns.filter { $0 == "ZANTIPROCRASTINATIONTHRESHOLDMINUTES" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZREMINDERSINTEGRATIONENABLED" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZSELECTEDREMINDERLISTID" }.count, 1)
     }
 
     private func makeTempStoreURL() throws -> URL {
@@ -174,6 +193,24 @@ final class StoreMigratorTests: XCTestCase {
             sqlite3_column_double(statement, 0),
             Int(sqlite3_column_int(statement, 1)),
             String(cString: name)
+        )
+    }
+
+    private func querySingleReminderColumns(_ db: OpaquePointer, sql: String) throws -> (Int, String) {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw NSError(domain: "StoreMigratorTests", code: 11)
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw NSError(domain: "StoreMigratorTests", code: 12)
+        }
+        guard let listId = sqlite3_column_text(statement, 1) else {
+            throw NSError(domain: "StoreMigratorTests", code: 13)
+        }
+        return (
+            Int(sqlite3_column_int(statement, 0)),
+            String(cString: listId)
         )
     }
 }

@@ -144,6 +144,34 @@ final class CalendarService {
         }
     }
 
+    /// Updates an existing calendar event notes/title after session reflection is saved.
+    @discardableResult
+    func updateEvent(
+        eventId: String,
+        title: String? = nil,
+        notes: String?,
+        startDate: Date? = nil,
+        endDate: Date? = nil
+    ) -> Bool {
+        guard authStatus == .authorized else { return false }
+        guard let event = store.event(withIdentifier: eventId) else { return false }
+
+        if let title, !title.isEmpty {
+            event.title = "🎯 \(title)"
+        }
+        if let startDate { event.startDate = startDate }
+        if let endDate { event.endDate = endDate }
+        event.notes = notes
+
+        do {
+            try store.save(event, span: .thisEvent, commit: true)
+            return true
+        } catch {
+            log("Failed to update event: \(error)")
+            return false
+        }
+    }
+
     // MARK: - Logging
 
     private func log(_ message: String) {

@@ -19,6 +19,8 @@ final class AppSettings {
     var calendarIntegrationEnabled: Bool = false
     var calendarName: String = "FocusFlow"
     var selectedCalendarId: String = ""
+    var remindersIntegrationEnabled: Bool = false
+    var selectedReminderListId: String = ""
 
     // Focus Coach
     var antiProcrastinationEnabled: Bool = true
@@ -37,6 +39,8 @@ final class AppSettings {
         self.calendarIntegrationEnabled = false
         self.calendarName = "FocusFlow"
         self.selectedCalendarId = ""
+        self.remindersIntegrationEnabled = false
+        self.selectedReminderListId = ""
         self.antiProcrastinationEnabled = true
         self.antiProcrastinationThresholdMinutes = 5
     }

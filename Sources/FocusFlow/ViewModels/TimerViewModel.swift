@@ -528,7 +528,13 @@ final class TimerViewModel {
 
     // MARK: - Reflection
 
-    func saveReflection(mood: FocusMood?, achievement: String?, splits: [TimeSplitView.SplitEntry]? = nil) {
+    @MainActor
+    func saveReflection(
+        mood: FocusMood?,
+        achievement: String?,
+        reminderIdsToComplete: [String] = [],
+        splits: [TimeSplitView.SplitEntry]? = nil
+    ) {
         guard let session = lastCompletedSession else { return }
         session.mood = mood
         session.achievement = achievement
@@ -544,6 +550,40 @@ final class TimerViewModel {
                 timeSplit.session = session
                 modelContext?.insert(timeSplit)
             }
+        }
+
+        if !reminderIdsToComplete.isEmpty {
+            for reminderId in reminderIdsToComplete {
+                _ = RemindersService.shared.completeReminder(identifier: reminderId)
+            }
+        }
+
+        if let eventId = session.calendarEventId, !eventId.isEmpty {
+            var noteLines: [String] = []
+            if let achievement, !achievement.isEmpty {
+                noteLines.append("Achievements:")
+                for line in achievement
+                    .components(separatedBy: .newlines)
+                    .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+                    .filter({ !$0.isEmpty }) {
+                    noteLines.append("• \(line)")
+                }
+            }
+            if !reminderIdsToComplete.isEmpty {
+                noteLines.append("")
+                noteLines.append("Completed reminders: \(reminderIdsToComplete.count)")
+            }
+            let duration = Int(session.actualDuration / 60)
+            noteLines.append("")
+            noteLines.append("Duration: \(duration) minutes")
+            noteLines.append("Recorded by FocusFlow")
+            _ = CalendarService.shared.updateEvent(
+                eventId: eventId,
+                title: session.label,
+                notes: noteLines.joined(separator: "\n"),
+                startDate: session.startedAt,
+                endDate: session.endedAt ?? Date()
+            )
         }
 
         try? modelContext?.save()

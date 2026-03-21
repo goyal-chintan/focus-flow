@@ -6,8 +6,18 @@ struct CalendarTabView: View {
     @Query private var allSettings: [AppSettings]
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var displayedMonth: Date = Date()
+    @State private var reminders: [RemindersService.ReminderItem] = []
+    @State private var isLoadingReminders = false
+    @State private var remindersError: String?
+    @State private var editingReminder: RemindersService.ReminderItem?
+    @State private var reminderDraftTitle = ""
+    @State private var reminderDraftNotes = ""
+    @State private var reminderDraftDueDate: Date = Date()
+    @State private var showReminderEditor = false
+    @State private var showCreateReminder = false
 
     private var calendar: Calendar { Calendar.current }
+    private var settings: AppSettings? { allSettings.first }
 
     var body: some View {
         ScrollView {
@@ -15,12 +25,26 @@ struct CalendarTabView: View {
                 headerSection
                 monthGridSection
                 dayDetailSection
+                remindersSection
             }
             .padding(24)
         }
         .background(.ultraThinMaterial)
         .animation(FFMotion.section, value: selectedDate)
         .animation(FFMotion.section, value: displayedMonth)
+        .task { await loadReminders() }
+        .onChange(of: selectedDate) { _, _ in
+            Task { await loadReminders() }
+        }
+        .onChange(of: settings?.selectedReminderListId) { _, _ in
+            Task { await loadReminders() }
+        }
+        .sheet(isPresented: $showReminderEditor) {
+            reminderEditorSheet(isCreating: false)
+        }
+        .sheet(isPresented: $showCreateReminder) {
+            reminderEditorSheet(isCreating: true)
+        }
     }
 
     // MARK: - Header
@@ -278,6 +302,180 @@ struct CalendarTabView: View {
         }
     }
 
+    // MARK: - Reminders Section
+
+    private var remindersSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                LiquidSectionHeader("Reminders", subtitle: remindersSubtitle) {
+                    Button {
+                        reminderDraftTitle = ""
+                        reminderDraftNotes = ""
+                        reminderDraftDueDate = selectedDate
+                        showCreateReminder = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .disabled(!(settings?.remindersIntegrationEnabled ?? false))
+                    .accessibilityLabel("Create reminder")
+                }
+
+                if !(settings?.remindersIntegrationEnabled ?? false) {
+                    Label("Enable Reminders in Settings to sync and manage tasks here.", systemImage: "info.circle")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 6)
+                } else if isLoadingReminders {
+                    ProgressView("Loading reminders...")
+                        .padding(.vertical, 8)
+                } else if let remindersError {
+                    Label(remindersError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.orange)
+                } else if remindersForSelectedDate.isEmpty {
+                    VStack(spacing: 6) {
+                        Image(systemName: "checklist")
+                            .font(.system(size: 18, weight: .light))
+                            .foregroundStyle(.tertiary)
+                        Text("No reminders due for this day")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(remindersForSelectedDate, id: \.id) { reminder in
+                            reminderRow(reminder)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private var remindersSubtitle: String {
+        guard settings?.remindersIntegrationEnabled == true else { return "Sync Apple Reminders into your planning flow" }
+        let count = remindersForSelectedDate.count
+        if count == 0 { return "No reminders due on selected day" }
+        return "\(count) reminder\(count == 1 ? "" : "s") due"
+    }
+
+    private var remindersForSelectedDate: [RemindersService.ReminderItem] {
+        reminders.filter {
+            guard let due = $0.dueDate else { return false }
+            return calendar.isDate(due, inSameDayAs: selectedDate)
+        }
+    }
+
+    private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                _ = RemindersService.shared.completeReminder(identifier: reminder.id)
+                Task { await loadReminders() }
+            } label: {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 16, weight: .regular))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.green)
+            .accessibilityLabel("Mark reminder complete")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reminder.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                HStack(spacing: 6) {
+                    Text(reminder.list)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    if let due = reminder.dueDate {
+                        Text(due.formatted(.dateTime.hour().minute()))
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+
+            Spacer()
+
+            Button {
+                editingReminder = reminder
+                reminderDraftTitle = reminder.title
+                reminderDraftNotes = reminder.notes
+                reminderDraftDueDate = reminder.dueDate ?? selectedDate
+                showReminderEditor = true
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Edit reminder")
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func reminderEditorSheet(isCreating: Bool) -> some View {
+        NavigationStack {
+            Form {
+                Section("Title") {
+                    TextField("Reminder title", text: $reminderDraftTitle)
+                }
+                Section("Notes") {
+                    TextField("Details", text: $reminderDraftNotes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+                Section("Due") {
+                    DatePicker("Due Date", selection: $reminderDraftDueDate, displayedComponents: [.date, .hourAndMinute])
+                }
+            }
+            .navigationTitle(isCreating ? "New Reminder" : "Edit Reminder")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showReminderEditor = false
+                        showCreateReminder = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        if isCreating {
+                            _ = RemindersService.shared.createReminder(
+                                title: reminderDraftTitle,
+                                notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
+                                dueDate: reminderDraftDueDate,
+                                listId: settings?.selectedReminderListId
+                            )
+                        } else if let editingReminder {
+                            _ = RemindersService.shared.updateReminder(
+                                identifier: editingReminder.id,
+                                title: reminderDraftTitle,
+                                notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
+                                dueDate: reminderDraftDueDate
+                            )
+                        }
+                        showReminderEditor = false
+                        showCreateReminder = false
+                        Task { await loadReminders() }
+                    }
+                    .disabled(reminderDraftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 460, minHeight: 360)
+    }
+
     private var emptyDayView: some View {
         VStack(spacing: 8) {
             Image(systemName: "moon.zzz.fill")
@@ -420,5 +618,26 @@ struct CalendarTabView: View {
         case .focused: .blue
         case .deepFocus: .purple
         }
+    }
+
+    private func loadReminders() async {
+        guard settings?.remindersIntegrationEnabled == true else {
+            reminders = []
+            remindersError = nil
+            isLoadingReminders = false
+            return
+        }
+        guard RemindersService.shared.authStatus == .authorized else {
+            remindersError = "Reminders permission is not granted."
+            reminders = []
+            isLoadingReminders = false
+            return
+        }
+        isLoadingReminders = true
+        remindersError = nil
+        reminders = await RemindersService.shared.fetchIncompleteReminders(
+            listId: settings?.selectedReminderListId.isEmpty == true ? nil : settings?.selectedReminderListId
+        )
+        isLoadingReminders = false
     }
 }
