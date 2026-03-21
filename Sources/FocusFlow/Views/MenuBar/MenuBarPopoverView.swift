@@ -754,6 +754,8 @@ private struct PausedPopoverContent: View {
 private struct OvertimePopoverContent: View {
     @Binding var selectedProject: Project?
     let overtimeString: String
+    let showSessionComplete: Bool
+    let onBringWindowToFront: () -> Void
     let onTakeBreak: () -> Void
     let onSkipBreak: () -> Void
     let onFinishSession: () -> Void
@@ -777,72 +779,98 @@ private struct OvertimePopoverContent: View {
                     .fill(Color(hex: 0x3DA86A).opacity(0.12))
             )
 
-            // Action buttons
-            GlassEffectContainer {
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button(action: onTakeBreak) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "cup.and.saucer.fill")
-                                    .font(.system(size: 11))
-                                Text("Take a Break")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(LiquidDesignTokens.Spectral.primaryContainer)
-                        .buttonBorderShape(.capsule)
+            if showSessionComplete {
+                // Session window is open — guide user there instead of offering bypass actions
+                VStack(spacing: 10) {
+                    Text("Your session is complete ✓")
+                        .font(LiquidDesignTokens.Typography.bodySmall)
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
 
-                        Button(action: onSkipBreak) {
+                    Button(action: onBringWindowToFront) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Log & Continue →")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(LiquidDesignTokens.Spectral.electricBlue)
+                    .buttonBorderShape(.capsule)
+                }
+            } else {
+                // Window not open — inline quick actions (e.g. if window was dismissed)
+                GlassEffectContainer {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            Button(action: onTakeBreak) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "cup.and.saucer.fill")
+                                        .font(.system(size: 11))
+                                    Text("Take a Break")
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                            .buttonBorderShape(.capsule)
+
+                            Button(action: onSkipBreak) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "forward.fill")
+                                        .font(.system(size: 11))
+                                    Text("Skip Break")
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.capsule)
+                        }
+
+                        Button(action: onFinishSession) {
                             HStack(spacing: 6) {
-                                Image(systemName: "forward.fill")
-                                    .font(.system(size: 11))
-                                Text("Skip Break")
-                                    .font(.system(size: 13, weight: .medium))
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text("Finish Session")
+                                    .font(.system(size: 14, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                         }
                         .buttonStyle(.glass)
+                        .tint(LiquidDesignTokens.Spectral.mint)
                         .buttonBorderShape(.capsule)
                     }
-
-                    Button(action: onFinishSession) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 12, weight: .medium))
-                            Text("Finish Session")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                    }
-                    .buttonStyle(.glass)
-                    .tint(LiquidDesignTokens.Spectral.mint)
-                    .buttonBorderShape(.capsule)
                 }
             }
 
-            // Next session project picker
-            VStack(spacing: 6) {
-                HStack {
-                    TrackedLabel(
-                        text: "Next Session Project",
-                        font: .system(size: 10, weight: .medium),
-                        tracking: 1.8
-                    )
-                    Spacer()
-                }
-                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-
-                ProjectPickerView(selectedProject: $selectedProject)
+            // Next session project picker (only when window not blocking actions)
+            if !showSessionComplete {
+                VStack(spacing: 6) {
+                    HStack {
+                        TrackedLabel(
+                            text: "Next Session Project",
+                            font: .system(size: 10, weight: .medium),
+                            tracking: 1.8
+                        )
+                        Spacer()
+                    }
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+
+                    ProjectPickerView(selectedProject: $selectedProject)
+                        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                }
             }
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
+        .animation(FFMotion.section, value: showSessionComplete)
     }
 }
 
@@ -981,7 +1009,7 @@ extension MenuBarPopoverView {
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
             },
-            onSaveStop: { timerVM.stop() },
+            onSaveStop: { timerVM.stopForReflection() },
             onDiscardStop: { timerVM.abandonSession() },
             onCancelStop: { showStopConfirmation = false }
         )
@@ -998,7 +1026,7 @@ extension MenuBarPopoverView {
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
             },
-            onSaveStop: { timerVM.stop() },
+            onSaveStop: { timerVM.stopForReflection() },
             onDiscardStop: { timerVM.abandonSession() },
             onCancelStop: { showStopConfirmation = false }
         )
@@ -1032,6 +1060,11 @@ extension MenuBarPopoverView {
         return OvertimePopoverContent(
             selectedProject: $vm.selectedProject,
             overtimeString: timerVM.overtimeTimeString,
+            showSessionComplete: timerVM.showSessionComplete,
+            onBringWindowToFront: {
+                timerVM.openCompletionWindow?()
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            },
             onTakeBreak: {
                 timerVM.continueAfterCompletion(action: .takeBreak)
             },

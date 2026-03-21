@@ -76,6 +76,8 @@ final class TimerViewModel {
 
     // MARK: - Session Completion
     var showSessionComplete: Bool = false
+    /// True when user manually stopped mid-session (vs natural timer completion).
+    var isManualStop: Bool = false
     var lastCompletedDuration: TimeInterval? = nil
     var lastCompletedLabel: String? = nil
     private(set) var lastCompletedSession: FocusSession? = nil
@@ -365,6 +367,7 @@ final class TimerViewModel {
         pauseElapsed = 0
         isOvertime = false
         overtimeSeconds = 0
+        isManualStop = false
         showSessionComplete = false
         if let session = currentSession {
             session.endedAt = Date()
@@ -383,6 +386,62 @@ final class TimerViewModel {
         totalSeconds = 0
     }
 
+    /// Routes a mid-session stop through SessionCompleteWindow so the user
+    /// can record mood, achievement, and splits before the session is finalised.
+    /// Only used when the session is long enough to be worth reflecting on (≥60s).
+    func stopForReflection() {
+        guard let session = currentSession else {
+            stop()   // nothing to save
+            return
+        }
+        // Too short to be worth a reflection window — just discard
+        let elapsed = Date().timeIntervalSince(session.startedAt)
+        if elapsed < 60 {
+            abandonSession()
+            return
+        }
+        timer?.invalidate()
+        timer = nil
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
+
+        session.endedAt = Date()
+        session.completed = false
+        try? modelContext?.save()
+
+        lastCompletedDuration = session.duration
+        lastCompletedLabel = session.label
+        lastCompletedSession = session
+        currentSession = nil
+
+        isManualStop = true
+        isOvertime = false
+        overtimeSeconds = 0
+        state = .idle
+        remainingSeconds = 0
+        totalSeconds = 0
+
+        showSessionComplete = true
+        openCompletionWindow?()
+    }
+
+    /// Called from SessionCompleteWindow "Discard" button after a manual stop.
+    /// Deletes the session that was provisionally saved by stopForReflection().
+    func discardManualStop() {
+        if let session = lastCompletedSession {
+            modelContext?.delete(session)
+            try? modelContext?.save()
+        }
+        isManualStop = false
+        showSessionComplete = false
+        lastCompletedSession = nil
+        lastCompletedDuration = nil
+        lastCompletedLabel = nil
+        loadTodayStats()
+    }
+
     func abandonSession() {
         timer?.invalidate()
         timer = nil
@@ -393,6 +452,7 @@ final class TimerViewModel {
 
         isOvertime = false
         overtimeSeconds = 0
+        isManualStop = false
         showSessionComplete = false
         if let session = currentSession {
             modelContext?.delete(session)
@@ -661,6 +721,7 @@ final class TimerViewModel {
         loadTodayStats()
 
         showSessionComplete = false
+        isManualStop = false
         currentSession = nil
         lastCompletedSession = nil
 
