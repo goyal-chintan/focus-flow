@@ -13,6 +13,7 @@ final class AppUsageTracker {
     private var hasNudgedThisIdle = false
     private weak var timerVM: TimerViewModel?
     private var modelContext: ModelContext?
+    private var tickCount: Int = 0
 
     // Per-app tracking state
     private var currentAppBundleId: String = ""
@@ -29,13 +30,16 @@ final class AppUsageTracker {
         isTracking = true
         idleSeconds = 0
         hasNudgedThisIdle = false
+        tickCount = 0
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.tick()
             }
         }
-        RunLoop.main.add(trackingTimer!, forMode: .common)
+        if let timer = trackingTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
         log("Started tracking")
     }
 
@@ -53,6 +57,7 @@ final class AppUsageTracker {
     private func tick() {
         guard let vm = timerVM else { return }
 
+        tickCount += 1
         trackFrontmostApp(isFocusing: vm.state == .focusing)
 
         // Only count idle time when not in a session
@@ -116,7 +121,7 @@ final class AppUsageTracker {
             }
 
             // Save periodically (every 30 seconds) to avoid constant writes
-            if Int.random(in: 0..<30) == 0 {
+            if tickCount % 30 == 0 {
                 try ctx.save()
             }
         } catch {

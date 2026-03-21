@@ -48,6 +48,7 @@ struct CalendarTabView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Previous month")
 
                     Text(displayedMonth.formatted(.dateTime.month(.wide).year()))
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
@@ -65,6 +66,7 @@ struct CalendarTabView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Next month")
 
                     Button {
                         withAnimation(FFMotion.section) {
@@ -79,6 +81,7 @@ struct CalendarTabView: View {
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
+                    .accessibilityLabel("Go to today")
                 }
             }
 

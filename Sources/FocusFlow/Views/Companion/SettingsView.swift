@@ -406,6 +406,8 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(cal.title), \(isSelected ? "selected" : "not selected")")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private func enableCalendarIntegration() async {

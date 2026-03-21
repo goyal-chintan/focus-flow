@@ -506,7 +506,7 @@ final class TimerViewModel {
                     endDate: session.endedAt ?? Date(),
                     notes: session.achievement,
                     calendarName: calName,
-                    calendarId: calId?.isEmpty == true ? nil : calId
+                    calendarId: (calId?.isEmpty ?? true) ? nil : calId
                 )
                 session.calendarEventId = eventId
                 try? modelContext?.save()
