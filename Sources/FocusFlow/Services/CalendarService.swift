@@ -19,7 +19,7 @@ final class CalendarService {
     var authStatus: AuthStatus {
         let status = EKEventStore.authorizationStatus(for: .event)
         switch status {
-        case .fullAccess, .authorized:
+        case .fullAccess, .authorized, .writeOnly:
             return .authorized
         case .denied, .restricted:
             return .denied

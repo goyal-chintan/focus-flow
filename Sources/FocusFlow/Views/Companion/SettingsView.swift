@@ -298,11 +298,12 @@ struct SettingsView: View {
 
                         TextField("FocusFlow", text: Binding(
                             get: { settings.calendarName },
-                            set: { settings.calendarName = $0; save() }
+                            set: { settings.calendarName = $0 }
                         ))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 150)
                         .font(.subheadline)
+                        .onSubmit { save() }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }

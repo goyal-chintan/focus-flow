@@ -337,12 +337,12 @@ final class TimerViewModel {
             }
             try? modelContext?.save()
         }
+        loadTodayStats()
         deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
-        loadTodayStats()
     }
 
     func abandonSession() {
@@ -360,12 +360,12 @@ final class TimerViewModel {
             modelContext?.delete(session)
             try? modelContext?.save()
         }
+        loadTodayStats()
         deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
-        loadTodayStats()
     }
 
     func skipBreak() {
