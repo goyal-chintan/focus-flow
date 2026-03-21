@@ -106,8 +106,14 @@ struct ReminderSelectionSheet: View {
             loadError = "Reminders permission is not granted."
             return
         }
-        reminders = await RemindersService.shared.fetchIncompleteReminders(listId: selectedListId)
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: selectedDate)
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)
+        reminders = await RemindersService.shared.fetchIncompleteReminders(
+            listId: selectedListId,
+            dueDateStarting: dayStart,
+            dueDateEnding: dayEnd
+        )
         isLoading = false
     }
 }
-

@@ -643,13 +643,16 @@ struct SettingsView: View {
         reminderLoadError = nil
         availableReminderLists = RemindersService.shared.reminderLists()
         isLoadingReminderLists = false
-        if settings.selectedReminderListId.isEmpty,
-           let first = availableReminderLists.first {
-            settings.selectedReminderListId = first.id
-            save()
-        }
         if availableReminderLists.isEmpty {
             reminderLoadError = "No reminder lists are available for this account."
+            return
+        }
+
+        let selectedId = settings.selectedReminderListId
+        let isSelectedListValid = !selectedId.isEmpty && availableReminderLists.contains(where: { $0.id == selectedId })
+        if !isSelectedListValid, let first = availableReminderLists.first {
+            settings.selectedReminderListId = first.id
+            save()
         }
     }
 
