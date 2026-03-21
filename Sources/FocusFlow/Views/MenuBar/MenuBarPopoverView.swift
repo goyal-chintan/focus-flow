@@ -429,41 +429,11 @@ private struct IdlePopoverContent: View {
     }
 
     private var startButton: some View {
-        Button(action: onStartFocus) {
-            HStack(spacing: 8) {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 13, weight: .bold))
-                Text("Start Focus Session")
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-        }
-        .buttonStyle(.plain)
-        .background(
-            Capsule(style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(hex: 0x5B9EF8),
-                            Color(hex: 0x6AABFF),
-                            Color(hex: 0xA5C4FF)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.28), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                )
+        GradientCTAButton(
+            title: "Start Focus Session",
+            icon: "play.fill",
+            gradient: LiquidDesignTokens.Gradient.focus,
+            action: onStartFocus
         )
     }
 
@@ -668,42 +638,13 @@ private struct PausedPopoverContent: View {
                 .italic()
                 .padding(.top, 8)
 
-            // Resume CTA — blue gradient
-            Button(action: onResume) {
-                HStack(spacing: 8) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 13, weight: .bold))
-                    Text("Resume Focus")
-                        .font(.system(size: 15, weight: .bold))
-                }
-                .foregroundStyle(Color(hex: 0x332200))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-            }
-            .buttonStyle(.plain)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(hex: 0xCC8800),
-                                Color(hex: 0xE6A820),
-                                Color(hex: 0xF0C040)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.28), .clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                    )
+            // Resume CTA — amber gradient
+            GradientCTAButton(
+                title: "Resume Focus",
+                icon: "play.fill",
+                gradient: LiquidDesignTokens.Gradient.resume,
+                foregroundColor: Color(hex: 0x332200),
+                action: onResume
             )
 
             // End Session — native glass button

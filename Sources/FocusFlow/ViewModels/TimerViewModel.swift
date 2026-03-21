@@ -211,6 +211,12 @@ final class TimerViewModel {
         }
         if let settings {
             selectedMinutes = Int(settings.focusDuration / 60)
+            if selectedProject == nil,
+               let lastId = settings.lastUsedProjectId,
+               let uuid = UUID(uuidString: lastId) {
+                let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == uuid && !$0.archived })
+                selectedProject = try? modelContext?.fetch(descriptor).first
+            }
         }
     }
 
@@ -269,6 +275,9 @@ final class TimerViewModel {
         )
         modelContext?.insert(session)
         currentSession = session
+        if let project = selectedProject {
+            settings?.lastUsedProjectId = project.id.uuidString
+        }
         startTimer()
         // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()

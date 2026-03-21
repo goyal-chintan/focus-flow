@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var reminderLoadError: String?
     @State private var reminderAuthError: String?
     @State private var saveError: String?
+    @State private var showBlockingSheet = false
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
@@ -25,6 +26,7 @@ struct SettingsView: View {
                 behaviorSection
                 soundSection
                 goalsSection
+                blockingSection
                 integrationsSection
                 focusCoachSection
                 aboutSection
@@ -283,6 +285,42 @@ struct SettingsView: View {
                 }
             }
             .padding(16)
+        }
+    }
+
+    // MARK: - Blocking
+
+    private var blockingSection: some View {
+        LiquidGlassPanel {
+            VStack(spacing: 14) {
+                LiquidSectionHeader("Blocking", subtitle: "Block distracting apps and websites during focus")
+
+                Button { showBlockingSheet = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "shield.checkered")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.blue)
+                        Text("Manage Blocking Profiles")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Text("Websites are blocked via system DNS. Apps are quit when a focus session starts.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(16)
+        }
+        .sheet(isPresented: $showBlockingSheet) {
+            BlockingSettingsView()
         }
     }
 

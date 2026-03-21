@@ -78,6 +78,25 @@ enum LiquidDesignTokens {
         static let controlSmall = Font.system(size: 13, weight: .medium)
     }
 
+    // MARK: - Gradients (CTA Fills)
+    enum Gradient {
+        static let focus = LinearGradient(
+            colors: [Color(hex: 0x5B9EF8), Color(hex: 0x6AABFF), Color(hex: 0xA5C4FF)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        static let resume = LinearGradient(
+            colors: [Color(hex: 0xCC8800), Color(hex: 0xE6A820), Color(hex: 0xF0C040)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        static let breakStart = LinearGradient(
+            colors: [Color(hex: 0x34C77B), Color(hex: 0x5ED4A0), Color(hex: 0x8CE6C0)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
+
     // MARK: - Padding
     enum Padding {
         static let popoverHorizontal: CGFloat = 24

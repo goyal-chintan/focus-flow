@@ -38,9 +38,11 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 0) {
             VStack(spacing: 20) {
                 focusHeaderSection
-                reflectionSection
-                splitSection
+                moodSection
+                achievementSection
                 focusActionsSection
+                splitSection
+                remindersSection
             }
             .padding(24)
 
@@ -83,14 +85,6 @@ struct SessionCompleteWindowView: View {
             .accessibilityElement(children: .combine)
         }
         .padding(.top, 8)
-    }
-
-    private var reflectionSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            moodSection
-            achievementSection
-            remindersSection
-        }
     }
 
     private var moodSection: some View {
@@ -261,24 +255,16 @@ struct SessionCompleteWindowView: View {
 
     private var focusActionsSection: some View {
         VStack(spacing: 12) {
+            GradientCTAButton(
+                title: "Take a Break",
+                icon: "cup.and.saucer.fill",
+                gradient: LiquidDesignTokens.Gradient.breakStart
+            ) {
+                saveAndDismiss(action: .takeBreak)
+            }
+
             GlassEffectContainer {
                 HStack(spacing: 8) {
-                    Button {
-                        saveAndDismiss(action: .takeBreak)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "cup.and.saucer.fill")
-                                .font(.system(size: 12))
-                            Text("Take a Break")
-                                .font(.system(size: 14, weight: .medium))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
-                    .buttonBorderShape(.capsule)
-
                     Button {
                         saveAndDismiss(action: .continueFocusing)
                     } label: {

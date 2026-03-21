@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 enum FocusMood: String, Codable, CaseIterable {
     case distracted = "Distracted"
@@ -12,6 +12,15 @@ enum FocusMood: String, Codable, CaseIterable {
         case .neutral: "minus.circle"
         case .focused: "eye"
         case .deepFocus: "brain.head.profile"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .distracted: .orange
+        case .neutral: .secondary
+        case .focused: .blue
+        case .deepFocus: .purple
         }
     }
 }
