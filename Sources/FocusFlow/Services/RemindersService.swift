@@ -81,11 +81,12 @@ final class RemindersService {
         let calendars: [EKCalendar]?
         if let listId, !listId.isEmpty {
             let matched = store.calendars(for: .reminder).filter { $0.calendarIdentifier == listId }
-            guard !matched.isEmpty else {
-                logger.error("fetchIncompleteReminders list missing: selectedListId=\(listId, privacy: .public)")
-                return []
+            if matched.isEmpty {
+                logger.error("fetchIncompleteReminders list missing: selectedListId=\(listId, privacy: .public), falling back to all lists")
+                calendars = nil
+            } else {
+                calendars = matched
             }
-            calendars = matched
         } else {
             calendars = nil
         }

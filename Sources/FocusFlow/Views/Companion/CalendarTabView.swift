@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import OSLog
+import AppKit
 
 struct CalendarTabView: View {
     private struct MonthDayCell: Identifiable {
@@ -41,6 +42,9 @@ struct CalendarTabView: View {
         .onAppear {
             Self.logger.debug("Calendar tab appeared. remindersEnabled=\(self.settings?.remindersIntegrationEnabled == true, privacy: .public) selectedListEmpty=\(self.settings?.selectedReminderListId.isEmpty ?? true, privacy: .public)")
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await loadReminders() }
+        }
         .animation(FFMotion.section, value: selectedDate)
         .animation(FFMotion.section, value: displayedMonth)
         .task { await loadReminders() }
@@ -48,6 +52,9 @@ struct CalendarTabView: View {
             Task { await loadReminders() }
         }
         .onChange(of: settings?.remindersIntegrationEnabled) { _, _ in
+            Task { await loadReminders() }
+        }
+        .onChange(of: selectedDate) { _, _ in
             Task { await loadReminders() }
         }
         .sheet(isPresented: $showReminderEditor) {
