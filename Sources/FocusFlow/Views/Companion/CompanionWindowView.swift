@@ -2,6 +2,7 @@ import SwiftUI
 
 enum CompanionTab: String, CaseIterable, Identifiable {
     case today = "Today"
+    case calendar = "Calendar"
     case weekly = "Week"
     case insights = "Insights"
     case projects = "Projects"
@@ -12,6 +13,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .today: "sun.max.fill"
+        case .calendar: "calendar"
         case .weekly: "chart.bar.fill"
         case .insights: "brain.head.profile"
         case .projects: "folder.fill"
@@ -22,6 +24,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .today: "Daily progress"
+        case .calendar: "Session history"
         case .weekly: "Trends and history"
         case .insights: "Patterns and tips"
         case .projects: "Manage projects"
@@ -32,6 +35,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .today: .blue
+        case .calendar: .red
         case .weekly: .purple
         case .insights: .indigo
         case .projects: .mint
@@ -75,6 +79,8 @@ struct CompanionWindowView: View {
         switch selectedTab {
         case .today:
             TodayStatsView()
+        case .calendar:
+            CalendarTabView()
         case .weekly:
             WeeklyStatsView()
         case .insights:

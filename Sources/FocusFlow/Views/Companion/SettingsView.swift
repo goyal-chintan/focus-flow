@@ -273,44 +273,152 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 LiquidSectionHeader("Integrations", subtitle: "Connect with Apple apps")
 
-                ToggleRow(
-                    label: "Record to Calendar",
-                    icon: "calendar.badge.clock",
-                    color: .red,
-                    isOn: Binding(
+                // Calendar toggle with auth flow
+                HStack(spacing: 12) {
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 20)
+
+                    Text("Record to Calendar")
+                        .font(.subheadline)
+
+                    Spacer()
+
+                    calendarStatusBadge
+
+                    Toggle("", isOn: Binding(
                         get: { settings.calendarIntegrationEnabled },
-                        set: { settings.calendarIntegrationEnabled = $0; save() }
-                    )
-                )
+                        set: { newValue in
+                            if newValue {
+                                Task { await enableCalendarIntegration() }
+                            } else {
+                                settings.calendarIntegrationEnabled = false
+                                settings.selectedCalendarId = ""
+                                save()
+                            }
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .frame(width: 44)
+                }
 
                 if settings.calendarIntegrationEnabled {
-                    HStack {
-                        HStack(spacing: 8) {
-                            Image(systemName: "calendar")
-                                .foregroundStyle(.red)
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Calendar Name")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        TextField("FocusFlow", text: Binding(
-                            get: { settings.calendarName },
-                            set: { settings.calendarName = $0 }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
-                        .font(.subheadline)
-                        .onSubmit { save() }
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    calendarPickerSection
                 }
             }
             .padding(16)
             .animation(FFMotion.section, value: settings.calendarIntegrationEnabled)
         }
+    }
+
+    @ViewBuilder
+    private var calendarStatusBadge: some View {
+        let status = CalendarService.shared.authStatus
+        switch status {
+        case .authorized:
+            HStack(spacing: 4) {
+                Circle().fill(.green).frame(width: 6, height: 6)
+                Text("Connected")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.green)
+            }
+        case .denied:
+            HStack(spacing: 4) {
+                Circle().fill(.red).frame(width: 6, height: 6)
+                Text("Denied")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.red)
+            }
+        case .notDetermined:
+            EmptyView()
+        }
+    }
+
+    @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
+
+    private var calendarPickerSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+
+            Text("Select which calendar to record sessions to:")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            if availableCalendars.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Loading calendars...")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+                .onAppear { loadCalendars() }
+            } else {
+                ForEach(availableCalendars, id: \.source) { group in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.source)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .textCase(.uppercase)
+                            .padding(.top, 4)
+
+                        ForEach(group.calendars, id: \.id) { cal in
+                            calendarRow(cal, isSelected: settings.selectedCalendarId == cal.id)
+                        }
+                    }
+                }
+
+                // Option to create a dedicated FocusFlow calendar
+                Divider()
+                calendarRow((id: "__create_new__", title: "Create \"FocusFlow\" Calendar"),
+                            isSelected: settings.selectedCalendarId.isEmpty || settings.selectedCalendarId == "__create_new__")
+            }
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private func calendarRow(_ cal: (id: String, title: String), isSelected: Bool) -> some View {
+        Button {
+            if cal.id == "__create_new__" {
+                settings.selectedCalendarId = ""
+                settings.calendarName = "FocusFlow"
+            } else {
+                settings.selectedCalendarId = cal.id
+                settings.calendarName = cal.title
+            }
+            save()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+
+                Text(cal.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func enableCalendarIntegration() async {
+        let granted = await CalendarService.shared.requestAccess()
+        if granted {
+            settings.calendarIntegrationEnabled = true
+            save()
+            loadCalendars()
+        }
+    }
+
+    private func loadCalendars() {
+        availableCalendars = CalendarService.shared.availableCalendars()
     }
 
     // MARK: - Focus Coach

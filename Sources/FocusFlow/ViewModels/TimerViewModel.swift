@@ -499,12 +499,14 @@ final class TimerViewModel {
             // Calendar integration
             if settings?.calendarIntegrationEnabled == true, let session = currentSession {
                 let calName = settings?.calendarName ?? "FocusFlow"
+                let calId = settings?.selectedCalendarId
                 let eventId = CalendarService.shared.createEvent(
                     title: session.label,
                     startDate: session.startedAt,
                     endDate: session.endedAt ?? Date(),
                     notes: session.achievement,
-                    calendarName: calName
+                    calendarName: calName,
+                    calendarId: calId?.isEmpty == true ? nil : calId
                 )
                 session.calendarEventId = eventId
                 try? modelContext?.save()
