@@ -15,6 +15,7 @@ struct ProjectsListView: View {
     @State private var formColor = "blue"
     @State private var formIcon = "folder.fill"
     @State private var formBlockProfile: BlockProfile?
+    @State private var projectToArchive: Project?
 
     var body: some View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
@@ -36,6 +37,35 @@ struct ProjectsListView: View {
         }
         .sheet(isPresented: $showBlockingSheet) {
             BlockingSettingsView()
+        }
+        .confirmationDialog(
+            "Archive Project",
+            isPresented: Binding(
+                get: { projectToArchive != nil },
+                set: { if !$0 { projectToArchive = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Archive", role: .destructive) {
+                if let project = projectToArchive {
+                    withAnimation(FFMotion.section) {
+                        project.archived = true
+                        if timerVM.selectedProject?.id == project.id {
+                            timerVM.selectedProject = nil
+                        }
+                        if selectedProject?.id == project.id {
+                            selectedProject = projects.first(where: { $0.id != project.id })
+                        }
+                        try? modelContext.save()
+                    }
+                    projectToArchive = nil
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                projectToArchive = nil
+            }
+        } message: {
+            Text("This will hide the project and its sessions from active views. You can restore it later.")
         }
     }
 
@@ -174,16 +204,7 @@ struct ProjectsListView: View {
             .help("Edit project")
 
             Button {
-                withAnimation(FFMotion.section) {
-                    project.archived = true
-                    if timerVM.selectedProject?.id == project.id {
-                        timerVM.selectedProject = nil
-                    }
-                    if selectedProject?.id == project.id {
-                        selectedProject = projects.first(where: { $0.id != project.id })
-                    }
-                    try? modelContext.save()
-                }
+                projectToArchive = project
             } label: {
                 Image(systemName: "archivebox")
                     .font(.system(size: 12, weight: .medium))
