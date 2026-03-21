@@ -29,7 +29,7 @@ final class TimerViewModel {
     var selectedMinutes: Int = 25
 
     var focusDuration: TimeInterval {
-        TimeInterval(max(1, selectedMinutes) * 60)
+        TimeInterval(max(5, selectedMinutes) * 60)
     }
 
     // MARK: - Pause Tracking
@@ -62,6 +62,9 @@ final class TimerViewModel {
         if pauseElapsed > 120 { return .warning }
         return .normal
     }
+
+    // MARK: - Start Error Feedback
+    var startError: String? = nil
 
     // MARK: - Session Completion
     var showSessionComplete: Bool = false
@@ -236,10 +239,23 @@ final class TimerViewModel {
 
     // MARK: - Actions
     func startFocus() {
-        guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
-        guard state == .idle else { log("startFocus: not idle (state=\(state)), aborting"); return }
+        startError = nil
+        guard settings != nil, !isOvertime else {
+            log("startFocus: settings nil or overtime, aborting")
+            startError = settings == nil ? "Settings not loaded. Please restart the app." : "Complete the current session first."
+            return
+        }
+        guard state == .idle else {
+            log("startFocus: not idle (state=\(state)), aborting")
+            startError = "A session is already in progress."
+            return
+        }
         let duration = focusDuration
-        guard duration >= 10 else { log("startFocus: duration \(duration) < 10, aborting"); return }
+        guard duration >= 300 else {
+            log("startFocus: duration \(duration) < 300, aborting")
+            startError = "Minimum session duration is 5 minutes."
+            return
+        }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration

@@ -37,6 +37,27 @@ struct MenuBarPopoverView: View {
 
                 stateSection
 
+                if let error = timerVM.startError {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.vertical, 6)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                            withAnimation(FFMotion.control) {
+                                timerVM.startError = nil
+                            }
+                        }
+                    }
+                }
+
                 Spacer(minLength: 4)
 
                 footerSection
@@ -103,6 +124,7 @@ struct MenuBarPopoverView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open statistics")
 
                 Button {
                     NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
@@ -114,6 +136,7 @@ struct MenuBarPopoverView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close")
             }
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -425,7 +448,7 @@ private struct IdlePopoverContent: View {
         Slider(value: Binding(
             get: { Double(selectedMinutes) },
             set: { selectedMinutes = Int($0) }
-        ), in: 1...120, step: 1)
+        ), in: 5...120, step: 1)
         .tint(LiquidDesignTokens.Spectral.primaryContainer)
     }
 
@@ -497,6 +520,7 @@ private struct FocusingPopoverContent: View {
                 }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
+                .accessibilityLabel("Pause focus session")
 
                 Button {
                     withAnimation(FFMotion.section) { onShowStopConfirmation() }
@@ -511,6 +535,7 @@ private struct FocusingPopoverContent: View {
                 }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
+                .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)
 
@@ -670,9 +695,8 @@ private struct PausedPopoverContent: View {
                 HStack(spacing: 8) {
                     Image(systemName: "play.fill")
                         .font(.system(size: 13, weight: .bold))
-                    Text("RESUME FOCUS")
+                    Text("Resume Focus")
                         .font(.system(size: 15, weight: .bold))
-                        .tracking(1.0)
                 }
                 .foregroundStyle(Color(hex: 0x332200))
                 .frame(maxWidth: .infinity)
@@ -815,7 +839,8 @@ private struct OvertimePopoverContent: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.glassProminent)
+                        .tint(LiquidDesignTokens.Spectral.primaryContainer)
                         .buttonBorderShape(.capsule)
 
                         Button(action: onSkipBreak) {
@@ -842,7 +867,7 @@ private struct OvertimePopoverContent: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.glass)
                     .tint(LiquidDesignTokens.Spectral.mint)
                     .buttonBorderShape(.capsule)
                 }
