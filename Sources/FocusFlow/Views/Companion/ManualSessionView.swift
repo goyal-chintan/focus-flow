@@ -8,6 +8,9 @@ struct ManualSessionView: View {
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
 
+    @Query private var allSettings: [AppSettings]
+    private var settings: AppSettings? { allSettings.first }
+
     @State private var selectedProject: Project?
     @State private var duration: Int = 25
     @State private var startTime: Date = Date().addingTimeInterval(-25 * 60)
@@ -17,6 +20,12 @@ struct ManualSessionView: View {
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
     @State private var durationError: String?
+
+    private var durationPresets: [Int] {
+        let userDuration = settings.map { Int($0.focusDuration / 60) } ?? 25
+        let presets = Set([15, 25, 45, 60, userDuration])
+        return Array(presets).sorted()
+    }
 
     /// Total allocated in splits (in minutes)
     private var splitsTotalMinutes: Int { splits.reduce(0) { $0 + $1.minutes } }
@@ -79,7 +88,7 @@ struct ManualSessionView: View {
             sectionLabel("Duration")
 
             DurationPresetRow(
-                presets: [15, 25, 45, 60],
+                presets: durationPresets,
                 selectedMinutes: $duration
             )
 
@@ -100,7 +109,15 @@ struct ManualSessionView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+            .onAppear {
+                if let focusDuration = settings?.focusDuration {
+                    duration = Int(focusDuration / 60)
+                }
+            }
             .onChange(of: duration) {
+                if duration > 480 {
+                    duration = 480
+                }
                 startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
                 durationError = duration < 5 ? "Minimum duration is 5 minutes" : nil
             }
@@ -144,6 +161,11 @@ struct ManualSessionView: View {
                 .textFieldStyle(.plain)
                 .padding(8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+                .onChange(of: achievement) { _, newValue in
+                    if newValue.count > 500 {
+                        achievement = String(newValue.prefix(500))
+                    }
+                }
         }
     }
 

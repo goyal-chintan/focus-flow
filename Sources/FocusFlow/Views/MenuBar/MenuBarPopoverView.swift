@@ -443,8 +443,9 @@ private struct FocusingPopoverContent: View {
                 Button(action: onPause) {
                     Label("Pause", systemImage: "pause.fill")
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 12)
                 }
+                .frame(minHeight: 34)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
                 .accessibilityLabel("Pause focus session")
@@ -458,8 +459,9 @@ private struct FocusingPopoverContent: View {
                         Text("Stop")
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 12)
                 }
+                .frame(minHeight: 34)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
                 .accessibilityLabel("Stop focus session")
@@ -489,8 +491,9 @@ private struct FocusingPopoverContent: View {
                         .font(.system(size: 13, weight: .medium))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
             }
+            .frame(minHeight: 34)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canReduceTime)
@@ -506,8 +509,9 @@ private struct FocusingPopoverContent: View {
                         .font(.system(size: 13, weight: .medium))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
             }
+            .frame(minHeight: 34)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canExtendTime)
@@ -640,12 +644,15 @@ private struct PausedPopoverContent: View {
             Button {
                 withAnimation(FFMotion.section) { onShowStopConfirmation() }
             } label: {
-                TrackedLabel(
-                    text: "End Session",
-                    font: LiquidDesignTokens.Typography.labelMedium,
-                    color: LiquidDesignTokens.Surface.onSurfaceMuted,
-                    tracking: 2.0
-                )
+                HStack(spacing: 4) {
+                    Image(systemName: "xmark.circle")
+                    TrackedLabel(
+                        text: "End Session",
+                        font: LiquidDesignTokens.Typography.labelMedium,
+                        color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                        tracking: 2.0
+                    )
+                }
             }
             .buttonStyle(.plain)
 
@@ -769,8 +776,9 @@ private struct OvertimePopoverContent: View {
                                         .font(.system(size: 13, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 12)
                             }
+                            .frame(minHeight: 34)
                             .buttonStyle(.glassProminent)
                             .tint(LiquidDesignTokens.Spectral.primaryContainer)
                             .buttonBorderShape(.capsule)
@@ -783,8 +791,9 @@ private struct OvertimePopoverContent: View {
                                         .font(.system(size: 13, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 12)
                             }
+                            .frame(minHeight: 34)
                             .buttonStyle(.glass)
                             .buttonBorderShape(.capsule)
                         }
@@ -794,13 +803,13 @@ private struct OvertimePopoverContent: View {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 12, weight: .medium))
                                 Text("Finish Session")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 14, weight: .medium))
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 12)
                         }
+                        .frame(minHeight: 34)
                         .buttonStyle(.glass)
-                        .tint(LiquidDesignTokens.Spectral.mint)
                         .buttonBorderShape(.capsule)
                     }
                 }
