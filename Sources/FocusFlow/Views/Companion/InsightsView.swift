@@ -7,6 +7,9 @@ struct InsightsView: View {
     @Query(sort: \AppUsageRecord.date) private var usageRecords: [AppUsageRecord]
     @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
     @State private var selectedHour: Int? = nil
+    @State private var showAllInsights = false
+    @State private var showScienceTips = false
+    @State private var showAppUsage = false
 
     private var dailyGoal: TimeInterval {
         allSettings.first?.dailyFocusGoal ?? 7200
@@ -20,13 +23,12 @@ struct InsightsView: View {
         ScrollView {
             VStack(spacing: 20) {
                 headerSection
+                focusScoreSection
                 behavioralInsightsSection
-                appUsageSection
-                productiveHoursSection
-                durationDistributionSection
-                breakBehaviorSection
-                weeklyTrendSection
+                analyticsGridSection
+                trendsAndBreaksSection
                 scienceTipsSection
+                appUsageSection
             }
             .padding(24)
         }
@@ -47,6 +49,104 @@ struct InsightsView: View {
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Focus Score Hero
+
+    private var focusScoreSection: some View {
+        LiquidGlassPanel {
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 8)
+                        .frame(width: 100, height: 100)
+
+                    Circle()
+                        .trim(from: 0, to: CGFloat(focusScore) / 100.0)
+                        .stroke(
+                            focusScoreColor,
+                            style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 100, height: 100)
+                        .animation(.spring(response: 1.0, dampingFraction: 0.8), value: focusScore)
+
+                    VStack(spacing: 2) {
+                        Text("\(focusScore)")
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                        Text("FOCUS SCORE")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Text(focusScoreSummary)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var focusScore: Int {
+        let consistency = calculateConsistency()
+        let completionRate = calculateCompletionRate()
+        let goalAdherence = calculateGoalAdherence()
+        return Int((consistency * 0.3 + completionRate * 0.3 + goalAdherence * 0.4) * 100)
+    }
+
+    private var focusScoreColor: Color {
+        switch focusScore {
+        case 80...100: .green
+        case 50..<80: .blue
+        case 30..<50: .orange
+        default: .red
+        }
+    }
+
+    private var focusScoreSummary: String {
+        switch focusScore {
+        case 80...100: "Outstanding focus — keep this rhythm going"
+        case 50..<80: "Good progress — building strong habits"
+        case 30..<50: "Getting started — consistency is key"
+        default: "Every session counts — start small"
+        }
+    }
+
+    private func calculateConsistency() -> Double {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let daysWithSessions = (0..<7).filter { offset in
+            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            return focusSessions.contains { calendar.isDate($0.startedAt, inSameDayAs: day) }
+        }.count
+        return Double(daysWithSessions) / 7.0
+    }
+
+    private func calculateCompletionRate() -> Double {
+        let calendar = Calendar.current
+        let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date()))!
+        let recentSessions = focusSessions.filter { $0.startedAt >= weekAgo }
+        guard !recentSessions.isEmpty else { return 0 }
+        let completed = recentSessions.filter(\.completed).count
+        return Double(completed) / Double(recentSessions.count)
+    }
+
+    private func calculateGoalAdherence() -> Double {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let goal = dailyGoal
+        let daysMetGoal = (0..<7).filter { offset in
+            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            let dayTotal = focusSessions
+                .filter { calendar.isDate($0.startedAt, inSameDayAs: day) }
+                .reduce(0.0) { $0 + $1.actualDuration }
+            return dayTotal >= goal
+        }.count
+        return Double(daysMetGoal) / 7.0
     }
 
     // MARK: - Behavioral Insights (NL)
@@ -247,40 +347,47 @@ struct InsightsView: View {
 
     private var appUsageSection: some View {
         LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 14) {
+            DisclosureGroup(isExpanded: $showAppUsage) {
+                appUsageContent
+                    .padding(.top, 8)
+            } label: {
                 LiquidSectionHeader(
                     "App Usage",
                     subtitle: appUsageSummary
                 )
-
-                let topApps = todayTopApps
-                if topApps.isEmpty {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 6) {
-                            Image(systemName: "app.dashed")
-                                .font(.system(size: 20, weight: .light))
-                                .foregroundStyle(.tertiary)
-                            Text("App tracking will appear as you use your Mac")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.vertical, 12)
-                        Spacer()
-                    }
-                } else {
-                    VStack(spacing: 6) {
-                        ForEach(Array(topApps.enumerated()), id: \.offset) { _, app in
-                            appUsageRow(app)
-                        }
-                    }
-
-                    // Category breakdown
-                    Divider()
-                    categoryBreakdown
-                }
             }
+            .tint(.secondary)
             .padding(16)
+        }
+    }
+
+    private var appUsageContent: some View {
+        Group {
+            let topApps = todayTopApps
+            if topApps.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(systemName: "app.dashed")
+                            .font(.system(size: 20, weight: .light))
+                            .foregroundStyle(.tertiary)
+                        Text("App tracking will appear as you use your Mac")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 12)
+                    Spacer()
+                }
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(Array(topApps.enumerated()), id: \.offset) { _, app in
+                        appUsageRow(app)
+                    }
+                }
+
+                Divider()
+                categoryBreakdown
+            }
         }
     }
 
@@ -422,53 +529,102 @@ struct InsightsView: View {
         return "\(mins)m"
     }
 
-    // MARK: - Productive Hours
+    // MARK: - Analytics Grid (Peak Hours + Duration Distribution)
 
-    private var productiveHoursSection: some View {
+    private var analyticsGridSection: some View {
         LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                LiquidSectionHeader(
-                    "Peak Hours",
-                    subtitle: bestHourSummary
-                )
+            VStack(spacing: 16) {
+                LiquidSectionHeader("Analytics", subtitle: "Hours and session patterns")
 
-                // Compact heat strip — all hours in one row
-                HStack(spacing: 2) {
-                    ForEach(hourlyData, id: \.hour) { item in
-                        let intensity = item.totalMinutes / maxHourlyMinutes
-                        let isSelected = selectedHour == item.hour
-
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(
-                                    intensity > 0 ?
-                                    LiquidDesignTokens.Spectral.primaryContainer.opacity(0.2 + intensity * 0.8) :
-                                    Color.white.opacity(0.04)
-                                )
-                                .frame(height: isSelected ? 36 : 28)
-                                .overlay {
-                                    if isSelected && item.totalMinutes > 0 {
-                                        Text("\(Int(item.totalMinutes))m")
-                                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                                            .foregroundStyle(.white)
-                                    }
-                                }
-
-                            Text(item.label)
-                                .font(.system(size: 9, weight: .medium, design: .rounded))
-                                .foregroundStyle(isSelected ? .primary : .tertiary)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture { selectedHour = selectedHour == item.hour ? nil : item.hour }
-                        .animation(FFMotion.control, value: isSelected)
-                        .accessibilityLabel("\(item.label), \(Int(item.totalMinutes)) minutes total")
-                    }
+                HStack(alignment: .top, spacing: 16) {
+                    peakHoursColumn
+                    Divider()
+                    durationDistributionColumn
                 }
             }
             .padding(16)
         }
+    }
+
+    private var peakHoursColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Peak Hours")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            Text(bestHourSummary)
+                .font(.system(size: 10, weight: .regular))
+                .foregroundStyle(.tertiary)
+
+            HStack(spacing: 1) {
+                ForEach(hourlyData, id: \.hour) { item in
+                    let intensity = item.totalMinutes / maxHourlyMinutes
+                    let isSelected = selectedHour == item.hour
+
+                    VStack(spacing: 3) {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(
+                                intensity > 0 ?
+                                LiquidDesignTokens.Spectral.primaryContainer.opacity(0.2 + intensity * 0.8) :
+                                Color.white.opacity(0.04)
+                            )
+                            .frame(height: isSelected ? 30 : 22)
+                            .overlay {
+                                if isSelected && item.totalMinutes > 0 {
+                                    Text("\(Int(item.totalMinutes))m")
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+
+                        Text(item.label)
+                            .font(.system(size: 7, weight: .medium, design: .rounded))
+                            .foregroundStyle(isSelected ? .primary : .tertiary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectedHour = selectedHour == item.hour ? nil : item.hour }
+                    .animation(FFMotion.control, value: isSelected)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var durationDistributionColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Session Lengths")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            Text(averageDurationSummary)
+                .font(.system(size: 10, weight: .regular))
+                .foregroundStyle(.tertiary)
+
+            HStack(spacing: 3) {
+                ForEach(durationBuckets, id: \.label) { bucket in
+                    VStack(spacing: 4) {
+                        Text("\(bucket.count)")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(bucket.count > 0 ? .primary : .tertiary)
+
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(bucketColor(bucket.index))
+                            .frame(height: max(4, CGFloat(bucket.count) / CGFloat(maxBucketCount) * 60))
+
+                        Text(bucket.label)
+                            .font(.system(size: 7, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 100)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private struct HourData: Identifiable {
@@ -511,42 +667,7 @@ struct InsightsView: View {
         return "Your peak is \(best.label) · \(Int(best.totalMinutes))m total"
     }
 
-    // MARK: - Duration Distribution
-
-    private var durationDistributionSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                LiquidSectionHeader(
-                    "Session Lengths",
-                    subtitle: averageDurationSummary
-                )
-
-                HStack(spacing: 4) {
-                    ForEach(durationBuckets, id: \.label) { bucket in
-                        VStack(spacing: 6) {
-                            Text("\(bucket.count)")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(bucket.count > 0 ? .primary : .tertiary)
-
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(bucketColor(bucket.index))
-                                .frame(height: max(4, CGFloat(bucket.count) / CGFloat(maxBucketCount) * 80))
-
-                            Text(bucket.label)
-                                .font(.system(size: 9, weight: .medium, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .frame(height: 120)
-                .padding(.horizontal, 4)
-            }
-            .padding(16)
-        }
-    }
+    // MARK: - Duration Distribution Data
 
     private struct DurationBucket {
         let label: String
@@ -594,43 +715,7 @@ struct InsightsView: View {
         return colors[min(index, colors.count - 1)]
     }
 
-    // MARK: - Break Behavior
-
-    private var breakBehaviorSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                LiquidSectionHeader(
-                    "Break Analysis",
-                    subtitle: "How well you take breaks"
-                )
-
-                HStack(spacing: 12) {
-                    StatCard(
-                        title: "Avg Break",
-                        value: averageBreakLength,
-                        icon: "cup.and.saucer.fill",
-                        color: .green,
-                        subtitle: totalBreaks > 0 ? "\(totalBreaks) breaks" : nil
-                    )
-                    StatCard(
-                        title: "Break Rate",
-                        value: breakRate,
-                        icon: "arrow.triangle.branch",
-                        color: .teal,
-                        subtitle: breakRateSubtitle
-                    )
-                    StatCard(
-                        title: "Best Day",
-                        value: bestDay.formattedFocusTime,
-                        icon: "star.fill",
-                        color: .yellow,
-                        subtitle: bestDayLabel
-                    )
-                }
-            }
-            .padding(16)
-        }
-    }
+    // MARK: - Break Behavior Data (rendered inside trends section)
 
     private var totalBreaks: Int {
         allSessions.filter { $0.type != .focus }.count
@@ -675,9 +760,9 @@ struct InsightsView: View {
         return best.key.formatted(.dateTime.month(.abbreviated).day())
     }
 
-    // MARK: - Weekly Trend (Sparkline)
+    // MARK: - Trends + Breaks (merged)
 
-    private var weeklyTrendSection: some View {
+    private var trendsAndBreaksSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 14) {
                 LiquidSectionHeader(
@@ -687,6 +772,32 @@ struct InsightsView: View {
 
                 SparklineView(data: last30DaysData)
                     .frame(height: 60)
+
+                Divider()
+
+                HStack(spacing: 12) {
+                    StatCard(
+                        title: "Avg Break",
+                        value: averageBreakLength,
+                        icon: "cup.and.saucer.fill",
+                        color: .green,
+                        subtitle: totalBreaks > 0 ? "\(totalBreaks) breaks" : nil
+                    )
+                    StatCard(
+                        title: "Break Rate",
+                        value: breakRate,
+                        icon: "arrow.triangle.branch",
+                        color: .teal,
+                        subtitle: breakRateSubtitle
+                    )
+                    StatCard(
+                        title: "Best Day",
+                        value: bestDay.formattedFocusTime,
+                        icon: "star.fill",
+                        color: .yellow,
+                        subtitle: bestDayLabel
+                    )
+                }
             }
             .padding(16)
         }
@@ -728,18 +839,20 @@ struct InsightsView: View {
 
     private var scienceTipsSection: some View {
         LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                LiquidSectionHeader(
-                    "Focus Science",
-                    subtitle: "Research-backed tips for your patterns"
-                )
-
+            DisclosureGroup(isExpanded: $showScienceTips) {
                 VStack(spacing: 10) {
                     ForEach(contextualTips, id: \.title) { tip in
                         scienceTipCard(tip)
                     }
                 }
+                .padding(.top, 8)
+            } label: {
+                LiquidSectionHeader(
+                    "Focus Science",
+                    subtitle: "Research-backed tips for your patterns"
+                )
             }
+            .tint(.secondary)
             .padding(16)
         }
     }
