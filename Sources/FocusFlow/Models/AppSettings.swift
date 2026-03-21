@@ -18,6 +18,7 @@ final class AppSettings {
     // Integrations
     var calendarIntegrationEnabled: Bool = false
     var calendarName: String = "FocusFlow"
+    var selectedCalendarId: String = ""
 
     // Focus Coach
     var antiProcrastinationEnabled: Bool = true
@@ -35,6 +36,7 @@ final class AppSettings {
         self.dailyFocusGoal = 7200  // 120 min
         self.calendarIntegrationEnabled = false
         self.calendarName = "FocusFlow"
+        self.selectedCalendarId = ""
         self.antiProcrastinationEnabled = true
         self.antiProcrastinationThresholdMinutes = 5
     }
