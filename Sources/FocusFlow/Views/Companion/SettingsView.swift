@@ -459,6 +459,19 @@ struct SettingsView: View {
                 calendarRow((id: "__create_new__", title: "Create \"FocusFlow\" Calendar"),
                             isSelected: settings.selectedCalendarId.isEmpty || settings.selectedCalendarId == "__create_new__")
             }
+
+            // Discoverability hint — where to find events
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 1)
+                Text("Sessions appear with a 🎯 prefix in your selected calendar. Open Apple Calendar and make sure your calendar is checked in the sidebar.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 4)
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
@@ -732,6 +745,19 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 LiquidSectionHeader("Focus Coach", subtitle: "Gentle nudges to stay productive")
 
+                // What it does — clear explanation before controls
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "brain.head.profile.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.indigo.opacity(0.8))
+                        .padding(.top, 1)
+                    Text("When you've been idle at your Mac without starting a session, FocusFlow sends a notification nudge to get you back into deep work.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
+
                 ToggleRow(
                     label: "Anti-procrastination nudges",
                     icon: "brain.head.profile.fill",
@@ -748,9 +774,14 @@ struct SettingsView: View {
                             Image(systemName: "clock.badge.exclamationmark")
                                 .foregroundStyle(.indigo)
                                 .font(.system(size: 13, weight: .semibold))
-                            Text("Nudge after")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Nudge after idle time")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Text("Counts down when no session is active")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
 
                         Spacer()

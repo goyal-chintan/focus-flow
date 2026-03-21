@@ -83,6 +83,23 @@ struct SessionCompleteWindowView: View {
                 )
             }
             .accessibilityElement(children: .combine)
+
+            // Calendar save confirmation
+            if let eventId = timerVM.lastCompletedSession?.calendarEventId, !eventId.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar.badge.checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.green)
+                    Text("Saved to Calendar")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.green.opacity(0.10)))
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
         }
         .padding(.top, 8)
     }

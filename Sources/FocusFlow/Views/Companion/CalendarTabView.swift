@@ -370,21 +370,33 @@ struct CalendarTabView: View {
                     Label(remindersError, systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.orange)
-                } else if remindersForSelectedDate.isEmpty {
+                } else if reminders.isEmpty {
                     VStack(spacing: 6) {
                         Image(systemName: "checklist")
                             .font(.system(size: 18, weight: .light))
                             .foregroundStyle(.tertiary)
-                        Text("No reminders due for this day")
+                        Text("No incomplete reminders")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 } else {
-                    VStack(spacing: 8) {
-                        ForEach(remindersForSelectedDate, id: \.id) { reminder in
-                            reminderRow(reminder)
+                    VStack(spacing: 12) {
+                        // Past due + today
+                        let pastAndToday = remindersInGroup(.pastAndToday)
+                        if !pastAndToday.isEmpty {
+                            reminderGroupSection("Due Today", items: pastAndToday, labelColor: .orange)
+                        }
+                        // Upcoming (future due date)
+                        let upcoming = remindersInGroup(.upcoming)
+                        if !upcoming.isEmpty {
+                            reminderGroupSection("Upcoming", items: upcoming, labelColor: .secondary)
+                        }
+                        // No due date
+                        let noDate = remindersInGroup(.noDate)
+                        if !noDate.isEmpty {
+                            reminderGroupSection("No Due Date", items: noDate, labelColor: .secondary)
                         }
                     }
                 }
@@ -393,27 +405,55 @@ struct CalendarTabView: View {
         }
     }
 
-    private var remindersSubtitle: String {
-        guard settings?.remindersIntegrationEnabled == true else { return "Sync Apple Reminders into your planning flow" }
-        let count = remindersForSelectedDate.count
-        if count == 0 { return "No reminders due on selected day" }
-        return "\(count) reminder\(count == 1 ? "" : "s") due"
+    private enum ReminderGroup { case pastAndToday, upcoming, noDate }
+
+    private func remindersInGroup(_ group: ReminderGroup) -> [RemindersService.ReminderItem] {
+        let today = Calendar.current.startOfDay(for: Date())
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        switch group {
+        case .pastAndToday:
+            return reminders.filter {
+                guard let due = $0.dueDate else { return false }
+                return due < tomorrow
+            }.sorted { ($0.dueDate ?? .distantPast) < ($1.dueDate ?? .distantPast) }
+        case .upcoming:
+            return reminders.filter {
+                guard let due = $0.dueDate else { return false }
+                return due >= tomorrow
+            }.sorted { ($0.dueDate ?? .distantFuture) < ($1.dueDate ?? .distantFuture) }
+        case .noDate:
+            return reminders.filter { $0.dueDate == nil }
+                .sorted { $0.title < $1.title }
+        }
     }
 
-    private var remindersForSelectedDate: [RemindersService.ReminderItem] {
-        var seen = Set<String>()
-        return reminders
-            .filter {
-                guard let due = $0.dueDate else { return false }
-                return calendar.isDate(due, inSameDayAs: selectedDate)
+    @ViewBuilder
+    private func reminderGroupSection(
+        _ title: String,
+        items: [RemindersService.ReminderItem],
+        labelColor: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TrackedLabel(
+                text: title.uppercased(),
+                font: .system(size: 9, weight: .semibold),
+                color: labelColor,
+                tracking: 1.4
+            )
+            VStack(spacing: 6) {
+                ForEach(items, id: \.id) { reminder in
+                    reminderRow(reminder)
+                }
             }
-            .filter { seen.insert($0.id).inserted }
-            .sorted {
-                let lhs = $0.dueDate ?? .distantFuture
-                let rhs = $1.dueDate ?? .distantFuture
-                if lhs != rhs { return lhs < rhs }
-                return $0.title < $1.title
-            }
+        }
+    }
+
+    private var remindersSubtitle: String {
+        guard settings?.remindersIntegrationEnabled == true else { return "Sync Apple Reminders into your planning flow" }
+        if reminders.isEmpty { return "No incomplete reminders" }
+        let overdue = remindersInGroup(.pastAndToday).count
+        if overdue > 0 { return "\(overdue) due today · \(reminders.count) total" }
+        return "\(reminders.count) incomplete reminder\(reminders.count == 1 ? "" : "s")"
     }
 
     private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
