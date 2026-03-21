@@ -6,7 +6,7 @@ struct TodayStatsView: View {
     @Query private var allSettings: [AppSettings]
 
     private var dailyGoal: TimeInterval {
-        allSettings.first?.dailyFocusGoal ?? 7200
+        max(60, allSettings.first?.dailyFocusGoal ?? 7200)
     }
 
     /// Sessions that overlap with today (includes cross-midnight sessions from yesterday)

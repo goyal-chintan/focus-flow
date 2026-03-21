@@ -19,7 +19,7 @@ final class AppUsageTracker {
     // MARK: - Lifecycle
 
     func start(timerVM: TimerViewModel) {
-        guard !isTracking else { return }
+        trackingTimer?.invalidate()
         self.timerVM = timerVM
         isTracking = true
         idleSeconds = 0

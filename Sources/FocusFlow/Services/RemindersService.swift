@@ -28,7 +28,7 @@ final class RemindersService {
         }
     }
 
-    nonisolated func requestAccess() async -> Bool {
+    func requestAccess() async -> Bool {
         do {
             return try await store.requestFullAccessToReminders()
         } catch {

@@ -147,9 +147,11 @@ struct InsightsView: View {
                 Color.clear.frame(width: 30)
             }
         }
-        .frame(height: 18)
+        .frame(height: 30)
         .contentShape(Rectangle())
         .onTapGesture { selectedHour = selectedHour == item.hour ? nil : item.hour }
+        .accessibilityLabel("\(item.label), \(Int(item.totalMinutes)) minutes total")
+        .accessibilityHint("Double-tap to toggle selection")
     }
 
     // MARK: - Duration Distribution
@@ -196,16 +198,19 @@ struct InsightsView: View {
     }
 
     private var durationBuckets: [DurationBucket] {
-        let ranges: [(String, ClosedRange<TimeInterval>)] = [
-            ("<10m", 0...600),
-            ("10-20m", 600...1200),
-            ("20-30m", 1200...1800),
-            ("30-45m", 1800...2700),
-            ("45-60m", 2700...3600),
-            ("60m+", 3600...36000)
+        let ranges: [(String, (TimeInterval, TimeInterval))] = [
+            ("<10m", (0, 600)),
+            ("10-20m", (600, 1200)),
+            ("20-30m", (1200, 1800)),
+            ("30-45m", (1800, 2700)),
+            ("45-60m", (2700, 3600)),
+            ("60m+", (3600, .infinity))
         ]
         return ranges.enumerated().map { idx, range in
-            let count = focusSessions.filter { range.1.contains($0.actualDuration) }.count
+            let count = focusSessions.filter { d in
+                let dur = d.actualDuration
+                return dur >= range.1.0 && dur < range.1.1
+            }.count
             return DurationBucket(label: range.0, count: count, index: idx)
         }
     }
@@ -289,7 +294,7 @@ struct InsightsView: View {
     }
 
     private var breakRateSubtitle: String {
-        totalBreaks > 0 ? "Breaks/sessions" : nil ?? "No data"
+        totalBreaks > 0 ? "Breaks/sessions" : "No data"
     }
 
     private var bestDay: TimeInterval {
@@ -341,7 +346,7 @@ struct InsightsView: View {
                 guard sessionEnd > day && session.startedAt < nextDay else { return sum }
                 let overlapStart = max(session.startedAt, day)
                 let overlapEnd = min(sessionEnd, nextDay)
-                return sum + overlapEnd.timeIntervalSince(overlapStart)
+                return sum + max(0, overlapEnd.timeIntervalSince(overlapStart))
             }
         }
     }
@@ -543,5 +548,7 @@ private struct SparklineView: View {
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("30-day focus trend, ranging from \(Int((data.min() ?? 0) / 60)) to \(Int((data.max() ?? 0) / 60)) minutes per day")
     }
 }
