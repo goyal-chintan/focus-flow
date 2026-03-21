@@ -29,7 +29,7 @@ final class TimerViewModel {
     var selectedMinutes: Int = 25
 
     var focusDuration: TimeInterval {
-        TimeInterval(max(1, selectedMinutes) * 60)
+        TimeInterval(max(5, selectedMinutes) * 60)
     }
 
     // MARK: - Pause Tracking
@@ -63,8 +63,21 @@ final class TimerViewModel {
         return .normal
     }
 
+    var pauseWarningMessage: String {
+        switch pauseWarningLevel {
+        case .normal:   return "Deep work momentum is fading..."
+        case .warning:  return "2 min paused — focus is slipping away"
+        case .critical: return "5+ min paused — consider restarting"
+        }
+    }
+
+    // MARK: - Start Error Feedback
+    var startError: String? = nil
+
     // MARK: - Session Completion
     var showSessionComplete: Bool = false
+    /// True when user manually stopped mid-session (vs natural timer completion).
+    var isManualStop: Bool = false
     var lastCompletedDuration: TimeInterval? = nil
     var lastCompletedLabel: String? = nil
     private(set) var lastCompletedSession: FocusSession? = nil
@@ -72,6 +85,11 @@ final class TimerViewModel {
     // MARK: - Overtime
     var isOvertime: Bool = false
     var overtimeSeconds: Int = 0
+
+    /// True when the completed session was a focus session (not a break).
+    var isFocusOvertime: Bool { isOvertime && lastCompletedSession?.type == .focus }
+    /// True when the completed session was a break (break ran past its duration).
+    var isBreakOvertime: Bool { isOvertime && lastCompletedSession?.type != .focus }
 
     // MARK: - Today Stats
     var todayFocusTime: TimeInterval = 0
@@ -208,6 +226,12 @@ final class TimerViewModel {
         }
         if let settings {
             selectedMinutes = Int(settings.focusDuration / 60)
+            if selectedProject == nil,
+               let lastId = settings.lastUsedProjectId,
+               let uuid = UUID(uuidString: lastId) {
+                let descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == uuid && !$0.archived })
+                selectedProject = try? modelContext?.fetch(descriptor).first
+            }
         }
     }
 
@@ -236,10 +260,23 @@ final class TimerViewModel {
 
     // MARK: - Actions
     func startFocus() {
-        guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
-        guard state == .idle else { log("startFocus: not idle (state=\(state)), aborting"); return }
+        startError = nil
+        guard settings != nil, !isOvertime else {
+            log("startFocus: settings nil or overtime, aborting")
+            startError = settings == nil ? "Settings not loaded. Please restart the app." : "Complete the current session first."
+            return
+        }
+        guard state == .idle else {
+            log("startFocus: not idle (state=\(state)), aborting")
+            startError = "A session is already in progress."
+            return
+        }
         let duration = focusDuration
-        guard duration >= 10 else { log("startFocus: duration \(duration) < 10, aborting"); return }
+        guard duration >= 300 else {
+            log("startFocus: duration \(duration) < 300, aborting")
+            startError = "Minimum session duration is 5 minutes."
+            return
+        }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
@@ -253,6 +290,9 @@ final class TimerViewModel {
         )
         modelContext?.insert(session)
         currentSession = session
+        if let project = selectedProject {
+            settings?.lastUsedProjectId = project.id.uuidString
+        }
         startTimer()
         // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()
@@ -274,8 +314,10 @@ final class TimerViewModel {
 
     func startBreak() {
         guard let settings, !isOvertime else { return }
+        // Guard against zero/negative sessionsBeforeLongBreak to prevent division-by-zero
+        let sessionsPerCycle = max(1, settings.sessionsBeforeLongBreak)
         let isLongBreak = completedFocusSessions > 0
-            && (completedFocusSessions % settings.sessionsBeforeLongBreak) == 0
+            && (completedFocusSessions % sessionsPerCycle) == 0
         let type: SessionType = isLongBreak ? .longBreak : .shortBreak
         let duration = isLongBreak ? settings.longBreakDuration : settings.shortBreakDuration
 
@@ -299,13 +341,28 @@ final class TimerViewModel {
         startPauseTimer()
     }
 
+    /// Maximum single session duration: 4 hours (prevents runaway extension)
+    private static let maxSessionSeconds: TimeInterval = 4 * 60 * 60
+
     func extendTimer(by seconds: TimeInterval = 300) {
         guard state == .focusing, !isOvertime else { return }
         // Don't allow reducing below 60 seconds remaining
         if seconds < 0 && remainingSeconds + seconds < 60 { return }
+        // Don't allow extending beyond 4-hour ceiling
+        if seconds > 0 && totalSeconds + seconds > Self.maxSessionSeconds { return }
         remainingSeconds += seconds
         totalSeconds += seconds
         currentSession?.duration += seconds
+    }
+
+    /// True when -5min button can act (more than 5m + 60s buffer remaining)
+    var canReduceTime: Bool {
+        state == .focusing && !isOvertime && remainingSeconds > 360
+    }
+
+    /// True when +5min button can act (not at the 4-hour ceiling)
+    var canExtendTime: Bool {
+        state == .focusing && !isOvertime && totalSeconds + 300 <= Self.maxSessionSeconds
     }
 
     func resume() {
@@ -327,6 +384,7 @@ final class TimerViewModel {
         pauseElapsed = 0
         isOvertime = false
         overtimeSeconds = 0
+        isManualStop = false
         showSessionComplete = false
         if let session = currentSession {
             session.endedAt = Date()
@@ -345,6 +403,62 @@ final class TimerViewModel {
         totalSeconds = 0
     }
 
+    /// Routes a mid-session stop through SessionCompleteWindow so the user
+    /// can record mood, achievement, and splits before the session is finalised.
+    /// Only used when the session is long enough to be worth reflecting on (≥60s).
+    func stopForReflection() {
+        guard let session = currentSession else {
+            stop()   // nothing to save
+            return
+        }
+        // Too short to be worth a reflection window — just discard
+        let elapsed = Date().timeIntervalSince(session.startedAt)
+        if elapsed < 60 {
+            abandonSession()
+            return
+        }
+        timer?.invalidate()
+        timer = nil
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+        pauseStartTime = nil
+        pauseElapsed = 0
+
+        session.endedAt = Date()
+        session.completed = false
+        try? modelContext?.save()
+
+        lastCompletedDuration = session.duration
+        lastCompletedLabel = session.label
+        lastCompletedSession = session
+        currentSession = nil
+
+        isManualStop = true
+        isOvertime = false
+        overtimeSeconds = 0
+        state = .idle
+        remainingSeconds = 0
+        totalSeconds = 0
+
+        showSessionComplete = true
+        openCompletionWindow?()
+    }
+
+    /// Called from SessionCompleteWindow "Discard" button after a manual stop.
+    /// Deletes the session that was provisionally saved by stopForReflection().
+    func discardManualStop() {
+        if let session = lastCompletedSession {
+            modelContext?.delete(session)
+            try? modelContext?.save()
+        }
+        isManualStop = false
+        showSessionComplete = false
+        lastCompletedSession = nil
+        lastCompletedDuration = nil
+        lastCompletedLabel = nil
+        loadTodayStats()
+    }
+
     func abandonSession() {
         timer?.invalidate()
         timer = nil
@@ -355,6 +469,7 @@ final class TimerViewModel {
 
         isOvertime = false
         overtimeSeconds = 0
+        isManualStop = false
         showSessionComplete = false
         if let session = currentSession {
             modelContext?.delete(session)
@@ -471,12 +586,14 @@ final class TimerViewModel {
         }
 
         if remainingSeconds <= 0 {
-            timerCompleted()
+            Task { @MainActor in
+                await timerCompleted()
+            }
         }
     }
 
     @MainActor
-    private func timerCompleted() {
+    private func timerCompleted() async {
         // Don't invalidate timer — continues for overtime
         currentSession?.endedAt = Date()
         currentSession?.completed = true
@@ -499,12 +616,14 @@ final class TimerViewModel {
             // Calendar integration
             if settings?.calendarIntegrationEnabled == true, let session = currentSession {
                 let calName = settings?.calendarName ?? "FocusFlow"
-                let eventId = CalendarService.shared.createEvent(
+                let calId = settings?.selectedCalendarId
+                let eventId = await CalendarService.shared.createEvent(
                     title: session.label,
                     startDate: session.startedAt,
                     endDate: session.endedAt ?? Date(),
                     notes: session.achievement,
-                    calendarName: calName
+                    calendarName: calName,
+                    calendarId: (calId?.isEmpty ?? true) ? nil : calId
                 )
                 session.calendarEventId = eventId
                 try? modelContext?.save()
@@ -526,22 +645,64 @@ final class TimerViewModel {
 
     // MARK: - Reflection
 
-    func saveReflection(mood: FocusMood?, achievement: String?, splits: [TimeSplitView.SplitEntry]? = nil) {
+    @MainActor
+    func saveReflection(
+        mood: FocusMood?,
+        achievement: String?,
+        reminderIdsToComplete: [String] = [],
+        splits: [TimeSplitView.SplitEntry]? = nil
+    ) async {
         guard let session = lastCompletedSession else { return }
         session.mood = mood
         session.achievement = achievement
 
-        // Save splits if provided
+        // Save splits if provided — skip zero/negative durations to prevent stat corruption
         if let splits, !splits.isEmpty, splits.count > 1 {
             for split in splits {
+                let splitSeconds = TimeInterval(split.minutes * 60)
+                guard splitSeconds > 0 else { continue }
                 let timeSplit = TimeSplit(
                     project: split.project,
                     customLabel: split.customLabel.isEmpty ? nil : split.customLabel,
-                    duration: TimeInterval(split.minutes * 60)
+                    duration: splitSeconds
                 )
                 timeSplit.session = session
                 modelContext?.insert(timeSplit)
             }
+        }
+
+        if !reminderIdsToComplete.isEmpty {
+            for reminderId in reminderIdsToComplete {
+                _ = await RemindersService.shared.completeReminder(identifier: reminderId)
+            }
+        }
+
+        if let eventId = session.calendarEventId, !eventId.isEmpty {
+            var noteLines: [String] = []
+            if let achievement, !achievement.isEmpty {
+                noteLines.append("Achievements:")
+                for line in achievement
+                    .components(separatedBy: .newlines)
+                    .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+                    .filter({ !$0.isEmpty }) {
+                    noteLines.append("• \(line)")
+                }
+            }
+            if !reminderIdsToComplete.isEmpty {
+                noteLines.append("")
+                noteLines.append("Completed reminders: \(reminderIdsToComplete.count)")
+            }
+            let duration = Int(session.actualDuration / 60)
+            noteLines.append("")
+            noteLines.append("Duration: \(duration) minutes")
+            noteLines.append("Recorded by FocusFlow")
+            _ = await CalendarService.shared.updateEvent(
+                eventId: eventId,
+                title: session.label,
+                notes: noteLines.joined(separator: "\n"),
+                startDate: session.startedAt,
+                endDate: session.endedAt ?? Date()
+            )
         }
 
         try? modelContext?.save()
@@ -581,6 +742,7 @@ final class TimerViewModel {
         loadTodayStats()
 
         showSessionComplete = false
+        isManualStop = false
         currentSession = nil
         lastCompletedSession = nil
 

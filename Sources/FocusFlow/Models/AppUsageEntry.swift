@@ -1,0 +1,101 @@
+import Foundation
+import SwiftData
+
+/// Tracks time spent in individual applications during focus sessions and idle periods.
+@Model
+final class AppUsageEntry {
+    var date: Date
+    var appName: String
+    var bundleIdentifier: String
+    var duringFocusSeconds: Int
+    var outsideFocusSeconds: Int
+
+    init(
+        date: Date = Calendar.current.startOfDay(for: Date()),
+        appName: String = "",
+        bundleIdentifier: String = "",
+        duringFocusSeconds: Int = 0,
+        outsideFocusSeconds: Int = 0
+    ) {
+        self.date = date
+        self.appName = appName
+        self.bundleIdentifier = bundleIdentifier
+        self.duringFocusSeconds = duringFocusSeconds
+        self.outsideFocusSeconds = outsideFocusSeconds
+    }
+
+    var totalSeconds: Int { duringFocusSeconds + outsideFocusSeconds }
+
+    var focusRatio: Double {
+        guard totalSeconds > 0 else { return 0 }
+        return Double(duringFocusSeconds) / Double(totalSeconds)
+    }
+
+    /// Categorizes apps into productive, neutral, or distracting
+    var category: AppCategory {
+        let id = bundleIdentifier.lowercased()
+        let name = appName.lowercased()
+
+        // Development tools
+        if id.contains("xcode") || id.contains("vscode") || id.contains("visual-studio") ||
+           id.contains("jetbrains") || id.contains("sublime") || id.contains("atom") ||
+           id.contains("terminal") || id.contains("iterm") || id.contains("warp") ||
+           id.contains("cursor") || id.contains("nova") || id.contains("bbedit") ||
+           name.contains("terminal") || name.contains("code") || name.contains("editor") {
+            return .productive
+        }
+
+        // Productivity tools
+        if id.contains("pages") || id.contains("numbers") || id.contains("keynote") ||
+           id.contains("microsoft") || id.contains("notion") || id.contains("obsidian") ||
+           id.contains("figma") || id.contains("sketch") || id.contains("affinity") ||
+           id.contains("photoshop") || id.contains("illustrator") || id.contains("logic") ||
+           id.contains("finalcut") || id.contains("davinci") {
+            return .productive
+        }
+
+        // Communication (neutral — could be work or personal)
+        if id.contains("slack") || id.contains("teams") || id.contains("discord") ||
+           id.contains("zoom") || id.contains("mail") || id.contains("messages") ||
+           id.contains("telegram") || id.contains("whatsapp") {
+            return .neutral
+        }
+
+        // Browsers — neutral (could be either)
+        if id.contains("safari") || id.contains("chrome") || id.contains("firefox") ||
+           id.contains("brave") || id.contains("arc") || id.contains("edge") ||
+           id.contains("opera") || id.contains("orion") {
+            return .neutral
+        }
+
+        // Entertainment / social media
+        if id.contains("music") || id.contains("spotify") || id.contains("netflix") ||
+           id.contains("youtube") || id.contains("twitter") || id.contains("reddit") ||
+           id.contains("instagram") || id.contains("tiktok") || id.contains("facebook") ||
+           id.contains("game") || id.contains("steam") {
+            return .distracting
+        }
+
+        // System utilities — neutral
+        if id.contains("apple.") || id.contains("finder") || id.contains("systempreferences") ||
+           id.contains("activity-monitor") || id.contains("preview") {
+            return .neutral
+        }
+
+        return .neutral
+    }
+
+    enum AppCategory: String, Codable {
+        case productive
+        case neutral
+        case distracting
+
+        var label: String {
+            switch self {
+            case .productive: "Productive"
+            case .neutral: "Neutral"
+            case .distracting: "Distracting"
+            }
+        }
+    }
+}

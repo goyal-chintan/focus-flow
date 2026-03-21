@@ -13,7 +13,7 @@ struct StatCard: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(color)
                 .frame(width: 28, height: 28)
-                .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm, style: .continuous))
 
             Text(value)
                 .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -38,12 +38,13 @@ struct StatCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.picker, style: .continuous)
                 .fill(Color.white.opacity(0.04))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.picker, style: .continuous)
                         .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
                 )
         )
+        .accessibilityElement(children: .combine)
     }
 }

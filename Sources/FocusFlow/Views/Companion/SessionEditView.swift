@@ -16,6 +16,7 @@ struct SessionEditView: View {
     @State private var selectedDurationMinutes: Int
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
+    @State private var saveError: String?
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
@@ -67,6 +68,7 @@ struct SessionEditView: View {
         }
         .frame(width: 420)
         .background(.background)
+        .saveErrorOverlay($saveError)
     }
 
     private var headerSection: some View {
@@ -105,67 +107,12 @@ struct SessionEditView: View {
         VStack(alignment: .leading, spacing: 6) {
             sectionLabel("Planned Duration")
 
-            HStack(spacing: 6) {
-                durationPresetButton(mins: 15)
-                durationPresetButton(mins: 25)
-                durationPresetButton(mins: 45)
-                durationPresetButton(mins: 60)
-                customDurationButton
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func durationPresetButton(mins: Int) -> some View {
-        let isSelected = selectedDurationMinutes == mins
-        let label = Text("\(mins)m")
-            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-
-        if isSelected {
-            Button {
-                selectedDurationMinutes = mins
-                editedDuration = TimeInterval(mins * 60)
-            } label: {
-                label
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-            .buttonBorderShape(.capsule)
-        } else {
-            Button {
-                selectedDurationMinutes = mins
-                editedDuration = TimeInterval(mins * 60)
-            } label: {
-                label
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-        }
-    }
-
-    private var customDurationButton: some View {
-        let isCustom = ![15, 25, 45, 60].contains(selectedDurationMinutes)
-        let label = Text("Custom")
-            .font(.system(size: 11, weight: isCustom ? .semibold : .regular))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-
-        return Group {
-            if isCustom {
-                Button {} label: { label }
-                    .buttonStyle(.glassProminent)
-                    .tint(.blue)
-                    .buttonBorderShape(.capsule)
-            } else {
-                Button {
-                    selectedDurationMinutes = Int(editedDuration / 60)
-                } label: {
-                    label
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
+            DurationPresetRow(
+                presets: [15, 25, 45, 60],
+                selectedMinutes: $selectedDurationMinutes
+            )
+            .onChange(of: selectedDurationMinutes) {
+                editedDuration = TimeInterval(selectedDurationMinutes * 60)
             }
         }
     }
@@ -261,35 +208,7 @@ struct SessionEditView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Focus Quality")
 
-            HStack(spacing: 6) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    moodButton(mood)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func moodButton(_ mood: FocusMood) -> some View {
-        let isSelected = selectedMood == mood
-        let label = VStack(spacing: 2) {
-            Image(systemName: mood.icon)
-                .font(.system(size: 14))
-            Text(mood.rawValue)
-                .font(.system(size: 10))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-
-        if isSelected {
-            Button { selectedMood = nil } label: { label }
-                .buttonStyle(.glassProminent)
-                .tint(moodColor(mood))
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-        } else {
-            Button { selectedMood = mood } label: { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
+            MoodSelector(selectedMood: $selectedMood)
         }
     }
 
@@ -297,10 +216,44 @@ struct SessionEditView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Achievement")
 
-            TextField("What did you achieve?", text: $achievement)
-                .textFieldStyle(.plain)
-                .padding(8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $achievement)
+                    .font(.system(size: 13, weight: .regular))
+                    .scrollContentBackground(.hidden)
+                    .background(.clear)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
+
+                if achievement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Log your wins — one per line...")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(minHeight: 94, maxHeight: 170)
+            .padding(2)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+
+            if !achievement.isEmpty {
+                let items = achievement.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                                .padding(.top, 2)
+                            Text(item.trimmingCharacters(in: .whitespaces))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
         }
     }
 
@@ -395,15 +348,7 @@ struct SessionEditView: View {
             }
         }
 
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 
-    private func moodColor(_ mood: FocusMood) -> Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
-    }
 }

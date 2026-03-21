@@ -4,10 +4,15 @@ import SwiftData
 struct SessionCompleteWindowView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.dismissWindow) private var dismissWindow
+    @Query private var allSettings: [AppSettings]
     @State private var selectedMood: FocusMood? = nil
     @State private var achievement: String = ""
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
+    @State private var selectedReminderItems: [RemindersService.ReminderItem] = []
+    @State private var showReminderPicker = false
+
+    private var settings: AppSettings? { allSettings.first }
 
     private var isBreakCompletion: Bool {
         timerVM.lastCompletedSession?.type != .focus
@@ -33,9 +38,11 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 0) {
             VStack(spacing: 20) {
                 focusHeaderSection
-                reflectionSection
-                splitSection
+                moodSection
+                achievementSection
                 focusActionsSection
+                splitSection
+                remindersSection
             }
             .padding(24)
 
@@ -46,16 +53,19 @@ struct SessionCompleteWindowView: View {
 
     private var focusHeaderSection: some View {
         VStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: timerVM.isManualStop ? "stop.circle.fill" : "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
+                .foregroundStyle(timerVM.isManualStop
+                    ? LiquidDesignTokens.Spectral.salmon
+                    : LiquidDesignTokens.Spectral.primaryContainer)
+                .accessibilityHidden(true)
 
-            Text("Session Complete")
+            Text(timerVM.isManualStop ? "Session Ended Early" : "Session Complete")
                 .font(.system(size: 32, weight: .bold, design: .serif))
                 .italic()
 
             TrackedLabel(
-                text: "FocusFlow macOS Experience",
+                text: timerVM.isManualStop ? "Log what you accomplished" : "FocusFlow macOS Experience",
                 font: .system(size: 10, weight: .medium),
                 color: LiquidDesignTokens.Surface.onSurfaceMuted,
                 tracking: 2.0
@@ -74,15 +84,26 @@ struct SessionCompleteWindowView: View {
                     valueColor: LiquidDesignTokens.Surface.onSurface
                 )
             }
+            .accessibilityElement(children: .combine)
+
+            // Calendar save confirmation
+            if let eventId = timerVM.lastCompletedSession?.calendarEventId, !eventId.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar.badge.checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.green)
+                    Text("Saved to Calendar")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.green.opacity(0.10)))
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
         }
         .padding(.top, 8)
-    }
-
-    private var reflectionSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            moodSection
-            achievementSection
-        }
     }
 
     private var moodSection: some View {
@@ -93,35 +114,7 @@ struct SessionCompleteWindowView: View {
                 tracking: 1.8
             )
 
-            HStack(spacing: 8) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    moodButton(for: mood)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func moodButton(for mood: FocusMood) -> some View {
-        let label = VStack(spacing: 4) {
-            Image(systemName: mood.icon)
-                .font(.system(size: 20))
-            Text(mood.rawValue)
-                .font(.system(size: 10, weight: .medium))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-
-        if selectedMood == mood {
-            Button { selectedMood = nil } label: { label }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 14))
-                .accessibilityLabel("\(mood.rawValue), selected")
-        } else {
-            Button { selectedMood = mood } label: { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 14))
-                .accessibilityLabel(mood.rawValue)
+            MoodSelector(selectedMood: $selectedMood, style: .regular)
         }
     }
 
@@ -134,11 +127,34 @@ struct SessionCompleteWindowView: View {
             )
 
             TextField("Log your wins — one per line...", text: $achievement, axis: .vertical)
-                .lineLimit(3...6)
+                .lineLimit(4...8)
                 .textFieldStyle(.plain)
                 .padding(10)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+
+            if !achievement.isEmpty {
+                achievementPreview
+            }
         }
+    }
+
+    private var achievementPreview: some View {
+        let items = achievement.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                HStack(alignment: .top, spacing: 6) {
+                    Text("•")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.mint)
+                    Text(item.trimmingCharacters(in: .whitespaces))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .transition(.opacity)
+        .animation(FFMotion.control, value: achievement)
     }
 
     private var splitSection: some View {
@@ -177,6 +193,8 @@ struct SessionCompleteWindowView: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.roundedRectangle(radius: 12))
+            .accessibilityLabel(showSplits ? "Collapse project split" : "Split across projects")
+            .accessibilityHint("Allocate session time across multiple projects")
 
             if showSplits {
                 TimeSplitView(
@@ -188,94 +206,190 @@ struct SessionCompleteWindowView: View {
         }
     }
 
+    private var remindersSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                TrackedLabel(
+                    text: "Linked Reminders",
+                    font: .system(size: 11, weight: .semibold),
+                    tracking: 1.8
+                )
+                Spacer()
+                if settings?.remindersIntegrationEnabled == true {
+                    Button {
+                        showReminderPicker = true
+                    } label: {
+                        Label("Attach", systemImage: "plus")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Attach reminder")
+                }
+            }
+
+            if settings?.remindersIntegrationEnabled != true {
+                Text("Enable Reminders sync in Settings to link tasks.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            } else if selectedReminderItems.isEmpty {
+                Text("No reminders linked")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(selectedReminderItems, id: \.id) { item in
+                        HStack(spacing: 6) {
+                            Image(systemName: "checklist")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.blue)
+                            Text(item.title)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Button {
+                                selectedReminderItems.removeAll(where: { $0.id == item.id })
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("Remove reminder")
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showReminderPicker) {
+            ReminderSelectionSheet(
+                selectedDate: Date(),
+                selectedListId: settings?.selectedReminderListId,
+                initialSelectedIds: Set(selectedReminderItems.map(\.id))
+            ) { chosen in
+                selectedReminderItems = chosen
+            }
+        }
+    }
+
     private var focusActionsSection: some View {
         VStack(spacing: 12) {
-            GlassEffectContainer {
-                HStack(spacing: 8) {
-                    Button {
-                        saveAndDismiss(action: .takeBreak)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "cup.and.saucer.fill")
-                                .font(.system(size: 12))
-                            Text("Take a Break")
-                                .font(.system(size: 14, weight: .medium))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
+            // Primary CTA: Take a Break (always shown; label adapts for manual stop)
+            GradientCTAButton(
+                title: timerVM.isManualStop ? "Save & Take a Break" : "Take a Break",
+                icon: "cup.and.saucer.fill",
+                gradient: LiquidDesignTokens.Gradient.breakStart
+            ) {
+                saveAndDismiss(action: .takeBreak)
+            }
 
+            GlassEffectContainer {
+                VStack(spacing: 8) {
+                    // Skip break / Continue
+                    HStack(spacing: 8) {
+                        Button {
+                            saveAndDismiss(action: .continueFocusing)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: timerVM.isManualStop ? "play.fill" : "forward.fill")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(timerVM.isManualStop ? "Save & Keep Going" : "Skip Break")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                    }
+
+                    // Continue in overtime (not shown for manual stop — session already ended)
+                    if !timerVM.isManualStop {
+                        Button {
+                            continueOvertimeAndDismiss()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Continue Focusing")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                    }
+
+                    // Finish / Save & Done
                     Button {
-                        saveAndDismiss(action: .continueFocusing)
+                        saveAndDismiss(action: .endSession)
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("Skip Break")
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 12, weight: .medium))
+                            Text(timerVM.isManualStop ? "Save & Done" : "Finish Session")
                                 .font(.system(size: 14, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 12)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                    .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
-                }
-            }
+                    .tint(LiquidDesignTokens.Spectral.mint)
 
-            Button {
-                continueOvertimeAndDismiss()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Continue Focusing")
-                        .font(.system(size: 14, weight: .semibold))
+                    // Discard — only for manual stops (no reason to discard a naturally-completed session)
+                    if timerVM.isManualStop {
+                        Button {
+                            timerVM.discardManualStop()
+                            dismissWindow(id: "session-complete")
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11, weight: .medium))
+                                Text("Discard Session")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                        .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-
-            Button {
-                saveAndDismiss(action: .endSession)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("Finish Session")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-            .tint(LiquidDesignTokens.Spectral.mint)
         }
     }
 
     private func continueOvertimeAndDismiss() {
-        timerVM.saveReflection(
-            mood: selectedMood,
-            achievement: achievement.isEmpty ? nil : achievement,
-            splits: showSplits ? splits : nil
-        )
-        timerVM.showSessionComplete = false
-        dismissWindow(id: "session-complete")
+        Task {
+            await timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
+            await MainActor.run {
+                timerVM.showSessionComplete = false
+                dismissWindow(id: "session-complete")
+            }
+        }
     }
 
     private func saveAndDismiss(action: PostCompletionAction) {
-        timerVM.saveReflection(
-            mood: selectedMood,
-            achievement: achievement.isEmpty ? nil : achievement,
-            splits: showSplits ? splits : nil
-        )
-        timerVM.continueAfterCompletion(action: action)
-        dismissWindow(id: "session-complete")
+        Task {
+            await timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
+            await MainActor.run {
+                timerVM.continueAfterCompletion(action: action)
+                dismissWindow(id: "session-complete")
+            }
+        }
     }
 
     // MARK: - Break Completion
@@ -294,6 +408,7 @@ struct SessionCompleteWindowView: View {
             Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.blue)
+                .accessibilityHidden(true)
 
             Text("Break Complete")
                 .font(.system(size: 20, weight: .semibold))
@@ -302,8 +417,8 @@ struct SessionCompleteWindowView: View {
                 LiquidMetricCard(
                     title: "Overtime",
                     value: timerVM.overtimeTimeString,
-                    icon: "plus.circle.fill",
-                    color: .orange
+                    icon: "exclamationmark.triangle.fill",
+                    color: timerVM.overtimeSeconds > 120 ? .red : .orange
                 )
                 .frame(maxWidth: 180)
             }
@@ -375,15 +490,6 @@ struct SessionCompleteWindowView: View {
     }
 
     // MARK: - Helpers
-
-    private func moodColor(_ mood: FocusMood) -> Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
-    }
 
     private func statCard(label: String, value: String, valueColor: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {

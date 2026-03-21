@@ -43,11 +43,14 @@ enum LiquidDesignTokens {
 
     // MARK: - Corner Radius (Continuous Squircle)
     enum CornerRadius {
+        static let xs: CGFloat = 4       // progress bars, small chips
+        static let sm: CGFloat = 8       // small components, text fields
+        static let md: CGFloat = 10      // medium containers
         static let control: CGFloat = 12
         static let picker: CGFloat = 14
         static let card: CGFloat = 16
-        static let panel: CGFloat = 20
         static let cta: CGFloat = 18
+        static let panel: CGFloat = 20
         static let ring: CGFloat = 9999
     }
 
@@ -75,11 +78,32 @@ enum LiquidDesignTokens {
         static let controlSmall = Font.system(size: 13, weight: .medium)
     }
 
+    // MARK: - Gradients (CTA Fills)
+    enum Gradient {
+        static let focus = LinearGradient(
+            colors: [Color(hex: 0x5B9EF8), Color(hex: 0x6AABFF), Color(hex: 0xA5C4FF)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        static let resume = LinearGradient(
+            colors: [Color(hex: 0xCC8800), Color(hex: 0xE6A820), Color(hex: 0xF0C040)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        static let breakStart = LinearGradient(
+            colors: [Color(hex: 0x34C77B), Color(hex: 0x5ED4A0), Color(hex: 0x8CE6C0)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
+
     // MARK: - Padding
     enum Padding {
         static let popoverHorizontal: CGFloat = 24
         static let controlVertical: CGFloat = 12
+        static let controlHorizontal: CGFloat = 14
         static let cardPadding: CGFloat = 16
+        static let cardPaddingSmall: CGFloat = 12
     }
 
     // MARK: - Ghost Border (Never opaque)

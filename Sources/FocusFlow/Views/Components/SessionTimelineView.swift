@@ -108,7 +108,7 @@ struct SessionTimelineView: View {
                     if let mood = session.mood {
                         Image(systemName: mood.icon)
                             .font(.system(size: 11))
-                            .foregroundStyle(moodColor(mood))
+                            .foregroundStyle(mood.color)
                     }
                 }
             }
@@ -117,6 +117,7 @@ struct SessionTimelineView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(session.label), \(Int(session.actualDuration / 60)) minutes, \(session.completed ? "completed" : "incomplete")")
     }
 
     private func sessionColor(_ session: FocusSession) -> Color {
@@ -142,12 +143,4 @@ struct SessionTimelineView: View {
         }
     }
 
-    private func moodColor(_ mood: FocusMood) -> Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
-    }
 }

@@ -7,6 +7,8 @@ struct BlockingSettingsView: View {
 
     @State private var editingProfile: BlockProfile?
     @State private var showNewProfile = false
+    @State private var profileToDelete: BlockProfile?
+    @State private var saveError: String?
 
     var body: some View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
@@ -21,11 +23,33 @@ struct BlockingSettingsView: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.ultraThinMaterial)
+        .saveErrorOverlay($saveError)
         .sheet(isPresented: $showNewProfile) {
             BlockProfileFormView(profile: nil)
         }
         .sheet(item: $editingProfile) { profile in
             BlockProfileFormView(profile: profile)
+        }
+        .confirmationDialog(
+            "Delete Blocking Profile",
+            isPresented: Binding(
+                get: { profileToDelete != nil },
+                set: { if !$0 { profileToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let profile = profileToDelete {
+                    modelContext.delete(profile)
+                    saveWithFeedback(modelContext, errorBinding: $saveError)
+                }
+                profileToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                profileToDelete = nil
+            }
+        } message: {
+            Text("This will permanently delete the blocking profile and remove it from any linked projects.")
         }
     }
 
@@ -148,8 +172,7 @@ struct BlockingSettingsView: View {
                     .help("Edit profile")
 
                     Button {
-                        modelContext.delete(profile)
-                        try? modelContext.save()
+                        profileToDelete = profile
                     } label: {
                         Image(systemName: "trash")
                             .font(.system(size: 12, weight: .medium))
@@ -208,6 +231,6 @@ struct BlockingSettingsView: View {
             existing.isDefault = false
         }
         profile.isDefault = true
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 }

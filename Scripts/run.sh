@@ -44,6 +44,10 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSCalendarsUsageDescription</key>
+    <string>FocusFlow records completed focus sessions to your selected calendar and lets you review session timelines.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
     <key>NSSupportsSuddenTermination</key>
