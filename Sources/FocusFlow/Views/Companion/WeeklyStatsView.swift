@@ -181,6 +181,7 @@ struct WeeklyStatsView: View {
                 subtitle: periodSessionCount > 0 ? "\(periodCompletedCount)/\(periodSessionCount) sessions" : nil
             )
         }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Heatmap

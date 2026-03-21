@@ -54,6 +54,7 @@ struct SessionCompleteWindowView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
                 .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
+                .accessibilityHidden(true)
 
             Text("Session Complete")
                 .font(.system(size: 32, weight: .bold, design: .serif))
@@ -79,6 +80,7 @@ struct SessionCompleteWindowView: View {
                     valueColor: LiquidDesignTokens.Surface.onSurface
                 )
             }
+            .accessibilityElement(children: .combine)
         }
         .padding(.top, 8)
     }
@@ -99,35 +101,7 @@ struct SessionCompleteWindowView: View {
                 tracking: 1.8
             )
 
-            HStack(spacing: 8) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    moodButton(for: mood)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func moodButton(for mood: FocusMood) -> some View {
-        let label = VStack(spacing: 4) {
-            Image(systemName: mood.icon)
-                .font(.system(size: 20))
-            Text(mood.rawValue)
-                .font(.system(size: 10, weight: .medium))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-
-        if selectedMood == mood {
-            Button { selectedMood = nil } label: { label }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 14))
-                .accessibilityLabel("\(mood.rawValue), selected")
-        } else {
-            Button { selectedMood = mood } label: { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 14))
-                .accessibilityLabel(mood.rawValue)
+            MoodSelector(selectedMood: $selectedMood, style: .regular)
         }
     }
 
@@ -206,6 +180,8 @@ struct SessionCompleteWindowView: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.roundedRectangle(radius: 12))
+            .accessibilityLabel(showSplits ? "Collapse project split" : "Split across projects")
+            .accessibilityHint("Allocate session time across multiple projects")
 
             if showSplits {
                 TimeSplitView(
@@ -234,6 +210,7 @@ struct SessionCompleteWindowView: View {
                             .font(.system(size: 11, weight: .semibold))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Attach reminder")
                 }
             }
 
@@ -390,6 +367,7 @@ struct SessionCompleteWindowView: View {
             Image(systemName: "cup.and.saucer.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.blue)
+                .accessibilityHidden(true)
 
             Text("Break Complete")
                 .font(.system(size: 20, weight: .semibold))
@@ -471,15 +449,6 @@ struct SessionCompleteWindowView: View {
     }
 
     // MARK: - Helpers
-
-    private func moodColor(_ mood: FocusMood) -> Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
-    }
 
     private func statCard(label: String, value: String, valueColor: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {

@@ -117,6 +117,8 @@ struct TodayStatsView: View {
             }
         }
         .frame(height: 4)
+        .accessibilityLabel("Daily goal progress")
+        .accessibilityValue("\(Int(min(1.0, (totalFocusTime / 60) / (dailyGoal / 60)) * 100)) percent complete")
     }
 
     private var summarySection: some View {
@@ -145,6 +147,7 @@ struct TodayStatsView: View {
                 subtitle: currentStreak > 0 ? "Keep it going!" : nil
             )
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var averageSessionLength: Int {
@@ -207,7 +210,7 @@ struct TodayStatsView: View {
                             HStack(spacing: 5) {
                                 Image(systemName: entry.key.icon)
                                     .font(.caption)
-                                    .foregroundStyle(moodColor(entry.key))
+                                    .foregroundStyle(entry.key.color)
 
                                 Text("\(entry.value)")
                                     .font(.subheadline.weight(.semibold))
@@ -271,15 +274,6 @@ struct TodayStatsView: View {
         let name: String
         let duration: TimeInterval
         let color: Color
-    }
-
-    private func moodColor(_ mood: FocusMood) -> Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
     }
 
     private var projectBreakdown: [ProjectItem] {

@@ -16,6 +16,7 @@ struct ProjectsListView: View {
     @State private var formIcon = "folder.fill"
     @State private var formBlockProfile: BlockProfile?
     @State private var projectToArchive: Project?
+    @State private var saveError: String?
 
     var body: some View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
@@ -38,6 +39,7 @@ struct ProjectsListView: View {
         .sheet(isPresented: $showBlockingSheet) {
             BlockingSettingsView()
         }
+        .saveErrorOverlay($saveError)
         .confirmationDialog(
             "Archive Project",
             isPresented: Binding(
@@ -56,7 +58,7 @@ struct ProjectsListView: View {
                         if selectedProject?.id == project.id {
                             selectedProject = projects.first(where: { $0.id != project.id })
                         }
-                        try? modelContext.save()
+                        saveWithFeedback(modelContext, errorBinding: $saveError)
                     }
                     projectToArchive = nil
                 }
@@ -86,6 +88,7 @@ struct ProjectsListView: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
             .help("Add project")
+            .accessibilityLabel("Add project")
         }
     }
 
@@ -98,6 +101,7 @@ struct ProjectsListView: View {
             Image(systemName: "folder.badge.plus")
                 .font(.system(size: 52, weight: .ultraLight))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
 
             VStack(spacing: 8) {
                 Text("No projects yet")
@@ -202,6 +206,7 @@ struct ProjectsListView: View {
             }
             .buttonStyle(.plain)
             .help("Edit project")
+            .accessibilityLabel("Edit \(project.name)")
 
             Button {
                 projectToArchive = project
@@ -214,6 +219,7 @@ struct ProjectsListView: View {
             }
             .buttonStyle(.plain)
             .help("Archive project")
+            .accessibilityLabel("Archive \(project.name)")
         }
     }
 
@@ -278,6 +284,8 @@ struct ProjectsListView: View {
                 timerVM.selectedProject = project
             }
         }
+        .accessibilityLabel("\(project.name), \(sessionCount) sessions")
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Blocking Button
@@ -322,7 +330,7 @@ struct ProjectsListView: View {
                 modelContext.insert(project)
                 savedProject = project
             }
-            try? modelContext.save()
+            saveWithFeedback(modelContext, errorBinding: $saveError)
             if let savedProject {
                 timerVM.selectedProject = savedProject
                 selectedProject = savedProject

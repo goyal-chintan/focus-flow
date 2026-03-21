@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var isLoadingReminderLists = false
     @State private var reminderLoadError: String?
     @State private var reminderAuthError: String?
+    @State private var saveError: String?
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
@@ -31,6 +32,7 @@ struct SettingsView: View {
             .padding(24)
         }
         .background(.ultraThinMaterial)
+        .saveErrorOverlay($saveError)
         .onAppear {
             if settings.calendarIntegrationEnabled {
                 loadCalendars()
@@ -204,6 +206,7 @@ struct SettingsView: View {
                 Image(systemName: "timer")
                     .font(.system(size: 36, weight: .light))
                     .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
 
                 VStack(spacing: 6) {
                     Text("FocusFlow")
@@ -265,6 +268,8 @@ struct SettingsView: View {
                         step: 15
                     )
                     .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                    .accessibilityLabel("Daily focus goal")
+                    .accessibilityValue("\(Int(settings.dailyFocusGoal / 60)) minutes")
 
                     HStack {
                         Text("30m")
@@ -317,6 +322,7 @@ struct SettingsView: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .frame(width: 44)
+                    .accessibilityLabel("Record to Calendar")
                 }
 
                 if settings.calendarIntegrationEnabled {
@@ -473,6 +479,7 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
                 .labelsHidden()
                 .frame(width: 44)
+                .accessibilityLabel("Sync Reminders")
             }
 
             if settings.remindersIntegrationEnabled {
@@ -722,7 +729,7 @@ struct SettingsView: View {
     }
 
     private func save() {
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
