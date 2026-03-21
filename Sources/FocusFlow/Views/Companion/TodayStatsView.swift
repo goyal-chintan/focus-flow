@@ -425,7 +425,10 @@ struct TodayStatsView: View {
     private func completeReminder(_ reminder: RemindersService.ReminderItem) {
         Task {
             let didComplete = RemindersService.shared.completeReminder(identifier: reminder.id)
-            guard didComplete else { return }
+            guard didComplete else {
+                print("[TodayStatsView] Failed to complete reminder: \(reminder.title)")
+                return
+            }
             withAnimation {
                 dueReminders.removeAll { $0.id == reminder.id }
             }

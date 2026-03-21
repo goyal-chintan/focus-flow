@@ -72,7 +72,7 @@ final class NotificationService: ObservableObject {
 
     func sendSessionCompletePrompt(duration: TimeInterval, label: String, sound: String) {
         NSSound(named: NSSound.Name(sound))?.play()
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Focus Session Complete!"
         content.body = "\(Int(duration / 60)) min of \(label) — tap the timer to review and log."
@@ -87,7 +87,7 @@ final class NotificationService: ObservableObject {
 
     func sendPauseWarning(minutes: Int) {
         NSSound(named: NSSound.Name("Bottle"))?.play()
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Pause getting long"
         content.body = "You've been paused for \(minutes) minutes. Ready to get back to it?"
@@ -102,7 +102,7 @@ final class NotificationService: ObservableObject {
 
     func sendPauseCritical(minutes: Int) {
         NSSound(named: NSSound.Name("Sosumi"))?.play()
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Long pause!"
         content.body = "You've been paused for \(minutes) minutes. Consider resuming or ending the session."
@@ -117,7 +117,7 @@ final class NotificationService: ObservableObject {
 
     func sendBreakWarning(minutes: Int) {
         NSSound(named: NSSound.Name("Bottle"))?.play()
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Break getting long"
         content.body = "You've been on break for \(minutes) minutes. Ready to get back to focusing?"
@@ -132,7 +132,7 @@ final class NotificationService: ObservableObject {
 
     func sendBreakCritical(minutes: Int) {
         NSSound(named: NSSound.Name("Sosumi"))?.play()
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Long break!"
         content.body = "You've been on break for \(minutes) minutes. Time to get back to work!"
@@ -148,6 +148,7 @@ final class NotificationService: ObservableObject {
     private func send(title: String, body: String, sound: String) {
         NSSound(named: NSSound.Name(sound))?.play()
         guard Bundle.main.bundleIdentifier != nil else { return }
+        guard authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

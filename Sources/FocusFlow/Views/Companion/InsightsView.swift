@@ -56,41 +56,61 @@ struct InsightsView: View {
     private var focusScoreSection: some View {
         LiquidGlassPanel {
             VStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 8)
-                        .frame(width: 100, height: 100)
+                if hasEnoughDataForScore {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 8)
+                            .frame(width: 100, height: 100)
 
-                    Circle()
-                        .trim(from: 0, to: CGFloat(focusScore) / 100.0)
-                        .stroke(
-                            focusScoreColor,
-                            style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: 100, height: 100)
-                        .animation(.spring(response: 1.0, dampingFraction: 0.8), value: focusScore)
+                        Circle()
+                            .trim(from: 0, to: CGFloat(focusScore) / 100.0)
+                            .stroke(
+                                focusScoreColor,
+                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: 100, height: 100)
+                            .animation(.spring(response: 1.0, dampingFraction: 0.8), value: focusScore)
 
-                    VStack(spacing: 2) {
-                        Text("\(focusScore)")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                        Text("FOCUS SCORE")
-                            .font(.system(size: 9, weight: .semibold))
-                            .tracking(1.2)
-                            .foregroundStyle(.secondary)
+                        VStack(spacing: 2) {
+                            Text("\(focusScore)")
+                                .font(.system(size: 36, weight: .bold, design: .rounded))
+                            Text(focusScoreLabel)
+                                .font(.system(size: 10, weight: .semibold))
+                                .tracking(1.2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Focus score: \(focusScore) out of 100")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Focus score: \(focusScore) out of 100, \(focusScoreLabel)")
 
-                Text(focusScoreSummary)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                    Text(focusScoreSummary)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.system(size: 32, weight: .light))
+                            .foregroundStyle(.tertiary)
+                        Text("Focus Score")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Complete a few more sessions to unlock your personalized Focus Score. We need at least 3 sessions to calculate meaningful patterns.")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 8)
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
         }
+    }
+
+    private var hasEnoughDataForScore: Bool {
+        focusSessions.count >= 3
     }
 
     private var focusScore: Int {
@@ -106,6 +126,15 @@ struct InsightsView: View {
         case 50..<80: .blue
         case 30..<50: .orange
         default: .red
+        }
+    }
+
+    private var focusScoreLabel: String {
+        switch focusScore {
+        case 80...100: "EXCELLENT"
+        case 50..<80: "GOOD"
+        case 30..<50: "BUILDING"
+        default: "STARTING"
         }
     }
 
@@ -162,8 +191,25 @@ struct InsightsView: View {
                 )
 
                 VStack(spacing: 10) {
-                    ForEach(Array(behavioralInsights.enumerated()), id: \.offset) { _, insight in
-                        insightCard(insight)
+                    if behavioralInsights.isEmpty {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 6) {
+                                Image(systemName: "lightbulb.fill")
+                                    .font(.system(size: 18, weight: .light))
+                                    .foregroundStyle(.tertiary)
+                                Text("Complete a few more sessions to unlock personalized insights")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.tertiary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(.vertical, 12)
+                            Spacer()
+                        }
+                    } else {
+                        ForEach(Array(behavioralInsights.enumerated()), id: \.offset) { _, insight in
+                            insightCard(insight)
+                        }
                     }
                 }
             }
@@ -574,13 +620,13 @@ struct InsightsView: View {
                             .overlay {
                                 if isSelected && item.totalMinutes > 0 {
                                     Text("\(Int(item.totalMinutes))m")
-                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .font(.system(size: 10, weight: .bold, design: .rounded))
                                         .foregroundStyle(.white)
                                 }
                             }
 
                         Text(item.label)
-                            .font(.system(size: 7, weight: .medium, design: .rounded))
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
                             .foregroundStyle(isSelected ? .primary : .tertiary)
                             .lineLimit(1)
                     }
@@ -610,7 +656,7 @@ struct InsightsView: View {
                 ForEach(durationBuckets, id: \.label) { bucket in
                     VStack(spacing: 4) {
                         Text("\(bucket.count)")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(bucket.count > 0 ? .primary : .tertiary)
 
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -618,7 +664,7 @@ struct InsightsView: View {
                             .frame(height: max(4, CGFloat(bucket.count) / CGFloat(maxBucketCount) * 60))
 
                         Text(bucket.label)
-                            .font(.system(size: 7, weight: .medium, design: .rounded))
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)

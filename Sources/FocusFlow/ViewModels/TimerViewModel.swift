@@ -15,6 +15,7 @@ enum PostCompletionAction {
     case endSession
 }
 
+@MainActor
 @Observable
 final class TimerViewModel {
     // MARK: - State
@@ -178,6 +179,8 @@ final class TimerViewModel {
             log("WARNING: Stale website blocking detected from previous crash")
         }
         scheduleMidnightRefresh()
+        // Start app usage tracking and nudge timer at launch (not deferred to popover open)
+        AppUsageTracker.shared.start(timerVM: self, modelContext: modelContext)
         log("configure() complete")
     }
 
@@ -721,7 +724,10 @@ final class TimerViewModel {
 
         if !reminderIdsToComplete.isEmpty {
             for reminderId in reminderIdsToComplete {
-                _ = RemindersService.shared.completeReminder(identifier: reminderId)
+                let ok = RemindersService.shared.completeReminder(identifier: reminderId)
+                if !ok {
+                    print("[TimerViewModel] Failed to complete reminder: \(reminderId)")
+                }
             }
         }
 

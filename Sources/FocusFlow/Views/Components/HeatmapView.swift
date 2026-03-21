@@ -16,7 +16,7 @@ struct HeatmapView: View {
 
                     if data.count <= 7 {
                         Text(data[index].label)
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }

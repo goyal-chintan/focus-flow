@@ -148,8 +148,6 @@ final class CalendarService {
     }
 
     private func log(_ message: String) {
-        #if DEBUG
         print("[CalendarService] \(message)")
-        #endif
     }
 }

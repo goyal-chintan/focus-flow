@@ -152,11 +152,12 @@ struct BlockingSettingsView: View {
                             Image(systemName: "star")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.secondary)
-                                .frame(width: 28, height: 28)
+                                .frame(width: 30, height: 30)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .help("Set as default")
+                        .accessibilityLabel("Set as default profile")
                     }
 
                     Button {
@@ -165,11 +166,12 @@ struct BlockingSettingsView: View {
                         Image(systemName: "pencil")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
+                            .frame(width: 30, height: 30)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Edit profile")
+                    .accessibilityLabel("Edit profile")
 
                     Button {
                         profileToDelete = profile
@@ -177,11 +179,12 @@ struct BlockingSettingsView: View {
                         Image(systemName: "trash")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(LiquidDesignTokens.Spectral.salmon.opacity(0.6))
-                            .frame(width: 28, height: 28)
+                            .frame(width: 30, height: 30)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Delete profile")
+                    .accessibilityLabel("Delete profile")
                 }
             }
 
