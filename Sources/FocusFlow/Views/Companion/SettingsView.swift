@@ -5,6 +5,9 @@ import ServiceManagement
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allSettings: [AppSettings]
+    @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
+    @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
+    @State private var reminderAuthError: String?
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
@@ -24,6 +27,14 @@ struct SettingsView: View {
             .padding(24)
         }
         .background(.ultraThinMaterial)
+        .onAppear {
+            if settings.calendarIntegrationEnabled {
+                loadCalendars()
+            }
+            if settings.remindersIntegrationEnabled {
+                loadReminderLists()
+            }
+        }
     }
 
     private var durationsSection: some View {
@@ -307,6 +318,8 @@ struct SettingsView: View {
                 if settings.calendarIntegrationEnabled {
                     calendarPickerSection
                 }
+
+                remindersIntegrationSection
             }
             .padding(16)
             .animation(FFMotion.section, value: settings.calendarIntegrationEnabled)
@@ -335,8 +348,6 @@ struct SettingsView: View {
             EmptyView()
         }
     }
-
-    @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
 
     private var calendarPickerSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -379,6 +390,130 @@ struct SettingsView: View {
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
+    @ViewBuilder
+    private var remindersStatusBadge: some View {
+        let status = RemindersService.shared.authStatus
+        switch status {
+        case .authorized:
+            HStack(spacing: 4) {
+                Circle().fill(.green).frame(width: 6, height: 6)
+                Text("Connected")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.green)
+            }
+        case .denied:
+            HStack(spacing: 4) {
+                Circle().fill(.red).frame(width: 6, height: 6)
+                Text("Denied")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.red)
+            }
+        case .notDetermined:
+            EmptyView()
+        }
+    }
+
+    private var remindersIntegrationSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+
+            HStack(spacing: 12) {
+                Image(systemName: "checklist")
+                    .foregroundStyle(.blue)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 20)
+
+                Text("Sync Reminders")
+                    .font(.subheadline)
+
+                Spacer()
+
+                remindersStatusBadge
+
+                Toggle("", isOn: Binding(
+                    get: { settings.remindersIntegrationEnabled },
+                    set: { newValue in
+                        if newValue {
+                            Task { await enableRemindersIntegration() }
+                        } else {
+                            settings.remindersIntegrationEnabled = false
+                            settings.selectedReminderListId = ""
+                            reminderAuthError = nil
+                            save()
+                        }
+                    }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .frame(width: 44)
+            }
+
+            if settings.remindersIntegrationEnabled {
+                reminderPickerSection
+            }
+
+            if let reminderAuthError {
+                Label(reminderAuthError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var reminderPickerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Choose which reminder list to use in FocusFlow:")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            if availableReminderLists.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Loading reminder lists...")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+                .onAppear { loadReminderLists() }
+            } else {
+                ForEach(availableReminderLists, id: \.id) { list in
+                    reminderListRow(list, isSelected: settings.selectedReminderListId == list.id)
+                }
+            }
+        }
+    }
+
+    private func reminderListRow(_ list: (id: String, title: String, source: String), isSelected: Bool) -> some View {
+        Button {
+            settings.selectedReminderListId = list.id
+            save()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(list.title)
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                    Text(list.source)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(list.title), \(isSelected ? "selected" : "not selected")")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
     private func calendarRow(_ cal: (id: String, title: String), isSelected: Bool) -> some View {
         Button {
             if cal.id == "__create_new__" {
@@ -416,11 +551,37 @@ struct SettingsView: View {
             settings.calendarIntegrationEnabled = true
             save()
             loadCalendars()
+        } else {
+            settings.calendarIntegrationEnabled = false
+            save()
         }
     }
 
     private func loadCalendars() {
         availableCalendars = CalendarService.shared.availableCalendars()
+    }
+
+    private func loadReminderLists() {
+        availableReminderLists = RemindersService.shared.reminderLists()
+        if settings.selectedReminderListId.isEmpty,
+           let first = availableReminderLists.first {
+            settings.selectedReminderListId = first.id
+            save()
+        }
+    }
+
+    private func enableRemindersIntegration() async {
+        let granted = await RemindersService.shared.requestAccess()
+        if granted {
+            settings.remindersIntegrationEnabled = true
+            reminderAuthError = nil
+            save()
+            loadReminderLists()
+        } else {
+            reminderAuthError = "FocusFlow needs Reminders access. Enable it in System Settings → Privacy & Security → Reminders."
+            settings.remindersIntegrationEnabled = false
+            save()
+        }
     }
 
     // MARK: - Focus Coach

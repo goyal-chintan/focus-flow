@@ -42,19 +42,44 @@ final class RemindersService {
     private struct ReminderData: Sendable {
         let title: String
         let calendarItemIdentifier: String
+        let reminderListIdentifier: String
         let dueDateComponents: DateComponents?
         let isCompleted: Bool
         let listTitle: String
+        let notes: String
+    }
+
+    struct ReminderItem: Identifiable, Sendable {
+        let id: String
+        let title: String
+        let list: String
+        let listId: String
+        let dueDate: Date?
+        let isCompleted: Bool
+        let notes: String
     }
 
     /// Fetches incomplete reminders from all lists.
     func fetchIncompleteReminderTitles() async -> [(title: String, id: String, list: String)] {
+        let items = await fetchIncompleteReminders()
+        return items.map { ($0.title, $0.id, $0.list) }
+    }
+
+    /// Fetches incomplete reminders from all lists with full details.
+    func fetchIncompleteReminders(listId: String? = nil) async -> [ReminderItem] {
         guard authStatus == .authorized else { return [] }
+
+        let calendars: [EKCalendar]?
+        if let listId, !listId.isEmpty {
+            calendars = store.calendars(for: .reminder).filter { $0.calendarIdentifier == listId }
+        } else {
+            calendars = nil
+        }
 
         let predicate = store.predicateForIncompleteReminders(
             withDueDateStarting: nil,
             ending: nil,
-            calendars: nil
+            calendars: calendars
         )
 
         let data: [ReminderData] = await withCheckedContinuation { continuation in
@@ -63,9 +88,11 @@ final class RemindersService {
                     ReminderData(
                         title: reminder.title ?? "",
                         calendarItemIdentifier: reminder.calendarItemIdentifier,
+                        reminderListIdentifier: reminder.calendar?.calendarIdentifier ?? "",
                         dueDateComponents: reminder.dueDateComponents,
                         isCompleted: reminder.isCompleted,
-                        listTitle: reminder.calendar?.title ?? ""
+                        listTitle: reminder.calendar?.title ?? "",
+                        notes: reminder.notes ?? ""
                     )
                 }
                 continuation.resume(returning: mapped)
@@ -78,7 +105,17 @@ final class RemindersService {
                 let bDate = b.dueDateComponents?.date ?? .distantFuture
                 return aDate < bDate
             }
-            .map { (title: $0.title, id: $0.calendarItemIdentifier, list: $0.listTitle) }
+            .map {
+                ReminderItem(
+                    id: $0.calendarItemIdentifier,
+                    title: $0.title,
+                    list: $0.listTitle,
+                    listId: $0.reminderListIdentifier,
+                    dueDate: $0.dueDateComponents?.date,
+                    isCompleted: $0.isCompleted,
+                    notes: $0.notes
+                )
+            }
     }
 
     // MARK: - Complete Reminder
@@ -98,10 +135,77 @@ final class RemindersService {
         }
     }
 
+    func updateReminder(identifier: String, title: String, notes: String?, dueDate: Date?) -> Bool {
+        guard let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else {
+            return false
+        }
+        item.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.notes = notes
+        if let dueDate {
+            item.dueDateComponents = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute],
+                from: dueDate
+            )
+        } else {
+            item.dueDateComponents = nil
+        }
+        do {
+            try store.save(item, commit: true)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    func createReminder(title: String, notes: String?, dueDate: Date?, listId: String?) -> String? {
+        guard authStatus == .authorized else { return nil }
+        guard let selectedCalendar = resolveReminderCalendar(listId: listId) else { return nil }
+
+        let reminder = EKReminder(eventStore: store)
+        reminder.calendar = selectedCalendar
+        reminder.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        reminder.notes = notes
+        reminder.isCompleted = false
+        if let dueDate {
+            reminder.dueDateComponents = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute],
+                from: dueDate
+            )
+        }
+        do {
+            try store.save(reminder, commit: true)
+            return reminder.calendarItemIdentifier
+        } catch {
+            return nil
+        }
+    }
+
+    func reminderLists() -> [(id: String, title: String, source: String)] {
+        guard authStatus == .authorized else { return [] }
+        return store.calendars(for: .reminder)
+            .map { (id: $0.calendarIdentifier, title: $0.title, source: $0.source.title) }
+            .sorted {
+                if $0.source == $1.source {
+                    return $0.title < $1.title
+                }
+                return $0.source < $1.source
+            }
+    }
+
     // MARK: - List Names
 
     var listNames: [String] {
         guard authStatus == .authorized else { return [] }
         return store.calendars(for: .reminder).map(\.title)
+    }
+
+    private func resolveReminderCalendar(listId: String?) -> EKCalendar? {
+        let calendars = store.calendars(for: .reminder)
+        if let listId, !listId.isEmpty,
+           let existing = calendars.first(where: { $0.calendarIdentifier == listId }) {
+            return existing
+        }
+        return store.defaultCalendarForNewReminders() ?? calendars.first
     }
 }
