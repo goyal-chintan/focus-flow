@@ -13,10 +13,12 @@ struct SettingsView: View {
     @State private var isLoadingReminderLists = false
     @State private var reminderLoadError: String?
     @State private var reminderAuthError: String?
+    @State private var isRequestingNotificationPermission = false
     @State private var saveError: String?
     @State private var isEnablingCalendar = false
     @State private var isEnablingReminders = false
     @State private var showBlockingSheet = false
+    @StateObject private var notificationService = NotificationService.shared
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
@@ -199,31 +201,29 @@ struct SettingsView: View {
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
 
-                // Notification permission banner — shown when denied
-                if !NotificationService.shared.isAuthorized {
+                if notificationService.authorizationState != .authorized {
                     HStack(spacing: 8) {
                         Image(systemName: "bell.slash.fill")
                             .font(.system(size: 13))
                             .foregroundStyle(.orange)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Notifications are disabled")
+                            Text(notificationBannerTitle)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.primary)
-                            Text("FocusFlow can't alert you when sessions complete. Enable in System Settings → Notifications.")
+                            Text(notificationBannerMessage)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Button {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings") {
-                                NSWorkspace.shared.open(url)
-                            }
+                            handleNotificationBannerAction()
                         } label: {
-                            Label("Open Notification Settings", systemImage: "arrow.up.forward.app")
+                            Label(notificationBannerButtonTitle, systemImage: notificationBannerButtonIcon)
                                 .font(.system(size: 12, weight: .medium))
                         }
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
+                        .disabled(isRequestingNotificationPermission)
                     }
                     .padding(10)
                     .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
@@ -231,7 +231,71 @@ struct SettingsView: View {
             }
             .padding(16)
         }
-        .onAppear { NotificationService.shared.refreshAuthorizationStatus() }
+        .onAppear { notificationService.refreshAuthorizationStatus() }
+    }
+
+    private var notificationBannerTitle: String {
+        switch notificationService.authorizationState {
+        case .authorized:
+            return ""
+        case .notDetermined:
+            return "Enable notifications"
+        case .denied:
+            return "Notifications are disabled"
+        }
+    }
+
+    private var notificationBannerMessage: String {
+        switch notificationService.authorizationState {
+        case .authorized:
+            return ""
+        case .notDetermined:
+            return "FocusFlow hasn't asked for notification permission yet. Enable it to receive session alerts."
+        case .denied:
+            return "FocusFlow can't alert you when sessions complete. Enable in System Settings → Notifications."
+        }
+    }
+
+    private var notificationBannerButtonTitle: String {
+        switch notificationService.authorizationState {
+        case .authorized:
+            return ""
+        case .notDetermined:
+            return "Enable Notifications"
+        case .denied:
+            return "Open Notification Settings"
+        }
+    }
+
+    private var notificationBannerButtonIcon: String {
+        switch notificationService.authorizationState {
+        case .authorized:
+            return "checkmark.circle"
+        case .notDetermined:
+            return "bell.badge"
+        case .denied:
+            return "arrow.up.forward.app"
+        }
+    }
+
+    private func handleNotificationBannerAction() {
+        switch notificationService.authorizationState {
+        case .authorized:
+            return
+        case .notDetermined:
+            guard !isRequestingNotificationPermission else { return }
+            isRequestingNotificationPermission = true
+            notificationService.requestPermission()
+            Task { @MainActor in
+                notificationService.refreshAuthorizationStatus()
+                isRequestingNotificationPermission = false
+                restoreCompanionWindow()
+            }
+        case .denied:
+            if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     private var aboutSection: some View {

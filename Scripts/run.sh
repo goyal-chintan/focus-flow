@@ -66,6 +66,10 @@ if [ -f "Sources/FocusFlow/AppIcon.icns" ]; then
     cp "Sources/FocusFlow/AppIcon.icns" "$RESOURCES/"
 fi
 
+# Ad-hoc sign with stable bundle identifier so macOS notification settings
+# consistently recognize this app as "com.focusflow.app".
+codesign --force --sign - --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"
+
 echo "Built $APP_BUNDLE"
 
 # Kill existing instance

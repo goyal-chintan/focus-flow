@@ -167,8 +167,19 @@ dry_run_exec codesign --force --sign - --identifier com.focusflow.app --timestam
 # Clean up stale Spotlight entries BEFORE installing
 log_info "Cleaning up Spotlight cache..."
 if command -v mdutil >/dev/null 2>&1; then
+  # Disable Spotlight indexing for the directory
   dry_run_exec mdutil -i off "$INSTALL_DIR" 2>/dev/null || true
+  # Remove old entries
+  dry_run_exec rm -rf "$INSTALL_DIR/.Spotlight-V100" 2>/dev/null || true
+  # Re-enable Spotlight indexing
   dry_run_exec mdutil -i on "$INSTALL_DIR" 2>/dev/null || true
+  log_success "Spotlight cache cleaned"
+fi
+
+# Also remove any system-wide duplicate at /Applications
+if [ -d "/Applications/FocusFlow.app" ]; then
+  log_warn "Found duplicate at /Applications/FocusFlow.app, removing..."
+  dry_run_exec rm -rf "/Applications/FocusFlow.app" 2>/dev/null || true
 fi
 
 # Kill any running instances before replacing
@@ -196,8 +207,15 @@ log_success "Installed to $INSTALLED_APP"
 # Update Spotlight index
 log_info "Registering with Spotlight..."
 if command -v mdimport >/dev/null 2>&1; then
+  # Force re-index
   dry_run_exec mdimport -r "$INSTALLED_APP" 2>/dev/null || true
+  sleep 1
   dry_run_exec mdimport "$INSTALLED_APP" 2>/dev/null || true
+  
+  # Also clean up Library caches
+  if [ "$DRY_RUN" != "1" ]; then
+    find ~/Library/Metadata/CoreSpotlight -name "*focusflow*" -delete 2>/dev/null || true
+  fi
   log_success "Spotlight index updated"
 else
   log_warn "mdimport not available, skipping Spotlight indexing"
