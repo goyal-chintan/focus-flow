@@ -30,6 +30,12 @@ enum StoreMigrator {
         ),
         ColumnMigration(
             table: "ZAPPSETTINGS",
+            column: "ZSELECTEDCALENDARID",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "''"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
             column: "ZANTIPROCRASTINATIONENABLED",
             sqlType: "INTEGER",
             defaultSQLValue: "1"
@@ -39,6 +45,18 @@ enum StoreMigrator {
             column: "ZANTIPROCRASTINATIONTHRESHOLDMINUTES",
             sqlType: "INTEGER",
             defaultSQLValue: "5"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZREMINDERSINTEGRATIONENABLED",
+            sqlType: "INTEGER",
+            defaultSQLValue: "0"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZSELECTEDREMINDERLISTID",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "''"
         )
     ]
 

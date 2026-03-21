@@ -6,9 +6,27 @@ final class NotificationService {
     static let shared = NotificationService()
     private init() {}
 
+    /// Whether the user has authorized notifications. Checked on demand.
+    private(set) var isAuthorized: Bool = false
+
     func requestPermission() {
         guard Bundle.main.bundleIdentifier != nil else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            Task { @MainActor [weak self] in
+                self?.isAuthorized = granted
+            }
+        }
+    }
+
+    /// Refresh cached auth status — call from Settings on appear.
+    func refreshAuthorizationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            // Extract value type before crossing concurrency boundary (avoids Sendable error)
+            let authorized = settings.authorizationStatus == .authorized
+            Task { @MainActor [weak self] in
+                self?.isAuthorized = authorized
+            }
+        }
     }
 
     func sendFocusComplete(sound: String) {

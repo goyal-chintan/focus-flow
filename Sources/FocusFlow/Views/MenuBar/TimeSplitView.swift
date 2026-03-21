@@ -8,6 +8,9 @@ struct TimeSplitView: View {
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
 
+    @State private var editingCustomIndex: Int? = nil
+    @State private var customLabelText: String = ""
+
     struct SplitEntry: Identifiable {
         let id = UUID()
         var project: Project?
@@ -54,27 +57,46 @@ struct TimeSplitView: View {
     @ViewBuilder
     private func splitRow(at index: Int) -> some View {
         HStack(spacing: 8) {
-            Menu {
-                ForEach(projects) { project in
-                    Button(project.name) {
-                        splits[index].project = project
-                        splits[index].customLabel = ""
-                    }
-                }
-                Divider()
-                Button("Custom...") {
-                    splits[index].project = nil
-                }
-            } label: {
-                Text(splits[index].label)
+            if editingCustomIndex == index {
+                TextField("Custom label", text: $customLabelText)
+                    .textFieldStyle(.plain)
                     .font(.caption)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
+                    .onSubmit {
+                        splits[index].customLabel = customLabelText.isEmpty ? "Custom" : customLabelText
+                        editingCustomIndex = nil
+                    }
+                    .onExitCommand {
+                        editingCustomIndex = nil
+                    }
+            } else {
+                Menu {
+                    ForEach(projects) { project in
+                        Button(project.name) {
+                            splits[index].project = project
+                            splits[index].customLabel = ""
+                            editingCustomIndex = nil
+                        }
+                    }
+                    Divider()
+                    Button("Custom...") {
+                        splits[index].project = nil
+                        customLabelText = splits[index].customLabel
+                        editingCustomIndex = index
+                    }
+                } label: {
+                    Text(splits[index].label)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             HStack(spacing: 4) {
                 Button {

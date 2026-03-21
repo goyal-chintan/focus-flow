@@ -15,6 +15,13 @@ struct ManualSessionView: View {
     @State private var achievement: String = ""
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
+    @State private var saveError: String?
+    @State private var durationError: String?
+
+    /// Total allocated in splits (in minutes)
+    private var splitsTotalMinutes: Int { splits.reduce(0) { $0 + $1.minutes } }
+    private var splitsOverAllocated: Bool { showSplits && splits.count > 1 && splitsTotalMinutes > max(5, duration) }
+    private var canSave: Bool { duration >= 5 && !splitsOverAllocated }
 
     var body: some View {
         ScrollView {
@@ -33,6 +40,7 @@ struct ManualSessionView: View {
         }
         .frame(width: 420)
         .background(.background)
+        .saveErrorOverlay($saveError)
     }
 
     private var projectSection: some View {
@@ -70,14 +78,10 @@ struct ManualSessionView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Duration")
 
-            HStack(spacing: 8) {
-                ForEach([15, 25, 45, 60], id: \.self) { mins in
-                    DurationPresetButton(mins: mins, isSelected: duration == mins) {
-                        duration = mins
-                        startTime = Date().addingTimeInterval(TimeInterval(-mins * 60))
-                    }
-                }
-            }
+            DurationPresetRow(
+                presets: [15, 25, 45, 60],
+                selectedMinutes: $duration
+            )
 
             HStack(spacing: 8) {
                 Text("Custom")
@@ -91,15 +95,24 @@ struct ManualSessionView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-                    .onChange(of: duration) {
-                        startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
-                    }
 
                 Text("minutes")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+            .onChange(of: duration) {
+                startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
+                durationError = duration < 5 ? "Minimum duration is 5 minutes" : nil
+            }
+
+            if let durationError {
+                Label(durationError, systemImage: "exclamationmark.circle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .transition(.opacity)
+            }
         }
+        .animation(FFMotion.control, value: durationError)
     }
 
     private var whenSection: some View {
@@ -119,13 +132,7 @@ struct ManualSessionView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Focus Quality")
 
-            HStack(spacing: 6) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    MoodButton(mood: mood, isSelected: selectedMood == mood) {
-                        selectedMood = selectedMood == mood ? nil : mood
-                    }
-                }
-            }
+            MoodSelector(selectedMood: $selectedMood)
         }
     }
 
@@ -172,6 +179,19 @@ struct ManualSessionView: View {
                     splits: $splits
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
+
+                // Split total validation
+                if splits.count > 1 {
+                    let totalMin = max(5, duration)
+                    let allocatedMin = splitsTotalMinutes
+                    let allocationLabel = allocatedMin == totalMin
+                        ? "✓ \(allocatedMin) of \(totalMin) min allocated"
+                        : "\(allocatedMin) of \(totalMin) min allocated"
+                    Label(allocationLabel, systemImage: splitsOverAllocated ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(splitsOverAllocated ? Color.orange : Color.green)
+                        .animation(FFMotion.control, value: allocatedMin)
+                }
             }
         }
     }
@@ -194,7 +214,7 @@ struct ManualSessionView: View {
                 save()
                 dismiss()
             }
-            .disabled(duration < 5)
+            .disabled(!canSave)
         }
     }
 
@@ -218,81 +238,22 @@ struct ManualSessionView: View {
         session.achievement = achievement.isEmpty ? nil : achievement
         modelContext.insert(session)
 
+        // Save splits — skip zero/negative duration entries to prevent stat corruption
         if showSplits && splits.count > 1 {
             for entry in splits {
+                let splitSeconds = TimeInterval(entry.minutes * 60)
+                guard splitSeconds > 0 else { continue }
                 let timeSplit = TimeSplit(
                     project: entry.project,
                     customLabel: entry.customLabel.isEmpty ? nil : entry.customLabel,
-                    duration: TimeInterval(entry.minutes * 60)
+                    duration: splitSeconds
                 )
                 timeSplit.session = session
                 modelContext.insert(timeSplit)
             }
         }
 
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 }
 
-private struct DurationPresetButton: View {
-    let mins: Int
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        let label = Text("\(mins)m")
-            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-
-        if isSelected {
-            Button(action: action) { label }
-                .buttonStyle(.glassProminent)
-                .tint(.blue)
-                .buttonBorderShape(.capsule)
-        } else {
-            Button(action: action) { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-        }
-    }
-}
-
-private struct MoodButton: View {
-    let mood: FocusMood
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        if isSelected {
-            Button(action: action) { moodLabel }
-                .buttonStyle(.glassProminent)
-                .tint(moodColor)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-        } else {
-            Button(action: action) { moodLabel }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-        }
-    }
-
-    private var moodLabel: some View {
-        VStack(spacing: 2) {
-            Image(systemName: mood.icon)
-                .font(.system(size: 14))
-            Text(mood.rawValue)
-                .font(.system(size: 10))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-    }
-
-    private var moodColor: Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
-    }
-}

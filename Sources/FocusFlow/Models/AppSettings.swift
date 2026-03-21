@@ -18,10 +18,16 @@ final class AppSettings {
     // Integrations
     var calendarIntegrationEnabled: Bool = false
     var calendarName: String = "FocusFlow"
+    var selectedCalendarId: String = ""
+    var remindersIntegrationEnabled: Bool = false
+    var selectedReminderListId: String = ""
 
     // Focus Coach
     var antiProcrastinationEnabled: Bool = true
     var antiProcrastinationThresholdMinutes: Int = 5
+
+    // Smart defaults
+    var lastUsedProjectId: String? = nil
 
     init() {
         self.focusDuration = 25 * 60
@@ -35,6 +41,9 @@ final class AppSettings {
         self.dailyFocusGoal = 7200  // 120 min
         self.calendarIntegrationEnabled = false
         self.calendarName = "FocusFlow"
+        self.selectedCalendarId = ""
+        self.remindersIntegrationEnabled = false
+        self.selectedReminderListId = ""
         self.antiProcrastinationEnabled = true
         self.antiProcrastinationThresholdMinutes = 5
     }

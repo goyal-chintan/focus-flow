@@ -31,10 +31,10 @@ struct ProjectTimeBar: View {
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.xs, style: .continuous)
                         .fill(.primary.opacity(0.07))
 
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.xs, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [color.opacity(0.45), color],

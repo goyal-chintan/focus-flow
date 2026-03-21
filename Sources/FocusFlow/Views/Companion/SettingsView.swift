@@ -4,7 +4,19 @@ import ServiceManagement
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     @Query private var allSettings: [AppSettings]
+    @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
+    @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
+    @State private var isLoadingCalendars = false
+    @State private var calendarLoadError: String?
+    @State private var isLoadingReminderLists = false
+    @State private var reminderLoadError: String?
+    @State private var reminderAuthError: String?
+    @State private var saveError: String?
+    @State private var isEnablingCalendar = false
+    @State private var isEnablingReminders = false
+    @State private var showBlockingSheet = false
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
@@ -17,6 +29,7 @@ struct SettingsView: View {
                 behaviorSection
                 soundSection
                 goalsSection
+                blockingSection
                 integrationsSection
                 focusCoachSection
                 aboutSection
@@ -24,6 +37,15 @@ struct SettingsView: View {
             .padding(24)
         }
         .background(.ultraThinMaterial)
+        .saveErrorOverlay($saveError)
+        .onAppear {
+            if settings.calendarIntegrationEnabled {
+                Task { await loadCalendars() }
+            }
+            if settings.remindersIntegrationEnabled {
+                Task { await loadReminderLists() }
+            }
+        }
     }
 
     private var durationsSection: some View {
@@ -150,7 +172,7 @@ struct SettingsView: View {
     private var soundSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Sound", subtitle: "Choose the completion chime")
+                LiquidSectionHeader("Sound & Notifications", subtitle: "Completion chime and system alerts")
 
                 HStack {
                     Label("Completion sound", systemImage: "speaker.wave.2.fill")
@@ -176,9 +198,36 @@ struct SettingsView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+
+                // Notification permission banner — shown when denied
+                if !NotificationService.shared.isAuthorized {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Notifications are disabled")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+                            Text("FocusFlow can't alert you when sessions complete. Enable in System Settings → Notifications.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Open Settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!)
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                    }
+                    .padding(10)
+                    .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                }
             }
             .padding(16)
         }
+        .onAppear { NotificationService.shared.refreshAuthorizationStatus() }
     }
 
     private var aboutSection: some View {
@@ -189,6 +238,7 @@ struct SettingsView: View {
                 Image(systemName: "timer")
                     .font(.system(size: 36, weight: .light))
                     .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
 
                 VStack(spacing: 6) {
                     Text("FocusFlow")
@@ -250,6 +300,8 @@ struct SettingsView: View {
                         step: 15
                     )
                     .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                    .accessibilityLabel("Daily focus goal")
+                    .accessibilityValue("\(Int(settings.dailyFocusGoal / 60)) minutes")
 
                     HStack {
                         Text("30m")
@@ -266,6 +318,42 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Blocking
+
+    private var blockingSection: some View {
+        LiquidGlassPanel {
+            VStack(spacing: 14) {
+                LiquidSectionHeader("Blocking", subtitle: "Block distracting apps and websites during focus")
+
+                Button { showBlockingSheet = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "shield.checkered")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.blue)
+                        Text("Manage Blocking Profiles")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Text("Websites are blocked via system DNS. Apps are quit when a focus session starts.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(16)
+        }
+        .sheet(isPresented: $showBlockingSheet) {
+            BlockingSettingsView()
+        }
+    }
+
     // MARK: - Integrations
 
     private var integrationsSection: some View {
@@ -273,44 +361,449 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 LiquidSectionHeader("Integrations", subtitle: "Connect with Apple apps")
 
-                ToggleRow(
-                    label: "Record to Calendar",
-                    icon: "calendar.badge.clock",
-                    color: .red,
-                    isOn: Binding(
+                // Calendar toggle with auth flow
+                HStack(spacing: 12) {
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundStyle(.red)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 20)
+
+                    Text("Record to Calendar")
+                        .font(.subheadline)
+
+                    Spacer()
+
+                    calendarStatusBadge
+
+                    Toggle("", isOn: Binding(
                         get: { settings.calendarIntegrationEnabled },
-                        set: { settings.calendarIntegrationEnabled = $0; save() }
-                    )
-                )
+                        set: { newValue in
+                            if newValue {
+                                Task { await enableCalendarIntegration() }
+                            } else {
+                                settings.calendarIntegrationEnabled = false
+                                settings.selectedCalendarId = ""
+                                save()
+                            }
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .frame(width: 44)
+                    .accessibilityLabel("Record to Calendar")
+                }
 
                 if settings.calendarIntegrationEnabled {
-                    HStack {
-                        HStack(spacing: 8) {
-                            Image(systemName: "calendar")
-                                .foregroundStyle(.red)
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Calendar Name")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+                    calendarPickerSection
 
-                        Spacer()
-
-                        TextField("FocusFlow", text: Binding(
-                            get: { settings.calendarName },
-                            set: { settings.calendarName = $0 }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
-                        .font(.subheadline)
-                        .onSubmit { save() }
+                    // Sync scope explainer
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 1)
+                        Text("Calendar events are created when you complete or save a focus session. Sessions logged before enabling this integration are not retroactively synced.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .padding(.horizontal, 4)
                 }
+
+                remindersIntegrationSection
             }
             .padding(16)
             .animation(FFMotion.section, value: settings.calendarIntegrationEnabled)
         }
+    }
+
+    @ViewBuilder
+    private var calendarStatusBadge: some View {
+        let status = CalendarService.shared.authStatus
+        switch status {
+        case .authorized:
+            HStack(spacing: 4) {
+                Circle().fill(.green).frame(width: 6, height: 6)
+                Text("Connected")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.green)
+            }
+        case .denied:
+            HStack(spacing: 4) {
+                Circle().fill(.red).frame(width: 6, height: 6)
+                Text("Denied")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.red)
+            }
+        case .notDetermined:
+            EmptyView()
+        }
+    }
+
+    private var calendarPickerSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+
+            Text("Select which calendar to record sessions to:")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            if isLoadingCalendars {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Loading calendars...")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+            } else if let calendarLoadError {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(calendarLoadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.orange)
+
+                    Button("Retry Calendar Sync") {
+                        Task { await loadCalendars() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                }
+            } else if availableCalendars.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No calendars found.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+
+                    Button("Reload Calendars") {
+                        Task { await loadCalendars() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                }
+            } else {
+                ForEach(availableCalendars, id: \.source) { group in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.source)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .textCase(.uppercase)
+                            .padding(.top, 4)
+
+                        ForEach(group.calendars, id: \.id) { cal in
+                            calendarRow(cal, isSelected: settings.selectedCalendarId == cal.id)
+                        }
+                    }
+                }
+
+                // Option to create a dedicated FocusFlow calendar
+                Divider()
+                calendarRow((id: "__create_new__", title: "Create \"FocusFlow\" Calendar"),
+                            isSelected: settings.selectedCalendarId.isEmpty || settings.selectedCalendarId == "__create_new__")
+            }
+
+            // Discoverability hint — where to find events
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 1)
+                Text("Sessions appear with a 🎯 prefix in your selected calendar. Open Apple Calendar and make sure your calendar is checked in the sidebar.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 4)
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    @ViewBuilder
+    private var remindersStatusBadge: some View {
+        let status = RemindersService.shared.authStatus
+        switch status {
+        case .authorized:
+            HStack(spacing: 4) {
+                Circle().fill(.green).frame(width: 6, height: 6)
+                Text("Connected")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.green)
+            }
+        case .denied:
+            HStack(spacing: 4) {
+                Circle().fill(.red).frame(width: 6, height: 6)
+                Text("Denied")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.red)
+            }
+        case .notDetermined:
+            EmptyView()
+        }
+    }
+
+    private var remindersIntegrationSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+
+            HStack(spacing: 12) {
+                Image(systemName: "checklist")
+                    .foregroundStyle(.blue)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 20)
+
+                Text("Sync Reminders")
+                    .font(.subheadline)
+
+                Spacer()
+
+                remindersStatusBadge
+
+                Toggle("", isOn: Binding(
+                    get: { settings.remindersIntegrationEnabled },
+                    set: { newValue in
+                        if newValue {
+                            Task { await enableRemindersIntegration() }
+                        } else {
+                            settings.remindersIntegrationEnabled = false
+                            settings.selectedReminderListId = ""
+                            reminderAuthError = nil
+                            save()
+                        }
+                    }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .frame(width: 44)
+                .accessibilityLabel("Sync Reminders")
+            }
+
+            if settings.remindersIntegrationEnabled {
+                reminderPickerSection
+            }
+
+            if let reminderAuthError {
+                Label(reminderAuthError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
+
+            if let reminderLoadError {
+                Label(reminderLoadError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var reminderPickerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Default list for new reminders created in FocusFlow:")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("All incomplete reminders from every list are shown in the Calendar tab regardless of this selection.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+
+            if isLoadingReminderLists {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Loading reminder lists...")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+            } else if availableReminderLists.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No reminder lists found.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tertiary)
+
+                    Button("Reload Reminder Lists") {
+                        Task { await loadReminderLists() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                }
+            } else {
+                ForEach(availableReminderLists, id: \.id) { list in
+                    reminderListRow(list, isSelected: settings.selectedReminderListId == list.id)
+                }
+            }
+        }
+    }
+
+    private func reminderListRow(_ list: (id: String, title: String, source: String), isSelected: Bool) -> some View {
+        Button {
+            settings.selectedReminderListId = list.id
+            save()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(list.title)
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                    Text(list.source)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(list.title), \(isSelected ? "selected" : "not selected")")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private func calendarRow(_ cal: (id: String, title: String), isSelected: Bool) -> some View {
+        Button {
+            if cal.id == "__create_new__" {
+                settings.selectedCalendarId = ""
+                settings.calendarName = "FocusFlow"
+            } else {
+                settings.selectedCalendarId = cal.id
+                settings.calendarName = cal.title
+            }
+            save()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+
+                Text(cal.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(cal.title), \(isSelected ? "selected" : "not selected")")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private func enableCalendarIntegration() async {
+        guard !isEnablingCalendar else { return }
+        isEnablingCalendar = true
+        defer { isEnablingCalendar = false }
+        let wasCompanionVisible = isCompanionVisible
+        _ = await CalendarService.shared.requestAccess()
+        let isAuthorized = CalendarService.shared.authStatus == .authorized
+        if isAuthorized {
+            settings.calendarIntegrationEnabled = true
+            calendarLoadError = nil
+            save()
+            await loadCalendars()
+        } else {
+            settings.calendarIntegrationEnabled = false
+            availableCalendars = []
+            calendarLoadError = "FocusFlow needs Calendar access. Enable it in System Settings → Privacy & Security → Calendars."
+            save()
+        }
+        await ensureCompanionWindowIfNeeded(wasVisible: wasCompanionVisible)
+    }
+
+    private func loadCalendars() async {
+        guard settings.calendarIntegrationEnabled else {
+            isLoadingCalendars = false
+            calendarLoadError = nil
+            availableCalendars = []
+            return
+        }
+        guard CalendarService.shared.authStatus == .authorized else {
+            isLoadingCalendars = false
+            availableCalendars = []
+            calendarLoadError = "Calendar permission is not granted."
+            return
+        }
+        isLoadingCalendars = true
+        calendarLoadError = nil
+        availableCalendars = await CalendarService.shared.availableCalendars()
+        isLoadingCalendars = false
+        if availableCalendars.isEmpty {
+            calendarLoadError = "No writable calendars found in your connected accounts."
+        }
+    }
+
+    private func loadReminderLists() async {
+        guard settings.remindersIntegrationEnabled else {
+            isLoadingReminderLists = false
+            reminderLoadError = nil
+            availableReminderLists = []
+            return
+        }
+        guard RemindersService.shared.authStatus == .authorized else {
+            isLoadingReminderLists = false
+            availableReminderLists = []
+            reminderLoadError = "Reminders permission is not granted."
+            return
+        }
+        isLoadingReminderLists = true
+        reminderLoadError = nil
+        availableReminderLists = await RemindersService.shared.reminderLists()
+        isLoadingReminderLists = false
+        if availableReminderLists.isEmpty {
+            reminderLoadError = "No reminder lists are available for this account."
+            return
+        }
+
+        let selectedId = settings.selectedReminderListId
+        let isSelectedListValid = !selectedId.isEmpty && availableReminderLists.contains(where: { $0.id == selectedId })
+        if !isSelectedListValid, let first = availableReminderLists.first {
+            settings.selectedReminderListId = first.id
+            save()
+        }
+    }
+
+    private func enableRemindersIntegration() async {
+        guard !isEnablingReminders else { return }
+        isEnablingReminders = true
+        defer { isEnablingReminders = false }
+        let wasCompanionVisible = isCompanionVisible
+        _ = await RemindersService.shared.requestAccess()
+        let isAuthorized = RemindersService.shared.authStatus == .authorized
+        if isAuthorized {
+            settings.remindersIntegrationEnabled = true
+            reminderAuthError = nil
+            reminderLoadError = nil
+            save()
+            await loadReminderLists()
+        } else {
+            reminderAuthError = "FocusFlow needs Reminders access. Enable it in System Settings → Privacy & Security → Reminders."
+            settings.remindersIntegrationEnabled = false
+            availableReminderLists = []
+            save()
+        }
+        await ensureCompanionWindowIfNeeded(wasVisible: wasCompanionVisible)
+    }
+
+    private var isCompanionVisible: Bool {
+        NSApp.windows.contains { window in
+            guard !(window is NSPanel) else { return false }
+            if window.identifier?.rawValue == "stats" { return window.isVisible }
+            return window.title == "FocusFlow" && window.isVisible
+        }
+    }
+
+    @MainActor
+    private func ensureCompanionWindowIfNeeded(wasVisible: Bool) async {
+        guard wasVisible else { return }
+        try? await Task.sleep(for: .milliseconds(80))
+        guard !isCompanionVisible else { return }
+        openWindow(id: "stats")
     }
 
     // MARK: - Focus Coach
@@ -319,6 +812,19 @@ struct SettingsView: View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
                 LiquidSectionHeader("Focus Coach", subtitle: "Gentle nudges to stay productive")
+
+                // What it does — clear explanation before controls
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "brain.head.profile.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.indigo.opacity(0.8))
+                        .padding(.top, 1)
+                    Text("When you've been idle at your Mac without starting a session, FocusFlow sends a notification nudge to get you back into deep work.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 4)
 
                 ToggleRow(
                     label: "Anti-procrastination nudges",
@@ -336,9 +842,14 @@ struct SettingsView: View {
                             Image(systemName: "clock.badge.exclamationmark")
                                 .foregroundStyle(.indigo)
                                 .font(.system(size: 13, weight: .semibold))
-                            Text("Nudge after")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Nudge after idle time")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Text("Counts down when no session is active")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
 
                         Spacer()
@@ -363,7 +874,7 @@ struct SettingsView: View {
     }
 
     private func save() {
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

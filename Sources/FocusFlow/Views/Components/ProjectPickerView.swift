@@ -8,6 +8,7 @@ struct ProjectPickerView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showCreateSheet = false
     @State private var newProjectName = ""
+    @State private var saveError: String?
 
     private var projectColor: Color {
         guard let colorName = selectedProject?.color else { return LiquidDesignTokens.Spectral.electricBlue }
@@ -70,10 +71,12 @@ struct ProjectPickerView: View {
             .menuStyle(.borderlessButton)
             .buttonStyle(.glass)
             .buttonBorderShape(.roundedRectangle(radius: 12))
+            .accessibilityLabel("Project: \(selectedProject?.name ?? "No Project")")
         }
         .popover(isPresented: $showCreateSheet) {
             createProjectPopover
         }
+        .saveErrorOverlay($saveError)
     }
 
     private var createProjectPopover: some View {
@@ -122,7 +125,7 @@ struct ProjectPickerView: View {
         guard !name.isEmpty else { return }
         let project = Project(name: name)
         modelContext.insert(project)
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
         selectedProject = project
         newProjectName = ""
         showCreateSheet = false

@@ -32,11 +32,16 @@ struct TodayStatsView: View {
     }
 
     @State private var showManualEntry = false
+    @State private var dueReminders: [RemindersService.ReminderItem] = []
+    @State private var showLoggedToast = false
+
+    private var settings: AppSettings? { allSettings.first }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 headerSection
+                dueRemindersStrip
                 goalProgressBar
                 summarySection
 
@@ -57,6 +62,32 @@ struct TodayStatsView: View {
         .sheet(isPresented: $showManualEntry) {
             ManualSessionView()
         }
+        .onChange(of: showManualEntry) { wasShowing, isShowing in
+            // Sheet was dismissed — assume session was logged (no way to distinguish cancel)
+            if wasShowing && !isShowing {
+                withAnimation(FFMotion.section) { showLoggedToast = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    withAnimation(FFMotion.section) { showLoggedToast = false }
+                }
+            }
+        }
+        .overlay(alignment: .top) {
+            if showLoggedToast {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Session logged")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                .padding(.top, 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .task { await loadDueReminders() }
     }
 
     private var headerSection: some View {
@@ -117,6 +148,8 @@ struct TodayStatsView: View {
             }
         }
         .frame(height: 4)
+        .accessibilityLabel("Daily goal progress")
+        .accessibilityValue("\(Int(min(1.0, (totalFocusTime / 60) / (dailyGoal / 60)) * 100)) percent complete")
     }
 
     private var summarySection: some View {
@@ -145,6 +178,7 @@ struct TodayStatsView: View {
                 subtitle: currentStreak > 0 ? "Keep it going!" : nil
             )
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var averageSessionLength: Int {
@@ -207,7 +241,7 @@ struct TodayStatsView: View {
                             HStack(spacing: 5) {
                                 Image(systemName: entry.key.icon)
                                     .font(.caption)
-                                    .foregroundStyle(moodColor(entry.key))
+                                    .foregroundStyle(entry.key.color)
 
                                 Text("\(entry.value)")
                                     .font(.subheadline.weight(.semibold))
@@ -226,15 +260,20 @@ struct TodayStatsView: View {
 
                 let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
                 if !achievements.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(achievements.enumerated()), id: \.offset) { _, achievement in
+                    let allItems = achievements.flatMap { text in
+                        text.components(separatedBy: .newlines)
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(allItems.enumerated()), id: \.offset) { _, item in
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.green)
                                     .padding(.top, 2)
 
-                                Text(achievement)
+                                Text(item)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
@@ -266,15 +305,6 @@ struct TodayStatsView: View {
         let name: String
         let duration: TimeInterval
         let color: Color
-    }
-
-    private func moodColor(_ mood: FocusMood) -> Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
     }
 
     private var projectBreakdown: [ProjectItem] {
@@ -320,6 +350,85 @@ struct TodayStatsView: View {
         case "teal": return .teal
         case "mint": return .mint
         default: return .blue
+        }
+    }
+
+    // MARK: - Due Reminders Strip
+
+    @ViewBuilder
+    private var dueRemindersStrip: some View {
+        if settings?.remindersIntegrationEnabled == true, !dueReminders.isEmpty {
+            VStack(spacing: 6) {
+                ForEach(dueReminders.prefix(3)) { reminder in
+                    HStack(spacing: 10) {
+                        Button { completeReminder(reminder) } label: {
+                            Image(systemName: "circle")
+                                .font(.system(size: 16))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+
+                        Text(reminder.title)
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        if let due = reminder.dueDate {
+                            Text(due.formatted(.dateTime.hour().minute()))
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                }
+
+                if dueReminders.count > 3 {
+                    Text("\(dueReminders.count - 3) more in Calendar")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.blue)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
+    }
+
+    private func loadDueReminders() async {
+        guard settings?.remindersIntegrationEnabled == true else {
+            dueReminders = []
+            return
+        }
+        guard RemindersService.shared.authStatus == .authorized else {
+            dueReminders = []
+            return
+        }
+        let dayStart = Calendar.current.startOfDay(for: Date())
+        guard let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) else {
+            dueReminders = []
+            return
+        }
+        let listId = settings?.selectedReminderListId.isEmpty == true ? nil : settings?.selectedReminderListId
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(
+            listId: listId,
+            dueDateStarting: dayStart,
+            dueDateEnding: dayEnd
+        )
+        guard !Task.isCancelled else { return }
+        dueReminders = fetched
+    }
+
+    private func completeReminder(_ reminder: RemindersService.ReminderItem) {
+        Task {
+            let didComplete = await RemindersService.shared.completeReminder(identifier: reminder.id)
+            guard didComplete else { return }
+            withAnimation {
+                dueReminders.removeAll { $0.id == reminder.id }
+            }
         }
     }
 
