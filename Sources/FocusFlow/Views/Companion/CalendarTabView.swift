@@ -33,10 +33,10 @@ struct CalendarTabView: View {
         .animation(FFMotion.section, value: selectedDate)
         .animation(FFMotion.section, value: displayedMonth)
         .task { await loadReminders() }
-        .onChange(of: selectedDate) { _, _ in
+        .onChange(of: settings?.selectedReminderListId) { _, _ in
             Task { await loadReminders() }
         }
-        .onChange(of: settings?.selectedReminderListId) { _, _ in
+        .onChange(of: settings?.remindersIntegrationEnabled) { _, _ in
             Task { await loadReminders() }
         }
         .sheet(isPresented: $showReminderEditor) {

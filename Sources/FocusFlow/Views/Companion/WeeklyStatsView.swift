@@ -100,8 +100,10 @@ struct WeeklyStatsView: View {
         guard let idx = selectedDayIndex, idx < chartData.count else { return nil }
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let day = calendar.date(byAdding: .day, value: -(days - 1 - idx), to: today)!
-        let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
+        guard let day = calendar.date(byAdding: .day, value: -(days - 1 - idx), to: today),
+              let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
+            return nil
+        }
 
         let focusSessions = allSessions.filter { $0.type == .focus }
         var totalSeconds: TimeInterval = 0
@@ -254,9 +256,11 @@ struct WeeklyStatsView: View {
         let today = calendar.startOfDay(for: Date())
         let focusSessions = allSessions.filter { $0.type == .focus }
 
-        return (0..<days).map { offset in
-            let day = calendar.date(byAdding: .day, value: -(days - 1 - offset), to: today)!
-            let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
+        return (0..<days).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: -(days - 1 - offset), to: today),
+                  let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
+                return nil
+            }
             let total = focusSessions.reduce(0.0) { sum, session in
                 let sessionStart = session.startedAt
                 let sessionEnd = session.endedAt ?? sessionStart.addingTimeInterval(session.actualDuration)
@@ -300,7 +304,9 @@ struct WeeklyStatsView: View {
     private var peakHour: String {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today)!
+        guard let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else {
+            return "—"
+        }
         let focusSessions = allSessions.filter { session in
             session.type == .focus && session.startedAt >= periodStart
         }
@@ -310,7 +316,9 @@ struct WeeklyStatsView: View {
             hourBuckets[hour, default: 0] += session.actualDuration
         }
         guard let bestHour = hourBuckets.max(by: { $0.value < $1.value })?.key else { return "—" }
-        let date = calendar.date(from: DateComponents(hour: bestHour))!
+        guard let date = calendar.date(from: DateComponents(year: 2001, month: 1, day: 1, hour: bestHour)) else {
+            return "—"
+        }
         let formatter = DateFormatter()
         formatter.dateFormat = "ha"
         return formatter.string(from: date).lowercased()
@@ -321,14 +329,14 @@ struct WeeklyStatsView: View {
     private var periodSessionCount: Int {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today)!
+        guard let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else { return 0 }
         return allSessions.filter { $0.type == .focus && $0.startedAt >= periodStart }.count
     }
 
     private var periodCompletedCount: Int {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today)!
+        guard let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else { return 0 }
         return allSessions.filter { $0.type == .focus && $0.completed && $0.startedAt >= periodStart }.count
     }
 
@@ -345,8 +353,10 @@ struct WeeklyStatsView: View {
         var streak = 0
         var dayOffset = 0
         while true {
-            let day = calendar.date(byAdding: .day, value: -dayOffset, to: today)!
-            let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
+            guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: today),
+                  let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
+                break
+            }
             let hasFocus = allSessions.contains { session in
                 session.type == .focus && session.completed &&
                 session.startedAt >= day && session.startedAt < nextDay
