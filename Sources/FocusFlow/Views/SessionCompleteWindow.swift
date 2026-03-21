@@ -53,17 +53,19 @@ struct SessionCompleteWindowView: View {
 
     private var focusHeaderSection: some View {
         VStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: timerVM.isManualStop ? "stop.circle.fill" : "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
+                .foregroundStyle(timerVM.isManualStop
+                    ? LiquidDesignTokens.Spectral.salmon
+                    : LiquidDesignTokens.Spectral.primaryContainer)
                 .accessibilityHidden(true)
 
-            Text("Session Complete")
+            Text(timerVM.isManualStop ? "Session Ended Early" : "Session Complete")
                 .font(.system(size: 32, weight: .bold, design: .serif))
                 .italic()
 
             TrackedLabel(
-                text: "FocusFlow macOS Experience",
+                text: timerVM.isManualStop ? "Log what you accomplished" : "FocusFlow macOS Experience",
                 font: .system(size: 10, weight: .medium),
                 color: LiquidDesignTokens.Surface.onSurfaceMuted,
                 tracking: 2.0
@@ -272,8 +274,9 @@ struct SessionCompleteWindowView: View {
 
     private var focusActionsSection: some View {
         VStack(spacing: 12) {
+            // Primary CTA: Take a Break (always shown; label adapts for manual stop)
             GradientCTAButton(
-                title: "Take a Break",
+                title: timerVM.isManualStop ? "Save & Take a Break" : "Take a Break",
                 icon: "cup.and.saucer.fill",
                 gradient: LiquidDesignTokens.Gradient.breakStart
             ) {
@@ -281,54 +284,81 @@ struct SessionCompleteWindowView: View {
             }
 
             GlassEffectContainer {
-                HStack(spacing: 8) {
+                VStack(spacing: 8) {
+                    // Skip break / Continue
+                    HStack(spacing: 8) {
+                        Button {
+                            saveAndDismiss(action: .continueFocusing)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: timerVM.isManualStop ? "play.fill" : "forward.fill")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(timerVM.isManualStop ? "Save & Keep Going" : "Skip Break")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                    }
+
+                    // Continue in overtime (not shown for manual stop — session already ended)
+                    if !timerVM.isManualStop {
+                        Button {
+                            continueOvertimeAndDismiss()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Continue Focusing")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                    }
+
+                    // Finish / Save & Done
                     Button {
-                        saveAndDismiss(action: .continueFocusing)
+                        saveAndDismiss(action: .endSession)
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("Skip Break")
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 12, weight: .medium))
+                            Text(timerVM.isManualStop ? "Save & Done" : "Finish Session")
                                 .font(.system(size: 14, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 12)
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
-                }
-            }
+                    .tint(LiquidDesignTokens.Spectral.mint)
 
-            Button {
-                continueOvertimeAndDismiss()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Continue Focusing")
-                        .font(.system(size: 14, weight: .semibold))
+                    // Discard — only for manual stops (no reason to discard a naturally-completed session)
+                    if timerVM.isManualStop {
+                        Button {
+                            timerVM.discardManualStop()
+                            dismissWindow(id: "session-complete")
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11, weight: .medium))
+                                Text("Discard Session")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                        .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-
-            Button {
-                saveAndDismiss(action: .endSession)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("Finish Session")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-            .tint(LiquidDesignTokens.Spectral.mint)
         }
     }
 
