@@ -426,6 +426,7 @@ final class TimerViewModel {
         }
         // Too short to be worth a reflection window — just discard
         let elapsed = Date().timeIntervalSince(session.startedAt)
+        log("stopForReflection: elapsed=\(elapsed)s, openCompletionWindow set=\(openCompletionWindow != nil)")
         if elapsed < 60 {
             abandonSession()
             return
@@ -455,6 +456,7 @@ final class TimerViewModel {
 
         showSessionComplete = true
         openCompletionWindow?()
+        log("stopForReflection: showSessionComplete=\(showSessionComplete), openCompletionWindow called")
     }
 
     /// Called from SessionCompleteWindow "Discard" button after a manual stop.
