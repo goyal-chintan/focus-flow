@@ -16,11 +16,6 @@ struct MenuBarPopoverView: View {
                     timerVM.ensureConfigured(modelContext: modelContext)
                 }
             }
-            .onChange(of: timerVM.showSessionComplete) { _, newValue in
-                if newValue {
-                    openWindow(id: "session-complete")
-                }
-            }
             .onChange(of: timerVM.state) { _, _ in
                 showStopConfirmation = false
             }
