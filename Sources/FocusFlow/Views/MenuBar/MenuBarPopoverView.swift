@@ -278,7 +278,7 @@ struct MenuBarPopoverView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11))
                     .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                Text("Today's Total")
+                Text("TODAY'S TOTAL")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.8))
             }
@@ -922,9 +922,8 @@ private struct BreakPopoverContent: View {
             // Skip Break — native glass button
             Button(action: onSkipBreak) {
                 HStack(spacing: 6) {
-                    Text("SKIP BREAK")
+                    Text("Skip Break")
                         .font(.system(size: 13, weight: .medium))
-                        .tracking(1.5)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .medium))
                 }
