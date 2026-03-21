@@ -112,7 +112,6 @@ Sources/FocusFlow/
 └── Views/
     ├── MenuBar/
     │   ├── MenuBarPopoverView.swift    # Timer popover with controls
-    │   ├── SessionCompleteView.swift   # Completion flow (mood, achievement, splits)
     │   └── TimeSplitView.swift         # Split time across projects UI
     ├── Companion/
     │   ├── CompanionWindowView.swift   # Sidebar navigation
