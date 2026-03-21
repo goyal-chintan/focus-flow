@@ -394,6 +394,19 @@ struct SettingsView: View {
 
                 if settings.calendarIntegrationEnabled {
                     calendarPickerSection
+
+                    // Sync scope explainer
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 1)
+                        Text("Calendar events are created when you complete or save a focus session. Sessions logged before enabling this integration are not retroactively synced.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 4)
                 }
 
                 remindersIntegrationSection
@@ -681,6 +694,8 @@ struct SettingsView: View {
         isEnablingCalendar = true
         defer { isEnablingCalendar = false }
         let granted = await CalendarService.shared.requestAccess()
+        // Bring window to front after OS permission dialog dismisses
+        NSApp.activate(ignoringOtherApps: true)
         if granted {
             settings.calendarIntegrationEnabled = true
             calendarLoadError = nil
@@ -751,6 +766,8 @@ struct SettingsView: View {
         isEnablingReminders = true
         defer { isEnablingReminders = false }
         let granted = await RemindersService.shared.requestAccess()
+        // Bring window to front after OS permission dialog dismisses
+        NSApp.activate(ignoringOtherApps: true)
         if granted {
             settings.remindersIntegrationEnabled = true
             reminderAuthError = nil

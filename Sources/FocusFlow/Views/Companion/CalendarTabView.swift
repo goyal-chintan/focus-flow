@@ -527,53 +527,122 @@ struct CalendarTabView: View {
 
     @ViewBuilder
     private func reminderEditorSheet(isCreating: Bool) -> some View {
-        NavigationStack {
-            Form {
-                Section("Title") {
-                    TextField("Reminder title", text: $reminderDraftTitle)
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Text(isCreating ? "New Reminder" : "Edit Reminder")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    showReminderEditor = false
+                    showCreateReminder = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                 }
-                Section("Notes") {
-                    TextField("Details", text: $reminderDraftNotes, axis: .vertical)
-                        .lineLimit(3...6)
-                }
-                Section("Due") {
-                    DatePicker("Due Date", selection: $reminderDraftDueDate, displayedComponents: [.date, .hourAndMinute])
-                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel")
             }
-            .navigationTitle(isCreating ? "New Reminder" : "Edit Reminder")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        showReminderEditor = false
-                        showCreateReminder = false
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 20)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Title field
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("TITLE")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .kerning(1.5)
+
+                        TextField("e.g. Review pull requests", text: $reminderDraftTitle)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 15))
+                            .padding(12)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    // Notes field
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("NOTES")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .kerning(1.5)
+
+                        TextField("Add details (optional)", text: $reminderDraftNotes, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 14))
+                            .lineLimit(3...5)
+                            .padding(12)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    // Due date
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("DUE DATE")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .kerning(1.5)
+
+                        DatePicker("", selection: $reminderDraftDueDate, displayedComponents: [.date, .hourAndMinute])
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        if isCreating {
-                            _ = RemindersService.shared.createReminder(
-                                title: reminderDraftTitle,
-                                notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
-                                dueDate: reminderDraftDueDate,
-                                listId: settings?.selectedReminderListId
-                            )
-                        } else if let editingReminder {
-                            _ = RemindersService.shared.updateReminder(
-                                identifier: editingReminder.id,
-                                title: reminderDraftTitle,
-                                notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
-                                dueDate: reminderDraftDueDate
-                            )
-                        }
-                        showReminderEditor = false
-                        showCreateReminder = false
-                        Task { await loadReminders() }
-                    }
-                    .disabled(reminderDraftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
+
+            // Action buttons
+            Divider().opacity(0.3)
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel") {
+                    showReminderEditor = false
+                    showCreateReminder = false
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+
+                Button(isCreating ? "Add Reminder" : "Save Changes") {
+                    if isCreating {
+                        _ = RemindersService.shared.createReminder(
+                            title: reminderDraftTitle,
+                            notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
+                            dueDate: reminderDraftDueDate,
+                            listId: settings?.selectedReminderListId
+                        )
+                    } else if let editingReminder {
+                        _ = RemindersService.shared.updateReminder(
+                            identifier: editingReminder.id,
+                            title: reminderDraftTitle,
+                            notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
+                            dueDate: reminderDraftDueDate
+                        )
+                    }
+                    showReminderEditor = false
+                    showCreateReminder = false
+                    Task { await loadReminders() }
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.blue)
+                .buttonBorderShape(.capsule)
+                .disabled(reminderDraftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
         }
-        .frame(minWidth: 460, minHeight: 360)
+        .frame(width: 400)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var emptyDayView: some View {
@@ -689,26 +758,18 @@ struct CalendarTabView: View {
         isLoadingReminders = true
         remindersError = nil
         let listId = settings?.selectedReminderListId.isEmpty == true ? nil : settings?.selectedReminderListId
-        let dayStart = calendar.startOfDay(for: selectedDate)
-        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
-            remindersError = "Unable to resolve selected date."
-            reminders = []
-            isLoadingReminders = false
-            Self.logger.error("loadReminders failed: invalid day boundary")
-            return
-        }
-        let fetched = await RemindersService.shared.fetchIncompleteReminders(
-            listId: listId,
-            dueDateStarting: dayStart,
-            dueDateEnding: dayEnd
-        )
+        // Fetch ALL incomplete reminders — no date filter at the EventKit level.
+        // The UI groups them into Due Today / Upcoming / No Due Date client-side.
+        // Passing date constraints to EventKit's predicate silently excludes reminders
+        // with no due date and reminders due outside the selected window.
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(listId: listId)
         guard !Task.isCancelled else {
             Self.logger.debug("loadReminders cancelled before state update")
             return
         }
         reminders = fetched
         Self.logger.debug(
-            "loadReminders success: fetched=\(fetched.count, privacy: .public) selectedDate=\(dayStart.timeIntervalSince1970, privacy: .public) listIdProvided=\(listId != nil, privacy: .public)"
+            "loadReminders success: fetched=\(fetched.count, privacy: .public) listIdProvided=\(listId != nil, privacy: .public)"
         )
         isLoadingReminders = false
     }
