@@ -30,6 +30,11 @@ struct SessionCompleteWindowView: View {
         .onAppear {
             bringWindowToFront()
         }
+        .onDisappear {
+            if timerVM.isManualStop && timerVM.showSessionComplete {
+                timerVM.discardManualStop()
+            }
+        }
     }
 
     // MARK: - Focus Completion
@@ -371,7 +376,7 @@ struct SessionCompleteWindowView: View {
                 splits: showSplits ? splits : nil
             )
             await MainActor.run {
-                timerVM.showSessionComplete = false
+                timerVM.continueAfterCompletion(action: .continueFocusing)
                 dismissWindow(id: "session-complete")
             }
         }

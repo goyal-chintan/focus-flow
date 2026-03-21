@@ -43,7 +43,7 @@ final class NotificationService {
         let content = UNMutableNotificationContent()
         content.title = "Focus Session Complete!"
         content.body = "\(Int(duration / 60)) min of \(label) — tap the timer to review and log."
-        content.sound = .default
+        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: sound + ".aiff"))
         let request = UNNotificationRequest(identifier: "session-complete", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }

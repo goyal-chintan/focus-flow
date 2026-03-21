@@ -40,7 +40,7 @@ final class TimerViewModel {
     var pauseTimeString: String {
         let mins = Int(pauseElapsed) / 60
         let secs = Int(pauseElapsed) % 60
-        return String(format: "%d:%02d", mins, secs)
+        return String(format: "%02d:%02d", mins, secs)
     }
 
     enum PauseWarningLevel {
@@ -78,6 +78,7 @@ final class TimerViewModel {
     var showSessionComplete: Bool = false
     /// True when user manually stopped mid-session (vs natural timer completion).
     var isManualStop: Bool = false
+    var hasStaleBlocking: Bool = false
     var lastCompletedDuration: TimeInterval? = nil
     var lastCompletedLabel: String? = nil
     private(set) var lastCompletedSession: FocusSession? = nil
@@ -128,7 +129,7 @@ final class TimerViewModel {
     var overtimeTimeString: String {
         let mins = overtimeSeconds / 60
         let secs = overtimeSeconds % 60
-        return String(format: "+%d:%02d", mins, secs)
+        return String(format: "+%02d:%02d", mins, secs)
     }
 
     var isRunning: Bool {
@@ -168,6 +169,10 @@ final class TimerViewModel {
         // banner accurately reflects whether notifications are enabled.
         Task { @MainActor in
             NotificationService.shared.refreshAuthorizationStatus()
+        }
+        if BlockingHelper.isBlockingActive() {
+            hasStaleBlocking = true
+            log("WARNING: Stale website blocking detected from previous crash")
         }
         scheduleMidnightRefresh()
         log("configure() complete")
@@ -530,6 +535,7 @@ final class TimerViewModel {
             }
         }
         BlockingService.shared.deactivate()
+        hasStaleBlocking = false
     }
 
     // MARK: - Timer
@@ -750,8 +756,6 @@ final class TimerViewModel {
 
         showSessionComplete = false
         isManualStop = false
-        currentSession = nil
-        lastCompletedSession = nil
 
         switch action {
         case .continueFocusing:
@@ -763,5 +767,8 @@ final class TimerViewModel {
             state = .idle
             loadTodayStats()
         }
+
+        currentSession = nil
+        lastCompletedSession = nil
     }
 }

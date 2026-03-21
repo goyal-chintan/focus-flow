@@ -25,6 +25,7 @@ struct CalendarTabView: View {
     @State private var showReminderEditor = false
     @State private var showCreateReminder = false
     @State private var reminderLoadTask: Task<Void, Never>?
+    @State private var completingReminderId: String? = nil
 
     private var calendar: Calendar { Calendar.current }
     private var settings: AppSettings? { allSettings.first }
@@ -480,17 +481,30 @@ struct CalendarTabView: View {
     private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
         HStack(spacing: 10) {
             Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    completingReminderId = reminder.id
+                }
                 Task {
+                    try? await Task.sleep(for: .milliseconds(400))
                     let didComplete = RemindersService.shared.completeReminder(identifier: reminder.id)
-                    guard didComplete else { return }
+                    guard didComplete else {
+                        await MainActor.run {
+                            completingReminderId = nil
+                        }
+                        return
+                    }
                     await loadReminders()
+                    await MainActor.run {
+                        completingReminderId = nil
+                    }
                 }
             } label: {
-                Image(systemName: "circle")
+                Image(systemName: completingReminderId == reminder.id ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(completingReminderId == reminder.id ? .green : .secondary)
+                    .scaleEffect(completingReminderId == reminder.id ? 1.2 : 1.0)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
             .accessibilityLabel("Mark reminder complete")
 
             VStack(alignment: .leading, spacing: 2) {
@@ -529,6 +543,7 @@ struct CalendarTabView: View {
             .accessibilityLabel("Edit reminder")
         }
         .padding(.vertical, 4)
+        .transition(.asymmetric(insertion: .identity, removal: .slide.combined(with: .opacity)))
     }
 
     @ViewBuilder
