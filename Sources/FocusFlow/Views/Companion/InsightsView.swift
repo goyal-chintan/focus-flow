@@ -449,13 +449,13 @@ struct InsightsView: View {
                                 .overlay {
                                     if isSelected && item.totalMinutes > 0 {
                                         Text("\(Int(item.totalMinutes))m")
-                                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                                            .font(.system(size: 9, weight: .bold, design: .rounded))
                                             .foregroundStyle(.white)
                                     }
                                 }
 
                             Text(item.label)
-                                .font(.system(size: 8, weight: .medium, design: .rounded))
+                                .font(.system(size: 9, weight: .medium, design: .rounded))
                                 .foregroundStyle(isSelected ? .primary : .tertiary)
                                 .lineLimit(1)
                         }

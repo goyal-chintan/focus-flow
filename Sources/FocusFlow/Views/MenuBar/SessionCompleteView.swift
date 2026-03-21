@@ -62,7 +62,7 @@ struct SessionCompleteView: View {
         .padding(.vertical, 8)
 
         if selectedMood == mood {
-            Button { selectedMood = mood } label: { label }
+            Button { selectedMood = nil } label: { label }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.roundedRectangle(radius: 12))
         } else {
