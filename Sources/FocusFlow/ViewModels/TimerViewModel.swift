@@ -314,8 +314,10 @@ final class TimerViewModel {
 
     func startBreak() {
         guard let settings, !isOvertime else { return }
+        // Guard against zero/negative sessionsBeforeLongBreak to prevent division-by-zero
+        let sessionsPerCycle = max(1, settings.sessionsBeforeLongBreak)
         let isLongBreak = completedFocusSessions > 0
-            && (completedFocusSessions % settings.sessionsBeforeLongBreak) == 0
+            && (completedFocusSessions % sessionsPerCycle) == 0
         let type: SessionType = isLongBreak ? .longBreak : .shortBreak
         let duration = isLongBreak ? settings.longBreakDuration : settings.shortBreakDuration
 
@@ -339,13 +341,28 @@ final class TimerViewModel {
         startPauseTimer()
     }
 
+    /// Maximum single session duration: 4 hours (prevents runaway extension)
+    private static let maxSessionSeconds: TimeInterval = 4 * 60 * 60
+
     func extendTimer(by seconds: TimeInterval = 300) {
         guard state == .focusing, !isOvertime else { return }
         // Don't allow reducing below 60 seconds remaining
         if seconds < 0 && remainingSeconds + seconds < 60 { return }
+        // Don't allow extending beyond 4-hour ceiling
+        if seconds > 0 && totalSeconds + seconds > Self.maxSessionSeconds { return }
         remainingSeconds += seconds
         totalSeconds += seconds
         currentSession?.duration += seconds
+    }
+
+    /// True when -5min button can act (more than 5m + 60s buffer remaining)
+    var canReduceTime: Bool {
+        state == .focusing && !isOvertime && remainingSeconds > 360
+    }
+
+    /// True when +5min button can act (not at the 4-hour ceiling)
+    var canExtendTime: Bool {
+        state == .focusing && !isOvertime && totalSeconds + 300 <= Self.maxSessionSeconds
     }
 
     func resume() {
@@ -637,13 +654,15 @@ final class TimerViewModel {
         session.mood = mood
         session.achievement = achievement
 
-        // Save splits if provided
+        // Save splits if provided — skip zero/negative durations to prevent stat corruption
         if let splits, !splits.isEmpty, splits.count > 1 {
             for split in splits {
+                let splitSeconds = TimeInterval(split.minutes * 60)
+                guard splitSeconds > 0 else { continue }
                 let timeSplit = TimeSplit(
                     project: split.project,
                     customLabel: split.customLabel.isEmpty ? nil : split.customLabel,
-                    duration: TimeInterval(split.minutes * 60)
+                    duration: splitSeconds
                 )
                 timeSplit.session = session
                 modelContext?.insert(timeSplit)

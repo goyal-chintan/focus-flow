@@ -6,6 +6,8 @@ struct ProjectsListView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
+    @Query(filter: #Predicate<Project> { $0.archived }, sort: \Project.createdAt)
+    private var archivedProjects: [Project]
 
     @State private var selectedProject: Project?
     @State private var showingAddSheet = false
@@ -16,6 +18,7 @@ struct ProjectsListView: View {
     @State private var formBlockProfile: BlockProfile?
     @State private var projectToArchive: Project?
     @State private var saveError: String?
+    @State private var showArchivedSection = false
 
     var body: some View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
@@ -63,7 +66,7 @@ struct ProjectsListView: View {
                 projectToArchive = nil
             }
         } message: {
-            Text("This will hide the project and its sessions from active views. You can restore it later.")
+            Text("This will hide the project from active views. You can restore it from the Archived Projects section below.")
         }
     }
 
@@ -125,6 +128,10 @@ struct ProjectsListView: View {
             }
 
             rosterSection
+
+            if !archivedProjects.isEmpty {
+                archivedSection
+            }
         }
     }
 
@@ -315,6 +322,79 @@ struct ProjectsListView: View {
                 selectedProject = savedProject
             }
         }
+    }
+
+    // MARK: - Archived Projects
+
+    private var archivedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(FFMotion.section) { showArchivedSection.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "archivebox")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Archived Projects (\(archivedProjects.count))")
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Image(systemName: showArchivedSection ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Toggle archived projects")
+
+            if showArchivedSection {
+                LiquidGlassPanel(cornerRadius: 12) {
+                    VStack(spacing: 0) {
+                        ForEach(archivedProjects) { project in
+                            archivedRow(project)
+                            if project.id != archivedProjects.last?.id {
+                                Divider().opacity(0.3)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func archivedRow(_ project: Project) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: project.icon ?? "folder.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(colorFromName(project.color).opacity(0.7))
+                .frame(width: 28, height: 28)
+
+            Text(project.name)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                withAnimation(FFMotion.section) {
+                    project.archived = false
+                    saveWithFeedback(modelContext, errorBinding: $saveError)
+                    if selectedProject == nil {
+                        selectedProject = project
+                    }
+                }
+            } label: {
+                Label("Restore", systemImage: "arrow.uturn.backward")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.blue)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Restore \(project.name)")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Helpers

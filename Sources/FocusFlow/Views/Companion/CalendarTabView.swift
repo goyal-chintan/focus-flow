@@ -341,21 +341,39 @@ struct CalendarTabView: View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
                 LiquidSectionHeader("Reminders", subtitle: remindersSubtitle) {
-                    Button {
-                        reminderDraftTitle = ""
-                        reminderDraftNotes = ""
-                        reminderDraftDueDate = selectedDate
-                        showCreateReminder = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .semibold))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
+                    HStack(spacing: 6) {
+                        // Manual refresh button — important after granting OS permissions
+                        Button {
+                            reminderLoadTask?.cancel()
+                            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 30, height: 30)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .disabled(!(settings?.remindersIntegrationEnabled ?? false) || isLoadingReminders)
+                        .accessibilityLabel("Refresh reminders")
+                        .help("Refresh reminders")
+
+                        Button {
+                            reminderDraftTitle = ""
+                            reminderDraftNotes = ""
+                            reminderDraftDueDate = selectedDate
+                            showCreateReminder = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(width: 30, height: 30)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .disabled(!(settings?.remindersIntegrationEnabled ?? false))
+                        .accessibilityLabel("Create reminder")
                     }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
-                    .disabled(!(settings?.remindersIntegrationEnabled ?? false))
-                    .accessibilityLabel("Create reminder")
                 }
 
                 if !(settings?.remindersIntegrationEnabled ?? false) {
