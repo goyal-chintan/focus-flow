@@ -328,9 +328,6 @@ struct MenuBarPopoverView: View {
 private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
-    @Binding var blockUntilGoalMet: Bool
-    let todayFocusTime: TimeInterval
-    let dailyFocusGoal: TimeInterval
     let onStartFocus: () -> Void
 
     @State private var showCustomSlider: Bool = false
@@ -358,55 +355,6 @@ private struct IdlePopoverContent: View {
             durationPillSelector
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
-
-            // Block until goal toggle — shows when project has a blocking profile
-            if selectedProject?.blockProfile != nil {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Image(systemName: blockUntilGoalMet ? "shield.checkered" : "shield")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(blockUntilGoalMet ? .green : .secondary)
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Block until daily goal met")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.primary)
-                            let goalMins = Int(dailyFocusGoal / 60)
-                            let doneMins = Int(min(todayFocusTime, dailyFocusGoal) / 60)
-                            Text("\(doneMins) of \(goalMins) min focused today")
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundStyle(todayFocusTime >= dailyFocusGoal ? .green : .secondary)
-                                .monospacedDigit()
-                        }
-
-                        Spacer()
-
-                        Toggle("", isOn: $blockUntilGoalMet)
-                            .toggleStyle(.switch)
-                            .scaleEffect(0.75)
-                            .frame(width: 40)
-                            .accessibilityLabel("Block until daily goal met")
-                    }
-
-                    // Explanation — only show when enabled so it doesn't clutter
-                    if blockUntilGoalMet {
-                        HStack(alignment: .top, spacing: 5) {
-                            Image(systemName: "info.circle")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 1)
-                            Text("Keeps \(selectedProject?.blockProfile?.name ?? "blocking") active between sessions until your daily goal is reached.")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                }
-                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 8)
-                .animation(FFMotion.control, value: blockUntilGoalMet)
-            }
 
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -992,9 +940,6 @@ extension MenuBarPopoverView {
         return IdlePopoverContent(
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
-            blockUntilGoalMet: $vm.blockUntilGoalMet,
-            todayFocusTime: timerVM.todayFocusTime,
-            dailyFocusGoal: timerVM.settings?.dailyFocusGoal ?? 7200,
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
