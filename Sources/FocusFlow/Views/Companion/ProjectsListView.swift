@@ -120,27 +120,37 @@ struct ProjectsListView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 12) {
             Spacer()
 
             Image(systemName: "folder.badge.plus")
-                .font(.system(size: 52, weight: .ultraLight))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
-            VStack(spacing: 8) {
-                Text("No projects yet")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("Create a project to categorize\nand route your focus sessions.")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
+            Text("No projects yet")
+                .font(.headline)
+            Text("Create your first project to organize your focus sessions")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Button {
+                resetForm()
+                editingProject = nil
+                showingAddSheet = true
+            } label: {
+                Label("Create Project", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: 200)
+                    .padding(.vertical, 12)
             }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .padding(.top, 4)
 
             Spacer()
         }
+        .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

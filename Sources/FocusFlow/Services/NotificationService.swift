@@ -1,19 +1,53 @@
 import UserNotifications
 import AppKit
+import Combine
 
 @MainActor
-final class NotificationService {
+final class NotificationService: ObservableObject {
+    enum AuthorizationState: Equatable {
+        case notDetermined
+        case denied
+        case authorized
+    }
+
     static let shared = NotificationService()
     private init() {}
 
-    /// Whether the user has authorized notifications. Checked on demand.
-    private(set) var isAuthorized: Bool = false
+    @Published private(set) var authorizationState: AuthorizationState = .notDetermined
+    var isAuthorized: Bool { authorizationState == .authorized }
+
+    nonisolated static func authorizationState(for status: UNAuthorizationStatus) -> AuthorizationState {
+        switch status {
+        case .authorized, .provisional:
+            return .authorized
+        case .denied:
+            return .denied
+        case .notDetermined:
+            return .notDetermined
+        @unknown default:
+            return .denied
+        }
+    }
 
     func requestPermission() {
-        guard Bundle.main.bundleIdentifier != nil else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
-            Task { @MainActor [weak self] in
-                self?.isAuthorized = granted
+        guard Bundle.main.bundleIdentifier != nil else {
+            print("[NotificationService] No bundle identifier — notifications unavailable")
+            authorizationState = .denied
+            return
+        }
+        if authorizationState == .denied {
+            refreshAuthorizationStatus()
+            return
+        }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, error in
+            if let error {
+                print("[NotificationService] Auth request failed: \(error.localizedDescription)")
+            }
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                let state = Self.authorizationState(for: settings.authorizationStatus)
+                DispatchQueue.main.async {
+                    self?.authorizationState = state
+                }
             }
         }
     }
@@ -21,10 +55,9 @@ final class NotificationService {
     /// Refresh cached auth status — call from Settings on appear.
     func refreshAuthorizationStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            // Extract value type before crossing concurrency boundary (avoids Sendable error)
-            let authorized = settings.authorizationStatus == .authorized
-            Task { @MainActor [weak self] in
-                self?.isAuthorized = authorized
+            let state = Self.authorizationState(for: settings.authorizationStatus)
+            DispatchQueue.main.async {
+                self?.authorizationState = state
             }
         }
     }
@@ -45,7 +78,11 @@ final class NotificationService {
         content.body = "\(Int(duration / 60)) min of \(label) — tap the timer to review and log."
         content.sound = .default
         let request = UNNotificationRequest(identifier: "session-complete", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     func sendPauseWarning(minutes: Int) {
@@ -56,7 +93,11 @@ final class NotificationService {
         content.body = "You've been paused for \(minutes) minutes. Ready to get back to it?"
         content.sound = .default
         let request = UNNotificationRequest(identifier: "pause-warning", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     func sendPauseCritical(minutes: Int) {
@@ -67,7 +108,11 @@ final class NotificationService {
         content.body = "You've been paused for \(minutes) minutes. Consider resuming or ending the session."
         content.sound = UNNotificationSound.defaultCritical
         let request = UNNotificationRequest(identifier: "pause-critical", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     func sendBreakWarning(minutes: Int) {
@@ -78,7 +123,11 @@ final class NotificationService {
         content.body = "You've been on break for \(minutes) minutes. Ready to get back to focusing?"
         content.sound = .default
         let request = UNNotificationRequest(identifier: "break-warning", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     func sendBreakCritical(minutes: Int) {
@@ -89,7 +138,11 @@ final class NotificationService {
         content.body = "You've been on break for \(minutes) minutes. Time to get back to work!"
         content.sound = UNNotificationSound.defaultCritical
         let request = UNNotificationRequest(identifier: "break-critical", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func send(title: String, body: String, sound: String) {
@@ -98,9 +151,13 @@ final class NotificationService {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: sound + ".aiff"))
+        content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
     }
 
     func sendGenericNotification(title: String, body: String, sound: String) {

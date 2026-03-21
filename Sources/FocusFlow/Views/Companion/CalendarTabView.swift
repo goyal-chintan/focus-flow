@@ -25,6 +25,8 @@ struct CalendarTabView: View {
     @State private var showReminderEditor = false
     @State private var showCreateReminder = false
     @State private var reminderLoadTask: Task<Void, Never>?
+    @State private var completingReminderId: String? = nil
+    @State private var needsReminderRefresh = false
 
     private var calendar: Calendar { Calendar.current }
     private var settings: AppSettings? { allSettings.first }
@@ -35,12 +37,14 @@ struct CalendarTabView: View {
             VStack(spacing: 20) {
                 headerSection
                 monthGridSection
+                    .animation(FFMotion.section, value: selectedDate)
+                    .animation(FFMotion.section, value: displayedMonth)
                 dayDetailSection
                 remindersSection
             }
             .padding(24)
         }
-        .background(.ultraThinMaterial)
+        .background(Color.clear)
         .onAppear {
             Self.logger.debug("Calendar tab appeared. remindersEnabled=\(self.settings?.remindersIntegrationEnabled == true, privacy: .public) selectedListEmpty=\(self.settings?.selectedReminderListId.isEmpty ?? true, privacy: .public)")
         }
@@ -48,16 +52,22 @@ struct CalendarTabView: View {
         // or when permission is just granted — EventKit posts this automatically).
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
             guard settings?.remindersIntegrationEnabled == true else { return }
-            reminderLoadTask?.cancel()
-            reminderLoadTask = Task { @MainActor in
-                // Coalesce noisy EventKit change bursts into one reload.
-                try? await Task.sleep(for: .milliseconds(180))
-                guard !Task.isCancelled else { return }
-                await loadRemindersInternal()
+            // Mark that a refresh is needed; the periodic timer will pick it up
+            needsReminderRefresh = true
+        }
+        .task(id: settings?.remindersIntegrationEnabled) {
+            guard settings?.remindersIntegrationEnabled == true else { return }
+            // Periodic graceful refresh every 30 seconds
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled else { break }
+                guard settings?.remindersIntegrationEnabled == true else { break }
+                if needsReminderRefresh {
+                    needsReminderRefresh = false
+                    await refreshRemindersGracefully()
+                }
             }
         }
-        .animation(FFMotion.section, value: selectedDate)
-        .animation(FFMotion.section, value: displayedMonth)
         .task { await loadReminders() }
         .onChange(of: settings?.remindersIntegrationEnabled) { _, _ in
             reminderLoadTask?.cancel()
@@ -164,7 +174,7 @@ struct CalendarTabView: View {
                     ForEach(Array(calendar.shortWeekdaySymbols.enumerated()), id: \.offset) { _, day in
                         Text(day)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -173,7 +183,7 @@ struct CalendarTabView: View {
                 // Day grid
                 let weeks = monthWeeks
                 ForEach(weeks.indices, id: \.self) { weekIdx in
-                    HStack(spacing: 0) {
+                    HStack(spacing: 2) {
                         ForEach(weeks[weekIdx]) { cell in
                             if let date = cell.date {
                                 dayCell(date)
@@ -210,9 +220,9 @@ struct CalendarTabView: View {
             if hasSessions {
                 Circle()
                     .fill(intensityColor(goalProgress))
-                    .frame(width: 6, height: 6)
+                    .frame(width: 7, height: 7)
             } else {
-                Color.clear.frame(width: 6, height: 6)
+                Color.clear.frame(width: 7, height: 7)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 44)
@@ -220,9 +230,14 @@ struct CalendarTabView: View {
             if isSelected {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(LiquidDesignTokens.Spectral.primaryContainer)
+                    .shadow(color: LiquidDesignTokens.Spectral.primaryContainer.opacity(0.3), radius: 6)
             } else if isToday {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.4), lineWidth: 1.5)
+                    .fill(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.6), lineWidth: 2)
+                    )
             }
         }
         .contentShape(Rectangle())
@@ -235,10 +250,10 @@ struct CalendarTabView: View {
     }
 
     private func intensityColor(_ progress: Double) -> Color {
-        let safeProgress = progress.isFinite ? max(0, progress) : 0
-        if safeProgress >= 1.0 { return Color(hex: 0x3DA86A) }
-        if safeProgress >= 0.5 { return Color(hex: 0x3DA86A).opacity(0.6) }
-        return Color(hex: 0x3DA86A).opacity(0.3)
+        let p = min(max(progress.isFinite ? progress : 0, 0), 1)
+        if p >= 1.0 { return Color.green }
+        if p >= 0.5 { return Color.green.opacity(0.7) }
+        return Color.green.opacity(0.4)
     }
 
     // MARK: - Calendar Math
@@ -457,7 +472,7 @@ struct CalendarTabView: View {
         VStack(alignment: .leading, spacing: 6) {
             TrackedLabel(
                 text: title.uppercased(),
-                font: .system(size: 9, weight: .semibold),
+                font: .system(size: 10, weight: .bold),
                 color: labelColor,
                 tracking: 1.4
             )
@@ -480,17 +495,33 @@ struct CalendarTabView: View {
     private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
         HStack(spacing: 10) {
             Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    completingReminderId = reminder.id
+                }
                 Task {
-                    let didComplete = await RemindersService.shared.completeReminder(identifier: reminder.id)
-                    guard didComplete else { return }
-                    await loadReminders()
+                    try? await Task.sleep(for: .milliseconds(400))
+                    let didComplete = RemindersService.shared.completeReminder(identifier: reminder.id)
+                    guard didComplete else {
+                        await MainActor.run {
+                            completingReminderId = nil
+                        }
+                        return
+                    }
+                    await MainActor.run {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            reminders.removeAll { $0.id == reminder.id }
+                        }
+                        needsReminderRefresh = true
+                        completingReminderId = nil
+                    }
                 }
             } label: {
-                Image(systemName: "checkmark.circle")
+                Image(systemName: completingReminderId == reminder.id ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(completingReminderId == reminder.id ? .green : .secondary)
+                    .scaleEffect(completingReminderId == reminder.id ? 1.2 : 1.0)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.green)
             .accessibilityLabel("Mark reminder complete")
 
             VStack(alignment: .leading, spacing: 2) {
@@ -502,7 +533,7 @@ struct CalendarTabView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                     if let due = reminder.dueDate {
-                        Text(due.formatted(.dateTime.hour().minute()))
+                        Text(formattedReminderDate(due))
                             .font(.system(size: 11, weight: .medium, design: .rounded))
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
@@ -528,7 +559,11 @@ struct CalendarTabView: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel("Edit reminder")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(8)
+        .transition(.asymmetric(insertion: .identity, removal: .slide.combined(with: .opacity)))
     }
 
     @ViewBuilder
@@ -638,7 +673,7 @@ struct CalendarTabView: View {
                 Button(isCreating ? "Add Reminder" : "Save Changes") {
                     Task {
                         if isCreating {
-                            let id = await RemindersService.shared.createReminder(
+                            let id = RemindersService.shared.createReminder(
                                 title: reminderDraftTitle,
                                 notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
                                 dueDate: reminderDraftDueDate,
@@ -658,7 +693,7 @@ struct CalendarTabView: View {
                         }
 
                         guard let editingReminder else { return }
-                        let ok = await RemindersService.shared.updateReminder(
+                        let ok = RemindersService.shared.updateReminder(
                             identifier: editingReminder.id,
                             title: reminderDraftTitle,
                             notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
@@ -781,6 +816,47 @@ struct CalendarTabView: View {
         return max(0, minutes)
     }
 
+    /// Formats a reminder due date intelligently:
+    /// - If the time is midnight (00:00), show date only (the reminder has no specific time)
+    /// - If today, show just the time
+    /// - Otherwise show short date + time
+    private func formattedReminderDate(_ date: Date) -> String {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.hour, .minute], from: date)
+        let isMidnight = comps.hour == 0 && comps.minute == 0
+        let isToday = cal.isDateInToday(date)
+        let isTomorrow = cal.isDateInTomorrow(date)
+
+        if isMidnight {
+            if isToday { return "Today" }
+            if isTomorrow { return "Tomorrow" }
+            return date.formatted(.dateTime.month(.abbreviated).day())
+        }
+        if isToday { return date.formatted(.dateTime.hour().minute()) }
+        if isTomorrow { return "Tomorrow \(date.formatted(.dateTime.hour().minute()))" }
+        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
+
+    private func refreshRemindersGracefully() async {
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(
+            listId: settings?.selectedReminderListId
+        )
+        guard !Task.isCancelled else { return }
+
+        let oldIds = Set(reminders.map(\.id))
+        let newIds = Set(fetched.map(\.id))
+
+        // Only animate if there are actual changes
+        if oldIds != newIds {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                reminders = fetched
+            }
+        } else {
+            // No visible change — update silently (e.g., due date changes)
+            reminders = fetched
+        }
+    }
 
     private func loadReminders() async {
         reminderLoadTask?.cancel()
@@ -808,10 +884,9 @@ struct CalendarTabView: View {
         isLoadingReminders = true
         remindersError = nil
         defer { isLoadingReminders = false }
-        // Fetch from ALL reminder lists — selectedReminderListId is only used when
-        // CREATING new reminders, not as a display filter. Filtering here would hide
-        // the user's reminders that live in other lists.
-        let fetched = await RemindersService.shared.fetchIncompleteReminders()
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(
+            listId: settings?.selectedReminderListId
+        )
         guard !Task.isCancelled else {
             Self.logger.debug("loadReminders cancelled before state update")
             return
