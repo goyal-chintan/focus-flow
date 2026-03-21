@@ -363,25 +363,33 @@ struct SessionCompleteWindowView: View {
     }
 
     private func continueOvertimeAndDismiss() {
-        timerVM.saveReflection(
-            mood: selectedMood,
-            achievement: achievement.isEmpty ? nil : achievement,
-            reminderIdsToComplete: selectedReminderItems.map(\.id),
-            splits: showSplits ? splits : nil
-        )
-        timerVM.showSessionComplete = false
-        dismissWindow(id: "session-complete")
+        Task {
+            await timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
+            await MainActor.run {
+                timerVM.showSessionComplete = false
+                dismissWindow(id: "session-complete")
+            }
+        }
     }
 
     private func saveAndDismiss(action: PostCompletionAction) {
-        timerVM.saveReflection(
-            mood: selectedMood,
-            achievement: achievement.isEmpty ? nil : achievement,
-            reminderIdsToComplete: selectedReminderItems.map(\.id),
-            splits: showSplits ? splits : nil
-        )
-        timerVM.continueAfterCompletion(action: action)
-        dismissWindow(id: "session-complete")
+        Task {
+            await timerVM.saveReflection(
+                mood: selectedMood,
+                achievement: achievement.isEmpty ? nil : achievement,
+                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                splits: showSplits ? splits : nil
+            )
+            await MainActor.run {
+                timerVM.continueAfterCompletion(action: action)
+                dismissWindow(id: "session-complete")
+            }
+        }
     }
 
     // MARK: - Break Completion

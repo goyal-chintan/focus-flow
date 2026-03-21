@@ -4,6 +4,7 @@ import ServiceManagement
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     @Query private var allSettings: [AppSettings]
     @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
     @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
@@ -39,10 +40,10 @@ struct SettingsView: View {
         .saveErrorOverlay($saveError)
         .onAppear {
             if settings.calendarIntegrationEnabled {
-                loadCalendars()
+                Task { await loadCalendars() }
             }
             if settings.remindersIntegrationEnabled {
-                loadReminderLists()
+                Task { await loadReminderLists() }
             }
         }
     }
@@ -462,7 +463,7 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
 
                     Button("Retry Calendar Sync") {
-                        loadCalendars()
+                        Task { await loadCalendars() }
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
@@ -474,7 +475,7 @@ struct SettingsView: View {
                         .foregroundStyle(.tertiary)
 
                     Button("Reload Calendars") {
-                        loadCalendars()
+                        Task { await loadCalendars() }
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
@@ -620,7 +621,7 @@ struct SettingsView: View {
                         .foregroundStyle(.tertiary)
 
                     Button("Reload Reminder Lists") {
-                        loadReminderLists()
+                        Task { await loadReminderLists() }
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
@@ -698,27 +699,24 @@ struct SettingsView: View {
         guard !isEnablingCalendar else { return }
         isEnablingCalendar = true
         defer { isEnablingCalendar = false }
-        let granted = await CalendarService.shared.requestAccess()
-        // Wait for the OS permission dialog to fully dismiss before re-activating.
-        // Without this delay, NSApp.activate fires while the dialog is still animating out,
-        // causing the companion window to flash (disappear then reappear).
-        try? await Task.sleep(for: .milliseconds(400))
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) })?.makeKeyAndOrderFront(nil)
-        if granted {
+        let wasCompanionVisible = isCompanionVisible
+        _ = await CalendarService.shared.requestAccess()
+        let isAuthorized = CalendarService.shared.authStatus == .authorized
+        if isAuthorized {
             settings.calendarIntegrationEnabled = true
             calendarLoadError = nil
             save()
-            loadCalendars()
+            await loadCalendars()
         } else {
             settings.calendarIntegrationEnabled = false
             availableCalendars = []
             calendarLoadError = "FocusFlow needs Calendar access. Enable it in System Settings → Privacy & Security → Calendars."
             save()
         }
+        await ensureCompanionWindowIfNeeded(wasVisible: wasCompanionVisible)
     }
 
-    private func loadCalendars() {
+    private func loadCalendars() async {
         guard settings.calendarIntegrationEnabled else {
             isLoadingCalendars = false
             calendarLoadError = nil
@@ -733,14 +731,14 @@ struct SettingsView: View {
         }
         isLoadingCalendars = true
         calendarLoadError = nil
-        availableCalendars = CalendarService.shared.availableCalendars()
+        availableCalendars = await CalendarService.shared.availableCalendars()
         isLoadingCalendars = false
         if availableCalendars.isEmpty {
             calendarLoadError = "No writable calendars found in your connected accounts."
         }
     }
 
-    private func loadReminderLists() {
+    private func loadReminderLists() async {
         guard settings.remindersIntegrationEnabled else {
             isLoadingReminderLists = false
             reminderLoadError = nil
@@ -755,7 +753,7 @@ struct SettingsView: View {
         }
         isLoadingReminderLists = true
         reminderLoadError = nil
-        availableReminderLists = RemindersService.shared.reminderLists()
+        availableReminderLists = await RemindersService.shared.reminderLists()
         isLoadingReminderLists = false
         if availableReminderLists.isEmpty {
             reminderLoadError = "No reminder lists are available for this account."
@@ -774,25 +772,38 @@ struct SettingsView: View {
         guard !isEnablingReminders else { return }
         isEnablingReminders = true
         defer { isEnablingReminders = false }
-        let granted = await RemindersService.shared.requestAccess()
-        // Wait for the OS permission dialog to fully dismiss before re-activating.
-        // Without this delay, NSApp.activate fires while the dialog is still animating out,
-        // causing the companion window to flash (disappear then reappear).
-        try? await Task.sleep(for: .milliseconds(400))
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) })?.makeKeyAndOrderFront(nil)
-        if granted {
+        let wasCompanionVisible = isCompanionVisible
+        _ = await RemindersService.shared.requestAccess()
+        let isAuthorized = RemindersService.shared.authStatus == .authorized
+        if isAuthorized {
             settings.remindersIntegrationEnabled = true
             reminderAuthError = nil
             reminderLoadError = nil
             save()
-            loadReminderLists()
+            await loadReminderLists()
         } else {
             reminderAuthError = "FocusFlow needs Reminders access. Enable it in System Settings → Privacy & Security → Reminders."
             settings.remindersIntegrationEnabled = false
             availableReminderLists = []
             save()
         }
+        await ensureCompanionWindowIfNeeded(wasVisible: wasCompanionVisible)
+    }
+
+    private var isCompanionVisible: Bool {
+        NSApp.windows.contains { window in
+            guard !(window is NSPanel) else { return false }
+            if window.identifier?.rawValue == "stats" { return window.isVisible }
+            return window.title == "FocusFlow" && window.isVisible
+        }
+    }
+
+    @MainActor
+    private func ensureCompanionWindowIfNeeded(wasVisible: Bool) async {
+        guard wasVisible else { return }
+        try? await Task.sleep(for: .milliseconds(80))
+        guard !isCompanionVisible else { return }
+        openWindow(id: "stats")
     }
 
     // MARK: - Focus Coach
