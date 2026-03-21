@@ -155,7 +155,12 @@ struct TimerRingView: View {
         .frame(width: ringSize + 6, height: ringSize + 6)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(timeString)")
-        .accessibilityValue(state == .idle ? "Ready" : "\(Int(progress * 100)) percent complete")
+        .accessibilityValue({
+            if isOvertime {
+                return "Overtime, session complete"
+            }
+            return state == .idle ? "Ready" : "\(Int(min(progress, 1.0) * 100)) percent complete"
+        }())
         .onChange(of: isActive, initial: true) { _, active in
             if active {
                 withAnimation(FFMotion.breathing) {

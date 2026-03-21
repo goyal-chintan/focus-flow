@@ -41,7 +41,7 @@ struct ReminderSelectionSheet: View {
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: selectedIds.contains(reminder.id) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedIds.contains(reminder.id) ? .blue : .secondary)
+                                    .foregroundStyle(selectedIds.contains(reminder.id) ? LiquidDesignTokens.Spectral.primaryContainer : .secondary)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(reminder.title)
                                         .font(.system(size: 13, weight: .medium))

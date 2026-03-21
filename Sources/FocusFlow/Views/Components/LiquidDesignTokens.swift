@@ -43,11 +43,14 @@ enum LiquidDesignTokens {
 
     // MARK: - Corner Radius (Continuous Squircle)
     enum CornerRadius {
+        static let xs: CGFloat = 4       // progress bars, small chips
+        static let sm: CGFloat = 8       // small components, text fields
+        static let md: CGFloat = 10      // medium containers
         static let control: CGFloat = 12
         static let picker: CGFloat = 14
         static let card: CGFloat = 16
-        static let panel: CGFloat = 20
         static let cta: CGFloat = 18
+        static let panel: CGFloat = 20
         static let ring: CGFloat = 9999
     }
 
@@ -79,7 +82,9 @@ enum LiquidDesignTokens {
     enum Padding {
         static let popoverHorizontal: CGFloat = 24
         static let controlVertical: CGFloat = 12
+        static let controlHorizontal: CGFloat = 14
         static let cardPadding: CGFloat = 16
+        static let cardPaddingSmall: CGFloat = 12
     }
 
     // MARK: - Ghost Border (Never opaque)

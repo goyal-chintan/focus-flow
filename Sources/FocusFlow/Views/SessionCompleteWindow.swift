@@ -298,7 +298,8 @@ struct SessionCompleteWindowView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glassProminent)
+                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
                     .buttonBorderShape(.capsule)
 
                     Button {
@@ -313,8 +314,7 @@ struct SessionCompleteWindowView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                    .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
                 }
             }
