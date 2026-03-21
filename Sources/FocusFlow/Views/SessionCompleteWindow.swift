@@ -134,11 +134,34 @@ struct SessionCompleteWindowView: View {
             )
 
             TextField("Log your wins — one per line...", text: $achievement, axis: .vertical)
-                .lineLimit(3...6)
+                .lineLimit(4...8)
                 .textFieldStyle(.plain)
                 .padding(10)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+
+            if !achievement.isEmpty {
+                achievementPreview
+            }
         }
+    }
+
+    private var achievementPreview: some View {
+        let items = achievement.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                HStack(alignment: .top, spacing: 6) {
+                    Text("•")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.mint)
+                    Text(item.trimmingCharacters(in: .whitespaces))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .transition(.opacity)
+        .animation(FFMotion.control, value: achievement)
     }
 
     private var splitSection: some View {

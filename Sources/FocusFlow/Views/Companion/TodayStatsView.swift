@@ -226,15 +226,20 @@ struct TodayStatsView: View {
 
                 let achievements = reflectedSessions.compactMap(\.achievement).filter { !$0.isEmpty }
                 if !achievements.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(achievements.enumerated()), id: \.offset) { _, achievement in
+                    let allItems = achievements.flatMap { text in
+                        text.components(separatedBy: .newlines)
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(allItems.enumerated()), id: \.offset) { _, item in
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.green)
                                     .padding(.top, 2)
 
-                                Text(achievement)
+                                Text(item)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
