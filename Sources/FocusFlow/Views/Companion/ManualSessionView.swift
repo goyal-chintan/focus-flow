@@ -16,6 +16,12 @@ struct ManualSessionView: View {
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
+    @State private var durationError: String?
+
+    /// Total allocated in splits (in minutes)
+    private var splitsTotalMinutes: Int { splits.reduce(0) { $0 + $1.minutes } }
+    private var splitsOverAllocated: Bool { showSplits && splits.count > 1 && splitsTotalMinutes > max(5, duration) }
+    private var canSave: Bool { duration >= 5 && !splitsOverAllocated }
 
     var body: some View {
         ScrollView {
@@ -94,10 +100,19 @@ struct ManualSessionView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+            .onChange(of: duration) {
+                startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
+                durationError = duration < 5 ? "Minimum duration is 5 minutes" : nil
+            }
+
+            if let durationError {
+                Label(durationError, systemImage: "exclamationmark.circle.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .transition(.opacity)
+            }
         }
-        .onChange(of: duration) {
-            startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
-        }
+        .animation(FFMotion.control, value: durationError)
     }
 
     private var whenSection: some View {
@@ -164,6 +179,19 @@ struct ManualSessionView: View {
                     splits: $splits
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
+
+                // Split total validation
+                if splits.count > 1 {
+                    let totalMin = max(5, duration)
+                    let allocatedMin = splitsTotalMinutes
+                    let allocationLabel = allocatedMin == totalMin
+                        ? "✓ \(allocatedMin) of \(totalMin) min allocated"
+                        : "\(allocatedMin) of \(totalMin) min allocated"
+                    Label(allocationLabel, systemImage: splitsOverAllocated ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(splitsOverAllocated ? Color.orange : Color.green)
+                        .animation(FFMotion.control, value: allocatedMin)
+                }
             }
         }
     }
@@ -186,7 +214,7 @@ struct ManualSessionView: View {
                 save()
                 dismiss()
             }
-            .disabled(duration < 5)
+            .disabled(!canSave)
         }
     }
 
@@ -210,12 +238,15 @@ struct ManualSessionView: View {
         session.achievement = achievement.isEmpty ? nil : achievement
         modelContext.insert(session)
 
+        // Save splits — skip zero/negative duration entries to prevent stat corruption
         if showSplits && splits.count > 1 {
             for entry in splits {
+                let splitSeconds = TimeInterval(entry.minutes * 60)
+                guard splitSeconds > 0 else { continue }
                 let timeSplit = TimeSplit(
                     project: entry.project,
                     customLabel: entry.customLabel.isEmpty ? nil : entry.customLabel,
-                    duration: TimeInterval(entry.minutes * 60)
+                    duration: splitSeconds
                 )
                 timeSplit.session = session
                 modelContext.insert(timeSplit)

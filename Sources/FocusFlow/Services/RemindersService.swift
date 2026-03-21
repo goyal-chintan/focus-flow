@@ -110,6 +110,8 @@ final class RemindersService {
             calendars: calendars
         )
 
+        // EventKit's fetchReminders always calls its completion handler (with nil on failure),
+        // so withCheckedContinuation won't hang. The nil case returns [] via the ?? guard.
         let data: [ReminderData] = await withCheckedContinuation { continuation in
             store.fetchReminders(matching: predicate) { result in
                 let mapped = (result ?? []).map { reminder in
