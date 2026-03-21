@@ -706,7 +706,7 @@ struct SettingsView: View {
             settings.calendarIntegrationEnabled = true
             calendarLoadError = nil
             save()
-            await loadCalendars()
+            loadCalendars()
         } else {
             settings.calendarIntegrationEnabled = false
             availableCalendars = []
@@ -716,7 +716,7 @@ struct SettingsView: View {
         await ensureCompanionWindowIfNeeded(wasVisible: wasCompanionVisible)
     }
 
-    private func loadCalendars() async {
+    private func loadCalendars() {
         guard settings.calendarIntegrationEnabled else {
             isLoadingCalendars = false
             calendarLoadError = nil
@@ -731,14 +731,14 @@ struct SettingsView: View {
         }
         isLoadingCalendars = true
         calendarLoadError = nil
-        availableCalendars = await CalendarService.shared.availableCalendars()
+        availableCalendars = CalendarService.shared.availableCalendars()
         isLoadingCalendars = false
         if availableCalendars.isEmpty {
             calendarLoadError = "No writable calendars found in your connected accounts."
         }
     }
 
-    private func loadReminderLists() async {
+    private func loadReminderLists() {
         guard settings.remindersIntegrationEnabled else {
             isLoadingReminderLists = false
             reminderLoadError = nil
@@ -753,7 +753,7 @@ struct SettingsView: View {
         }
         isLoadingReminderLists = true
         reminderLoadError = nil
-        availableReminderLists = await RemindersService.shared.reminderLists()
+        availableReminderLists = RemindersService.shared.reminderLists()
         isLoadingReminderLists = false
         if availableReminderLists.isEmpty {
             reminderLoadError = "No reminder lists are available for this account."
@@ -780,7 +780,7 @@ struct SettingsView: View {
             reminderAuthError = nil
             reminderLoadError = nil
             save()
-            await loadReminderLists()
+            loadReminderLists()
         } else {
             reminderAuthError = "FocusFlow needs Reminders access. Enable it in System Settings → Privacy & Security → Reminders."
             settings.remindersIntegrationEnabled = false

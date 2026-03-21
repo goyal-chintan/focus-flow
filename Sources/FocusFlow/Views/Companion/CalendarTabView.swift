@@ -481,7 +481,7 @@ struct CalendarTabView: View {
         HStack(spacing: 10) {
             Button {
                 Task {
-                    let didComplete = await RemindersService.shared.completeReminder(identifier: reminder.id)
+                    let didComplete = RemindersService.shared.completeReminder(identifier: reminder.id)
                     guard didComplete else { return }
                     await loadReminders()
                 }
@@ -638,7 +638,7 @@ struct CalendarTabView: View {
                 Button(isCreating ? "Add Reminder" : "Save Changes") {
                     Task {
                         if isCreating {
-                            let id = await RemindersService.shared.createReminder(
+                            let id = RemindersService.shared.createReminder(
                                 title: reminderDraftTitle,
                                 notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
                                 dueDate: reminderDraftDueDate,
@@ -658,7 +658,7 @@ struct CalendarTabView: View {
                         }
 
                         guard let editingReminder else { return }
-                        let ok = await RemindersService.shared.updateReminder(
+                        let ok = RemindersService.shared.updateReminder(
                             identifier: editingReminder.id,
                             title: reminderDraftTitle,
                             notes: reminderDraftNotes.isEmpty ? nil : reminderDraftNotes,
