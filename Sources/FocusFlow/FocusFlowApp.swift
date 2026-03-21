@@ -15,10 +15,18 @@ struct FocusFlowApp: App {
             return try ModelContainer(for: schema, configurations: config)
         } catch {
             print("⚠️ FocusFlow: Failed to open store with migration — \(error). Creating fresh container.")
-            let fallbackConfig = ModelConfiguration(schema: schema)
-            // swiftlint:disable:next force_try
-            return (try? ModelContainer(for: schema, configurations: fallbackConfig))
-                ?? (try! ModelContainer())
+            do {
+                let fallbackConfig = ModelConfiguration(schema: schema)
+                return try ModelContainer(for: schema, configurations: fallbackConfig)
+            } catch {
+                print("⚠️ FocusFlow: Fallback container also failed — \(error). Using in-memory store.")
+                let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                do {
+                    return try ModelContainer(for: schema, configurations: inMemoryConfig)
+                } catch {
+                    fatalError("FocusFlow: Cannot create any ModelContainer — \(error)")
+                }
+            }
         }
     }()
 
@@ -28,9 +36,6 @@ struct FocusFlowApp: App {
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
                 .background(CompletionWindowLauncher(timerVM: timerVM))
-                .onAppear {
-                    AppUsageTracker.shared.start(timerVM: timerVM, modelContext: container.mainContext)
-                }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: menuBarIconName)

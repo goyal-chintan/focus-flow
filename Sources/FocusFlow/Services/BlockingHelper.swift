@@ -13,7 +13,11 @@ struct BlockingHelper {
 
     /// Install the helper script once (creates with proper permissions)
     static func installHelperIfNeeded() {
-        try? FileManager.default.createDirectory(atPath: helperDir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(atPath: helperDir, withIntermediateDirectories: true)
+        } catch {
+            print("[BlockingHelper] Failed to create helper directory: \(error.localizedDescription)")
+        }
 
         // Always overwrite to keep it current
         let script = """
@@ -53,9 +57,17 @@ struct BlockingHelper {
                 ;;
         esac
         """
-        try? script.write(toFile: helperPath, atomically: true, encoding: .utf8)
+        do {
+            try script.write(toFile: helperPath, atomically: true, encoding: .utf8)
+        } catch {
+            print("[BlockingHelper] Failed to write helper script: \(error.localizedDescription)")
+        }
         // Make executable
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperPath)
+        do {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helperPath)
+        } catch {
+            print("[BlockingHelper] Failed to set helper script permissions: \(error.localizedDescription)")
+        }
         installAskpassIfNeeded()
     }
 
@@ -149,8 +161,16 @@ struct BlockingHelper {
         text returned of promptResult
         APPLESCRIPT
         """
-        try? script.write(toFile: askpassPath, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: askpassPath)
+        do {
+            try script.write(toFile: askpassPath, atomically: true, encoding: .utf8)
+        } catch {
+            print("[BlockingHelper] Failed to write askpass script: \(error.localizedDescription)")
+        }
+        do {
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: askpassPath)
+        } catch {
+            print("[BlockingHelper] Failed to set askpass script permissions: \(error.localizedDescription)")
+        }
     }
 
     private static func ensureSudoSession() -> Bool {
