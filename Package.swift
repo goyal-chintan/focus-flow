@@ -12,6 +12,11 @@ let package = Package(
             resources: [
                 .process("Assets.xcassets")
             ]
+        ),
+        .testTarget(
+            name: "FocusFlowTests",
+            dependencies: ["FocusFlow"],
+            path: "Tests/FocusFlowTests"
         )
     ]
 )

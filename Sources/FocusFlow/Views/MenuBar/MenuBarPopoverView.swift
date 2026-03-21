@@ -72,48 +72,56 @@ struct MenuBarPopoverView: View {
         .animation(FFMotion.section, value: timerVM.state)
     }
 
-    // MARK: - Header Bar (focusing, paused, break only)
+    // MARK: - Header Bar (focusing, paused, break, overtime)
 
     @ViewBuilder
     private var headerBar: some View {
         switch timerVM.state {
         case .focusing, .paused, .onBreak:
-            HStack {
-                Spacer()
-                HStack(spacing: 12) {
-                    Button {
-                        openWindow(id: "stats")
-                        NSApplication.shared.activate(ignoringOtherApps: true)
-                    } label: {
-                        Image(systemName: "chart.bar.fill")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+            headerBarContent
+        case .idle:
+            if timerVM.isOvertime {
+                headerBarContent
+            } else {
+                EmptyView()
             }
-            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-            .padding(.top, 16)
-            .padding(.bottom, 4)
-        default:
-            EmptyView()
         }
     }
 
-    // MARK: - Active Context (focusing only)
+    private var headerBarContent: some View {
+        HStack {
+            Spacer()
+            HStack(spacing: 12) {
+                Button {
+                    openWindow(id: "stats")
+                    NSApplication.shared.activate(ignoringOtherApps: true)
+                } label: {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+        .padding(.top, 16)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Active Context (focusing + overtime)
 
     @ViewBuilder
     private var activeContextSection: some View {
@@ -132,6 +140,21 @@ struct MenuBarPopoverView: View {
             }
             .padding(.top, 12)
             .padding(.bottom, 4)
+        } else if timerVM.isOvertime {
+            VStack(spacing: 3) {
+                TrackedLabel(
+                    text: "Overtime",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    color: Color(hex: 0x3DA86A),
+                    tracking: 1.8
+                )
+                Text(timerVM.selectedProject?.name ?? "Focus")
+                    .font(LiquidDesignTokens.Typography.headlineMedium)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .lineLimit(1)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 4)
         }
     }
 
@@ -140,30 +163,34 @@ struct MenuBarPopoverView: View {
     private var timerHeroSection: some View {
         TimerRingView(
             progress: timerVM.progress,
-            timeString: timerVM.state == .idle ? defaultTimeString : timerVM.timeString,
+            timeString: timerVM.isOvertime ? timerVM.overtimeTimeString : (timerVM.state == .idle ? defaultTimeString : timerVM.timeString),
             label: stateLabel,
             state: timerVM.state,
             isOvertime: timerVM.isOvertime,
             pauseDuration: timerVM.pauseElapsed,
             pauseTimeString: timerVM.pauseTimeString
         )
-        .padding(.top, timerVM.state == .idle ? 20 : 10)
-        .padding(.bottom, timerVM.state == .idle ? 8 : 4)
+        .padding(.top, (timerVM.state == .idle && !timerVM.isOvertime) ? 20 : 10)
+        .padding(.bottom, (timerVM.state == .idle && !timerVM.isOvertime) ? 8 : 4)
     }
 
     // MARK: - State Section
 
     @ViewBuilder
     private var stateSection: some View {
-        switch timerVM.state {
-        case .idle:
-            idleContent
-        case .focusing:
-            focusingContent
-        case .paused:
-            pausedContent
-        case .onBreak:
-            breakContent
+        if timerVM.isOvertime {
+            overtimeContent
+        } else {
+            switch timerVM.state {
+            case .idle:
+                idleContent
+            case .focusing:
+                focusingContent
+            case .paused:
+                pausedContent
+            case .onBreak:
+                breakContent
+            }
         }
     }
 
@@ -249,15 +276,16 @@ struct MenuBarPopoverView: View {
     // MARK: - Helpers
 
     private var stateLabel: String {
+        if timerVM.isOvertime { return "Overtime" }
         switch timerVM.state {
         case .idle:
-            "Focus Session"
+            return "Focus Session"
         case .focusing:
-            "Remaining"
+            return "Remaining"
         case .paused:
-            "Focus Paused"
+            return "Focus Paused"
         case .onBreak(let type):
-            type.displayName
+            return type.displayName
         }
     }
 
@@ -272,12 +300,13 @@ struct MenuBarPopoverView: View {
 private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
+    @Binding var blockUntilGoalMet: Bool
 
     let onStartFocus: () -> Void
 
     @State private var showCustomSlider: Bool = false
 
-    private static let presetMinutes: [Int] = [15, 25, 30, 45]
+    private static let presetMinutes: [Int] = [1, 5, 15, 25]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -300,6 +329,28 @@ private struct IdlePopoverContent: View {
             durationPillSelector
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
+
+            // Block until goal toggle
+            if selectedProject?.blockProfile != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: blockUntilGoalMet ? "shield.checkered" : "shield")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(blockUntilGoalMet ? .green : .secondary)
+
+                    Text("Block until daily goal met")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Toggle("", isOn: $blockUntilGoalMet)
+                        .toggleStyle(.switch)
+                        .scaleEffect(0.75)
+                        .frame(width: 40)
+                }
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 8)
+            }
 
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -374,7 +425,7 @@ private struct IdlePopoverContent: View {
         Slider(value: Binding(
             get: { Double(selectedMinutes) },
             set: { selectedMinutes = Int($0) }
-        ), in: 5...120, step: 1)
+        ), in: 1...120, step: 1)
         .tint(LiquidDesignTokens.Spectral.primaryContainer)
     }
 
@@ -426,6 +477,7 @@ private struct FocusingPopoverContent: View {
     let projectName: String?
     let onPause: () -> Void
     let onExtendTime: () -> Void
+    let onReduceTime: () -> Void
     let onShowStopConfirmation: () -> Void
     let onSaveStop: () -> Void
     let onDiscardStop: () -> Void
@@ -462,8 +514,8 @@ private struct FocusingPopoverContent: View {
             }
             .padding(.top, 14)
 
-            // +5m Extension button
-            extensionButton
+            // -5/+5 min Extension buttons
+            extensionButtons
 
             if showStopConfirmation {
                 stopConfirmation
@@ -475,19 +527,34 @@ private struct FocusingPopoverContent: View {
         .padding(.bottom, 12)
     }
 
-    private var extensionButton: some View {
-        Button(action: onExtendTime) {
-            HStack(spacing: 6) {
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("+5 Minutes")
-                    .font(.system(size: 13, weight: .medium))
+    private var extensionButtons: some View {
+        HStack(spacing: 8) {
+            Button(action: onReduceTime) {
+                HStack(spacing: 4) {
+                    Image(systemName: "minus")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("5 min")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+
+            Button(action: onExtendTime) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("5 min")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.capsule)
     }
 
     private var nextUpCard: some View {
@@ -706,25 +773,124 @@ private struct PausedPopoverContent: View {
     }
 }
 
+// MARK: - Overtime State
+
+private struct OvertimePopoverContent: View {
+    @Binding var selectedProject: Project?
+    let overtimeString: String
+    let onTakeBreak: () -> Void
+    let onSkipBreak: () -> Void
+    let onFinishSession: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            // Overtime badge
+            HStack(spacing: 6) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(hex: 0x3DA86A))
+                Text(overtimeString)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(hex: 0x3DA86A))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color(hex: 0x3DA86A).opacity(0.12))
+            )
+
+            // Action buttons
+            GlassEffectContainer {
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button(action: onTakeBreak) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "cup.and.saucer.fill")
+                                    .font(.system(size: 11))
+                                Text("Take a Break")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+
+                        Button(action: onSkipBreak) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 11))
+                                Text("Skip Break")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                    }
+
+                    Button(action: onFinishSession) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Finish Session")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(LiquidDesignTokens.Spectral.mint)
+                    .buttonBorderShape(.capsule)
+                }
+            }
+
+            // Next session project picker
+            VStack(spacing: 6) {
+                HStack {
+                    TrackedLabel(
+                        text: "Next Session Project",
+                        font: .system(size: 10, weight: .medium),
+                        tracking: 1.8
+                    )
+                    Spacer()
+                }
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+
+                ProjectPickerView(selectedProject: $selectedProject)
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+            }
+        }
+        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+        .padding(.bottom, 12)
+    }
+}
+
 // MARK: - Break State
 
 private struct BreakPopoverContent: View {
-    let projectName: String?
+    @Binding var selectedProject: Project?
     let onSkipBreak: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
-            // Next session context
-            VStack(spacing: 3) {
-                TrackedLabel(
-                    text: "Next Session",
-                    tracking: 2.0
-                )
-                if let projectName {
-                    Text("Project: \(projectName)")
-                        .font(LiquidDesignTokens.Typography.headlineMedium)
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+            // Next session project picker
+            VStack(spacing: 6) {
+                HStack {
+                    TrackedLabel(
+                        text: "Next Session Project",
+                        font: .system(size: 10, weight: .medium),
+                        tracking: 1.8
+                    )
+                    Spacer()
                 }
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+
+                ProjectPickerView(selectedProject: $selectedProject)
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             }
             .padding(.top, 8)
 
@@ -755,6 +921,7 @@ extension MenuBarPopoverView {
         return IdlePopoverContent(
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
+            blockUntilGoalMet: $vm.blockUntilGoalMet,
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
@@ -770,6 +937,9 @@ extension MenuBarPopoverView {
             onPause: { timerVM.pause() },
             onExtendTime: {
                 timerVM.extendTimer()
+            },
+            onReduceTime: {
+                timerVM.extendTimer(by: -300)
             },
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
@@ -798,9 +968,28 @@ extension MenuBarPopoverView {
     }
 
     fileprivate var breakContent: some View {
-        BreakPopoverContent(
-            projectName: timerVM.selectedProject?.name,
+        @Bindable var vm = timerVM
+        return BreakPopoverContent(
+            selectedProject: $vm.selectedProject,
             onSkipBreak: { timerVM.skipBreak() }
+        )
+        .transition(.opacity)
+    }
+
+    fileprivate var overtimeContent: some View {
+        @Bindable var vm = timerVM
+        return OvertimePopoverContent(
+            selectedProject: $vm.selectedProject,
+            overtimeString: timerVM.overtimeTimeString,
+            onTakeBreak: {
+                timerVM.continueAfterCompletion(action: .takeBreak)
+            },
+            onSkipBreak: {
+                timerVM.continueAfterCompletion(action: .continueFocusing)
+            },
+            onFinishSession: {
+                timerVM.continueAfterCompletion(action: .endSession)
+            }
         )
         .transition(.opacity)
     }
