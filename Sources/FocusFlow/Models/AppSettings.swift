@@ -26,6 +26,9 @@ final class AppSettings {
     var antiProcrastinationEnabled: Bool = true
     var antiProcrastinationThresholdMinutes: Int = 5
 
+    // Smart defaults
+    var lastUsedProjectId: String? = nil
+
     init() {
         self.focusDuration = 25 * 60
         self.shortBreakDuration = 5 * 60

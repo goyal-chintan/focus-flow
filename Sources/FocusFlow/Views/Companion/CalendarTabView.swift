@@ -319,8 +319,12 @@ struct CalendarTabView: View {
                 if sessions.isEmpty {
                     emptyDayView
                 } else {
-                    sessionTimeline(sessions)
-                    achievementsForDay(sessions)
+                    DisclosureGroup {
+                        SessionTimelineView(sessions: sessions)
+                            .padding(.top, 8)
+                    } label: {
+                        dayCompactSummary(sessions)
+                    }
                 }
             }
             .padding(16)
@@ -523,94 +527,34 @@ struct CalendarTabView: View {
         .padding(.vertical, 20)
     }
 
-    private func sessionTimeline(_ sessions: [FocusSession]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            TrackedLabel(text: "Timeline", tracking: 1.8)
-                .padding(.bottom, 8)
-
-            ForEach(sessions, id: \.id) { session in
-                HStack(spacing: 10) {
-                    // Time column
-                    VStack(spacing: 2) {
-                        Text(session.startedAt.formatted(.dateTime.hour().minute()))
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                        if let end = session.endedAt {
-                            Text(end.formatted(.dateTime.hour().minute()))
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundStyle(.tertiary)
-                                .monospacedDigit()
-                        }
-                    }
-                    .frame(width: 50, alignment: .trailing)
-
-                    // Timeline bar
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(session.type == .focus ?
-                              LiquidDesignTokens.Spectral.primaryContainer :
-                              Color(hex: 0x3DA86A))
-                        .frame(width: 3, height: 36)
-
-                    // Session info
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(session.label)
-                                .font(.system(size: 13, weight: .semibold))
-
-                            if session.completed {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.green)
-                            }
-                        }
-
-                        Text("\(Int(session.actualDuration / 60))m · \(session.type.displayName)")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    // Mood indicator
-                    if let mood = session.mood {
-                        Image(systemName: moodIcon(mood))
-                            .font(.system(size: 12))
-                            .foregroundStyle(moodColor(mood))
-                    }
-                }
-                .padding(.vertical, 6)
+    private func dayCompactSummary(_ sessions: [FocusSession]) -> some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.green)
+                Text("\(sessions.count) session\(sessions.count == 1 ? "" : "s")")
+                    .font(.system(size: 13, weight: .medium))
             }
+
+            HStack(spacing: 4) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.blue)
+                Text(formatFocusDuration(focusMinutesForDay(selectedDate)))
+                    .font(.system(size: 13, weight: .medium))
+            }
+
+            Spacer()
         }
     }
 
-    private func achievementsForDay(_ sessions: [FocusSession]) -> some View {
-        let achievements = sessions
-            .compactMap(\.achievement)
-            .filter { !$0.isEmpty }
-            .flatMap { $0.components(separatedBy: .newlines) }
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-
-        return Group {
-            if !achievements.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    TrackedLabel(text: "Achievements", tracking: 1.8)
-                        .padding(.bottom, 4)
-
-                    ForEach(Array(achievements.enumerated()), id: \.offset) { _, item in
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                                .padding(.top, 2)
-                            Text(item)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
+    private func formatFocusDuration(_ minutes: Double) -> String {
+        let totalMinutes = Int(minutes)
+        let hours = totalMinutes / 60
+        let mins = totalMinutes % 60
+        if hours > 0 { return "\(hours)h \(mins)m" }
+        return "\(mins)m"
     }
 
     // MARK: - Data Helpers
@@ -655,23 +599,7 @@ struct CalendarTabView: View {
         guard minutes.isFinite else { return 0 }
         return max(0, minutes)
     }
-    private func moodIcon(_ mood: FocusMood) -> String {
-        switch mood {
-        case .distracted: "cloud.fog.fill"
-        case .neutral: "minus.circle"
-        case .focused: "scope"
-        case .deepFocus: "sparkles"
-        }
-    }
 
-    private func moodColor(_ mood: FocusMood) -> Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
-    }
 
     private func loadReminders() async {
         reminderLoadTask?.cancel()

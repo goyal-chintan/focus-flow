@@ -9,9 +9,17 @@ struct FocusFlowApp: App {
             .appendingPathComponent("FocusFlow", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("FocusFlow.store")
-        try! StoreMigrator.migrateStoreIfNeeded(at: storeURL)
-        let config = ModelConfiguration(schema: schema, url: storeURL)
-        return try! ModelContainer(for: schema, configurations: config)
+        do {
+            try StoreMigrator.migrateStoreIfNeeded(at: storeURL)
+            let config = ModelConfiguration(schema: schema, url: storeURL)
+            return try ModelContainer(for: schema, configurations: config)
+        } catch {
+            print("⚠️ FocusFlow: Failed to open store with migration — \(error). Creating fresh container.")
+            let fallbackConfig = ModelConfiguration(schema: schema)
+            // swiftlint:disable:next force_try
+            return (try? ModelContainer(for: schema, configurations: fallbackConfig))
+                ?? (try! ModelContainer())
+        }
     }()
 
     var body: some Scene {

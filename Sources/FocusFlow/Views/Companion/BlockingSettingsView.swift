@@ -8,6 +8,7 @@ struct BlockingSettingsView: View {
     @State private var editingProfile: BlockProfile?
     @State private var showNewProfile = false
     @State private var profileToDelete: BlockProfile?
+    @State private var saveError: String?
 
     var body: some View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
@@ -22,6 +23,7 @@ struct BlockingSettingsView: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.ultraThinMaterial)
+        .saveErrorOverlay($saveError)
         .sheet(isPresented: $showNewProfile) {
             BlockProfileFormView(profile: nil)
         }
@@ -39,7 +41,7 @@ struct BlockingSettingsView: View {
             Button("Delete", role: .destructive) {
                 if let profile = profileToDelete {
                     modelContext.delete(profile)
-                    try? modelContext.save()
+                    saveWithFeedback(modelContext, errorBinding: $saveError)
                 }
                 profileToDelete = nil
             }
@@ -229,6 +231,6 @@ struct BlockingSettingsView: View {
             existing.isDefault = false
         }
         profile.isDefault = true
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 }

@@ -9,7 +9,6 @@ struct ProjectsListView: View {
 
     @State private var selectedProject: Project?
     @State private var showingAddSheet = false
-    @State private var showBlockingSheet = false
     @State private var editingProject: Project?
     @State private var formName = ""
     @State private var formColor = "blue"
@@ -35,9 +34,6 @@ struct ProjectsListView: View {
         .onChange(of: projects) { initSelectedProject() }
         .sheet(isPresented: $showingAddSheet) {
             projectFormSheet
-        }
-        .sheet(isPresented: $showBlockingSheet) {
-            BlockingSettingsView()
         }
         .saveErrorOverlay($saveError)
         .confirmationDialog(
@@ -129,8 +125,6 @@ struct ProjectsListView: View {
             }
 
             rosterSection
-
-            blockingButton
         }
     }
 
@@ -286,21 +280,6 @@ struct ProjectsListView: View {
         }
         .accessibilityLabel("\(project.name), \(sessionCount) sessions")
         .accessibilityAddTraits(.isButton)
-    }
-
-    // MARK: - Blocking Button
-
-    private var blockingButton: some View {
-        Button {
-            showBlockingSheet = true
-        } label: {
-            Label("Manage Blocking Profiles", systemImage: "shield.checkered")
-                .font(LiquidDesignTokens.Typography.controlLabel)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-        }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.capsule)
     }
 
     // MARK: - Form Sheet

@@ -12,6 +12,7 @@ struct BlockProfileFormView: View {
     @State private var blockedApps: [String]
     @State private var newWebsite: String = ""
     @State private var installedApps: [(name: String, bundleID: String)] = []
+    @State private var saveError: String?
 
     init(profile: BlockProfile?) {
         self.profile = profile
@@ -39,6 +40,7 @@ struct BlockProfileFormView: View {
         .frame(width: 460)
         .frame(minHeight: 620)
         .background(.background)
+        .saveErrorOverlay($saveError)
         .onAppear {
             installedApps = AppBlocker.installedApps()
         }
@@ -272,7 +274,7 @@ struct BlockProfileFormView: View {
             )
             modelContext.insert(newProfile)
         }
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 
     private func appName(for bundleID: String) -> String {
