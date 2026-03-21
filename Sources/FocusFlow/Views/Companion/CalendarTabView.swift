@@ -2,6 +2,11 @@ import SwiftUI
 import SwiftData
 
 struct CalendarTabView: View {
+    private struct MonthDayCell: Identifiable {
+        let id: Int
+        let date: Date?
+    }
+
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
@@ -62,7 +67,7 @@ struct CalendarTabView: View {
                 HStack(spacing: 12) {
                     Button {
                         withAnimation(FFMotion.section) {
-                            displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth)!
+                            shiftDisplayedMonth(by: -1)
                         }
                     } label: {
                         Image(systemName: "chevron.left")
@@ -80,7 +85,7 @@ struct CalendarTabView: View {
 
                     Button {
                         withAnimation(FFMotion.section) {
-                            displayedMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth)!
+                            shiftDisplayedMonth(by: 1)
                         }
                     } label: {
                         Image(systemName: "chevron.right")
@@ -150,8 +155,8 @@ struct CalendarTabView: View {
                 let weeks = monthWeeks
                 ForEach(weeks.indices, id: \.self) { weekIdx in
                     HStack(spacing: 0) {
-                        ForEach(weeks[weekIdx], id: \.self) { date in
-                            if let date {
+                        ForEach(weeks[weekIdx]) { cell in
+                            if let date = cell.date {
                                 dayCell(date)
                             } else {
                                 Color.clear
@@ -219,23 +224,28 @@ struct CalendarTabView: View {
 
     // MARK: - Calendar Math
 
-    private var monthWeeks: [[Date?]] {
-        let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: displayedMonth))!
-        let range = calendar.range(of: .day, in: .month, for: firstOfMonth)!
+    private var monthWeeks: [[MonthDayCell]] {
+        guard let firstOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: displayedMonth)),
+              let range = calendar.range(of: .day, in: .month, for: firstOfMonth) else {
+            return []
+        }
         let firstWeekday = calendar.component(.weekday, from: firstOfMonth) - calendar.firstWeekday
         let offset = (firstWeekday + 7) % 7
 
-        var weeks = [[Date?]]()
-        var currentWeek = [Date?]()
+        var weeks = [[MonthDayCell]]()
+        var currentWeek = [MonthDayCell]()
+        var nextCellID = 0
 
         // Leading blanks
         for _ in 0..<offset {
-            currentWeek.append(nil)
+            currentWeek.append(MonthDayCell(id: nextCellID, date: nil))
+            nextCellID += 1
         }
 
         for day in range {
-            let date = calendar.date(byAdding: .day, value: day - 1, to: firstOfMonth)!
-            currentWeek.append(date)
+            let date = calendar.date(byAdding: .day, value: day - 1, to: firstOfMonth)
+            currentWeek.append(MonthDayCell(id: nextCellID, date: date))
+            nextCellID += 1
             if currentWeek.count == 7 {
                 weeks.append(currentWeek)
                 currentWeek = []
@@ -244,7 +254,10 @@ struct CalendarTabView: View {
 
         // Trailing blanks
         if !currentWeek.isEmpty {
-            while currentWeek.count < 7 { currentWeek.append(nil) }
+            while currentWeek.count < 7 {
+                currentWeek.append(MonthDayCell(id: nextCellID, date: nil))
+                nextCellID += 1
+            }
             weeks.append(currentWeek)
         }
 
@@ -368,10 +381,19 @@ struct CalendarTabView: View {
     }
 
     private var remindersForSelectedDate: [RemindersService.ReminderItem] {
-        reminders.filter {
-            guard let due = $0.dueDate else { return false }
-            return calendar.isDate(due, inSameDayAs: selectedDate)
-        }
+        var seen = Set<String>()
+        return reminders
+            .filter {
+                guard let due = $0.dueDate else { return false }
+                return calendar.isDate(due, inSameDayAs: selectedDate)
+            }
+            .filter { seen.insert($0.id).inserted }
+            .sorted {
+                let lhs = $0.dueDate ?? .distantFuture
+                let rhs = $1.dueDate ?? .distantFuture
+                if lhs != rhs { return lhs < rhs }
+                return $0.title < $1.title
+            }
     }
 
     private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
@@ -583,7 +605,7 @@ struct CalendarTabView: View {
 
     private func sessionsForDay(_ date: Date) -> [FocusSession] {
         let dayStart = calendar.startOfDay(for: date)
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
         return allSessions.filter { session in
             let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
             return sessionEnd > dayStart && session.startedAt < dayEnd
@@ -592,7 +614,7 @@ struct CalendarTabView: View {
 
     private func focusMinutesForDay(_ date: Date) -> Double {
         let dayStart = calendar.startOfDay(for: date)
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return 0 }
         return allSessions.filter { $0.type == .focus }.reduce(0.0) { sum, session in
             let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
             guard sessionEnd > dayStart && session.startedAt < dayEnd else { return sum }
@@ -600,6 +622,11 @@ struct CalendarTabView: View {
             let overlapEnd = min(sessionEnd, dayEnd)
             return sum + max(0, overlapEnd.timeIntervalSince(overlapStart)) / 60
         }
+    }
+
+    private func shiftDisplayedMonth(by monthDelta: Int) {
+        guard let shifted = calendar.date(byAdding: .month, value: monthDelta, to: displayedMonth) else { return }
+        displayedMonth = shifted
     }
 
     private func moodIcon(_ mood: FocusMood) -> String {

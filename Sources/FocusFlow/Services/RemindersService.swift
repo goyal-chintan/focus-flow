@@ -116,6 +116,11 @@ final class RemindersService {
                     notes: $0.notes
                 )
             }
+            .reduce(into: [ReminderItem]()) { acc, item in
+                if acc.contains(where: { $0.id == item.id }) == false {
+                    acc.append(item)
+                }
+            }
     }
 
     // MARK: - Complete Reminder
