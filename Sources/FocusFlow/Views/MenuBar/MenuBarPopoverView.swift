@@ -329,7 +329,7 @@ private struct IdlePopoverContent: View {
 
     @State private var showCustomSlider: Bool = false
 
-    private static let presetMinutes: [Int] = [1, 5, 15, 25]
+    private static let presetMinutes: [Int] = [5, 15, 25, 45]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -408,40 +408,12 @@ private struct IdlePopoverContent: View {
     }
 
     private var durationPillRow: some View {
-        HStack(spacing: 6) {
-            ForEach(Self.presetMinutes, id: \.self) { mins in
-                durationPill(label: "\(mins)", isSelected: !showCustomSlider && selectedMinutes == mins) {
-                    withAnimation(FFMotion.control) {
-                        selectedMinutes = mins
-                    }
-                    withAnimation(FFMotion.section) {
-                        showCustomSlider = false
-                    }
-                }
-            }
-
-            durationPill(label: "CUST", isSelected: showCustomSlider) {
-                withAnimation(FFMotion.section) {
-                    showCustomSlider = true
-                }
-            }
-        }
-    }
-
-    private func durationPill(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .frame(maxWidth: .infinity, minHeight: 30)
-        }
-        .buttonBorderShape(.capsule)
-        .if(isSelected) { view in
-            view.buttonStyle(.glassProminent)
-                .tint(LiquidDesignTokens.Spectral.primaryContainer)
-        }
-        .if(!isSelected) { view in
-            view.buttonStyle(.glass)
-        }
+        DurationPresetRow(
+            presets: Self.presetMinutes,
+            selectedMinutes: $selectedMinutes,
+            showCustom: true,
+            isCustomActive: $showCustomSlider
+        )
     }
 
     private var customSlider: some View {
