@@ -419,6 +419,7 @@ final class TimerViewModel {
     /// can record mood, achievement, and splits before the session is finalised.
     /// Only used when the session is long enough to be worth reflecting on (≥60s).
     func stopForReflection() {
+        log("stopForReflection called, currentSession=\(currentSession != nil)")
         guard let session = currentSession else {
             stop()   // nothing to save
             return

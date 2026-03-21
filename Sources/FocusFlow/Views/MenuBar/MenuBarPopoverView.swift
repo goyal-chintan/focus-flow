@@ -455,16 +455,14 @@ private struct FocusingPopoverContent: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "stop.fill")
-                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                         Text("Stop")
-                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 }
                 .frame(minHeight: 34)
                 .buttonStyle(.glassProminent)
-                .tint(LiquidDesignTokens.Spectral.salmon)
+                .tint(Color.red)
                 .buttonBorderShape(.capsule)
                 .accessibilityLabel("Stop focus session")
             }
