@@ -19,6 +19,14 @@ struct ProjectsListView: View {
     @State private var projectToArchive: Project?
     @State private var saveError: String?
     @State private var showArchivedSection = false
+    @State private var toastMessage: String?
+
+    private func showToast(_ message: String) {
+        withAnimation(FFMotion.section) { toastMessage = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(FFMotion.section) { toastMessage = nil }
+        }
+    }
 
     var body: some View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
@@ -39,6 +47,22 @@ struct ProjectsListView: View {
             projectFormSheet
         }
         .saveErrorOverlay($saveError)
+        .overlay(alignment: .top) {
+            if let toastMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(toastMessage)
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                .padding(.top, 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .confirmationDialog(
             "Archive Project",
             isPresented: Binding(
@@ -49,6 +73,7 @@ struct ProjectsListView: View {
         ) {
             Button("Archive", role: .destructive) {
                 if let project = projectToArchive {
+                    let name = project.name
                     withAnimation(FFMotion.section) {
                         project.archived = true
                         if timerVM.selectedProject?.id == project.id {
@@ -60,6 +85,7 @@ struct ProjectsListView: View {
                         saveWithFeedback(modelContext, errorBinding: $saveError)
                     }
                     projectToArchive = nil
+                    showToast("\(name) archived")
                 }
             }
             Button("Cancel", role: .cancel) {
@@ -300,6 +326,7 @@ struct ProjectsListView: View {
             title: editingProject == nil ? "New Project" : "Edit Project"
         ) {
             var savedProject: Project?
+            let isNew = editingProject == nil
             if let editing = editingProject {
                 editing.name = formName.trimmingCharacters(in: .whitespaces)
                 editing.color = formColor
@@ -320,6 +347,7 @@ struct ProjectsListView: View {
             if let savedProject {
                 timerVM.selectedProject = savedProject
                 selectedProject = savedProject
+                showToast(isNew ? "\(savedProject.name) created" : "\(savedProject.name) updated")
             }
         }
     }
@@ -378,6 +406,7 @@ struct ProjectsListView: View {
             Spacer()
 
             Button {
+                let name = project.name
                 withAnimation(FFMotion.section) {
                     project.archived = false
                     saveWithFeedback(modelContext, errorBinding: $saveError)
@@ -385,6 +414,7 @@ struct ProjectsListView: View {
                         selectedProject = project
                     }
                 }
+                showToast("\(name) restored")
             } label: {
                 Label("Restore", systemImage: "arrow.uturn.backward")
                     .font(.system(size: 11, weight: .medium))

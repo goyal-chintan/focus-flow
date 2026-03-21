@@ -171,7 +171,7 @@ struct SettingsView: View {
     private var soundSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Sound", subtitle: "Choose the completion chime")
+                LiquidSectionHeader("Sound & Notifications", subtitle: "Completion chime and system alerts")
 
                 HStack {
                     Label("Completion sound", systemImage: "speaker.wave.2.fill")
@@ -197,9 +197,36 @@ struct SettingsView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+
+                // Notification permission banner — shown when denied
+                if !NotificationService.shared.isAuthorized {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Notifications are disabled")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+                            Text("FocusFlow can't alert you when sessions complete. Enable in System Settings → Notifications.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Open Settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!)
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                    }
+                    .padding(10)
+                    .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                }
             }
             .padding(16)
         }
+        .onAppear { NotificationService.shared.refreshAuthorizationStatus() }
     }
 
     private var aboutSection: some View {

@@ -33,6 +33,7 @@ struct TodayStatsView: View {
 
     @State private var showManualEntry = false
     @State private var dueReminders: [RemindersService.ReminderItem] = []
+    @State private var showLoggedToast = false
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -60,6 +61,31 @@ struct TodayStatsView: View {
         .background(.ultraThinMaterial)
         .sheet(isPresented: $showManualEntry) {
             ManualSessionView()
+        }
+        .onChange(of: showManualEntry) { wasShowing, isShowing in
+            // Sheet was dismissed — assume session was logged (no way to distinguish cancel)
+            if wasShowing && !isShowing {
+                withAnimation(FFMotion.section) { showLoggedToast = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    withAnimation(FFMotion.section) { showLoggedToast = false }
+                }
+            }
+        }
+        .overlay(alignment: .top) {
+            if showLoggedToast {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Session logged")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                .padding(.top, 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .task { await loadDueReminders() }
     }
