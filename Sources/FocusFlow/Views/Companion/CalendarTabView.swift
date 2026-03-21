@@ -142,7 +142,7 @@ struct CalendarTabView: View {
             VStack(spacing: 0) {
                 // Day-of-week headers
                 HStack(spacing: 0) {
-                    ForEach(calendar.shortWeekdaySymbols, id: \.self) { day in
+                    ForEach(Array(calendar.shortWeekdaySymbols.enumerated()), id: \.offset) { _, day in
                         Text(day)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(.tertiary)
@@ -173,10 +173,9 @@ struct CalendarTabView: View {
     private func dayCell(_ date: Date) -> some View {
         let isToday = calendar.isDateInToday(date)
         let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
-        let focusMinutes = focusMinutesForDay(date)
+        let focusMinutes = sanitizedMinutes(focusMinutesForDay(date))
         let hasSessions = focusMinutes > 0
-        let dailyGoal = allSettings.first?.dailyFocusGoal ?? 7200
-        let goalProgress = min(1.0, (focusMinutes * 60) / dailyGoal)
+        let goalProgress = goalProgress(forFocusMinutes: focusMinutes)
         let isCurrentMonth = calendar.isDate(date, equalTo: displayedMonth, toGranularity: .month)
 
         return VStack(spacing: 3) {
@@ -217,8 +216,9 @@ struct CalendarTabView: View {
     }
 
     private func intensityColor(_ progress: Double) -> Color {
-        if progress >= 1.0 { return Color(hex: 0x3DA86A) }
-        if progress >= 0.5 { return Color(hex: 0x3DA86A).opacity(0.6) }
+        let safeProgress = progress.isFinite ? max(0, progress) : 0
+        if safeProgress >= 1.0 { return Color(hex: 0x3DA86A) }
+        if safeProgress >= 0.5 { return Color(hex: 0x3DA86A).opacity(0.6) }
         return Color(hex: 0x3DA86A).opacity(0.3)
     }
 
@@ -284,8 +284,7 @@ struct CalendarTabView: View {
                     Spacer()
 
                     // Goal progress ring
-                    let dailyGoal = allSettings.first?.dailyFocusGoal ?? 7200
-                    let progress = min(1.0, (focusMinutesForDay(selectedDate) * 60) / dailyGoal)
+                    let progress = goalProgress(forFocusMinutes: focusMinutesForDay(selectedDate))
                     ZStack {
                         Circle()
                             .stroke(Color.white.opacity(0.08), lineWidth: 4)
@@ -296,7 +295,7 @@ struct CalendarTabView: View {
                                 style: StrokeStyle(lineWidth: 4, lineCap: .round)
                             )
                             .rotationEffect(.degrees(-90))
-                        Text("\(Int(progress * 100))%")
+                        Text("\(Int((progress * 100).rounded()))%")
                             .font(.system(size: 10, weight: .bold, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
@@ -629,6 +628,20 @@ struct CalendarTabView: View {
         displayedMonth = shifted
     }
 
+
+
+    private func goalProgress(forFocusMinutes minutes: Double) -> Double {
+        let rawGoal = allSettings.first?.dailyFocusGoal ?? 7200
+        let normalizedGoal = rawGoal.isFinite && rawGoal >= 60 ? rawGoal : 7200
+        let ratio = (minutes * 60) / normalizedGoal
+        guard ratio.isFinite else { return 0 }
+        return min(1.0, max(0, ratio))
+    }
+
+    private func sanitizedMinutes(_ minutes: Double) -> Double {
+        guard minutes.isFinite else { return 0 }
+        return max(0, minutes)
+    }
     private func moodIcon(_ mood: FocusMood) -> String {
         switch mood {
         case .distracted: "cloud.fog.fill"
