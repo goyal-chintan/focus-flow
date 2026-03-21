@@ -43,19 +43,23 @@ struct CalendarTabView: View {
             Self.logger.debug("Calendar tab appeared. remindersEnabled=\(self.settings?.remindersIntegrationEnabled == true, privacy: .public) selectedListEmpty=\(self.settings?.selectedReminderListId.isEmpty ?? true, privacy: .public)")
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await loadReminders() }
+            reminderLoadTask?.cancel()
+            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
         }
         .animation(FFMotion.section, value: selectedDate)
         .animation(FFMotion.section, value: displayedMonth)
         .task { await loadReminders() }
         .onChange(of: settings?.selectedReminderListId) { _, _ in
-            Task { await loadReminders() }
+            reminderLoadTask?.cancel()
+            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
         }
         .onChange(of: settings?.remindersIntegrationEnabled) { _, _ in
-            Task { await loadReminders() }
+            reminderLoadTask?.cancel()
+            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
         }
         .onChange(of: selectedDate) { _, _ in
-            Task { await loadReminders() }
+            reminderLoadTask?.cancel()
+            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
         }
         .sheet(isPresented: $showReminderEditor) {
             reminderEditorSheet(isCreating: false)

@@ -5,7 +5,10 @@ import Foundation
 @MainActor
 final class CalendarService {
     static let shared = CalendarService()
-    private let store = EKEventStore()
+    /// Shared EKEventStore — never create a second one per Apple's docs.
+    private var store: EKEventStore { EventStoreManager.shared.store }
+    /// Prevents concurrent requestFullAccessToEvents() calls on the same store.
+    private var isRequestingAccess = false
     private init() {}
 
     // MARK: - Authorization
@@ -29,8 +32,18 @@ final class CalendarService {
     }
 
     func requestAccess() async -> Bool {
+        // Guard against concurrent permission requests — EventKit behaviour is undefined
+        // if requestFullAccessToEvents() is called while another request is in flight.
+        guard !isRequestingAccess else {
+            return authStatus == .authorized
+        }
+        isRequestingAccess = true
+        defer { isRequestingAccess = false }
         do {
-            return try await store.requestFullAccessToEvents()
+            let granted = try await store.requestFullAccessToEvents()
+            // Brief yield so EventKit can finish updating its internal state after grant.
+            if granted { try? await Task.sleep(for: .milliseconds(100)) }
+            return granted
         } catch {
             log("Calendar access request failed: \(error)")
             return false

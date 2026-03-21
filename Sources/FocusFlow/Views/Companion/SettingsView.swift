@@ -13,7 +13,8 @@ struct SettingsView: View {
     @State private var reminderLoadError: String?
     @State private var reminderAuthError: String?
     @State private var saveError: String?
-    @State private var showBlockingSheet = false
+    @State private var isEnablingCalendar = false
+    @State private var isEnablingReminders = false
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
@@ -635,6 +636,9 @@ struct SettingsView: View {
     }
 
     private func enableCalendarIntegration() async {
+        guard !isEnablingCalendar else { return }
+        isEnablingCalendar = true
+        defer { isEnablingCalendar = false }
         let granted = await CalendarService.shared.requestAccess()
         if granted {
             settings.calendarIntegrationEnabled = true
@@ -702,6 +706,9 @@ struct SettingsView: View {
     }
 
     private func enableRemindersIntegration() async {
+        guard !isEnablingReminders else { return }
+        isEnablingReminders = true
+        defer { isEnablingReminders = false }
         let granted = await RemindersService.shared.requestAccess()
         if granted {
             settings.remindersIntegrationEnabled = true
