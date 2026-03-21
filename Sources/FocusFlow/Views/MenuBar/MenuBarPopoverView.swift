@@ -475,6 +475,8 @@ private struct IdlePopoverContent: View {
 private struct FocusingPopoverContent: View {
     @Binding var showStopConfirmation: Bool
     let projectName: String?
+    let canReduceTime: Bool
+    let canExtendTime: Bool
     let onPause: () -> Void
     let onExtendTime: () -> Void
     let onReduceTime: () -> Void
@@ -543,7 +545,10 @@ private struct FocusingPopoverContent: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .disabled(!canReduceTime)
+            .opacity(canReduceTime ? 1 : 0.38)
             .accessibilityLabel("Reduce time by 5 minutes")
+            .help(canReduceTime ? "Reduce session by 5 minutes" : "Less than 6 minutes remaining")
 
             Button(action: onExtendTime) {
                 HStack(spacing: 4) {
@@ -557,7 +562,10 @@ private struct FocusingPopoverContent: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .disabled(!canExtendTime)
+            .opacity(canExtendTime ? 1 : 0.38)
             .accessibilityLabel("Extend time by 5 minutes")
+            .help(canExtendTime ? "Extend session by 5 minutes" : "Maximum session length (4 hours) reached")
         }
     }
 
@@ -999,6 +1007,8 @@ extension MenuBarPopoverView {
         FocusingPopoverContent(
             showStopConfirmation: $showStopConfirmation,
             projectName: timerVM.selectedProject?.name,
+            canReduceTime: timerVM.canReduceTime,
+            canExtendTime: timerVM.canExtendTime,
             onPause: { timerVM.pause() },
             onExtendTime: {
                 timerVM.extendTimer()
