@@ -53,6 +53,7 @@ struct DurationPresetRow: View {
         .if(!isSelected) { view in
             view.buttonStyle(.glass)
         }
+        .accessibilityLabel("\(mins) minutes")
     }
 
     private var customPill: some View {
@@ -73,5 +74,6 @@ struct DurationPresetRow: View {
         .if(!isCustomActive) { view in
             view.buttonStyle(.glass)
         }
+        .accessibilityLabel("Custom duration")
     }
 }

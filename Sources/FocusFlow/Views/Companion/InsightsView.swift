@@ -80,6 +80,8 @@ struct InsightsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Focus score: \(focusScore) out of 100")
 
                 Text(focusScoreSummary)
                     .font(.system(size: 14, weight: .medium))
@@ -585,6 +587,8 @@ struct InsightsView: View {
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                     .onTapGesture { selectedHour = selectedHour == item.hour ? nil : item.hour }
+                    .accessibilityLabel("\(item.label), \(Int(item.totalMinutes)) minutes of focus")
+                    .accessibilityAddTraits(.isButton)
                     .animation(FFMotion.control, value: isSelected)
                 }
             }
@@ -798,6 +802,7 @@ struct InsightsView: View {
                         subtitle: bestDayLabel
                     )
                 }
+                .accessibilityElement(children: .combine)
             }
             .padding(16)
         }

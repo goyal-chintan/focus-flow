@@ -242,6 +242,7 @@ struct MenuBarPopoverView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open settings")
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             .padding(.vertical, 10)
@@ -370,6 +371,7 @@ private struct IdlePopoverContent: View {
                         .toggleStyle(.switch)
                         .scaleEffect(0.75)
                         .frame(width: 40)
+                        .accessibilityLabel("Block until daily goal met")
                 }
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 8)
@@ -422,6 +424,8 @@ private struct IdlePopoverContent: View {
             set: { selectedMinutes = Int($0) }
         ), in: 5...120, step: 1)
         .tint(LiquidDesignTokens.Spectral.primaryContainer)
+        .accessibilityLabel("Focus duration")
+        .accessibilityValue("\(selectedMinutes) minutes")
     }
 
     private var startButton: some View {
@@ -538,6 +542,7 @@ private struct FocusingPopoverContent: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .accessibilityLabel("Reduce time by 5 minutes")
 
             Button(action: onExtendTime) {
                 HStack(spacing: 4) {
@@ -551,6 +556,7 @@ private struct FocusingPopoverContent: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .accessibilityLabel("Extend time by 5 minutes")
         }
     }
 
