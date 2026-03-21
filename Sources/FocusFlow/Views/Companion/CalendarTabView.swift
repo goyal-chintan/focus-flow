@@ -44,11 +44,8 @@ struct CalendarTabView: View {
         .onAppear {
             Self.logger.debug("Calendar tab appeared. remindersEnabled=\(self.settings?.remindersIntegrationEnabled == true, privacy: .public) selectedListEmpty=\(self.settings?.selectedReminderListId.isEmpty ?? true, privacy: .public)")
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            reminderLoadTask?.cancel()
-            reminderLoadTask = Task { @MainActor in await loadRemindersInternal() }
-        }
-        // Reload when EventKit store changes (e.g., user adds/edits reminders in Reminders.app)
+        // Reload when EventKit store changes (e.g., user adds/edits reminders in Reminders.app,
+        // or when permission is just granted — EventKit posts this automatically).
         .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
             guard settings?.remindersIntegrationEnabled == true else { return }
             reminderLoadTask?.cancel()

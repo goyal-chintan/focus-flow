@@ -699,8 +699,12 @@ struct SettingsView: View {
         isEnablingCalendar = true
         defer { isEnablingCalendar = false }
         let granted = await CalendarService.shared.requestAccess()
-        // Bring window to front after OS permission dialog dismisses
+        // Wait for the OS permission dialog to fully dismiss before re-activating.
+        // Without this delay, NSApp.activate fires while the dialog is still animating out,
+        // causing the companion window to flash (disappear then reappear).
+        try? await Task.sleep(for: .milliseconds(400))
         NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) })?.makeKeyAndOrderFront(nil)
         if granted {
             settings.calendarIntegrationEnabled = true
             calendarLoadError = nil
@@ -771,8 +775,12 @@ struct SettingsView: View {
         isEnablingReminders = true
         defer { isEnablingReminders = false }
         let granted = await RemindersService.shared.requestAccess()
-        // Bring window to front after OS permission dialog dismisses
+        // Wait for the OS permission dialog to fully dismiss before re-activating.
+        // Without this delay, NSApp.activate fires while the dialog is still animating out,
+        // causing the companion window to flash (disappear then reappear).
+        try? await Task.sleep(for: .milliseconds(400))
         NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) })?.makeKeyAndOrderFront(nil)
         if granted {
             settings.remindersIntegrationEnabled = true
             reminderAuthError = nil

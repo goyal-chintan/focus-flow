@@ -10,6 +10,10 @@ final class RemindersService {
     private var store: EKEventStore { EventStoreManager.shared.store }
     /// Prevents concurrent requestFullAccessToReminders() calls on the same store.
     private var isRequestingAccess = false
+    /// Prevents concurrent EKEventStore.fetchReminders() calls on the same store.
+    /// EventKit dispatches its completion callback to the calling queue; two concurrent
+    /// fetchReminders calls produce a libdispatch queue-assertion crash.
+    private var isFetchingReminders = false
     private let logger = Logger(subsystem: "FocusFlow", category: "RemindersService")
     private init() {}
 
@@ -90,6 +94,15 @@ final class RemindersService {
             logger.error("fetchIncompleteReminders blocked: reminders not authorized")
             return []
         }
+        // Serialize: EventKit dispatches its callback back to the calling queue (main thread).
+        // Two concurrent fetchReminders calls on the same store produce a libdispatch
+        // "Block was expected to execute on queue [main-thread]" assertion crash.
+        guard !isFetchingReminders else {
+            logger.warning("fetchIncompleteReminders: skipping concurrent call")
+            return []
+        }
+        isFetchingReminders = true
+        defer { isFetchingReminders = false }
 
         let calendars: [EKCalendar]?
         if let listId, !listId.isEmpty {
