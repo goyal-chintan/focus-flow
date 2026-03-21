@@ -13,15 +13,15 @@ final class AppSettings {
     var completionSound: String
 
     // Goals
-    var dailyFocusGoal: TimeInterval
+    var dailyFocusGoal: TimeInterval = 7200
 
     // Integrations
-    var calendarIntegrationEnabled: Bool
-    var calendarName: String
+    var calendarIntegrationEnabled: Bool = false
+    var calendarName: String = "FocusFlow"
 
     // Focus Coach
-    var antiProcrastinationEnabled: Bool
-    var antiProcrastinationThresholdMinutes: Int
+    var antiProcrastinationEnabled: Bool = true
+    var antiProcrastinationThresholdMinutes: Int = 5
 
     init() {
         self.focusDuration = 25 * 60

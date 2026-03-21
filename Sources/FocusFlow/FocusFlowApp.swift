@@ -9,6 +9,7 @@ struct FocusFlowApp: App {
             .appendingPathComponent("FocusFlow", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("FocusFlow.store")
+        try! StoreMigrator.migrateStoreIfNeeded(at: storeURL)
         let config = ModelConfiguration(schema: schema, url: storeURL)
         return try! ModelContainer(for: schema, configurations: config)
     }()
