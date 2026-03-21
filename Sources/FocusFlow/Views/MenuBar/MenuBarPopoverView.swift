@@ -463,12 +463,9 @@ private struct FocusingPopoverContent: View {
                     .padding(.vertical, 12)
                 }
                 .frame(minHeight: 34)
-                .buttonStyle(.glass)
+                .buttonStyle(.glassProminent)
+                .tint(LiquidDesignTokens.Spectral.salmon)
                 .buttonBorderShape(.capsule)
-                .overlay(
-                    Capsule()
-                        .fill(LiquidDesignTokens.Spectral.salmon.opacity(0.25))
-                )
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)

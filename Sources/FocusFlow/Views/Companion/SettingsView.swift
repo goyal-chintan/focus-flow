@@ -677,7 +677,6 @@ struct SettingsView: View {
         guard !isEnablingCalendar else { return }
         isEnablingCalendar = true
         defer { isEnablingCalendar = false }
-        let wasCompanionVisible = isCompanionVisible
         _ = await CalendarService.shared.requestAccess()
         let isAuthorized = CalendarService.shared.authStatus == .authorized
         if isAuthorized {
@@ -691,7 +690,7 @@ struct SettingsView: View {
             calendarLoadError = "FocusFlow needs Calendar access. Enable it in System Settings → Privacy & Security → Calendars."
             save()
         }
-        await ensureCompanionWindowIfNeeded(wasVisible: wasCompanionVisible)
+        restoreCompanionWindow()
     }
 
     private func loadCalendars() {
@@ -750,7 +749,6 @@ struct SettingsView: View {
         guard !isEnablingReminders else { return }
         isEnablingReminders = true
         defer { isEnablingReminders = false }
-        let wasCompanionVisible = isCompanionVisible
         _ = await RemindersService.shared.requestAccess()
         let isAuthorized = RemindersService.shared.authStatus == .authorized
         if isAuthorized {
@@ -765,30 +763,30 @@ struct SettingsView: View {
             availableReminderLists = []
             save()
         }
-        await ensureCompanionWindowIfNeeded(wasVisible: wasCompanionVisible)
-    }
-
-    private var isCompanionVisible: Bool {
-        NSApp.windows.contains { window in
-            guard !(window is NSPanel) else { return false }
-            if window.identifier?.rawValue == "stats" { return window.isVisible }
-            return window.title == "FocusFlow" && window.isVisible
-        }
+        restoreCompanionWindow()
     }
 
     @MainActor
-    private func ensureCompanionWindowIfNeeded(wasVisible: Bool) async {
-        guard wasVisible else { return }
-        try? await Task.sleep(for: .milliseconds(600))
-        // Try to bring existing window to front first
+    private func restoreCompanionWindow() {
+        // After OS permission dialog, aggressively restore companion window.
+        // Find the stats window and force it key+front, or open a new one.
         if let statsWindow = NSApp.windows.first(where: {
-            $0.identifier?.rawValue == "stats" || $0.title.contains("FocusFlow")
-        }), statsWindow.isVisible {
+            $0.identifier?.rawValue == "stats"
+        }) {
             statsWindow.makeKeyAndOrderFront(nil)
-            return
+            statsWindow.orderFrontRegardless()
+        } else {
+            openWindow(id: "stats")
+            // Give SwiftUI a moment to create the window, then front it
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if let statsWindow = NSApp.windows.first(where: {
+                    $0.identifier?.rawValue == "stats"
+                }) {
+                    statsWindow.makeKeyAndOrderFront(nil)
+                    statsWindow.orderFrontRegardless()
+                }
+            }
         }
-        guard !isCompanionVisible else { return }
-        openWindow(id: "stats")
     }
 
     // MARK: - Focus Coach
