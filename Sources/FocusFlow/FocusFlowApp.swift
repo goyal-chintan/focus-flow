@@ -4,7 +4,7 @@ import SwiftData
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self])
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self])
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("FocusFlow", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -21,7 +21,7 @@ struct FocusFlowApp: App {
                 .environment(\.modelContext, container.mainContext)
                 .background(CompletionWindowLauncher(timerVM: timerVM))
                 .onAppear {
-                    AppUsageTracker.shared.start(timerVM: timerVM)
+                    AppUsageTracker.shared.start(timerVM: timerVM, modelContext: container.mainContext)
                 }
         } label: {
             HStack(spacing: 5) {
