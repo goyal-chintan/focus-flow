@@ -36,6 +36,8 @@ struct CalendarTabView: View {
             VStack(spacing: 20) {
                 headerSection
                 monthGridSection
+                    .animation(FFMotion.section, value: selectedDate)
+                    .animation(FFMotion.section, value: displayedMonth)
                 dayDetailSection
                 remindersSection
             }
@@ -54,11 +56,15 @@ struct CalendarTabView: View {
                 // Coalesce noisy EventKit change bursts into one reload.
                 try? await Task.sleep(for: .milliseconds(180))
                 guard !Task.isCancelled else { return }
-                await loadRemindersInternal()
+                let fetched = await RemindersService.shared.fetchIncompleteReminders(
+                    listId: settings?.selectedReminderListId
+                )
+                guard !Task.isCancelled else { return }
+                withAnimation(.none) {
+                    reminders = fetched
+                }
             }
         }
-        .animation(FFMotion.section, value: selectedDate)
-        .animation(FFMotion.section, value: displayedMonth)
         .task { await loadReminders() }
         .onChange(of: settings?.remindersIntegrationEnabled) { _, _ in
             reminderLoadTask?.cancel()
@@ -852,10 +858,9 @@ struct CalendarTabView: View {
         isLoadingReminders = true
         remindersError = nil
         defer { isLoadingReminders = false }
-        // Fetch from ALL reminder lists — selectedReminderListId is only used when
-        // CREATING new reminders, not as a display filter. Filtering here would hide
-        // the user's reminders that live in other lists.
-        let fetched = await RemindersService.shared.fetchIncompleteReminders()
+        let fetched = await RemindersService.shared.fetchIncompleteReminders(
+            listId: settings?.selectedReminderListId
+        )
         guard !Task.isCancelled else {
             Self.logger.debug("loadReminders cancelled before state update")
             return
