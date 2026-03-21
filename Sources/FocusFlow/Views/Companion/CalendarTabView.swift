@@ -486,11 +486,11 @@ struct CalendarTabView: View {
                     await loadReminders()
                 }
             } label: {
-                Image(systemName: "checkmark.circle")
+                Image(systemName: "circle")
                     .font(.system(size: 16, weight: .regular))
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.green)
+            .foregroundStyle(.secondary)
             .accessibilityLabel("Mark reminder complete")
 
             VStack(alignment: .leading, spacing: 2) {
@@ -502,7 +502,7 @@ struct CalendarTabView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                     if let due = reminder.dueDate {
-                        Text(due.formatted(.dateTime.hour().minute()))
+                        Text(formattedReminderDate(due))
                             .font(.system(size: 11, weight: .medium, design: .rounded))
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
@@ -779,6 +779,27 @@ struct CalendarTabView: View {
     private func sanitizedMinutes(_ minutes: Double) -> Double {
         guard minutes.isFinite else { return 0 }
         return max(0, minutes)
+    }
+
+    /// Formats a reminder due date intelligently:
+    /// - If the time is midnight (00:00), show date only (the reminder has no specific time)
+    /// - If today, show just the time
+    /// - Otherwise show short date + time
+    private func formattedReminderDate(_ date: Date) -> String {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.hour, .minute], from: date)
+        let isMidnight = comps.hour == 0 && comps.minute == 0
+        let isToday = cal.isDateInToday(date)
+        let isTomorrow = cal.isDateInTomorrow(date)
+
+        if isMidnight {
+            if isToday { return "Today" }
+            if isTomorrow { return "Tomorrow" }
+            return date.formatted(.dateTime.month(.abbreviated).day())
+        }
+        if isToday { return date.formatted(.dateTime.hour().minute()) }
+        if isTomorrow { return "Tomorrow \(date.formatted(.dateTime.hour().minute()))" }
+        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
 
