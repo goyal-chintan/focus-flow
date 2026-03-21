@@ -89,15 +89,15 @@ struct TimerRingView: View {
                         )
                 )
 
-            // Main ring — state-dependent
-            if state == .idle {
+            // Main ring — state-dependent (isOvertime checked first so green ring shows even when state is idle during completion)
+            if isOvertime {
+                overtimeRings
+            } else if state == .idle {
                 // Idle: very subtle track only (no heavy gray)
                 Circle()
                     .stroke(Color.white.opacity(0.04), lineWidth: strokeWidth)
             } else if state == .paused {
                 pausedRings
-            } else if isOvertime {
-                overtimeRings
             } else {
                 // Focusing / Break: progress arc only, no gray remaining
                 Circle()
@@ -115,17 +115,17 @@ struct TimerRingView: View {
             // Center text
             VStack(spacing: 5) {
                 if state == .paused {
-                    // Show pause elapsed time prominently
+                    // Show pause elapsed time prominently — color escalates with duration
                     Text(pauseTimeString)
                         .font(.system(size: 36, weight: .ultraLight, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(Color(hex: 0xE6A820))
+                        .foregroundStyle(pauseRingColor)
                         .contentTransition(.numericText(countsDown: false))
 
                     TrackedLabel(
                         text: "PAUSED",
                         font: .system(size: 10, weight: .medium),
-                        color: Color(hex: 0xE6A820).opacity(0.65),
+                        color: pauseRingColor.opacity(0.65),
                         tracking: 2.2
                     )
 
@@ -218,25 +218,37 @@ struct TimerRingView: View {
         }
     }
 
-    // Paused: single amber arc showing how far timer reached, with breathing pulse
+    // Pause ring color based on how long the user has been paused
+    private var pauseRingColor: Color {
+        if pauseDuration > 300 { return .red }
+        if pauseDuration > 180 { return Color(hex: 0xCC8800) } // dark yellow
+        return Color(hex: 0xE6A820) // amber
+    }
+
+    private var pauseRingColorLight: Color {
+        if pauseDuration > 300 { return .red.opacity(0.6) }
+        if pauseDuration > 180 { return Color(hex: 0xCC8800).opacity(0.6) }
+        return Color(hex: 0xE6A820).opacity(0.6)
+    }
+
+    // Paused: arc showing how far timer reached, color escalates with pause duration
     private var pausedRings: some View {
         ZStack {
-            // Amber progress arc — shows where timer was when paused
             Circle()
                 .trim(from: 0, to: max(0.001, progress))
                 .stroke(
                     AngularGradient(
                         colors: [
-                            Color(hex: 0xE6A820).opacity(0.6),
-                            Color(hex: 0xE6A820),
-                            LiquidDesignTokens.Spectral.amber
+                            pauseRingColorLight,
+                            pauseRingColor,
+                            pauseRingColor
                         ],
                         center: .center
                     ),
                     style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: Color(hex: 0xE6A820).opacity(glowPulse ? 0.55 : 0.2), radius: glowPulse ? 14 : 6)
+                .shadow(color: pauseRingColor.opacity(glowPulse ? 0.55 : 0.2), radius: glowPulse ? 14 : 6)
                 .animation(FFMotion.progress, value: progress)
         }
     }
@@ -265,32 +277,37 @@ struct TimerRingView: View {
                     .shadow(color: Color(hex: 0xCC8800).opacity(0.5), radius: 10)
                     .animation(FFMotion.progress, value: progress)
             } else {
-                // Focus overtime: full green ring showing achievement
+                // Focus overtime: blue ring base with green overlay growing as overtime increases
+                // Base: full blue ring (same as focusing)
                 Circle()
                     .stroke(
                         AngularGradient(
                             colors: [
-                                Color(hex: 0x2D8B57).opacity(0.7),
-                                Color(hex: 0x3DA86A),
-                                Color(hex: 0x2D8B57).opacity(0.7)
+                                Color(hex: 0x3A4F85),
+                                Color(hex: 0x5B96F8),
+                                Color(hex: 0x7DB4FF),
+                                Color(hex: 0x5B96F8),
+                                Color(hex: 0x3A4F85)
                             ],
                             center: .center
                         ),
                         style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                     )
-                    .shadow(color: Color(hex: 0x3DA86A).opacity(glowPulse ? 0.5 : 0.2), radius: glowPulse ? 14 : 8)
+                    .shadow(color: Color(hex: 0x5B96F8).opacity(glowPulse ? 0.5 : 0.2), radius: glowPulse ? 14 : 8)
 
-                // Dark green overtime fill from 12:00
+                // Green overlay: grows from 12 o'clock as overtime increases
                 let overtimeProgress = min(max(progress - 1.0, 0) / 0.5, 1.0)
-                Circle()
-                    .trim(from: 0, to: max(0.001, overtimeProgress))
-                    .stroke(
-                        Color(hex: 0x1A6B3D).opacity(0.9),
-                        style: StrokeStyle(lineWidth: strokeWidth + 1, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: Color(hex: 0x1A6B3D).opacity(0.4), radius: 8)
-                    .animation(FFMotion.progress, value: progress)
+                if overtimeProgress > 0 {
+                    Circle()
+                        .trim(from: 0, to: max(0.001, overtimeProgress))
+                        .stroke(
+                            Color(hex: 0x3DA86A).opacity(0.9),
+                            style: StrokeStyle(lineWidth: strokeWidth + 1, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: Color(hex: 0x3DA86A).opacity(glowPulse ? 0.5 : 0.25), radius: glowPulse ? 12 : 6)
+                        .animation(FFMotion.progress, value: progress)
+                }
             }
         }
     }

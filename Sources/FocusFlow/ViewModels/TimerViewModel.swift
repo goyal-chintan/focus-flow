@@ -239,7 +239,7 @@ final class TimerViewModel {
         guard settings != nil, !isOvertime else { log("startFocus: settings nil or overtime, aborting"); return }
         guard state == .idle else { log("startFocus: not idle (state=\(state)), aborting"); return }
         let duration = focusDuration
-        guard duration >= 300 else { log("startFocus: duration \(duration) < 300, aborting"); return }
+        guard duration >= 10 else { log("startFocus: duration \(duration) < 10, aborting"); return }
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
@@ -301,6 +301,8 @@ final class TimerViewModel {
 
     func extendTimer(by seconds: TimeInterval = 300) {
         guard state == .focusing, !isOvertime else { return }
+        // Don't allow reducing below 60 seconds remaining
+        if seconds < 0 && remainingSeconds + seconds < 60 { return }
         remainingSeconds += seconds
         totalSeconds += seconds
         currentSession?.duration += seconds
@@ -335,12 +337,12 @@ final class TimerViewModel {
             }
             try? modelContext?.save()
         }
+        loadTodayStats()
         deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
-        loadTodayStats()
     }
 
     func abandonSession() {
@@ -358,12 +360,12 @@ final class TimerViewModel {
             modelContext?.delete(session)
             try? modelContext?.save()
         }
+        loadTodayStats()
         deactivateBlocking()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
-        loadTodayStats()
     }
 
     func skipBreak() {
@@ -383,6 +385,8 @@ final class TimerViewModel {
     }
 
     // MARK: - Blocking
+    var blockUntilGoalMet: Bool = false
+
     private func activateBlocking() {
         log("activateBlocking called")
         if let profile = selectedProject?.blockProfile {
@@ -395,6 +399,14 @@ final class TimerViewModel {
 
     private func deactivateBlocking() {
         guard BlockingService.shared.isActive else { return }
+        // If block-until-goal is enabled, keep blocking until daily goal is met
+        if blockUntilGoalMet {
+            let goal = settings?.dailyFocusGoal ?? 7200
+            if todayFocusTime < goal {
+                log("Block-until-goal: \(Int(todayFocusTime))s < \(Int(goal))s goal — keeping blocks active")
+                return
+            }
+        }
         BlockingService.shared.deactivate()
     }
 
@@ -446,6 +458,18 @@ final class TimerViewModel {
         }
         guard remainingSeconds > 0 else { return }
         remainingSeconds -= 1
+
+        // Break duration monitoring — send warnings for long breaks
+        if case .onBreak = state, let session = currentSession {
+            let breakElapsed = Date().timeIntervalSince(session.startedAt)
+            let breakElapsedInt = Int(breakElapsed)
+            if breakElapsedInt == 120 {
+                NotificationService.shared.sendBreakWarning(minutes: 2)
+            } else if breakElapsedInt == 300 {
+                NotificationService.shared.sendBreakCritical(minutes: 5)
+            }
+        }
+
         if remainingSeconds <= 0 {
             timerCompleted()
         }
@@ -471,6 +495,20 @@ final class TimerViewModel {
             let label = currentSession?.label ?? "Focus"
             let duration = currentSession?.duration ?? 0
             NotificationService.shared.sendSessionCompletePrompt(duration: duration, label: label, sound: sound)
+
+            // Calendar integration
+            if settings?.calendarIntegrationEnabled == true, let session = currentSession {
+                let calName = settings?.calendarName ?? "FocusFlow"
+                let eventId = CalendarService.shared.createEvent(
+                    title: session.label,
+                    startDate: session.startedAt,
+                    endDate: session.endedAt ?? Date(),
+                    notes: session.achievement,
+                    calendarName: calName
+                )
+                session.calendarEventId = eventId
+                try? modelContext?.save()
+            }
         } else {
             NotificationService.shared.sendBreakComplete(sound: settings?.completionSound ?? "Glass")
         }

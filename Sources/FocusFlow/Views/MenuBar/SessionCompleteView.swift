@@ -77,7 +77,8 @@ struct SessionCompleteView: View {
             Text("What did you achieve?")
                 .font(.subheadline.weight(.medium))
 
-            TextField("e.g. Finished the API integration", text: $achievement)
+            TextField("e.g. Finished the API integration", text: $achievement, axis: .vertical)
+                .lineLimit(3...5)
                 .textFieldStyle(.plain)
                 .padding(10)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
@@ -126,9 +127,10 @@ struct SessionCompleteView: View {
         VStack(spacing: 8) {
             takeBreakButton
             HStack(spacing: 8) {
+                skipBreakButton
                 continueFocusingButton
-                endSessionButton
             }
+            endSessionButton
         }
     }
 
@@ -146,10 +148,23 @@ struct SessionCompleteView: View {
         .buttonBorderShape(.capsule)
     }
 
-    private var continueFocusingButton: some View {
+    private var skipBreakButton: some View {
         Button {
             timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
             timerVM.continueAfterCompletion(action: .continueFocusing)
+        } label: {
+            Label("Skip Break", systemImage: "forward.fill")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
+    }
+
+    private var continueFocusingButton: some View {
+        Button {
+            timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
+            timerVM.showSessionComplete = false
         } label: {
             Label("Continue Focusing", systemImage: "arrow.clockwise")
                 .frame(maxWidth: .infinity)
@@ -164,7 +179,7 @@ struct SessionCompleteView: View {
             timerVM.saveReflection(mood: selectedMood, achievement: achievement.isEmpty ? nil : achievement, splits: showSplits ? splits : nil)
             timerVM.continueAfterCompletion(action: .endSession)
         } label: {
-            Label("End Session", systemImage: "stop.fill")
+            Label("Finish Session", systemImage: "checkmark.circle.fill")
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
         }

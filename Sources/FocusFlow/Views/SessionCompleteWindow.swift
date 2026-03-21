@@ -133,7 +133,8 @@ struct SessionCompleteWindowView: View {
                 tracking: 1.8
             )
 
-            TextField("Log your wins...", text: $achievement)
+            TextField("Log your wins — one per line...", text: $achievement, axis: .vertical)
+                .lineLimit(3...6)
                 .textFieldStyle(.plain)
                 .padding(10)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
@@ -210,9 +211,9 @@ struct SessionCompleteWindowView: View {
                         saveAndDismiss(action: .continueFocusing)
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "arrow.clockwise")
+                            Image(systemName: "forward.fill")
                                 .font(.system(size: 12, weight: .semibold))
-                            Text("Keep Focusing")
+                            Text("Skip Break")
                                 .font(.system(size: 14, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity)
@@ -225,17 +226,46 @@ struct SessionCompleteWindowView: View {
             }
 
             Button {
+                continueOvertimeAndDismiss()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Continue Focusing")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+
+            Button {
                 saveAndDismiss(action: .endSession)
             } label: {
-                TrackedLabel(
-                    text: "Done",
-                    font: .system(size: 11, weight: .medium),
-                    color: LiquidDesignTokens.Surface.onSurfaceMuted,
-                    tracking: 2.5
-                )
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Finish Session")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .tint(LiquidDesignTokens.Spectral.mint)
         }
+    }
+
+    private func continueOvertimeAndDismiss() {
+        timerVM.saveReflection(
+            mood: selectedMood,
+            achievement: achievement.isEmpty ? nil : achievement,
+            splits: showSplits ? splits : nil
+        )
+        timerVM.showSessionComplete = false
+        dismissWindow(id: "session-complete")
     }
 
     private func saveAndDismiss(action: PostCompletionAction) {

@@ -1,15 +1,19 @@
-#!/bin/bash
-set -e
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_DIR"
 
 APP_NAME="FocusFlow"
-BUILD_DIR=".build/debug"
+BUILD_DIR="$REPO_DIR/.build/debug"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 CONTENTS="$APP_BUNDLE/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 
 # Build first
-swift build
+swift build --product "$APP_NAME"
 
 # Create .app bundle structure
 rm -rf "$APP_BUNDLE"
@@ -32,7 +36,7 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
-    <key>CFBundlePackageName</key>
+    <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
     <string>FocusFlow</string>
@@ -61,9 +65,33 @@ fi
 echo "Built $APP_BUNDLE"
 
 # Kill existing instance
-pkill -x FocusFlow 2>/dev/null || true
+if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+    pgrep -x "$APP_NAME" | while IFS= read -r pid; do
+        kill "$pid" 2>/dev/null || true
+    done
+fi
 sleep 0.5
 
 # Launch
-open "$APP_BUNDLE"
-echo "Launched FocusFlow"
+open -n "$APP_BUNDLE"
+sleep 2
+
+if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
+    echo "Launched $APP_NAME"
+    exit 0
+fi
+
+echo "App bundle launch did not stay running; trying direct binary..."
+LAUNCH_LOG="/tmp/focusflow-launch.log"
+"$MACOS/$APP_NAME" >"$LAUNCH_LOG" 2>&1 &
+DIRECT_PID=$!
+sleep 2
+
+if kill -0 "$DIRECT_PID" 2>/dev/null; then
+    echo "Launched $APP_NAME (direct binary fallback)"
+    exit 0
+fi
+
+echo "Failed to launch $APP_NAME. Last runtime log:"
+tail -n 80 "$LAUNCH_LOG" 2>/dev/null || true
+exit 1

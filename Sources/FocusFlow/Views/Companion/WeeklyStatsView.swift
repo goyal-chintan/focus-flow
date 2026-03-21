@@ -16,7 +16,9 @@ struct WeeklyStatsView: View {
             VStack(spacing: 20) {
                 periodSection
                 chartSection
+                heatmapSection
                 summarySection
+                streakSection
             }
             .padding(24)
         }
@@ -163,19 +165,74 @@ struct WeeklyStatsView: View {
                 subtitle: activeDays > 0 ? "\(activeDays) active day\(activeDays == 1 ? "" : "s")" : nil
             )
             StatCard(
-                title: "Best Day",
-                value: bestDayDuration.formattedFocusTime,
-                icon: "star.fill",
-                color: .yellow,
-                subtitle: bestDayLabel.isEmpty ? nil : bestDayLabel
+                title: "Peak Hour",
+                value: peakHour,
+                icon: "clock.fill",
+                color: .orange,
+                subtitle: peakHour != "—" ? "Most productive" : nil
             )
             StatCard(
-                title: "Total",
-                value: periodTotal.formattedFocusTime,
-                icon: "sum",
-                color: .blue,
-                subtitle: "\(selectedPeriod == .week ? "7" : "30") day period"
+                title: "Completion",
+                value: completionRate,
+                icon: "checkmark.seal.fill",
+                color: .green,
+                subtitle: periodSessionCount > 0 ? "\(periodCompletedCount)/\(periodSessionCount) sessions" : nil
             )
+        }
+    }
+
+    // MARK: - Heatmap
+
+    private var heatmapSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                LiquidSectionHeader(
+                    "Focus Intensity",
+                    subtitle: "Darker green = more focus time"
+                )
+                HeatmapView(
+                    data: chartData,
+                    maxValue: chartData.map(\.value).max() ?? 1
+                )
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: - Streak
+
+    private var streakSection: some View {
+        LiquidGlassPanel {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "flame.fill")
+                            .foregroundStyle(.orange)
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("\(currentStreak)")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                    }
+                    Text("Day Streak")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "star.fill")
+                            .foregroundStyle(.yellow)
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("\(longestStreak)")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                    }
+                    Text("Best Streak")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
         }
     }
 
@@ -236,6 +293,95 @@ struct WeeklyStatsView: View {
     private var bestDayLabel: String {
         guard let bestIdx = chartData.indices.max(by: { chartData[$0].value < chartData[$1].value }) else { return "" }
         return chartData[bestIdx].label
+    }
+
+    // MARK: - Peak Hour
+
+    private var peakHour: String {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today)!
+        let focusSessions = allSessions.filter { session in
+            session.type == .focus && session.startedAt >= periodStart
+        }
+        var hourBuckets = [Int: TimeInterval]()
+        for session in focusSessions {
+            let hour = calendar.component(.hour, from: session.startedAt)
+            hourBuckets[hour, default: 0] += session.actualDuration
+        }
+        guard let bestHour = hourBuckets.max(by: { $0.value < $1.value })?.key else { return "—" }
+        let date = calendar.date(from: DateComponents(hour: bestHour))!
+        let formatter = DateFormatter()
+        formatter.dateFormat = "ha"
+        return formatter.string(from: date).lowercased()
+    }
+
+    // MARK: - Completion Rate
+
+    private var periodSessionCount: Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today)!
+        return allSessions.filter { $0.type == .focus && $0.startedAt >= periodStart }.count
+    }
+
+    private var periodCompletedCount: Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today)!
+        return allSessions.filter { $0.type == .focus && $0.completed && $0.startedAt >= periodStart }.count
+    }
+
+    private var completionRate: String {
+        guard periodSessionCount > 0 else { return "—" }
+        return "\(Int(Double(periodCompletedCount) / Double(periodSessionCount) * 100))%"
+    }
+
+    // MARK: - Streaks
+
+    private var currentStreak: Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var streak = 0
+        var dayOffset = 0
+        while true {
+            let day = calendar.date(byAdding: .day, value: -dayOffset, to: today)!
+            let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
+            let hasFocus = allSessions.contains { session in
+                session.type == .focus && session.completed &&
+                session.startedAt >= day && session.startedAt < nextDay
+            }
+            if hasFocus {
+                streak += 1
+                dayOffset += 1
+            } else if dayOffset == 0 {
+                // Today might not have a session yet — check yesterday
+                dayOffset += 1
+            } else {
+                break
+            }
+        }
+        return streak
+    }
+
+    private var longestStreak: Int {
+        let calendar = Calendar.current
+        let focusSessions = allSessions.filter { $0.type == .focus && $0.completed }
+        guard !focusSessions.isEmpty else { return 0 }
+        let days = Set(focusSessions.map { calendar.startOfDay(for: $0.startedAt) }).sorted()
+        guard !days.isEmpty else { return 0 }
+        var maxStreak = 1
+        var current = 1
+        for i in 1..<days.count {
+            let diff = calendar.dateComponents([.day], from: days[i-1], to: days[i]).day ?? 0
+            if diff == 1 {
+                current += 1
+                maxStreak = max(maxStreak, current)
+            } else {
+                current = 1
+            }
+        }
+        return maxStreak
     }
 
 }

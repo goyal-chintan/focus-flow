@@ -16,6 +16,9 @@ struct SettingsView: View {
                 durationsSection
                 behaviorSection
                 soundSection
+                goalsSection
+                integrationsSection
+                focusCoachSection
                 aboutSection
             }
             .padding(24)
@@ -209,6 +212,153 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
             }
             .padding(16)
+        }
+    }
+
+    // MARK: - Goals
+
+    private var goalsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                LiquidSectionHeader("Goals", subtitle: "Daily focus targets")
+
+                VStack(spacing: 10) {
+                    HStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "target")
+                                .foregroundStyle(.indigo)
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Daily Focus Goal")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Text("\(Int(settings.dailyFocusGoal / 60)) min")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.primary)
+                            .frame(width: 60, alignment: .trailing)
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: { settings.dailyFocusGoal / 60 },
+                            set: { settings.dailyFocusGoal = $0 * 60; save() }
+                        ),
+                        in: 30...480,
+                        step: 15
+                    )
+                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
+
+                    HStack {
+                        Text("30m")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        Text("8h")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: - Integrations
+
+    private var integrationsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                LiquidSectionHeader("Integrations", subtitle: "Connect with Apple apps")
+
+                ToggleRow(
+                    label: "Record to Calendar",
+                    icon: "calendar.badge.clock",
+                    color: .red,
+                    isOn: Binding(
+                        get: { settings.calendarIntegrationEnabled },
+                        set: { settings.calendarIntegrationEnabled = $0; save() }
+                    )
+                )
+
+                if settings.calendarIntegrationEnabled {
+                    HStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "calendar")
+                                .foregroundStyle(.red)
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Calendar Name")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        TextField("FocusFlow", text: Binding(
+                            get: { settings.calendarName },
+                            set: { settings.calendarName = $0 }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 150)
+                        .font(.subheadline)
+                        .onSubmit { save() }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(16)
+            .animation(FFMotion.section, value: settings.calendarIntegrationEnabled)
+        }
+    }
+
+    // MARK: - Focus Coach
+
+    private var focusCoachSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                LiquidSectionHeader("Focus Coach", subtitle: "Gentle nudges to stay productive")
+
+                ToggleRow(
+                    label: "Anti-procrastination nudges",
+                    icon: "brain.head.profile.fill",
+                    color: .indigo,
+                    isOn: Binding(
+                        get: { settings.antiProcrastinationEnabled },
+                        set: { settings.antiProcrastinationEnabled = $0; save() }
+                    )
+                )
+
+                if settings.antiProcrastinationEnabled {
+                    HStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "clock.badge.exclamationmark")
+                                .foregroundStyle(.indigo)
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Nudge after")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Stepper(
+                            "\(settings.antiProcrastinationThresholdMinutes) min",
+                            value: Binding(
+                                get: { settings.antiProcrastinationThresholdMinutes },
+                                set: { settings.antiProcrastinationThresholdMinutes = $0; save() }
+                            ),
+                            in: 2...15
+                        )
+                        .frame(width: 145)
+                        .font(.subheadline)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(16)
+            .animation(FFMotion.section, value: settings.antiProcrastinationEnabled)
         }
     }
 
