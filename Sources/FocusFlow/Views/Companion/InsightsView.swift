@@ -19,6 +19,7 @@ struct InsightsView: View {
         ScrollView {
             VStack(spacing: 20) {
                 headerSection
+                behavioralInsightsSection
                 productiveHoursSection
                 durationDistributionSection
                 breakBehaviorSection
@@ -46,19 +47,242 @@ struct InsightsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - Behavioral Insights (NL)
+
+    private var behavioralInsightsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "Your Focus Profile",
+                    subtitle: "Personalized insights from your patterns"
+                )
+
+                VStack(spacing: 10) {
+                    ForEach(Array(behavioralInsights.enumerated()), id: \.offset) { _, insight in
+                        insightCard(insight)
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private struct BehavioralInsight {
+        let icon: String
+        let text: String
+        let sentiment: Sentiment
+        let color: Color
+
+        enum Sentiment { case positive, neutral, warning }
+    }
+
+    private var behavioralInsights: [BehavioralInsight] {
+        var insights = [BehavioralInsight]()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // 1. Pause/break duration pattern
+        let breaks = allSessions.filter { $0.type != .focus }
+        if breaks.count >= 3 {
+            let avgBreak = breaks.reduce(0.0) { $0 + $1.actualDuration } / Double(breaks.count)
+            let longBreaks = breaks.filter { $0.actualDuration > avgBreak * 1.5 }.count
+            let longBreakRatio = Double(longBreaks) / Double(breaks.count)
+
+            if longBreakRatio > 0.4 {
+                insights.append(BehavioralInsight(
+                    icon: "hourglass.bottomhalf.filled",
+                    text: "Your breaks tend to run long — \(Int(longBreakRatio * 100))% of your breaks exceed the average of \(Int(avgBreak / 60))m. Once you pause, you take extended breaks. Try setting a timer for breaks too.",
+                    sentiment: .warning,
+                    color: .orange
+                ))
+            } else if avgBreak < 180 {
+                insights.append(BehavioralInsight(
+                    icon: "bolt.fill",
+                    text: "You take quick, efficient breaks — averaging just \(Int(avgBreak / 60))m. Your recovery style is sprint-like, keeping momentum high.",
+                    sentiment: .positive,
+                    color: .green
+                ))
+            }
+        }
+
+        // 2. Consistency analysis
+        let last14Days = (0..<14).map { offset -> (Date, TimeInterval) in
+            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            let total = focusSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: day) }
+                .reduce(0.0) { $0 + $1.actualDuration }
+            return (day, total)
+        }
+        let activeDays14 = last14Days.filter { $0.1 > 0 }.count
+        let totalMinutes14 = last14Days.reduce(0.0) { $0 + $1.1 } / 60
+
+        if activeDays14 >= 10 {
+            insights.append(BehavioralInsight(
+                icon: "flame.fill",
+                text: "You've focused \(activeDays14) out of the last 14 days — that's excellent consistency. You've built \(Int(totalMinutes14))m of focus time. Keep this habit loop going.",
+                sentiment: .positive,
+                color: .orange
+            ))
+        } else if activeDays14 >= 5 && activeDays14 < 10 {
+            insights.append(BehavioralInsight(
+                icon: "chart.line.uptrend.xyaxis",
+                text: "You focused \(activeDays14)/14 days recently. Your active days average \(activeDays14 > 0 ? Int(totalMinutes14 / Double(activeDays14)) : 0)m. Aim for at least 10 days to build a sustainable habit.",
+                sentiment: .neutral,
+                color: .blue
+            ))
+        }
+
+        // 3. Focus momentum — once started, how long do you go?
+        let completedSessions = focusSessions.filter(\.completed)
+        let abandonedSessions = focusSessions.filter { !$0.completed }
+        if completedSessions.count + abandonedSessions.count >= 5 {
+            let completionRate = Double(completedSessions.count) / Double(completedSessions.count + abandonedSessions.count)
+            if completionRate > 0.85 {
+                insights.append(BehavioralInsight(
+                    icon: "target",
+                    text: "Once you start focusing, you finish — \(Int(completionRate * 100))% completion rate. You have strong focus momentum and rarely abandon sessions.",
+                    sentiment: .positive,
+                    color: .green
+                ))
+            } else if completionRate < 0.5 {
+                insights.append(BehavioralInsight(
+                    icon: "exclamationmark.triangle.fill",
+                    text: "You complete \(Int(completionRate * 100))% of sessions. Consider shorter initial sessions — completing a 15m session builds confidence for longer ones.",
+                    sentiment: .warning,
+                    color: .red
+                ))
+            }
+        }
+
+        // 4. Performance trend comparison (this week vs last week)
+        let thisWeekStart = calendar.date(byAdding: .day, value: -6, to: today)!
+        let lastWeekStart = calendar.date(byAdding: .day, value: -13, to: today)!
+        let thisWeekMinutes = focusSessions.filter {
+            $0.startedAt >= thisWeekStart
+        }.reduce(0.0) { $0 + $1.actualDuration } / 60
+        let lastWeekMinutes = focusSessions.filter {
+            $0.startedAt >= lastWeekStart && $0.startedAt < thisWeekStart
+        }.reduce(0.0) { $0 + $1.actualDuration } / 60
+
+        if lastWeekMinutes > 0 {
+            let change = ((thisWeekMinutes - lastWeekMinutes) / lastWeekMinutes) * 100
+            if change > 15 {
+                insights.append(BehavioralInsight(
+                    icon: "arrow.up.right",
+                    text: "Your productivity is up \(Int(change))% compared to last week — \(Int(thisWeekMinutes))m vs \(Int(lastWeekMinutes))m. You're building momentum.",
+                    sentiment: .positive,
+                    color: .green
+                ))
+            } else if change < -15 {
+                insights.append(BehavioralInsight(
+                    icon: "arrow.down.right",
+                    text: "Focus time is down \(Int(abs(change)))% from last week — \(Int(thisWeekMinutes))m vs \(Int(lastWeekMinutes))m. A good time to set a small daily goal to get back on track.",
+                    sentiment: .warning,
+                    color: .orange
+                ))
+            } else {
+                insights.append(BehavioralInsight(
+                    icon: "equal.circle.fill",
+                    text: "You're maintaining a steady pace — \(Int(thisWeekMinutes))m this week, similar to last week's \(Int(lastWeekMinutes))m. Consistency trumps intensity.",
+                    sentiment: .neutral,
+                    color: .blue
+                ))
+            }
+        }
+
+        // 5. Peak time personality
+        let peakHour = hourlyData.max(by: { $0.totalMinutes < $1.totalMinutes })
+        if let peak = peakHour, peak.totalMinutes > 30 {
+            let personality: String
+            if peak.hour < 10 {
+                personality = "You're an early bird — your best work happens before 10am. Protect your mornings for deep work."
+            } else if peak.hour < 14 {
+                personality = "Your peak focus is midday (\(peak.label)). You hit flow state when the morning settles."
+            } else if peak.hour < 18 {
+                personality = "You're an afternoon focuser — \(peak.label) is your golden hour. Schedule creative work here."
+            } else {
+                personality = "You're a night owl — your deepest focus comes after 6pm. Embrace your natural rhythm."
+            }
+            insights.append(BehavioralInsight(
+                icon: "clock.fill",
+                text: personality,
+                sentiment: .neutral,
+                color: .purple
+            ))
+        }
+
+        return Array(insights.prefix(5))
+    }
+
+    private func insightCard(_ insight: BehavioralInsight) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(insight.color.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: insight.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(insight.color)
+            }
+
+            Text(insight.text)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(insight.color.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(insight.color.opacity(0.1), lineWidth: 0.5)
+                )
+        )
+    }
+
     // MARK: - Productive Hours
 
     private var productiveHoursSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 14) {
                 LiquidSectionHeader(
-                    "Productive Hours",
+                    "Peak Hours",
                     subtitle: bestHourSummary
                 )
 
-                VStack(spacing: 2) {
+                // Compact heat strip — all hours in one row
+                HStack(spacing: 2) {
                     ForEach(hourlyData, id: \.hour) { item in
-                        productiveHourBar(item)
+                        let intensity = item.totalMinutes / maxHourlyMinutes
+                        let isSelected = selectedHour == item.hour
+
+                        VStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(
+                                    intensity > 0 ?
+                                    LiquidDesignTokens.Spectral.primaryContainer.opacity(0.2 + intensity * 0.8) :
+                                    Color.white.opacity(0.04)
+                                )
+                                .frame(height: isSelected ? 36 : 28)
+                                .overlay {
+                                    if isSelected && item.totalMinutes > 0 {
+                                        Text("\(Int(item.totalMinutes))m")
+                                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+
+                            Text(item.label)
+                                .font(.system(size: 8, weight: .medium, design: .rounded))
+                                .foregroundStyle(isSelected ? .primary : .tertiary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectedHour = selectedHour == item.hour ? nil : item.hour }
+                        .animation(FFMotion.control, value: isSelected)
+                        .accessibilityLabel("\(item.label), \(Int(item.totalMinutes)) minutes total")
                     }
                 }
             }
@@ -104,54 +328,6 @@ struct InsightsView: View {
             return "Complete sessions to reveal your peak hours"
         }
         return "Your peak is \(best.label) · \(Int(best.totalMinutes))m total"
-    }
-
-    private func productiveHourBar(_ item: HourData) -> some View {
-        let isSelected = selectedHour == item.hour
-        let width = item.totalMinutes / maxHourlyMinutes
-
-        return HStack(spacing: 8) {
-            Text(item.label)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(isSelected ? .primary : .secondary)
-                .frame(width: 36, alignment: .trailing)
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
-
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    LiquidDesignTokens.Spectral.primaryContainer.opacity(0.6),
-                                    LiquidDesignTokens.Spectral.electricBlue.opacity(0.8)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: max(2, geo.size.width * width))
-                        .shadow(color: isSelected ? LiquidDesignTokens.Spectral.primaryContainer.opacity(0.3) : .clear, radius: 4)
-                }
-            }
-            .frame(height: 14)
-
-            if item.totalMinutes > 0 {
-                Text("\(Int(item.totalMinutes))m")
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 30, alignment: .leading)
-            } else {
-                Color.clear.frame(width: 30)
-            }
-        }
-        .frame(height: 30)
-        .contentShape(Rectangle())
-        .onTapGesture { selectedHour = selectedHour == item.hour ? nil : item.hour }
-        .accessibilityLabel("\(item.label), \(Int(item.totalMinutes)) minutes total")
-        .accessibilityHint("Double-tap to toggle selection")
     }
 
     // MARK: - Duration Distribution
