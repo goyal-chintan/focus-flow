@@ -1,26 +1,53 @@
 import UserNotifications
 import AppKit
+import Combine
 
 @MainActor
-final class NotificationService {
+final class NotificationService: ObservableObject {
+    enum AuthorizationState: Equatable {
+        case notDetermined
+        case denied
+        case authorized
+    }
+
     static let shared = NotificationService()
     private init() {}
 
-    /// Whether the user has authorized notifications. Checked on demand.
-    private(set) var isAuthorized: Bool = false
+    @Published private(set) var authorizationState: AuthorizationState = .notDetermined
+    var isAuthorized: Bool { authorizationState == .authorized }
+
+    nonisolated static func authorizationState(for status: UNAuthorizationStatus) -> AuthorizationState {
+        switch status {
+        case .authorized, .provisional:
+            return .authorized
+        case .denied:
+            return .denied
+        case .notDetermined:
+            return .notDetermined
+        @unknown default:
+            return .denied
+        }
+    }
 
     func requestPermission() {
         guard Bundle.main.bundleIdentifier != nil else {
             print("[NotificationService] No bundle identifier — notifications unavailable")
+            authorizationState = .denied
             return
         }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, error in
+        if authorizationState == .denied {
+            refreshAuthorizationStatus()
+            return
+        }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, error in
             if let error {
                 print("[NotificationService] Auth request failed: \(error.localizedDescription)")
             }
-            print("[NotificationService] Authorization granted: \(granted)")
-            Task { @MainActor [weak self] in
-                self?.isAuthorized = granted
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                let state = Self.authorizationState(for: settings.authorizationStatus)
+                DispatchQueue.main.async {
+                    self?.authorizationState = state
+                }
             }
         }
     }
@@ -28,10 +55,9 @@ final class NotificationService {
     /// Refresh cached auth status — call from Settings on appear.
     func refreshAuthorizationStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
-            // Extract value type before crossing concurrency boundary (avoids Sendable error)
-            let authorized = settings.authorizationStatus == .authorized
-            Task { @MainActor [weak self] in
-                self?.isAuthorized = authorized
+            let state = Self.authorizationState(for: settings.authorizationStatus)
+            DispatchQueue.main.async {
+                self?.authorizationState = state
             }
         }
     }
