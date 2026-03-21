@@ -439,7 +439,7 @@ private struct FocusingPopoverContent: View {
     var body: some View {
         VStack(spacing: 12) {
             // Pause / Stop buttons — native glass
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Button(action: onPause) {
                     Label("Pause", systemImage: "pause.fill")
                         .frame(maxWidth: .infinity)
@@ -465,12 +465,17 @@ private struct FocusingPopoverContent: View {
                 .frame(minHeight: 34)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
+                .overlay(
+                    Capsule()
+                        .fill(LiquidDesignTokens.Spectral.salmon.opacity(0.25))
+                )
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)
 
             // -5/+5 min Extension buttons
             extensionButtons
+                .padding(.top, 8)
 
             if showStopConfirmation {
                 stopConfirmation
@@ -483,7 +488,7 @@ private struct FocusingPopoverContent: View {
     }
 
     private var extensionButtons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Button(action: onReduceTime) {
                 HStack(spacing: 4) {
                     Image(systemName: "minus")

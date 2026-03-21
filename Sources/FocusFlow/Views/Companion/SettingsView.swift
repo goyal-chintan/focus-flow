@@ -779,7 +779,14 @@ struct SettingsView: View {
     @MainActor
     private func ensureCompanionWindowIfNeeded(wasVisible: Bool) async {
         guard wasVisible else { return }
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(600))
+        // Try to bring existing window to front first
+        if let statsWindow = NSApp.windows.first(where: {
+            $0.identifier?.rawValue == "stats" || $0.title.contains("FocusFlow")
+        }), statsWindow.isVisible {
+            statsWindow.makeKeyAndOrderFront(nil)
+            return
+        }
         guard !isCompanionVisible else { return }
         openWindow(id: "stats")
     }
