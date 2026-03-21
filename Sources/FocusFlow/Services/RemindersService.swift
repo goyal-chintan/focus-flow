@@ -6,7 +6,10 @@ import OSLog
 @MainActor
 final class RemindersService {
     static let shared = RemindersService()
-    private let store = EKEventStore()
+    /// Shared EKEventStore — never create a second one per Apple's docs.
+    private var store: EKEventStore { EventStoreManager.shared.store }
+    /// Prevents concurrent requestFullAccessToReminders() calls on the same store.
+    private var isRequestingAccess = false
     private let logger = Logger(subsystem: "FocusFlow", category: "RemindersService")
     private init() {}
 
@@ -31,8 +34,18 @@ final class RemindersService {
     }
 
     func requestAccess() async -> Bool {
+        // Guard against concurrent permission requests — EventKit behaviour is undefined
+        // if requestFullAccessToReminders() is called while another request is in flight.
+        guard !isRequestingAccess else {
+            return authStatus == .authorized
+        }
+        isRequestingAccess = true
+        defer { isRequestingAccess = false }
         do {
-            return try await store.requestFullAccessToReminders()
+            let granted = try await store.requestFullAccessToReminders()
+            // Brief yield so EventKit can finish updating its internal state after grant.
+            if granted { try? await Task.sleep(for: .milliseconds(100)) }
+            return granted
         } catch {
             return false
         }
