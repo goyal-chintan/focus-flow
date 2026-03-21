@@ -3,7 +3,6 @@ import SwiftUI
 struct ReminderSelectionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let selectedDate: Date
     let selectedListId: String?
     let initialSelectedIds: Set<String>
     let onConfirm: ([RemindersService.ReminderItem]) -> Void
@@ -14,79 +13,115 @@ struct ReminderSelectionSheet: View {
     @State private var loadError: String?
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                if isLoading {
-                    ProgressView("Loading reminders...")
-                        .padding(.vertical, 24)
-                } else if let loadError {
-                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.orange)
-                        .padding(.vertical, 24)
-                } else if remindersForSelectedDate.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "checklist")
-                            .font(.system(size: 24, weight: .light))
-                            .foregroundStyle(.tertiary)
-                        Text("No reminders due on this day")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 24)
-                } else {
-                    List(remindersForSelectedDate, id: \.id) { reminder in
-                        Button {
-                            toggle(reminder.id)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: selectedIds.contains(reminder.id) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selectedIds.contains(reminder.id) ? LiquidDesignTokens.Spectral.primaryContainer : .secondary)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(reminder.title)
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(.primary)
-                                    Text(reminder.list)
-                                        .font(.system(size: 11, weight: .regular))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .listStyle(.inset)
-                }
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Select Reminders")
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer()
             }
-            .padding(.horizontal, 12)
-            .navigationTitle("Select Reminders")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        let chosen = reminders.filter { selectedIds.contains($0.id) }
-                        onConfirm(chosen)
-                        dismiss()
-                    }
-                    .disabled(selectedIds.isEmpty)
-                }
-            }
-            .task {
-                await load()
-            }
-        }
-        .frame(minWidth: 420, minHeight: 420)
-    }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
 
-    private var remindersForSelectedDate: [RemindersService.ReminderItem] {
-        let calendar = Calendar.current
-        return reminders.filter {
-            guard let due = $0.dueDate else { return false }
-            return calendar.isDate(due, inSameDayAs: selectedDate)
+            Divider().opacity(0.3)
+
+            // Content
+            if isLoading {
+                ProgressView()
+                    .padding(.vertical, 40)
+            } else if let loadError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(.orange)
+                    Text(loadError)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 40)
+            } else if reminders.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(.tertiary)
+                    Text("No incomplete reminders")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 40)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(reminders, id: \.id) { reminder in
+                            Button {
+                                toggle(reminder.id)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: selectedIds.contains(reminder.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(selectedIds.contains(reminder.id) ? LiquidDesignTokens.Spectral.primaryContainer : .secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(reminder.title)
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(.primary)
+                                        if !reminder.list.isEmpty {
+                                            Text(reminder.list)
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    Spacer()
+                                    if let due = reminder.dueDate {
+                                        Text(due, style: .date)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(
+                                    selectedIds.contains(reminder.id)
+                                        ? Color.white.opacity(0.06)
+                                        : Color.clear
+                                )
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                }
+                .frame(maxHeight: 300)
+            }
+
+            Divider().opacity(0.3)
+
+            // Footer buttons
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+
+                Button("Add") {
+                    let chosen = reminders.filter { selectedIds.contains($0.id) }
+                    onConfirm(chosen)
+                    dismiss()
+                }
+                .buttonStyle(.glassProminent)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                .buttonBorderShape(.capsule)
+                .disabled(selectedIds.isEmpty)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
+        .frame(width: 380, height: 460)
+        .task { await load() }
     }
 
     private func toggle(_ id: String) {
@@ -106,13 +141,8 @@ struct ReminderSelectionSheet: View {
             loadError = "Reminders permission is not granted."
             return
         }
-        let calendar = Calendar.current
-        let dayStart = calendar.startOfDay(for: selectedDate)
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)
         reminders = await RemindersService.shared.fetchIncompleteReminders(
-            listId: selectedListId,
-            dueDateStarting: dayStart,
-            dueDateEnding: dayEnd
+            listId: selectedListId
         )
         isLoading = false
     }

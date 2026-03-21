@@ -16,11 +16,6 @@ struct MenuBarPopoverView: View {
                     timerVM.ensureConfigured(modelContext: modelContext)
                 }
             }
-            .onChange(of: timerVM.showSessionComplete) { _, newValue in
-                if newValue {
-                    openWindow(id: "session-complete")
-                }
-            }
             .onChange(of: timerVM.state) { _, _ in
                 showStopConfirmation = false
             }
@@ -120,7 +115,7 @@ struct MenuBarPopoverView: View {
                     Image(systemName: "chart.bar.fill")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -132,7 +127,7 @@ struct MenuBarPopoverView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -242,7 +237,7 @@ struct MenuBarPopoverView: View {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-                        .frame(width: 30, height: 30)
+                        .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -439,12 +434,13 @@ private struct FocusingPopoverContent: View {
     var body: some View {
         VStack(spacing: 12) {
             // Pause / Stop buttons — native glass
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Button(action: onPause) {
                     Label("Pause", systemImage: "pause.fill")
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 12)
                 }
+                .frame(minHeight: 34)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
                 .accessibilityLabel("Pause focus session")
@@ -454,13 +450,14 @@ private struct FocusingPopoverContent: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "stop.fill")
-                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                         Text("Stop")
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 12)
                 }
-                .buttonStyle(.glass)
+                .frame(minHeight: 34)
+                .buttonStyle(.glassProminent)
+                .tint(Color.red)
                 .buttonBorderShape(.capsule)
                 .accessibilityLabel("Stop focus session")
             }
@@ -468,6 +465,7 @@ private struct FocusingPopoverContent: View {
 
             // -5/+5 min Extension buttons
             extensionButtons
+                .padding(.top, 8)
 
             if showStopConfirmation {
                 stopConfirmation
@@ -480,7 +478,7 @@ private struct FocusingPopoverContent: View {
     }
 
     private var extensionButtons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Button(action: onReduceTime) {
                 HStack(spacing: 4) {
                     Image(systemName: "minus")
@@ -489,8 +487,9 @@ private struct FocusingPopoverContent: View {
                         .font(.system(size: 13, weight: .medium))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
             }
+            .frame(minHeight: 34)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canReduceTime)
@@ -506,8 +505,9 @@ private struct FocusingPopoverContent: View {
                         .font(.system(size: 13, weight: .medium))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
             }
+            .frame(minHeight: 34)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canExtendTime)
@@ -640,12 +640,15 @@ private struct PausedPopoverContent: View {
             Button {
                 withAnimation(FFMotion.section) { onShowStopConfirmation() }
             } label: {
-                TrackedLabel(
-                    text: "End Session",
-                    font: LiquidDesignTokens.Typography.labelMedium,
-                    color: LiquidDesignTokens.Surface.onSurfaceMuted,
-                    tracking: 2.0
-                )
+                HStack(spacing: 4) {
+                    Image(systemName: "xmark.circle")
+                    TrackedLabel(
+                        text: "End Session",
+                        font: LiquidDesignTokens.Typography.labelMedium,
+                        color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                        tracking: 2.0
+                    )
+                }
             }
             .buttonStyle(.plain)
 
@@ -769,8 +772,9 @@ private struct OvertimePopoverContent: View {
                                         .font(.system(size: 13, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 12)
                             }
+                            .frame(minHeight: 34)
                             .buttonStyle(.glassProminent)
                             .tint(LiquidDesignTokens.Spectral.primaryContainer)
                             .buttonBorderShape(.capsule)
@@ -783,8 +787,9 @@ private struct OvertimePopoverContent: View {
                                         .font(.system(size: 13, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 12)
                             }
+                            .frame(minHeight: 34)
                             .buttonStyle(.glass)
                             .buttonBorderShape(.capsule)
                         }
@@ -794,13 +799,13 @@ private struct OvertimePopoverContent: View {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 12, weight: .medium))
                                 Text("Finish Session")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 14, weight: .medium))
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 12)
                         }
+                        .frame(minHeight: 34)
                         .buttonStyle(.glass)
-                        .tint(LiquidDesignTokens.Spectral.mint)
                         .buttonBorderShape(.capsule)
                     }
                 }

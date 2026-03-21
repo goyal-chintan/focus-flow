@@ -424,7 +424,7 @@ struct TodayStatsView: View {
 
     private func completeReminder(_ reminder: RemindersService.ReminderItem) {
         Task {
-            let didComplete = await RemindersService.shared.completeReminder(identifier: reminder.id)
+            let didComplete = RemindersService.shared.completeReminder(identifier: reminder.id)
             guard didComplete else { return }
             withAnimation {
                 dueReminders.removeAll { $0.id == reminder.id }

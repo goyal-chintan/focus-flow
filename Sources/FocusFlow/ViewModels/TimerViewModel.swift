@@ -40,7 +40,7 @@ final class TimerViewModel {
     var pauseTimeString: String {
         let mins = Int(pauseElapsed) / 60
         let secs = Int(pauseElapsed) % 60
-        return String(format: "%d:%02d", mins, secs)
+        return String(format: "%02d:%02d", mins, secs)
     }
 
     enum PauseWarningLevel {
@@ -78,6 +78,7 @@ final class TimerViewModel {
     var showSessionComplete: Bool = false
     /// True when user manually stopped mid-session (vs natural timer completion).
     var isManualStop: Bool = false
+    var hasStaleBlocking: Bool = false
     var lastCompletedDuration: TimeInterval? = nil
     var lastCompletedLabel: String? = nil
     private(set) var lastCompletedSession: FocusSession? = nil
@@ -128,7 +129,7 @@ final class TimerViewModel {
     var overtimeTimeString: String {
         let mins = overtimeSeconds / 60
         let secs = overtimeSeconds % 60
-        return String(format: "+%d:%02d", mins, secs)
+        return String(format: "+%02d:%02d", mins, secs)
     }
 
     var isRunning: Bool {
@@ -161,7 +162,18 @@ final class TimerViewModel {
         seedDefaultProfiles()
         loadTodayStats()
         cleanupOrphanedSessions()
-        BlockingService.shared.cleanupIfNeeded()
+        // Don't call BlockingService.cleanupIfNeeded() here — it prompts for
+        // admin password if stale /etc/hosts entries exist, which is jarring on
+        // app launch. Instead, cleanup happens in deactivateBlocking().
+        // Refresh notification authorization on the main actor so the Settings
+        // banner accurately reflects whether notifications are enabled.
+        Task { @MainActor in
+            NotificationService.shared.refreshAuthorizationStatus()
+        }
+        if BlockingHelper.isBlockingActive() {
+            hasStaleBlocking = true
+            log("WARNING: Stale website blocking detected from previous crash")
+        }
         scheduleMidnightRefresh()
         log("configure() complete")
     }
@@ -407,12 +419,14 @@ final class TimerViewModel {
     /// can record mood, achievement, and splits before the session is finalised.
     /// Only used when the session is long enough to be worth reflecting on (≥60s).
     func stopForReflection() {
+        log("stopForReflection called, currentSession=\(currentSession != nil)")
         guard let session = currentSession else {
             stop()   // nothing to save
             return
         }
         // Too short to be worth a reflection window — just discard
         let elapsed = Date().timeIntervalSince(session.startedAt)
+        log("stopForReflection: elapsed=\(elapsed)s, openCompletionWindow set=\(openCompletionWindow != nil)")
         if elapsed < 60 {
             abandonSession()
             return
@@ -442,6 +456,7 @@ final class TimerViewModel {
 
         showSessionComplete = true
         openCompletionWindow?()
+        log("stopForReflection: showSessionComplete=\(showSessionComplete), openCompletionWindow called")
     }
 
     /// Called from SessionCompleteWindow "Discard" button after a manual stop.
@@ -523,6 +538,7 @@ final class TimerViewModel {
             }
         }
         BlockingService.shared.deactivate()
+        hasStaleBlocking = false
     }
 
     // MARK: - Timer
@@ -617,7 +633,7 @@ final class TimerViewModel {
             if settings?.calendarIntegrationEnabled == true, let session = currentSession {
                 let calName = settings?.calendarName ?? "FocusFlow"
                 let calId = settings?.selectedCalendarId
-                let eventId = await CalendarService.shared.createEvent(
+                let eventId = CalendarService.shared.createEvent(
                     title: session.label,
                     startDate: session.startedAt,
                     endDate: session.endedAt ?? Date(),
@@ -673,7 +689,7 @@ final class TimerViewModel {
 
         if !reminderIdsToComplete.isEmpty {
             for reminderId in reminderIdsToComplete {
-                _ = await RemindersService.shared.completeReminder(identifier: reminderId)
+                _ = RemindersService.shared.completeReminder(identifier: reminderId)
             }
         }
 
@@ -696,7 +712,7 @@ final class TimerViewModel {
             noteLines.append("")
             noteLines.append("Duration: \(duration) minutes")
             noteLines.append("Recorded by FocusFlow")
-            _ = await CalendarService.shared.updateEvent(
+            _ = CalendarService.shared.updateEvent(
                 eventId: eventId,
                 title: session.label,
                 notes: noteLines.joined(separator: "\n"),
@@ -743,8 +759,6 @@ final class TimerViewModel {
 
         showSessionComplete = false
         isManualStop = false
-        currentSession = nil
-        lastCompletedSession = nil
 
         switch action {
         case .continueFocusing:
@@ -756,5 +770,8 @@ final class TimerViewModel {
             state = .idle
             loadTodayStats()
         }
+
+        currentSession = nil
+        lastCompletedSession = nil
     }
 }
