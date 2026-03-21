@@ -41,7 +41,7 @@ struct CalendarTabView: View {
             }
             .padding(24)
         }
-        .background(.ultraThinMaterial)
+        .background(Color.clear)
         .onAppear {
             Self.logger.debug("Calendar tab appeared. remindersEnabled=\(self.settings?.remindersIntegrationEnabled == true, privacy: .public) selectedListEmpty=\(self.settings?.selectedReminderListId.isEmpty ?? true, privacy: .public)")
         }
@@ -165,7 +165,7 @@ struct CalendarTabView: View {
                     ForEach(Array(calendar.shortWeekdaySymbols.enumerated()), id: \.offset) { _, day in
                         Text(day)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -174,7 +174,7 @@ struct CalendarTabView: View {
                 // Day grid
                 let weeks = monthWeeks
                 ForEach(weeks.indices, id: \.self) { weekIdx in
-                    HStack(spacing: 0) {
+                    HStack(spacing: 2) {
                         ForEach(weeks[weekIdx]) { cell in
                             if let date = cell.date {
                                 dayCell(date)
@@ -211,9 +211,9 @@ struct CalendarTabView: View {
             if hasSessions {
                 Circle()
                     .fill(intensityColor(goalProgress))
-                    .frame(width: 6, height: 6)
+                    .frame(width: 7, height: 7)
             } else {
-                Color.clear.frame(width: 6, height: 6)
+                Color.clear.frame(width: 7, height: 7)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 44)
@@ -221,9 +221,14 @@ struct CalendarTabView: View {
             if isSelected {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(LiquidDesignTokens.Spectral.primaryContainer)
+                    .shadow(color: LiquidDesignTokens.Spectral.primaryContainer.opacity(0.3), radius: 6)
             } else if isToday {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.4), lineWidth: 1.5)
+                    .fill(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(LiquidDesignTokens.Spectral.primaryContainer.opacity(0.6), lineWidth: 2)
+                    )
             }
         }
         .contentShape(Rectangle())
@@ -236,10 +241,10 @@ struct CalendarTabView: View {
     }
 
     private func intensityColor(_ progress: Double) -> Color {
-        let safeProgress = progress.isFinite ? max(0, progress) : 0
-        if safeProgress >= 1.0 { return Color(hex: 0x3DA86A) }
-        if safeProgress >= 0.5 { return Color(hex: 0x3DA86A).opacity(0.6) }
-        return Color(hex: 0x3DA86A).opacity(0.3)
+        let p = min(max(progress.isFinite ? progress : 0, 0), 1)
+        if p >= 1.0 { return Color.green }
+        if p >= 0.5 { return Color.green.opacity(0.7) }
+        return Color.green.opacity(0.4)
     }
 
     // MARK: - Calendar Math
@@ -458,7 +463,7 @@ struct CalendarTabView: View {
         VStack(alignment: .leading, spacing: 6) {
             TrackedLabel(
                 text: title.uppercased(),
-                font: .system(size: 9, weight: .semibold),
+                font: .system(size: 10, weight: .bold),
                 color: labelColor,
                 tracking: 1.4
             )
@@ -542,7 +547,10 @@ struct CalendarTabView: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel("Edit reminder")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(8)
         .transition(.asymmetric(insertion: .identity, removal: .slide.combined(with: .opacity)))
     }
 
