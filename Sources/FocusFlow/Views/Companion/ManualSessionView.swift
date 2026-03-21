@@ -15,6 +15,7 @@ struct ManualSessionView: View {
     @State private var achievement: String = ""
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
+    @State private var saveError: String?
 
     var body: some View {
         ScrollView {
@@ -33,6 +34,7 @@ struct ManualSessionView: View {
         }
         .frame(width: 420)
         .background(.background)
+        .saveErrorOverlay($saveError)
     }
 
     private var projectSection: some View {
@@ -70,14 +72,10 @@ struct ManualSessionView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Duration")
 
-            HStack(spacing: 8) {
-                ForEach([15, 25, 45, 60], id: \.self) { mins in
-                    DurationPresetButton(mins: mins, isSelected: duration == mins) {
-                        duration = mins
-                        startTime = Date().addingTimeInterval(TimeInterval(-mins * 60))
-                    }
-                }
-            }
+            DurationPresetRow(
+                presets: [15, 25, 45, 60],
+                selectedMinutes: $duration
+            )
 
             HStack(spacing: 8) {
                 Text("Custom")
@@ -91,14 +89,14 @@ struct ManualSessionView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-                    .onChange(of: duration) {
-                        startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
-                    }
 
                 Text("minutes")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+        }
+        .onChange(of: duration) {
+            startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
         }
     }
 
@@ -119,13 +117,7 @@ struct ManualSessionView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Focus Quality")
 
-            HStack(spacing: 6) {
-                ForEach(FocusMood.allCases, id: \.self) { mood in
-                    MoodButton(mood: mood, isSelected: selectedMood == mood) {
-                        selectedMood = selectedMood == mood ? nil : mood
-                    }
-                }
-            }
+            MoodSelector(selectedMood: $selectedMood)
         }
     }
 
@@ -230,69 +222,7 @@ struct ManualSessionView: View {
             }
         }
 
-        try? modelContext.save()
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 }
 
-private struct DurationPresetButton: View {
-    let mins: Int
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        let label = Text("\(mins)m")
-            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-
-        if isSelected {
-            Button(action: action) { label }
-                .buttonStyle(.glassProminent)
-                .tint(.blue)
-                .buttonBorderShape(.capsule)
-        } else {
-            Button(action: action) { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-        }
-    }
-}
-
-private struct MoodButton: View {
-    let mood: FocusMood
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        if isSelected {
-            Button(action: action) { moodLabel }
-                .buttonStyle(.glassProminent)
-                .tint(moodColor)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-        } else {
-            Button(action: action) { moodLabel }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-        }
-    }
-
-    private var moodLabel: some View {
-        VStack(spacing: 2) {
-            Image(systemName: mood.icon)
-                .font(.system(size: 14))
-            Text(mood.rawValue)
-                .font(.system(size: 10))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-    }
-
-    private var moodColor: Color {
-        switch mood {
-        case .distracted: .orange
-        case .neutral: .secondary
-        case .focused: .blue
-        case .deepFocus: .purple
-        }
-    }
-}
