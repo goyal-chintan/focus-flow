@@ -122,7 +122,7 @@ struct FocusCoachPreSessionCard: View {
                     }
                 }
 
-                Text("Helps your coach calibrate — high resistance tasks get gentler nudges")
+                Text("High resistance = gentler coaching pace")
                     .font(.system(size: 9, weight: .regular, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.6))
                     .padding(.top, 1)
@@ -139,32 +139,30 @@ struct FocusCoachPreSessionCard: View {
                 selectedTaskType = type
             }
         }) {
-            HStack(spacing: 4) {
-                Image(systemName: type.icon)
-                    .font(.system(size: 9))
-                Text(type.displayName)
-                    .font(LiquidDesignTokens.Typography.labelSmall)
-            }
-            .foregroundStyle(isSelected
-                ? LiquidDesignTokens.Spectral.electricBlue
-                : LiquidDesignTokens.Surface.onSurfaceMuted)
-            .padding(.horizontal, LiquidDesignTokens.Spacing.small)
-            .padding(.vertical, 4)
-            .background {
-                Capsule()
-                    .fill(isSelected
-                        ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.12)
-                        : Color.white.opacity(0.04))
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(
-                                isSelected
-                                    ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.3)
-                                    : Color.white.opacity(0.06),
-                                lineWidth: 0.5
-                            )
-                    )
-            }
+            Text(type.displayName)
+                .font(.system(size: 11, weight: isSelected ? .semibold : .medium, design: .rounded))
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(isSelected
+                    ? LiquidDesignTokens.Spectral.electricBlue
+                    : LiquidDesignTokens.Surface.onSurfaceMuted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background {
+                    Capsule()
+                        .fill(isSelected
+                            ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.12)
+                            : Color.white.opacity(0.04))
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(
+                                    isSelected
+                                        ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.3)
+                                        : Color.white.opacity(0.06),
+                                    lineWidth: 0.5
+                                )
+                        )
+                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(type.displayName)

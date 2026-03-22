@@ -270,6 +270,7 @@ struct InsightsView: View {
 
     @ViewBuilder
     private func coachHeroMetrics(report: FocusCoachWeeklyReport) -> some View {
+        let hasInterventionData = !coachAttempts.isEmpty
         HStack(spacing: 12) {
             coachMetricCard(
                 value: "\(Int(report.completionRate * 100))%",
@@ -278,13 +279,21 @@ struct InsightsView: View {
                     ? LiquidDesignTokens.Spectral.mint
                     : LiquidDesignTokens.Spectral.amber
             )
-            coachMetricCard(
-                value: "\(Int(report.interventionWinRate * 100))%",
-                label: "Recovery Rate",
-                color: report.interventionWinRate > 0.5
-                    ? LiquidDesignTokens.Spectral.mint
-                    : LiquidDesignTokens.Spectral.amber
-            )
+            if hasInterventionData {
+                coachMetricCard(
+                    value: "\(Int(report.interventionWinRate * 100))%",
+                    label: "Recovery",
+                    color: report.interventionWinRate > 0.5
+                        ? LiquidDesignTokens.Spectral.mint
+                        : LiquidDesignTokens.Spectral.amber
+                )
+            } else {
+                coachMetricCard(
+                    value: "\(report.totalSessions)",
+                    label: "Sessions",
+                    color: LiquidDesignTokens.Spectral.electricBlue
+                )
+            }
             coachMetricCard(
                 value: "\(report.avgSessionMinutes)m",
                 label: "Avg Session",
@@ -684,7 +693,7 @@ struct InsightsView: View {
             }
         }
 
-        // 2. Consistency analysis
+        // 2. Consistency analysis — quality-gated (not just showing up)
         let last14Days = (0..<14).map { offset -> (Date, TimeInterval) in
             let day = calendar.date(byAdding: .day, value: -offset, to: today)!
             let total = focusSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: day) }
@@ -693,18 +702,26 @@ struct InsightsView: View {
         }
         let activeDays14 = last14Days.filter { $0.1 > 0 }.count
         let totalMinutes14 = last14Days.reduce(0.0) { $0 + $1.1 } / 60
+        let avgMinPerDay14 = activeDays14 > 0 ? Int(totalMinutes14 / Double(activeDays14)) : 0
 
-        if activeDays14 >= 10 {
+        if activeDays14 >= 10 && avgMinPerDay14 >= 25 {
             insights.append(BehavioralInsight(
                 icon: "flame.fill",
-                text: "You've focused \(activeDays14) out of the last 14 days — that's excellent consistency. You've built \(Int(totalMinutes14))m of focus time. Keep this habit loop going.",
+                text: "Focused \(activeDays14)/14 days averaging \(avgMinPerDay14)m per day — strong volume and consistency. This regularity builds automatic focus habits (Rozental, 2018).",
                 sentiment: .positive,
                 color: .orange
+            ))
+        } else if activeDays14 >= 10 && avgMinPerDay14 < 25 {
+            insights.append(BehavioralInsight(
+                icon: "chart.line.uptrend.xyaxis",
+                text: "You show up \(activeDays14)/14 days — great frequency. But averaging only \(avgMinPerDay14)m per day limits deep work. Try one 25m+ session daily to cross the flow threshold.",
+                sentiment: .neutral,
+                color: .blue
             ))
         } else if activeDays14 >= 5 && activeDays14 < 10 {
             insights.append(BehavioralInsight(
                 icon: "chart.line.uptrend.xyaxis",
-                text: "You focused \(activeDays14)/14 days recently. Your active days average \(activeDays14 > 0 ? Int(totalMinutes14 / Double(activeDays14)) : 0)m. Aim for at least 10 days to build a sustainable habit.",
+                text: "Focused \(activeDays14)/14 days, averaging \(avgMinPerDay14)m on active days. \(totalMinutes14 < 120 ? "Your total of \(Int(totalMinutes14))m is below the weekly deep work minimum of 2 hours." : "Building toward a sustainable habit — aim for 10+ days.")",
                 sentiment: .neutral,
                 color: .blue
             ))
@@ -715,71 +732,76 @@ struct InsightsView: View {
         let abandonedSessions = focusSessions.filter { !$0.completed }
         if completedSessions.count + abandonedSessions.count >= 5 {
             let completionRate = Double(completedSessions.count) / Double(completedSessions.count + abandonedSessions.count)
-            if completionRate > 0.85 {
+            let avgCompletedMin = completedSessions.isEmpty ? 0 : Int(completedSessions.reduce(0.0) { $0 + $1.actualDuration } / Double(completedSessions.count) / 60)
+            let avgAbandonedMin = abandonedSessions.isEmpty ? 0 : Int(abandonedSessions.reduce(0.0) { $0 + $1.actualDuration } / Double(abandonedSessions.count) / 60)
+            if completionRate > 0.85 && avgCompletedMin >= 20 {
                 insights.append(BehavioralInsight(
                     icon: "target",
-                    text: "Once you start focusing, you finish — \(Int(completionRate * 100))% completion rate. You have strong focus momentum and rarely abandon sessions.",
+                    text: "\(Int(completionRate * 100))% completion, averaging \(avgCompletedMin)m per session. Strong follow-through — your starting friction is your only bottleneck.",
                     sentiment: .positive,
                     color: .green
+                ))
+            } else if completionRate > 0.85 && avgCompletedMin < 20 {
+                insights.append(BehavioralInsight(
+                    icon: "target",
+                    text: "High completion (\(Int(completionRate * 100))%) but sessions average only \(avgCompletedMin)m. You're good at finishing — try extending duration to unlock deeper focus.",
+                    sentiment: .neutral,
+                    color: .blue
                 ))
             } else if completionRate < 0.5 {
                 insights.append(BehavioralInsight(
                     icon: "exclamationmark.triangle.fill",
-                    text: "You complete \(Int(completionRate * 100))% of sessions. Consider shorter initial sessions — completing a 15m session builds confidence for longer ones.",
+                    text: "Only \(Int(completionRate * 100))% completion rate. Abandoned sessions average \(avgAbandonedMin)m. Try setting your timer to \(max(5, avgAbandonedMin - 5))m — completing short sessions builds momentum (Steel, 2007).",
                     sentiment: .warning,
                     color: .red
                 ))
             }
         }
 
-        // 4. Performance trend comparison (this week vs last week)
+        // 4. Performance trend comparison (this week vs last week) — actionable
         let thisWeekStart = calendar.date(byAdding: .day, value: -6, to: today)!
         let lastWeekStart = calendar.date(byAdding: .day, value: -13, to: today)!
-        let thisWeekMinutes = focusSessions.filter {
-            $0.startedAt >= thisWeekStart
-        }.reduce(0.0) { $0 + $1.actualDuration } / 60
+        let thisWeekSessions = focusSessions.filter { $0.startedAt >= thisWeekStart }
+        let thisWeekMinutes = thisWeekSessions.reduce(0.0) { $0 + $1.actualDuration } / 60
         let lastWeekMinutes = focusSessions.filter {
             $0.startedAt >= lastWeekStart && $0.startedAt < thisWeekStart
         }.reduce(0.0) { $0 + $1.actualDuration } / 60
 
         if lastWeekMinutes > 0 {
             let change = ((thisWeekMinutes - lastWeekMinutes) / lastWeekMinutes) * 100
+            let avgSessionThis = thisWeekSessions.isEmpty ? 0 : Int(thisWeekMinutes / Double(thisWeekSessions.count))
             if change > 15 {
                 insights.append(BehavioralInsight(
                     icon: "arrow.up.right",
-                    text: "Your productivity is up \(Int(change))% compared to last week — \(Int(thisWeekMinutes))m vs \(Int(lastWeekMinutes))m. You're building momentum.",
+                    text: "Up \(Int(change))% vs last week (\(Int(thisWeekMinutes))m vs \(Int(lastWeekMinutes))m). \(thisWeekSessions.count) sessions averaging \(avgSessionThis)m each.",
                     sentiment: .positive,
                     color: .green
                 ))
             } else if change < -15 {
+                let deficit = Int(lastWeekMinutes - thisWeekMinutes)
                 insights.append(BehavioralInsight(
                     icon: "arrow.down.right",
-                    text: "Focus time is down \(Int(abs(change)))% from last week — \(Int(thisWeekMinutes))m vs \(Int(lastWeekMinutes))m. A good time to set a small daily goal to get back on track.",
+                    text: "Down \(Int(abs(change)))% from last week (\(Int(thisWeekMinutes))m vs \(Int(lastWeekMinutes))m). You need ~\(deficit)m more this week to match. That's \(deficit / max(1, 7 - last14Days.prefix(7).filter { $0.1 > 0 }.count)) min per remaining day.",
                     sentiment: .warning,
                     color: .orange
-                ))
-            } else {
-                insights.append(BehavioralInsight(
-                    icon: "equal.circle.fill",
-                    text: "You're maintaining a steady pace — \(Int(thisWeekMinutes))m this week, similar to last week's \(Int(lastWeekMinutes))m. Consistency trumps intensity.",
-                    sentiment: .neutral,
-                    color: .blue
                 ))
             }
         }
 
-        // 5. Peak time personality
+        // 5. Peak time — actionable scheduling advice
         let peakHour = hourlyData.max(by: { $0.totalMinutes < $1.totalMinutes })
         if let peak = peakHour, peak.totalMinutes > 30 {
+            let peakSessions = hourlyData.filter { abs($0.hour - peak.hour) <= 1 }
+            let peakTotal = Int(peakSessions.reduce(0.0) { $0 + $1.totalMinutes })
             let personality: String
             if peak.hour < 10 {
-                personality = "You're an early bird — your best work happens before 10am. Protect your mornings for deep work."
+                personality = "Your peak window is before 10am — \(peakTotal)m focused there. Block mornings for your hardest tasks; your alertness drops ~25% after noon."
             } else if peak.hour < 14 {
-                personality = "Your peak focus is midday (\(peak.label)). You hit flow state when the morning settles."
+                personality = "Peak focus at \(peak.label) — \(peakTotal)m total. Schedule demanding work late morning. Avoid meetings in this window."
             } else if peak.hour < 18 {
-                personality = "You're an afternoon focuser — \(peak.label) is your golden hour. Schedule creative work here."
+                personality = "Afternoon focuser — \(peak.label) is your peak with \(peakTotal)m. Use mornings for admin, save deep work for after lunch."
             } else {
-                personality = "You're a night owl — your deepest focus comes after 6pm. Embrace your natural rhythm."
+                personality = "Night owl pattern — peak at \(peak.label) with \(peakTotal)m. Your circadian rhythm favors evening focus. Don't fight it, plan for it."
             }
             insights.append(BehavioralInsight(
                 icon: "clock.fill",
@@ -1383,14 +1405,23 @@ struct InsightsView: View {
             ))
         }
 
-        // Tip based on consistency
+        // Tip based on consistency — quality-gated (must average 25+ min per active day)
         let activeDaysLast7 = last30DaysData.suffix(7).filter { $0 > 0 }.count
-        if activeDaysLast7 >= 5 {
+        let totalMinLast7 = last30DaysData.suffix(7).reduce(0, +)
+        let avgMinPerActiveDay = activeDaysLast7 > 0 ? totalMinLast7 / Double(activeDaysLast7) : 0
+        if activeDaysLast7 >= 5 && avgMinPerActiveDay >= 25 {
             tips.append(ScienceTip(
                 icon: "flame.fill",
-                title: "Consistency Superstar",
-                body: "You've focused \(activeDaysLast7)/7 days this week. Consistency matters more than intensity for building lasting habits. Your brain is rewiring for focus.",
+                title: "Strong Consistency",
+                body: "You focused \(activeDaysLast7)/7 days, averaging \(Int(avgMinPerActiveDay))m per session day. Regularity at this level rewires neural pathways for sustained attention (Rozental, 2018).",
                 color: .orange
+            ))
+        } else if activeDaysLast7 >= 5 && avgMinPerActiveDay < 25 {
+            tips.append(ScienceTip(
+                icon: "chart.line.uptrend.xyaxis",
+                title: "Frequency Without Depth",
+                body: "You show up \(activeDaysLast7)/7 days — great habit. But averaging \(Int(avgMinPerActiveDay))m per day isn't enough for deep work. Try extending one session to 25m+ — that's the threshold where flow state becomes accessible (Steel, 2007).",
+                color: .blue
             ))
         } else if activeDaysLast7 <= 2 && focusSessions.count > 5 {
             tips.append(ScienceTip(
