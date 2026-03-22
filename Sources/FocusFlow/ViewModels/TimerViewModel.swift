@@ -15,6 +15,7 @@ enum PostCompletionAction {
     case endSession
 }
 
+@MainActor
 @Observable
 final class TimerViewModel {
     // MARK: - State
@@ -73,6 +74,9 @@ final class TimerViewModel {
 
     // MARK: - Start Error Feedback
     var startError: String? = nil
+
+    // MARK: - Save Error Feedback
+    var saveError: String? = nil
 
     // MARK: - Session Completion
     var showSessionComplete: Bool = false
@@ -175,6 +179,8 @@ final class TimerViewModel {
             log("WARNING: Stale website blocking detected from previous crash")
         }
         scheduleMidnightRefresh()
+        // Start app usage tracking and nudge timer at launch (not deferred to popover open)
+        AppUsageTracker.shared.start(timerVM: self, modelContext: modelContext)
         log("configure() complete")
     }
 
@@ -224,7 +230,7 @@ final class TimerViewModel {
                 session.completed = false
             }
         }
-        try? modelContext?.save()
+        saveContext()
     }
 
     private func loadSettings() {
@@ -233,7 +239,7 @@ final class TimerViewModel {
         if settings == nil {
             let newSettings = AppSettings()
             modelContext?.insert(newSettings)
-            try? modelContext?.save()
+            saveContext()
             settings = newSettings
         }
         if let settings {
@@ -324,6 +330,24 @@ final class TimerViewModel {
         }
     }
 
+    /// Saves the model context, logging errors. Non-critical saves (cleanup, stats refresh)
+    /// use this to avoid disrupting the user.
+    private func saveContext(caller: String = #function) {
+        do {
+            try modelContext?.save()
+        } catch {
+            log("Save failed in \(caller): \(error.localizedDescription)")
+            saveError = error.localizedDescription
+            // Auto-clear after 5 seconds
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                if self?.saveError == error.localizedDescription {
+                    self?.saveError = nil
+                }
+            }
+        }
+    }
+
     func startBreak() {
         guard let settings, !isOvertime else { return }
         // Guard against zero/negative sessionsBeforeLongBreak to prevent division-by-zero
@@ -405,7 +429,7 @@ final class TimerViewModel {
             if session.actualDuration < 60 {
                 modelContext?.delete(session)
             }
-            try? modelContext?.save()
+            saveContext()
         }
         loadTodayStats()
         deactivateBlocking()
@@ -440,7 +464,7 @@ final class TimerViewModel {
 
         session.endedAt = Date()
         session.completed = false
-        try? modelContext?.save()
+        saveContext()
 
         lastCompletedDuration = session.duration
         lastCompletedLabel = session.label
@@ -464,8 +488,19 @@ final class TimerViewModel {
     func discardManualStop() {
         if let session = lastCompletedSession {
             modelContext?.delete(session)
-            try? modelContext?.save()
+            saveContext()
         }
+        isManualStop = false
+        showSessionComplete = false
+        lastCompletedSession = nil
+        lastCompletedDuration = nil
+        lastCompletedLabel = nil
+        loadTodayStats()
+    }
+
+    /// Called when SessionComplete window is closed without explicit action.
+    /// Preserves the session (doesn't delete it) and resets UI state.
+    func preserveManualStop() {
         isManualStop = false
         showSessionComplete = false
         lastCompletedSession = nil
@@ -488,7 +523,7 @@ final class TimerViewModel {
         showSessionComplete = false
         if let session = currentSession {
             modelContext?.delete(session)
-            try? modelContext?.save()
+            saveContext()
         }
         loadTodayStats()
         deactivateBlocking()
@@ -506,7 +541,7 @@ final class TimerViewModel {
         showSessionComplete = false
         currentSession?.endedAt = Date()
         currentSession?.completed = false
-        try? modelContext?.save()
+        saveContext()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
@@ -582,7 +617,7 @@ final class TimerViewModel {
             overtimeSeconds += 1
             currentSession?.endedAt = Date()
             if overtimeSeconds % 30 == 0 {
-                try? modelContext?.save()
+                saveContext()
             }
             loadTodayStats()
             return
@@ -613,7 +648,7 @@ final class TimerViewModel {
         // Don't invalidate timer — continues for overtime
         currentSession?.endedAt = Date()
         currentSession?.completed = true
-        try? modelContext?.save()
+        saveContext()
 
         let wasType = currentSession?.type
 
@@ -642,7 +677,7 @@ final class TimerViewModel {
                     calendarId: (calId?.isEmpty ?? true) ? nil : calId
                 )
                 session.calendarEventId = eventId
-                try? modelContext?.save()
+                saveContext()
             }
         } else {
             NotificationService.shared.sendBreakComplete(sound: settings?.completionSound ?? "Glass")
@@ -689,7 +724,10 @@ final class TimerViewModel {
 
         if !reminderIdsToComplete.isEmpty {
             for reminderId in reminderIdsToComplete {
-                _ = RemindersService.shared.completeReminder(identifier: reminderId)
+                let ok = RemindersService.shared.completeReminder(identifier: reminderId)
+                if !ok {
+                    print("[TimerViewModel] Failed to complete reminder: \(reminderId)")
+                }
             }
         }
 
@@ -721,7 +759,7 @@ final class TimerViewModel {
             )
         }
 
-        try? modelContext?.save()
+        saveContext()
     }
 
     private func seedDefaultProfiles() {
@@ -740,7 +778,7 @@ final class TimerViewModel {
         )
         modelContext?.insert(social)
         modelContext?.insert(fullFocus)
-        try? modelContext?.save()
+        saveContext()
     }
 
     func continueAfterCompletion(action: PostCompletionAction) {
@@ -753,7 +791,7 @@ final class TimerViewModel {
         // Final save of session endedAt (includes overtime)
         if let session = currentSession ?? lastCompletedSession {
             session.endedAt = Date()
-            try? modelContext?.save()
+            saveContext()
         }
         loadTodayStats()
 

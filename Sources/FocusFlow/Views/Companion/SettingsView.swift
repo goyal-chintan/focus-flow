@@ -850,7 +850,7 @@ struct SettingsView: View {
     private var focusCoachSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Focus Coach", subtitle: "Gentle nudges to stay productive")
+                LiquidSectionHeader("Focus Coach", subtitle: "Nudges and reminders to stay productive")
 
                 // What it does — clear explanation before controls
                 HStack(alignment: .top, spacing: 8) {
@@ -858,7 +858,7 @@ struct SettingsView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.indigo.opacity(0.8))
                         .padding(.top, 1)
-                    Text("When you've been idle at your Mac without starting a session, FocusFlow sends a notification nudge to get you back into deep work.")
+                    Text("When you've been idle at your Mac without starting a session, FocusFlow sends escalating notification nudges to get you back into deep work. View your Focus Score and personalized insights in the Insights tab.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -866,7 +866,7 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
 
                 ToggleRow(
-                    label: "Anti-procrastination nudges",
+                    label: "Idle nudge notifications",
                     icon: "brain.head.profile.fill",
                     color: .indigo,
                     isOn: Binding(
@@ -882,10 +882,10 @@ struct SettingsView: View {
                                 .foregroundStyle(.indigo)
                                 .font(.system(size: 13, weight: .semibold))
                             VStack(alignment: .leading, spacing: 1) {
-                                Text("Nudge after idle time")
+                                Text("First nudge after")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
-                                Text("Counts down when no session is active")
+                                Text("Escalates with follow-ups at longer intervals")
                                     .font(.system(size: 10))
                                     .foregroundStyle(.tertiary)
                             }

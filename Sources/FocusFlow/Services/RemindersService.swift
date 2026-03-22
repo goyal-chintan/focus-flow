@@ -154,7 +154,7 @@ final class RemindersService {
         item.isCompleted = true
         item.completionDate = Date()
         do { try store.save(item, commit: true); return true }
-        catch { return false }
+        catch { print("[RemindersService] completeReminder failed: \(error.localizedDescription)"); return false }
     }
 
     func updateReminder(identifier: String, title: String, notes: String?, dueDate: Date?) -> Bool {
@@ -167,7 +167,7 @@ final class RemindersService {
             item.dueDateComponents = nil
         }
         do { try store.save(item, commit: true); return true }
-        catch { return false }
+        catch { print("[RemindersService] updateReminder failed: \(error.localizedDescription)"); return false }
     }
 
     @discardableResult
@@ -183,7 +183,7 @@ final class RemindersService {
             reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
         }
         do { try store.save(reminder, commit: true); return reminder.calendarItemIdentifier }
-        catch { return nil }
+        catch { print("[RemindersService] createReminder failed: \(error.localizedDescription)"); return nil }
     }
 
     func reminderLists() -> [(id: String, title: String, source: String)] {

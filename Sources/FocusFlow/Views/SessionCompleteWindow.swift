@@ -11,6 +11,7 @@ struct SessionCompleteWindowView: View {
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var selectedReminderItems: [RemindersService.ReminderItem] = []
     @State private var showReminderPicker = false
+    @State private var hasHandledAction = false
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -31,8 +32,8 @@ struct SessionCompleteWindowView: View {
             bringWindowToFront()
         }
         .onDisappear {
-            if timerVM.isManualStop && timerVM.showSessionComplete {
-                timerVM.discardManualStop()
+            if !hasHandledAction && timerVM.isManualStop && timerVM.showSessionComplete {
+                timerVM.preserveManualStop()
             }
         }
     }
@@ -345,6 +346,7 @@ struct SessionCompleteWindowView: View {
                     // Discard — only for manual stops (no reason to discard a naturally-completed session)
                     if timerVM.isManualStop {
                         Button {
+                            hasHandledAction = true
                             timerVM.discardManualStop()
                             dismissWindow(id: "session-complete")
                         } label: {
@@ -367,6 +369,7 @@ struct SessionCompleteWindowView: View {
     }
 
     private func continueOvertimeAndDismiss() {
+        hasHandledAction = true
         Task {
             await timerVM.saveReflection(
                 mood: selectedMood,
@@ -382,6 +385,7 @@ struct SessionCompleteWindowView: View {
     }
 
     private func saveAndDismiss(action: PostCompletionAction) {
+        hasHandledAction = true
         Task {
             await timerVM.saveReflection(
                 mood: selectedMood,
@@ -439,6 +443,7 @@ struct SessionCompleteWindowView: View {
                     role: .primary,
                     tint: .blue
                 ) {
+                    hasHandledAction = true
                     timerVM.continueAfterCompletion(action: .continueFocusing)
                     dismissWindow(id: "session-complete")
                 }
@@ -448,6 +453,7 @@ struct SessionCompleteWindowView: View {
                     icon: "stop.fill",
                     role: .secondary
                 ) {
+                    hasHandledAction = true
                     timerVM.continueAfterCompletion(action: .endSession)
                     dismissWindow(id: "session-complete")
                 }

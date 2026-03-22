@@ -1,6 +1,7 @@
 import Foundation
 
-final class BlockingService: @unchecked Sendable {
+@MainActor
+final class BlockingService {
     static let shared = BlockingService()
     private init() {}
 
