@@ -44,6 +44,10 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 0) {
             VStack(spacing: 20) {
                 focusHeaderSection
+                // Coach reason capture for mid-session stops
+                if timerVM.showCoachReasonSheet {
+                    coachReasonSection
+                }
                 moodSection
                 achievementSection
                 focusActionsSection
@@ -110,6 +114,33 @@ struct SessionCompleteWindowView: View {
             }
         }
         .padding(.top, 8)
+    }
+
+    private var coachReasonSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TrackedLabel(
+                text: "What Happened?",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
+            Text("Help your coach understand why this session ended early")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            FocusCoachReasonChipSheet(
+                anomalyKind: timerVM.pendingReasonKind,
+                onSelect: { reason in
+                    timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: reason)
+                    timerVM.showCoachReasonSheet = false
+                },
+                onSnooze: {
+                    timerVM.showCoachReasonSheet = false
+                },
+                onDismiss: {
+                    timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: nil)
+                    timerVM.showCoachReasonSheet = false
+                }
+            )
+        }
     }
 
     private var moodSection: some View {

@@ -199,7 +199,13 @@ struct MenuBarPopoverView: View {
     @ViewBuilder
     private var coachStripSection: some View {
         if timerVM.settings?.coachRealtimeEnabled == true {
-            let isActive = timerVM.state == .focusing || timerVM.state == .paused
+            let isActive: Bool = {
+                switch timerVM.state {
+                case .focusing, .paused: return true
+                case .onBreak: return true
+                case .idle: return false
+                }
+            }()
             if isActive {
                 let model = FocusCoachPresentationMapper.map(
                     level: timerVM.coachEngine.riskLevel,
@@ -361,12 +367,12 @@ private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
     let coachEnabled: Bool
+    @Binding var coachTaskTitle: String
+    @Binding var coachTaskType: FocusCoachTaskType
+    @Binding var coachResistance: Int
     let onStartFocus: () -> Void
 
     @State private var showCustomSlider: Bool = false
-    @State private var coachTaskTitle: String = ""
-    @State private var coachTaskType: FocusCoachTaskType = .deepWork
-    @State private var coachResistance: Int = 3
 
     private static let presetMinutes: [Int] = [5, 15, 25, 45]
 
@@ -998,6 +1004,18 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
             coachEnabled: timerVM.settings?.coachRealtimeEnabled ?? false,
+            coachTaskTitle: Binding(
+                get: { timerVM.coachTaskTitle },
+                set: { timerVM.coachTaskTitle = $0 }
+            ),
+            coachTaskType: Binding(
+                get: { timerVM.coachTaskType },
+                set: { timerVM.coachTaskType = $0 }
+            ),
+            coachResistance: Binding(
+                get: { timerVM.coachResistance },
+                set: { timerVM.coachResistance = $0 }
+            ),
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()

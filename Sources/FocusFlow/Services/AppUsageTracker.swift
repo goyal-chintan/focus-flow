@@ -19,6 +19,8 @@ final class AppUsageTracker {
     private var appSwitchTimestamps: [Date] = []
     private var lastFrontmostBundleId: String = ""
     private var inactivitySeconds: Int = 0
+    private var hasEngagedProductively: Bool = false
+    private var startDelaySeconds: Double = 0
 
     private init() {}
 
@@ -36,6 +38,8 @@ final class AppUsageTracker {
         appSwitchTimestamps = []
         lastFrontmostBundleId = ""
         inactivitySeconds = 0
+        hasEngagedProductively = false
+        startDelaySeconds = 0
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -197,10 +201,20 @@ final class AppUsageTracker {
             ? Double(distractingFocusSeconds) / Double(totalFocusSeconds)
             : 0
 
+        // Start delay: track time until user engages with a productive (non-distracting) app
+        if !hasEngagedProductively {
+            if nonWorkRatio < 0.5 && totalFocusSeconds > 5 {
+                hasEngagedProductively = true
+            } else if let sessionStart = vm.coachEngine.sessionStartedAt {
+                startDelaySeconds = Date().timeIntervalSince(sessionStart)
+            }
+        }
+
         var signals = vm.coachEngine.currentSignals
         signals.appSwitchesPerMinute = switchRate
         signals.nonWorkForegroundRatio = nonWorkRatio
         signals.inactivityBurstSeconds = Double(inactivitySeconds)
+        signals.startDelaySeconds = startDelaySeconds
         vm.coachEngine.recordBehaviorSample(signals)
     }
 
