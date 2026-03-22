@@ -10,10 +10,10 @@ enum FocusCoachTaskType: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .deepWork: "Deep Work"
+        case .deepWork: "Deep"
         case .admin: "Admin"
-        case .learning: "Learning"
-        case .creative: "Creative"
+        case .learning: "Learn"
+        case .creative: "Create"
         }
     }
 
