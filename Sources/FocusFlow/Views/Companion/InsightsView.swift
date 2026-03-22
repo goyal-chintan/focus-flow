@@ -1347,20 +1347,27 @@ struct InsightsView: View {
     private var contextualTips: [ScienceTip] {
         var tips = [ScienceTip]()
 
-        // Tip based on average session length
+        // Tip based on average session length (with specific research)
         let avgDuration = focusSessions.isEmpty ? 0 : focusSessions.reduce(0.0) { $0 + $1.actualDuration } / Double(focusSessions.count)
-        if avgDuration > 0 && avgDuration < 1500 {
+        if avgDuration > 0 && avgDuration < 900 {
             tips.append(ScienceTip(
                 icon: "timer",
-                title: "Build Up Gradually",
-                body: "Your avg session is \(Int(avgDuration/60))m. Research shows working up to 25–50 min sessions maximizes deep work capacity.",
+                title: "Start Small, Build Up",
+                body: "Your avg session is \(Int(avgDuration/60))m. Short sessions are fine for building the habit — completing them builds self-efficacy, which reduces procrastination over time (Steel, 2007). Try adding 5 minutes when you're ready.",
+                color: .blue
+            ))
+        } else if avgDuration >= 900 && avgDuration < 1500 {
+            tips.append(ScienceTip(
+                icon: "timer",
+                title: "Finding Your Rhythm",
+                body: "Your avg session is \(Int(avgDuration/60))m. You're in the productive zone. Research shows 25–50 min sessions maximize deep work capacity. Experiment with slightly longer sessions when the task type calls for it.",
                 color: .blue
             ))
         } else if avgDuration >= 2700 {
             tips.append(ScienceTip(
                 icon: "brain",
-                title: "Long Sessions Champion",
-                body: "Sessions over 45m can deplete cognitive resources. Consider splitting into focused sprints with short breaks.",
+                title: "Consider Shorter Sprints",
+                body: "Sessions over 45m can deplete cognitive resources. Micro-breaks between focused sprints boost vigor by d=0.36 (Albulescu, 2022). Try splitting long sessions with 5-min breaks.",
                 color: .purple
             ))
         }
@@ -1370,8 +1377,8 @@ struct InsightsView: View {
         if breakTakenRatio < 0.5 && focusSessions.count > 3 {
             tips.append(ScienceTip(
                 icon: "cup.and.saucer.fill",
-                title: "Take More Breaks",
-                body: "You skip breaks often. The Pomodoro Technique works best with regular rest — it prevents mental fatigue and boosts creativity.",
+                title: "Breaks Aren't Wasted Time",
+                body: "You skip breaks often. Regular rest prevents cognitive fatigue and boosts creativity. Even 5-min micro-breaks significantly restore vigor (Albulescu, 2022).",
                 color: .green
             ))
         }
@@ -1382,25 +1389,37 @@ struct InsightsView: View {
             tips.append(ScienceTip(
                 icon: "flame.fill",
                 title: "Consistency Superstar",
-                body: "You've focused \(activeDaysLast7)/7 days this week. Consistency matters more than intensity for building lasting habits.",
+                body: "You've focused \(activeDaysLast7)/7 days this week. Consistency matters more than intensity for building lasting habits. Your brain is rewiring for focus.",
                 color: .orange
             ))
         } else if activeDaysLast7 <= 2 && focusSessions.count > 5 {
             tips.append(ScienceTip(
                 icon: "calendar.badge.exclamationmark",
-                title: "Build the Habit",
-                body: "Try to focus at least 4 days a week. Even a single short session maintains your habit loop.",
+                title: "Habit Loop Breaking",
+                body: "Only \(activeDaysLast7) days this week. The hardest part of any habit is restarting after a gap. Try a single 5-min session today — just starting breaks the avoidance cycle (Rozental, 2018).",
                 color: .red
             ))
         }
 
-        // Always include a general tip if we have few contextual ones
-        if tips.count < 2 {
+        // Completion-based tip (using procrastination research)
+        let completionRate = focusSessions.isEmpty ? 0 : Double(focusSessions.filter(\.completed).count) / Double(focusSessions.count)
+        if completionRate < 0.4 && focusSessions.count >= 5 {
             tips.append(ScienceTip(
-                icon: "lightbulb.fill",
-                title: "The 2-Minute Rule",
-                body: "If you're procrastinating, commit to just 2 minutes of work. Starting is the hardest part — momentum follows.",
-                color: .yellow
+                icon: "exclamationmark.triangle.fill",
+                title: "Completion Challenge",
+                body: "You're completing \(Int(completionRate * 100))% of sessions. This often signals the planned duration is too long. Try shorter sessions — completing them builds momentum and self-efficacy (Steel, 2007).",
+                color: .red
+            ))
+        }
+
+        // Mental contrasting tip based on resistance data
+        let highResistanceIntents = taskIntents.filter { $0.expectedResistance >= 4 }
+        if highResistanceIntents.count >= 3 {
+            tips.append(ScienceTip(
+                icon: "brain.head.profile",
+                title: "High-Resistance Pattern",
+                body: "You frequently face high-resistance tasks. Mental Contrasting with Implementation Intentions (MCII) — visualizing success then obstacles — improves goal attainment by g=0.336 (Wang, 2021). The pre-session check-in helps with this.",
+                color: .purple
             ))
         }
 

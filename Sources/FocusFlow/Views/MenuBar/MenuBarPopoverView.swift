@@ -367,7 +367,6 @@ private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
     let coachEnabled: Bool
-    @Binding var coachTaskTitle: String
     @Binding var coachTaskType: FocusCoachTaskType
     @Binding var coachResistance: Int
     let onStartFocus: () -> Void
@@ -381,7 +380,6 @@ private struct IdlePopoverContent: View {
             // Coach pre-session intention card
             if coachEnabled {
                 FocusCoachPreSessionCard(
-                    taskTitle: $coachTaskTitle,
                     selectedTaskType: $coachTaskType,
                     resistanceLevel: $coachResistance
                 )
@@ -1004,10 +1002,6 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
             coachEnabled: timerVM.settings?.coachRealtimeEnabled ?? false,
-            coachTaskTitle: Binding(
-                get: { timerVM.coachTaskTitle },
-                set: { timerVM.coachTaskTitle = $0 }
-            ),
             coachTaskType: Binding(
                 get: { timerVM.coachTaskType },
                 set: { timerVM.coachTaskType = $0 }

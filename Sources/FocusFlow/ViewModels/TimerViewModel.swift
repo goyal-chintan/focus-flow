@@ -124,7 +124,6 @@ final class TimerViewModel {
     var pendingReasonKind: FocusCoachInterruptionKind = .drift
 
     /// Pre-session intention data (set from IdlePopoverContent, persisted on startFocus)
-    var coachTaskTitle: String = ""
     var coachTaskType: FocusCoachTaskType = .deepWork
     var coachResistance: Int = 3
 
@@ -338,10 +337,11 @@ final class TimerViewModel {
         pauseCountThisSession = 0
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
         coachEngine.startSession(id: session.id)
-        // Persist TaskIntent from pre-session card if coach is enabled and user entered a title
-        if settings?.coachRealtimeEnabled == true, !coachTaskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+        // Persist TaskIntent from pre-session check-in if coach is enabled
+        if settings?.coachRealtimeEnabled == true {
+            let taskTitle = selectedProject?.name ?? (customLabel.isEmpty ? "Focus" : customLabel)
             let intent = TaskIntent(
-                title: coachTaskTitle,
+                title: taskTitle,
                 taskType: coachTaskType,
                 expectedResistance: coachResistance,
                 suggestedDurationMinutes: selectedMinutes,
@@ -351,7 +351,6 @@ final class TimerViewModel {
             coachEngine.currentTaskIntentId = intent.id
             saveContext()
         }
-        coachTaskTitle = ""
         coachResistance = 3
         // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()
@@ -465,6 +464,8 @@ final class TimerViewModel {
         overtimeSeconds = 0
         isManualStop = false
         showSessionComplete = false
+        showCoachReasonSheet = false
+        pendingReasonKind = .drift
         coachEngine.endSession()
         if let session = currentSession {
             session.endedAt = Date()
@@ -550,6 +551,8 @@ final class TimerViewModel {
         }
         isManualStop = false
         showSessionComplete = false
+        showCoachReasonSheet = false
+        pendingReasonKind = .drift
         lastCompletedSession = nil
         lastCompletedDuration = nil
         lastCompletedLabel = nil
@@ -561,6 +564,8 @@ final class TimerViewModel {
     func preserveManualStop() {
         isManualStop = false
         showSessionComplete = false
+        showCoachReasonSheet = false
+        pendingReasonKind = .drift
         lastCompletedSession = nil
         lastCompletedDuration = nil
         lastCompletedLabel = nil
@@ -579,6 +584,8 @@ final class TimerViewModel {
         overtimeSeconds = 0
         isManualStop = false
         showSessionComplete = false
+        showCoachReasonSheet = false
+        pendingReasonKind = .drift
         coachEngine.endSession()
         if let session = currentSession {
             modelContext?.delete(session)
