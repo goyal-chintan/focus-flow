@@ -114,6 +114,11 @@ final class TimerViewModel {
     private var currentSession: FocusSession?
     private(set) var settings: AppSettings?
 
+    // MARK: - Focus Coach
+    private(set) var coachEngine = FocusCoachEngine()
+    private var coachTickCounter: Int = 0
+    private var pauseCountThisSession: Int = 0
+
     // MARK: - Computed
     var progress: Double {
         guard totalSeconds > 0 else { return 0 }
@@ -318,6 +323,10 @@ final class TimerViewModel {
             settings?.lastUsedProjectId = project.id.uuidString
         }
         startTimer()
+        // Focus Coach: start session tracking
+        pauseCountThisSession = 0
+        coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
+        coachEngine.startSession(id: session.id)
         // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()
     }
@@ -380,6 +389,8 @@ final class TimerViewModel {
         state = .paused
         pauseStartTime = Date()
         pauseElapsed = 0
+        pauseCountThisSession += 1
+        coachEngine.updatePauseCount(pauseCountThisSession)
         startPauseTimer()
     }
 
@@ -428,6 +439,7 @@ final class TimerViewModel {
         overtimeSeconds = 0
         isManualStop = false
         showSessionComplete = false
+        coachEngine.endSession()
         if let session = currentSession {
             session.endedAt = Date()
             session.completed = false
@@ -527,6 +539,7 @@ final class TimerViewModel {
         overtimeSeconds = 0
         isManualStop = false
         showSessionComplete = false
+        coachEngine.endSession()
         if let session = currentSession {
             modelContext?.delete(session)
             saveContext()
@@ -630,6 +643,14 @@ final class TimerViewModel {
         }
         guard remainingSeconds > 0 else { return }
         remainingSeconds -= 1
+
+        // Focus Coach: tick every 30 seconds during active focus
+        if state == .focusing, settings?.coachRealtimeEnabled == true {
+            coachTickCounter += 1
+            if coachTickCounter % 30 == 0 {
+                _ = coachEngine.tick()
+            }
+        }
 
         // Break duration monitoring — send warnings for long breaks
         if case .onBreak = state, let session = currentSession {
@@ -817,5 +838,35 @@ final class TimerViewModel {
 
         currentSession = nil
         lastCompletedSession = nil
+    }
+
+    // MARK: - Focus Coach Actions
+
+    /// Records an anomaly reason (user-selected chip) via the coach engine.
+    func recordCoachReason(kind: FocusCoachInterruptionKind, reason: FocusCoachReason?) {
+        coachEngine.recordAnomaly(kind: kind, reason: reason, sessionId: currentSession?.id)
+    }
+
+    /// Handles a coach quick action selection.
+    func handleCoachAction(_ action: FocusCoachQuickAction) {
+        switch action {
+        case .returnNow:
+            coachEngine.recordInterventionOutcome(.improved)
+            if state == .paused {
+                resume()
+            }
+        case .cleanRestart5m:
+            coachEngine.recordInterventionOutcome(.improved)
+            abandonSession()
+            selectedMinutes = 5
+            startFocus()
+        case .snooze10m:
+            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10)
+        }
+    }
+
+    /// Dismisses the current coach prompt.
+    func dismissCoachPrompt() {
+        coachEngine.recordInterventionOutcome(.dismissed)
     }
 }
