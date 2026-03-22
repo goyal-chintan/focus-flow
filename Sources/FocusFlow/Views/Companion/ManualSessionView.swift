@@ -147,7 +147,7 @@ struct ManualSessionView: View {
             DatePicker(
                 "Ended at",
                 selection: endTimeBinding,
-                in: startTime...,
+                in: startTime...Date(),
                 displayedComponents: [.date, .hourAndMinute]
             )
             .datePickerStyle(.compact)
