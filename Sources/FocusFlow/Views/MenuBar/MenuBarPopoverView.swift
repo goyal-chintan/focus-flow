@@ -28,6 +28,8 @@ struct MenuBarPopoverView: View {
 
                 activeContextSection
 
+                coachStripSection
+
                 timerHeroSection
 
                 stateSection
@@ -192,6 +194,41 @@ struct MenuBarPopoverView: View {
         .padding(.bottom, (timerVM.state == .idle && !timerVM.isOvertime) ? 8 : 4)
     }
 
+    // MARK: - Coach Strip (Live Risk Status)
+
+    @ViewBuilder
+    private var coachStripSection: some View {
+        if timerVM.settings?.coachRealtimeEnabled == true {
+            let isActive = timerVM.state == .focusing || timerVM.state == .paused
+            if isActive {
+                let model = FocusCoachPresentationMapper.map(
+                    level: timerVM.coachEngine.riskLevel,
+                    score: timerVM.coachEngine.riskScore
+                )
+                FocusCoachStripView(model: model)
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 4)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+
+                // Quick prompt overlay when coach decides to intervene
+                if let promptModel = FocusCoachPresentationMapper.mapDecision(timerVM.coachEngine.lastDecision) {
+                    FocusCoachQuickPromptView(
+                        model: promptModel,
+                        onAction: { action in
+                            timerVM.handleCoachAction(action)
+                        },
+                        onDismiss: {
+                            timerVM.dismissCoachPrompt()
+                        }
+                    )
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 4)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+        }
+    }
+
     // MARK: - State Section
 
     @ViewBuilder
@@ -323,14 +360,29 @@ struct MenuBarPopoverView: View {
 private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
+    let coachEnabled: Bool
     let onStartFocus: () -> Void
 
     @State private var showCustomSlider: Bool = false
+    @State private var coachTaskTitle: String = ""
+    @State private var coachTaskType: FocusCoachTaskType = .deepWork
+    @State private var coachResistance: Int = 3
 
     private static let presetMinutes: [Int] = [5, 15, 25, 45]
 
     var body: some View {
         VStack(spacing: 0) {
+            // Coach pre-session intention card
+            if coachEnabled {
+                FocusCoachPreSessionCard(
+                    taskTitle: $coachTaskTitle,
+                    selectedTaskType: $coachTaskType,
+                    resistanceLevel: $coachResistance
+                )
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 12)
+            }
+
             // PROJECT label
             HStack {
                 TrackedLabel(
@@ -945,6 +997,7 @@ extension MenuBarPopoverView {
         return IdlePopoverContent(
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
+            coachEnabled: timerVM.settings?.coachRealtimeEnabled ?? false,
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
