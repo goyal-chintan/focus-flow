@@ -25,6 +25,7 @@ struct InsightsView: View {
                 headerSection
                 focusScoreSection
                 behavioralInsightsSection
+                coachInsightsSection
                 analyticsGridSection
                 trendsAndBreaksSection
                 scienceTipsSection
@@ -215,6 +216,168 @@ struct InsightsView: View {
             }
             .padding(16)
         }
+    }
+
+    // MARK: - Coach Insights (Weekly Report)
+
+    @ViewBuilder
+    private var coachInsightsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "Coach Report",
+                    subtitle: "Science-based coaching from your patterns"
+                )
+
+                let report = buildCoachReport()
+
+                if report.totalSessions < 3 {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 6) {
+                            Image(systemName: "brain.head.profile.fill")
+                                .font(.system(size: 18, weight: .light))
+                                .foregroundStyle(.tertiary)
+                            Text("Complete 3+ sessions to unlock personalized coaching insights")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.vertical, 12)
+                        Spacer()
+                    }
+                } else {
+                    // Hero metrics row
+                    HStack(spacing: 12) {
+                        coachMetricCard(
+                            value: "\(Int(report.completionRate * 100))%",
+                            label: "Completion",
+                            color: report.completionRate > 0.7
+                                ? LiquidDesignTokens.Spectral.mint
+                                : LiquidDesignTokens.Spectral.amber
+                        )
+                        coachMetricCard(
+                            value: "\(Int(report.interventionWinRate * 100))%",
+                            label: "Recovery Rate",
+                            color: report.interventionWinRate > 0.5
+                                ? LiquidDesignTokens.Spectral.mint
+                                : LiquidDesignTokens.Spectral.amber
+                        )
+                        coachMetricCard(
+                            value: "\(report.avgSessionMinutes)m",
+                            label: "Avg Session",
+                            color: LiquidDesignTokens.Spectral.electricBlue
+                        )
+                    }
+
+                    // Top triggers
+                    if !report.topTriggers.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            TrackedLabel(
+                                text: "Top Distractions",
+                                font: LiquidDesignTokens.Typography.labelSmall,
+                                tracking: 1.5
+                            )
+                            ForEach(report.topTriggers.prefix(3), id: \.label) { trigger in
+                                HStack(spacing: 8) {
+                                    Image(systemName: trigger.icon)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                                        .frame(width: 16)
+                                    Text(trigger.label)
+                                        .font(LiquidDesignTokens.Typography.bodySmall)
+                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                                    Spacer()
+                                    Text("\(trigger.count) min")
+                                        .font(LiquidDesignTokens.Typography.labelSmall)
+                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+
+                    // Coaching tip based on data
+                    if let tip = coachingTip(from: report) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "lightbulb.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                                .padding(.top, 2)
+                            Text(tip)
+                                .font(.system(size: 11, weight: .regular, design: .rounded))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private func coachMetricCard(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(color)
+                .monospacedDigit()
+            Text(label)
+                .font(LiquidDesignTokens.Typography.labelSmall)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background {
+            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
+                .fill(color.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
+                        .strokeBorder(color.opacity(0.12), lineWidth: 0.5)
+                )
+        }
+    }
+
+    private func buildCoachReport() -> FocusCoachWeeklyReport {
+        let sessions = allSessions.filter { $0.type == .focus }.map { session in
+            FocusCoachInsightsBuilder.SessionSnapshot(
+                id: session.id,
+                type: session.type.rawValue,
+                duration: session.duration,
+                startedAt: session.startedAt,
+                endedAt: session.endedAt,
+                completed: session.completed
+            )
+        }
+        let appSnapshots = appUsageEntries.map { entry in
+            FocusCoachInsightsBuilder.AppUsageSnapshot(
+                appName: entry.appName,
+                duringFocusSeconds: entry.duringFocusSeconds,
+                category: entry.category.rawValue
+            )
+        }
+        return FocusCoachInsightsBuilder().build(
+            sessions: sessions,
+            interruptions: [],
+            attempts: [],
+            appUsage: appSnapshots
+        )
+    }
+
+    private func coachingTip(from report: FocusCoachWeeklyReport) -> String? {
+        if report.completionRate < 0.5 {
+            return "Try shorter sessions (15–20 min) to build momentum. Research shows completing shorter blocks builds self-efficacy (Steel, 2007)."
+        }
+        if report.interventionWinRate > 0 && report.interventionWinRate < 0.3 {
+            return "Coach prompts aren't helping much yet. Consider adjusting prompt budget or try the \"Clean Restart\" action — structured re-engagement works better than willpower alone (Rozental, 2018)."
+        }
+        if !report.topTriggers.isEmpty {
+            return "Your top distraction is \(report.topTriggers[0].label). Consider adding it to a block profile during focus sessions."
+        }
+        if report.completionRate > 0.85 {
+            return "Strong completion rate! You're building consistent focus habits. Micro-breaks between sessions boost vigor and reduce fatigue (Albulescu, 2022)."
+        }
+        return nil
     }
 
     private struct BehavioralInsight {
