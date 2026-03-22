@@ -17,9 +17,13 @@ struct SessionEditView: View {
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
+    @State private var showDeleteConfirm = false
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
+
+    @Query private var allSettings: [AppSettings]
+    private var settings: AppSettings? { allSettings.first }
 
     init(session: FocusSession) {
         self.session = session
@@ -295,25 +299,45 @@ struct SessionEditView: View {
     }
 
     private var actionsSection: some View {
-        HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-            LiquidActionButton(
-                title: "Cancel",
-                icon: "xmark",
-                role: .secondary
-            ) {
-                dismiss()
+        VStack(spacing: LiquidDesignTokens.Spacing.small) {
+            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+                LiquidActionButton(
+                    title: "Cancel",
+                    icon: "xmark",
+                    role: .secondary
+                ) {
+                    dismiss()
+                }
+
+                LiquidActionButton(
+                    title: "Save",
+                    icon: "checkmark",
+                    role: .primary
+                ) {
+                    save()
+                    dismiss()
+                }
+                .disabled(!isValid)
+                .opacity(isValid ? 1 : 0.55)
             }
 
-            LiquidActionButton(
-                title: "Save",
-                icon: "checkmark",
-                role: .primary
-            ) {
-                save()
-                dismiss()
+            Button {
+                showDeleteConfirm = true
+            } label: {
+                Label("Delete Session", systemImage: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.75))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
             }
-            .disabled(!isValid)
-            .opacity(isValid ? 1 : 0.55)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Delete this session permanently")
+        }
+        .alert("Delete Session?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) { deleteSession() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This session will be permanently deleted and cannot be recovered.")
         }
     }
 
@@ -350,6 +374,48 @@ struct SessionEditView: View {
         }
 
         saveWithFeedback(modelContext, errorBinding: $saveError)
+        // Refresh the menu-bar today-total in case duration or date changed.
+        NotificationCenter.default.post(name: .focusSessionLoggedManually, object: nil)
+        // Keep Calendar in sync: update existing event or create one if missing.
+        if settings?.calendarIntegrationEnabled == true {
+            let calName = settings?.calendarName ?? "FocusFlow"
+            let calId = settings?.selectedCalendarId ?? ""
+            if let existingId = session.calendarEventId {
+                CalendarService.shared.updateEvent(
+                    eventId: existingId,
+                    title: session.label,
+                    notes: session.achievement,
+                    startDate: editedStartedAt,
+                    endDate: editedEndedAt
+                )
+            } else {
+                let eventId = CalendarService.shared.createEvent(
+                    title: session.label,
+                    startDate: editedStartedAt,
+                    endDate: editedEndedAt,
+                    notes: session.achievement,
+                    calendarName: calName,
+                    calendarId: calId.isEmpty ? nil : calId
+                )
+                if let eventId {
+                    session.calendarEventId = eventId
+                    saveWithFeedback(modelContext, errorBinding: $saveError)
+                }
+            }
+        }
+    }
+
+    private func deleteSession() {
+        // Remove the associated Calendar event if one was created.
+        if let eventId = session.calendarEventId {
+            CalendarService.shared.deleteEvent(eventId: eventId)
+        }
+        for split in session.splits {
+            modelContext.delete(split)
+        }
+        modelContext.delete(session)
+        saveWithFeedback(modelContext, errorBinding: $saveError)
+        dismiss()
     }
 
 }
