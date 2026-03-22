@@ -850,7 +850,7 @@ struct SettingsView: View {
     private var focusCoachSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Focus Coach", subtitle: "Nudges and reminders to stay productive")
+                LiquidSectionHeader("Focus Coach", subtitle: "Personalized coaching and nudges to stay productive")
 
                 // What it does — clear explanation before controls
                 HStack(alignment: .top, spacing: 8) {
@@ -858,7 +858,7 @@ struct SettingsView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.indigo.opacity(0.8))
                         .padding(.top, 1)
-                    Text("When you've been idle at your Mac without starting a session, FocusFlow sends escalating notification nudges to get you back into deep work. View your Focus Score and personalized insights in the Insights tab.")
+                    Text("FocusFlow's coach monitors your focus patterns in real-time — detecting drift, app switching, and break overruns — then intervenes with evidence-based prompts to help you recover. All data stays on-device.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -906,9 +906,117 @@ struct SettingsView: View {
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+
+                Divider().opacity(0.3)
+
+                // MARK: - Real-time Coach Controls
+
+                ToggleRow(
+                    label: "Real-time focus coaching",
+                    icon: "waveform.path.ecg",
+                    color: LiquidDesignTokens.Spectral.electricBlue,
+                    isOn: Binding(
+                        get: { settings.coachRealtimeEnabled },
+                        set: { settings.coachRealtimeEnabled = $0; save() }
+                    )
+                )
+
+                if settings.coachRealtimeEnabled {
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Prompt budget
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
+                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                    .font(.system(size: 13, weight: .semibold))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Max prompts per session")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Text("Limits how often the coach interrupts you")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            Spacer()
+                            Stepper(
+                                "\(settings.coachPromptBudgetPerSession)",
+                                value: Binding(
+                                    get: { settings.coachPromptBudgetPerSession },
+                                    set: {
+                                        settings.coachPromptBudgetPerSession = $0
+                                        save()
+                                    }
+                                ),
+                                in: 1...8
+                            )
+                            .frame(width: 120)
+                            .font(.subheadline)
+                        }
+
+                        // Reason prompts toggle
+                        ToggleRow(
+                            label: "Ask why I stopped / drifted",
+                            icon: "questionmark.bubble",
+                            color: LiquidDesignTokens.Spectral.amber,
+                            isOn: Binding(
+                                get: { settings.coachReasonPromptsEnabled },
+                                set: { settings.coachReasonPromptsEnabled = $0; save() }
+                            )
+                        )
+
+                        // Default snooze duration
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "moon.zzz")
+                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Default snooze")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Stepper(
+                                "\(settings.coachDefaultSnoozeMinutes) min",
+                                value: Binding(
+                                    get: { settings.coachDefaultSnoozeMinutes },
+                                    set: {
+                                        settings.coachDefaultSnoozeMinutes = $0
+                                        save()
+                                    }
+                                ),
+                                in: 5...30,
+                                step: 5
+                            )
+                            .frame(width: 145)
+                            .font(.subheadline)
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                Divider().opacity(0.3)
+
+                // MARK: - Privacy
+
+                ToggleRow(
+                    label: "Collect detailed app domains",
+                    icon: "lock.shield",
+                    color: .gray,
+                    isOn: Binding(
+                        get: { settings.coachCollectRawDomains },
+                        set: { settings.coachCollectRawDomains = $0; save() }
+                    )
+                )
+
+                Text("When off, only app categories (productive/neutral/distracting) are tracked. All data stays on this device.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 28)
             }
             .padding(16)
             .animation(FFMotion.section, value: settings.antiProcrastinationEnabled)
+            .animation(FFMotion.section, value: settings.coachRealtimeEnabled)
         }
     }
 
