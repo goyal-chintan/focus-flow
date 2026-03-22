@@ -179,6 +179,12 @@ final class TimerViewModel {
             log("WARNING: Stale website blocking detected from previous crash")
         }
         scheduleMidnightRefresh()
+        // Refresh today-total whenever a session is manually logged from the Companion window.
+        NotificationCenter.default.addObserver(forName: .focusSessionLoggedManually, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.loadTodayStats()
+            }
+        }
         // Start app usage tracking and nudge timer at launch (not deferred to popover open)
         AppUsageTracker.shared.start(timerVM: self, modelContext: modelContext)
         log("configure() complete")

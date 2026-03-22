@@ -17,6 +17,7 @@ struct SessionEditView: View {
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
+    @State private var showDeleteConfirm = false
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
@@ -295,25 +296,45 @@ struct SessionEditView: View {
     }
 
     private var actionsSection: some View {
-        HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-            LiquidActionButton(
-                title: "Cancel",
-                icon: "xmark",
-                role: .secondary
-            ) {
-                dismiss()
+        VStack(spacing: LiquidDesignTokens.Spacing.small) {
+            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+                LiquidActionButton(
+                    title: "Cancel",
+                    icon: "xmark",
+                    role: .secondary
+                ) {
+                    dismiss()
+                }
+
+                LiquidActionButton(
+                    title: "Save",
+                    icon: "checkmark",
+                    role: .primary
+                ) {
+                    save()
+                    dismiss()
+                }
+                .disabled(!isValid)
+                .opacity(isValid ? 1 : 0.55)
             }
 
-            LiquidActionButton(
-                title: "Save",
-                icon: "checkmark",
-                role: .primary
-            ) {
-                save()
-                dismiss()
+            Button {
+                showDeleteConfirm = true
+            } label: {
+                Label("Delete Session", systemImage: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.75))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
             }
-            .disabled(!isValid)
-            .opacity(isValid ? 1 : 0.55)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Delete this session permanently")
+        }
+        .alert("Delete Session?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) { deleteSession() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This session will be permanently deleted and cannot be recovered.")
         }
     }
 
@@ -350,6 +371,15 @@ struct SessionEditView: View {
         }
 
         saveWithFeedback(modelContext, errorBinding: $saveError)
+    }
+
+    private func deleteSession() {
+        for split in session.splits {
+            modelContext.delete(split)
+        }
+        modelContext.delete(session)
+        saveWithFeedback(modelContext, errorBinding: $saveError)
+        dismiss()
     }
 
 }

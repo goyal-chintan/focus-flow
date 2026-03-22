@@ -19,7 +19,18 @@ struct ManualSessionView: View {
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
-    @State private var durationError: String?
+
+    /// Computed end-time binding — duration preset/custom field moves the end time;
+    /// editing the "Ended at" picker back-computes the duration.
+    private var endTimeBinding: Binding<Date> {
+        Binding(
+            get: { startTime.addingTimeInterval(TimeInterval(max(5, duration) * 60)) },
+            set: { newEnd in
+                let mins = Int(max(0, newEnd.timeIntervalSince(startTime)) / 60)
+                duration = max(5, min(480, mins))
+            }
+        )
+    }
 
     private var durationPresets: [Int] {
         let userDuration = settings.map { Int($0.focusDuration / 60) } ?? 25
@@ -118,18 +129,8 @@ struct ManualSessionView: View {
                 if duration > 480 {
                     duration = 480
                 }
-                startTime = Date().addingTimeInterval(TimeInterval(-max(5, duration) * 60))
-                durationError = duration < 5 ? "Minimum duration is 5 minutes" : nil
-            }
-
-            if let durationError {
-                Label(durationError, systemImage: "exclamationmark.circle.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.orange)
-                    .transition(.opacity)
             }
         }
-        .animation(FFMotion.control, value: durationError)
     }
 
     private var whenSection: some View {
@@ -139,6 +140,14 @@ struct ManualSessionView: View {
                 "Started at",
                 selection: $startTime,
                 in: ...Date(),
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .datePickerStyle(.compact)
+
+            DatePicker(
+                "Ended at",
+                selection: endTimeBinding,
+                in: startTime...,
                 displayedComponents: [.date, .hourAndMinute]
             )
             .datePickerStyle(.compact)
@@ -157,15 +166,31 @@ struct ManualSessionView: View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("What did you achieve?")
 
-            TextField("e.g. Finished the API integration", text: $achievement)
-                .textFieldStyle(.plain)
-                .padding(8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-                .onChange(of: achievement) { _, newValue in
-                    if newValue.count > 500 {
-                        achievement = String(newValue.prefix(500))
-                    }
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $achievement)
+                    .font(.system(size: 13, weight: .regular))
+                    .scrollContentBackground(.hidden)
+                    .background(.clear)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
+
+                if achievement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("e.g. Finished the API integration...")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
                 }
+            }
+            .frame(minHeight: 94, maxHeight: 170)
+            .padding(2)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            .onChange(of: achievement) { _, newValue in
+                if newValue.count > 500 {
+                    achievement = String(newValue.prefix(500))
+                }
+            }
         }
     }
 
@@ -248,13 +273,14 @@ struct ManualSessionView: View {
 
     private func save() {
         let clampedDuration = max(5, duration)
+        let computedEndTime = startTime.addingTimeInterval(TimeInterval(clampedDuration * 60))
         let session = FocusSession(
             type: .focus,
             duration: TimeInterval(clampedDuration * 60),
             project: selectedProject
         )
         session.startedAt = startTime
-        session.endedAt = startTime.addingTimeInterval(TimeInterval(clampedDuration * 60))
+        session.endedAt = computedEndTime
         session.completed = true
         session.mood = selectedMood
         session.achievement = achievement.isEmpty ? nil : achievement
@@ -276,6 +302,8 @@ struct ManualSessionView: View {
         }
 
         saveWithFeedback(modelContext, errorBinding: $saveError)
+        // Notify TimerViewModel to refresh the menu-bar today-total immediately.
+        NotificationCenter.default.post(name: .focusSessionLoggedManually, object: nil)
     }
 }
 
