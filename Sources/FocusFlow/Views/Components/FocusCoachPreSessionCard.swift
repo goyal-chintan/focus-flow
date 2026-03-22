@@ -1,10 +1,9 @@
 import SwiftUI
 
 /// Pre-session card shown in idle state when coach is enabled.
-/// Encourages task declaration with resistance rating and suggested duration.
-/// Follows MCII (Mental Contrasting with Implementation Intentions) research.
+/// Helps the user set a quick mental checkpoint before starting: what type of work
+/// and how much they're dreading it. This powers personalized coaching.
 struct FocusCoachPreSessionCard: View {
-    @Binding var taskTitle: String
     @Binding var selectedTaskType: FocusCoachTaskType
     @Binding var resistanceLevel: Int
 
@@ -20,11 +19,25 @@ struct FocusCoachPreSessionCard: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
 
-                    Text("Set Your Intention")
+                    Text("Quick Check-in")
                         .font(LiquidDesignTokens.Typography.labelMedium)
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
                     Spacer()
+
+                    // Collapsed summary
+                    if !isExpanded {
+                        HStack(spacing: 3) {
+                            Text(selectedTaskType.displayName)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            Text("·")
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            Text(resistanceLabel)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(resistanceColor)
+                        }
+                    }
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
@@ -36,12 +49,6 @@ struct FocusCoachPreSessionCard: View {
             if isExpanded {
                 expandedContent
                     .transition(.opacity.combined(with: .move(edge: .top)))
-            } else if !taskTitle.isEmpty {
-                // Collapsed summary
-                Text(taskTitle)
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .lineLimit(1)
             }
         }
         .padding(LiquidDesignTokens.Spacing.medium)
@@ -59,39 +66,29 @@ struct FocusCoachPreSessionCard: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Set your focus intention")
+        .accessibilityLabel("Quick check-in before focus")
     }
 
     @ViewBuilder
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
-            // Task title input
-            TextField("What are you working on?", text: $taskTitle)
-                .font(.system(size: 13, weight: .regular, design: .rounded))
-                .textFieldStyle(.plain)
-                .padding(.horizontal, LiquidDesignTokens.Spacing.medium)
-                .padding(.vertical, LiquidDesignTokens.Spacing.small)
-                .background {
-                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
-                        .fill(Color.white.opacity(0.04))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
-                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                        )
-                }
-                .accessibilityLabel("Task description")
-
             // Task type picker
-            HStack(spacing: LiquidDesignTokens.Spacing.xSmall) {
-                ForEach(FocusCoachTaskType.allCases, id: \.rawValue) { type in
-                    taskTypeChip(type)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("What kind of work?")
+                    .font(LiquidDesignTokens.Typography.labelSmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+
+                HStack(spacing: LiquidDesignTokens.Spacing.xSmall) {
+                    ForEach(FocusCoachTaskType.allCases, id: \.rawValue) { type in
+                        taskTypeChip(type)
+                    }
                 }
             }
 
-            // Resistance slider
+            // Resistance — with clear human explanation
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Expected Resistance")
+                    Text("How much are you dreading this?")
                         .font(LiquidDesignTokens.Typography.labelSmall)
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
 
@@ -120,10 +117,15 @@ struct FocusCoachPreSessionCard: View {
                                     resistanceLevel = level
                                 }
                             }
-                            .accessibilityLabel("Resistance level \(level)")
+                            .accessibilityLabel("Level \(level)")
                             .accessibilityAddTraits(level == resistanceLevel ? .isSelected : [])
                     }
                 }
+
+                Text("Helps your coach calibrate — high resistance tasks get gentler nudges")
+                    .font(.system(size: 9, weight: .regular, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.6))
+                    .padding(.top, 1)
             }
         }
     }
@@ -137,28 +139,32 @@ struct FocusCoachPreSessionCard: View {
                 selectedTaskType = type
             }
         }) {
-            Text(type.displayName)
-                .font(LiquidDesignTokens.Typography.labelSmall)
-                .foregroundStyle(isSelected
-                    ? LiquidDesignTokens.Spectral.electricBlue
-                    : LiquidDesignTokens.Surface.onSurfaceMuted)
-                .padding(.horizontal, LiquidDesignTokens.Spacing.small)
-                .padding(.vertical, 4)
-                .background {
-                    Capsule()
-                        .fill(isSelected
-                            ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.12)
-                            : Color.white.opacity(0.04))
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(
-                                    isSelected
-                                        ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.3)
-                                        : Color.white.opacity(0.06),
-                                    lineWidth: 0.5
-                                )
-                        )
-                }
+            HStack(spacing: 4) {
+                Image(systemName: type.icon)
+                    .font(.system(size: 9))
+                Text(type.displayName)
+                    .font(LiquidDesignTokens.Typography.labelSmall)
+            }
+            .foregroundStyle(isSelected
+                ? LiquidDesignTokens.Spectral.electricBlue
+                : LiquidDesignTokens.Surface.onSurfaceMuted)
+            .padding(.horizontal, LiquidDesignTokens.Spacing.small)
+            .padding(.vertical, 4)
+            .background {
+                Capsule()
+                    .fill(isSelected
+                        ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.12)
+                        : Color.white.opacity(0.04))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                isSelected
+                                    ? LiquidDesignTokens.Spectral.electricBlue.opacity(0.3)
+                                    : Color.white.opacity(0.06),
+                                lineWidth: 0.5
+                            )
+                    )
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(type.displayName)
@@ -167,11 +173,11 @@ struct FocusCoachPreSessionCard: View {
 
     private var resistanceLabel: String {
         switch resistanceLevel {
-        case 1: "Very Low"
-        case 2: "Low"
-        case 3: "Medium"
-        case 4: "High"
-        default: "Very High"
+        case 1: "Easy"
+        case 2: "Manageable"
+        case 3: "Some effort"
+        case 4: "Tough"
+        default: "Dreading it"
         }
     }
 
