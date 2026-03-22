@@ -10,7 +10,7 @@ final class AppUsageTracker {
     private var trackingTimer: Timer?
     private var idleSeconds: Int = 0
     private var isTracking = false
-    private var hasNudgedThisIdle = false
+    private var nudgeCount: Int = 0
     private weak var timerVM: TimerViewModel?
     private var modelContext: ModelContext?
     private var tickCount: Int = 0
@@ -24,12 +24,13 @@ final class AppUsageTracker {
     // MARK: - Lifecycle
 
     func start(timerVM: TimerViewModel, modelContext: ModelContext) {
+        guard !isTracking else { return }
         trackingTimer?.invalidate()
         self.timerVM = timerVM
         self.modelContext = modelContext
         isTracking = true
         idleSeconds = 0
-        hasNudgedThisIdle = false
+        nudgeCount = 0
         tickCount = 0
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -48,7 +49,7 @@ final class AppUsageTracker {
         trackingTimer = nil
         isTracking = false
         idleSeconds = 0
-        hasNudgedThisIdle = false
+        nudgeCount = 0
         log("Stopped tracking")
     }
 
@@ -68,15 +69,29 @@ final class AppUsageTracker {
             let threshold = vm.settings?.antiProcrastinationThresholdMinutes ?? 5
             let enabled = vm.settings?.antiProcrastinationEnabled ?? true
 
-            if enabled && !hasNudgedThisIdle && idleSeconds >= threshold * 60 {
-                sendNudge()
-                hasNudgedThisIdle = true
+            if enabled {
+                let nextNudgeSeconds = nudgeInterval(for: nudgeCount, baseMinutes: threshold)
+                if idleSeconds >= nextNudgeSeconds {
+                    sendNudge(escalationLevel: nudgeCount)
+                    nudgeCount += 1
+                }
             }
         } else {
             if idleSeconds > 0 {
                 idleSeconds = 0
-                hasNudgedThisIdle = false
+                nudgeCount = 0
             }
+        }
+    }
+
+    /// Returns the idle seconds threshold for the Nth nudge.
+    /// First nudge at base threshold, then escalating: base, base+5min, base+15min, then every 15min.
+    private func nudgeInterval(for count: Int, baseMinutes: Int) -> Int {
+        switch count {
+        case 0: return baseMinutes * 60
+        case 1: return (baseMinutes + 5) * 60
+        case 2: return (baseMinutes + 15) * 60
+        default: return (baseMinutes + 15 + (count - 2) * 15) * 60
         }
     }
 
@@ -131,22 +146,43 @@ final class AppUsageTracker {
 
     // MARK: - Nudge
 
-    private func sendNudge() {
-        let messages = [
-            "You've been browsing for a while. Ready to start a focus session?",
-            "Time flies! How about a quick focus sprint?",
-            "Your best ideas happen during deep work. Start a session?",
-            "A 25-minute focus session can make all the difference.",
-            "Take the first step — start a short focus session."
-        ]
-        let message = messages.randomElement() ?? messages[0]
+    private func sendNudge(escalationLevel: Int) {
+        guard NotificationService.shared.isAuthorized else {
+            log("Notifications not authorized — nudge suppressed")
+            return
+        }
+
+        let message: String
+        switch escalationLevel {
+        case 0:
+            let gentle = [
+                "You've been browsing for a while. Ready to start a focus session?",
+                "Time flies! How about a quick focus sprint?",
+                "Your best ideas happen during deep work. Start a session?",
+            ]
+            message = gentle.randomElement() ?? gentle[0]
+        case 1:
+            let moderate = [
+                "Still no focus session started. Even 15 minutes of deep work makes a difference.",
+                "Your focus streak is waiting — start a short session to keep momentum.",
+                "A quick focus sprint now could turn your day around.",
+            ]
+            message = moderate.randomElement() ?? moderate[0]
+        default:
+            let urgent = [
+                "You've been idle for a while now. Start a session — you'll thank yourself later.",
+                "Deep work doesn't happen by accident. Take the first step — start focusing.",
+                "Every productive day starts with one focus session. Ready?",
+            ]
+            message = urgent.randomElement() ?? urgent[0]
+        }
 
         NotificationService.shared.sendGenericNotification(
-            title: "Focus Nudge 💡",
+            title: escalationLevel == 0 ? "Focus Nudge 💡" : "Focus Reminder 🔔",
             body: message,
-            sound: "Tink"
+            sound: escalationLevel >= 2 ? "Bottle" : "Tink"
         )
-        log("Sent nudge notification after \(idleSeconds)s idle")
+        log("Sent nudge #\(escalationLevel + 1) after \(idleSeconds)s idle")
     }
 
     // MARK: - Logging

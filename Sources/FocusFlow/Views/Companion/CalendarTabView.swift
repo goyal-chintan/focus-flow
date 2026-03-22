@@ -504,6 +504,7 @@ struct CalendarTabView: View {
                     guard didComplete else {
                         await MainActor.run {
                             completingReminderId = nil
+                            reminderSaveError = "Could not complete reminder."
                         }
                         return
                     }
