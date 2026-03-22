@@ -57,6 +57,36 @@ enum StoreMigrator {
             column: "ZSELECTEDREMINDERLISTID",
             sqlType: "VARCHAR",
             defaultSQLValue: "''"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZCOACHREALTIMEENABLED",
+            sqlType: "INTEGER",
+            defaultSQLValue: "1"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZCOACHPROMPTBUDGETPERSESSION",
+            sqlType: "INTEGER",
+            defaultSQLValue: "4"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZCOACHREASONPROMPTSENABLED",
+            sqlType: "INTEGER",
+            defaultSQLValue: "1"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZCOACHDEFAULTSNOOZEMINUTES",
+            sqlType: "INTEGER",
+            defaultSQLValue: "10"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZCOACHCOLLECTRAWDOMAINS",
+            sqlType: "INTEGER",
+            defaultSQLValue: "0"
         )
     ]
 

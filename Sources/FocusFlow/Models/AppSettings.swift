@@ -26,6 +26,13 @@ final class AppSettings {
     var antiProcrastinationEnabled: Bool = true
     var antiProcrastinationThresholdMinutes: Int = 5
 
+    // Focus Coach v2 — Realtime coaching
+    var coachRealtimeEnabled: Bool = true
+    var coachPromptBudgetPerSession: Int = 4
+    var coachReasonPromptsEnabled: Bool = true
+    var coachDefaultSnoozeMinutes: Int = 10
+    var coachCollectRawDomains: Bool = false
+
     // Smart defaults
     var lastUsedProjectId: String? = nil
 
@@ -46,5 +53,10 @@ final class AppSettings {
         self.selectedReminderListId = ""
         self.antiProcrastinationEnabled = true
         self.antiProcrastinationThresholdMinutes = 5
+        self.coachRealtimeEnabled = true
+        self.coachPromptBudgetPerSession = 4
+        self.coachReasonPromptsEnabled = true
+        self.coachDefaultSnoozeMinutes = 10
+        self.coachCollectRawDomains = false
     }
 }
