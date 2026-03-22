@@ -22,6 +22,9 @@ struct SessionEditView: View {
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
 
+    @Query private var allSettings: [AppSettings]
+    private var settings: AppSettings? { allSettings.first }
+
     init(session: FocusSession) {
         self.session = session
         _selectedMood = State(initialValue: session.mood)
@@ -371,9 +374,42 @@ struct SessionEditView: View {
         }
 
         saveWithFeedback(modelContext, errorBinding: $saveError)
+        // Refresh the menu-bar today-total in case duration or date changed.
+        NotificationCenter.default.post(name: .focusSessionLoggedManually, object: nil)
+        // Keep Calendar in sync: update existing event or create one if missing.
+        if settings?.calendarIntegrationEnabled == true {
+            let calName = settings?.calendarName ?? "FocusFlow"
+            let calId = settings?.selectedCalendarId ?? ""
+            if let existingId = session.calendarEventId {
+                CalendarService.shared.updateEvent(
+                    eventId: existingId,
+                    title: session.label,
+                    notes: session.achievement,
+                    startDate: editedStartedAt,
+                    endDate: editedEndedAt
+                )
+            } else {
+                let eventId = CalendarService.shared.createEvent(
+                    title: session.label,
+                    startDate: editedStartedAt,
+                    endDate: editedEndedAt,
+                    notes: session.achievement,
+                    calendarName: calName,
+                    calendarId: calId.isEmpty ? nil : calId
+                )
+                if let eventId {
+                    session.calendarEventId = eventId
+                    saveWithFeedback(modelContext, errorBinding: $saveError)
+                }
+            }
+        }
     }
 
     private func deleteSession() {
+        // Remove the associated Calendar event if one was created.
+        if let eventId = session.calendarEventId {
+            CalendarService.shared.deleteEvent(eventId: eventId)
+        }
         for split in session.splits {
             modelContext.delete(split)
         }
