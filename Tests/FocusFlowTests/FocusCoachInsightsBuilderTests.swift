@@ -35,19 +35,23 @@ final class FocusCoachInsightsBuilderTests: XCTestCase {
     private func makeAttempts(improved: Int, ignored: Int) -> [FocusCoachInsightsBuilder.AttemptSnapshot] {
         var results: [FocusCoachInsightsBuilder.AttemptSnapshot] = []
         for i in 0..<improved {
+            let delivered = Date().addingTimeInterval(-Double(i) * 600)
             results.append(FocusCoachInsightsBuilder.AttemptSnapshot(
                 kind: .quickPrompt,
                 outcome: .improved,
                 riskScore: 0.6,
-                deliveredAt: Date().addingTimeInterval(-Double(i) * 600)
+                deliveredAt: delivered,
+                resolvedAt: delivered.addingTimeInterval(30)
             ))
         }
         for i in 0..<ignored {
+            let delivered = Date().addingTimeInterval(-Double(improved + i) * 600)
             results.append(FocusCoachInsightsBuilder.AttemptSnapshot(
                 kind: .quickPrompt,
                 outcome: .ignored,
                 riskScore: 0.5,
-                deliveredAt: Date().addingTimeInterval(-Double(improved + i) * 600)
+                deliveredAt: delivered,
+                resolvedAt: delivered.addingTimeInterval(90)
             ))
         }
         return results

@@ -16,6 +16,15 @@ enum FocusCoachTaskType: String, Codable, CaseIterable {
         case .creative: "Creative"
         }
     }
+
+    var icon: String {
+        switch self {
+        case .deepWork: "brain.head.profile"
+        case .admin: "tray.full.fill"
+        case .learning: "book.fill"
+        case .creative: "paintbrush.fill"
+        }
+    }
 }
 
 // MARK: - Anomaly Reasons (Why Focus Was Interrupted)

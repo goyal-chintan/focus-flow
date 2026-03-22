@@ -6,6 +6,9 @@ struct InsightsView: View {
     @Query private var allSettings: [AppSettings]
     @Query(sort: \AppUsageRecord.date) private var usageRecords: [AppUsageRecord]
     @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
+    @Query(sort: \CoachInterruption.detectedAt) private var coachInterruptions: [CoachInterruption]
+    @Query(sort: \InterventionAttempt.deliveredAt) private var coachAttempts: [InterventionAttempt]
+    @Query(sort: \TaskIntent.createdAt) private var taskIntents: [TaskIntent]
     @State private var selectedHour: Int? = nil
     @State private var showAllInsights = false
     @State private var showScienceTips = false
@@ -232,87 +235,269 @@ struct InsightsView: View {
                 let report = buildCoachReport()
 
                 if report.totalSessions < 3 {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 6) {
-                            Image(systemName: "brain.head.profile.fill")
-                                .font(.system(size: 18, weight: .light))
-                                .foregroundStyle(.tertiary)
-                            Text("Complete 3+ sessions to unlock personalized coaching insights")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .padding(.vertical, 12)
-                        Spacer()
-                    }
+                    coachEmptyState
                 } else {
-                    // Hero metrics row
-                    HStack(spacing: 12) {
-                        coachMetricCard(
-                            value: "\(Int(report.completionRate * 100))%",
-                            label: "Completion",
-                            color: report.completionRate > 0.7
-                                ? LiquidDesignTokens.Spectral.mint
-                                : LiquidDesignTokens.Spectral.amber
-                        )
-                        coachMetricCard(
-                            value: "\(Int(report.interventionWinRate * 100))%",
-                            label: "Recovery Rate",
-                            color: report.interventionWinRate > 0.5
-                                ? LiquidDesignTokens.Spectral.mint
-                                : LiquidDesignTokens.Spectral.amber
-                        )
-                        coachMetricCard(
-                            value: "\(report.avgSessionMinutes)m",
-                            label: "Avg Session",
-                            color: LiquidDesignTokens.Spectral.electricBlue
-                        )
-                    }
-
-                    // Top triggers
-                    if !report.topTriggers.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            TrackedLabel(
-                                text: "Top Distractions",
-                                font: LiquidDesignTokens.Typography.labelSmall,
-                                tracking: 1.5
-                            )
-                            ForEach(report.topTriggers.prefix(3), id: \.label) { trigger in
-                                HStack(spacing: 8) {
-                                    Image(systemName: trigger.icon)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                                        .frame(width: 16)
-                                    Text(trigger.label)
-                                        .font(LiquidDesignTokens.Typography.bodySmall)
-                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                                    Spacer()
-                                    Text("\(trigger.count) min")
-                                        .font(LiquidDesignTokens.Typography.labelSmall)
-                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                                }
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-
-                    // Coaching tip based on data
-                    if let tip = coachingTip(from: report) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "lightbulb.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(LiquidDesignTokens.Spectral.amber)
-                                .padding(.top, 2)
-                            Text(tip)
-                                .font(.system(size: 11, weight: .regular, design: .rounded))
-                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        }
-                        .padding(.top, 4)
-                    }
+                    coachHeroMetrics(report: report)
+                    coachTrendIndicator(report: report)
+                    coachRecoverySpeed(report: report)
+                    coachBestSessionByType(report: report)
+                    coachInterventionEffectiveness
+                    coachTopTriggers(report: report)
+                    coachReasonBreakdown
+                    coachPersonalizedTips(report: report)
                 }
             }
             .padding(16)
+        }
+    }
+
+    private var coachEmptyState: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 6) {
+                Image(systemName: "brain.head.profile.fill")
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text("Complete 3+ sessions to unlock personalized coaching insights")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.vertical, 12)
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func coachHeroMetrics(report: FocusCoachWeeklyReport) -> some View {
+        HStack(spacing: 12) {
+            coachMetricCard(
+                value: "\(Int(report.completionRate * 100))%",
+                label: "Completion",
+                color: report.completionRate > 0.7
+                    ? LiquidDesignTokens.Spectral.mint
+                    : LiquidDesignTokens.Spectral.amber
+            )
+            coachMetricCard(
+                value: "\(Int(report.interventionWinRate * 100))%",
+                label: "Recovery Rate",
+                color: report.interventionWinRate > 0.5
+                    ? LiquidDesignTokens.Spectral.mint
+                    : LiquidDesignTokens.Spectral.amber
+            )
+            coachMetricCard(
+                value: "\(report.avgSessionMinutes)m",
+                label: "Avg Session",
+                color: LiquidDesignTokens.Spectral.electricBlue
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func coachTrendIndicator(report: FocusCoachWeeklyReport) -> some View {
+        if let trend = report.weekOverWeekTrend {
+            HStack(spacing: 6) {
+                Image(systemName: trend >= 0 ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(trend >= 0 ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.salmon)
+                Text(trend >= 0
+                    ? "Completion up \(Int(trend * 100))% vs last week"
+                    : "Completion down \(Int(abs(trend) * 100))% vs last week"
+                )
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
+                    .fill((trend >= 0 ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.salmon).opacity(0.06))
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func coachRecoverySpeed(report: FocusCoachWeeklyReport) -> some View {
+        if report.recoverySpeedSeconds > 0 {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                    .frame(width: 16)
+                Text("Avg recovery time:")
+                    .font(LiquidDesignTokens.Typography.bodySmall)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                Text(formatRecoverySpeed(report.recoverySpeedSeconds))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(report.recoverySpeedSeconds < 60
+                        ? LiquidDesignTokens.Spectral.mint
+                        : LiquidDesignTokens.Spectral.amber
+                    )
+                    .monospacedDigit()
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func coachBestSessionByType(report: FocusCoachWeeklyReport) -> some View {
+        if !report.bestSessionLengthByTaskType.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                TrackedLabel(
+                    text: "Optimal Session Length",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                ForEach(Array(report.bestSessionLengthByTaskType.keys.sorted(by: { $0.rawValue < $1.rawValue })), id: \.self) { taskType in
+                    if let minutes = report.bestSessionLengthByTaskType[taskType] {
+                        HStack(spacing: 8) {
+                            Image(systemName: taskType.icon)
+                                .font(.system(size: 10))
+                                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                .frame(width: 16)
+                            Text(taskType.displayName)
+                                .font(LiquidDesignTokens.Typography.bodySmall)
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                            Spacer()
+                            Text("\(minutes) min")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var coachInterventionEffectiveness: some View {
+        let attemptSnapshots = coachAttempts.map {
+            FocusCoachInsightsBuilder.AttemptSnapshot(
+                kind: $0.kind,
+                outcome: $0.outcome,
+                riskScore: $0.riskScore,
+                deliveredAt: $0.deliveredAt,
+                resolvedAt: $0.resolvedAt
+            )
+        }
+        let effectiveness = FocusCoachInsightsBuilder().interventionEffectiveness(attempts: attemptSnapshots)
+        if !effectiveness.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                TrackedLabel(
+                    text: "Intervention Effectiveness",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                ForEach(effectiveness, id: \.kind) { item in
+                    HStack(spacing: 8) {
+                        Image(systemName: item.kind == .quickPrompt ? "hand.tap.fill" : "exclamationmark.bubble.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(item.winRate > 0.5 ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.amber)
+                            .frame(width: 16)
+                        Text(item.kind == .quickPrompt ? "Quick Prompts" : item.kind == .strongPrompt ? "Strong Prompts" : "Nudges")
+                            .font(LiquidDesignTokens.Typography.bodySmall)
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                        Spacer()
+                        Text("\(Int(item.winRate * 100))% effective")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(item.winRate > 0.5 ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.amber)
+                        Text("(\(item.improvedCount)/\(item.totalCount))")
+                            .font(.system(size: 10))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func coachTopTriggers(report: FocusCoachWeeklyReport) -> some View {
+        if !report.topTriggers.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                TrackedLabel(
+                    text: "Top Distractions",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                ForEach(report.topTriggers.prefix(3), id: \.label) { trigger in
+                    HStack(spacing: 8) {
+                        Image(systemName: trigger.icon)
+                            .font(.system(size: 10))
+                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                            .frame(width: 16)
+                        Text(trigger.label)
+                            .font(LiquidDesignTokens.Typography.bodySmall)
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                        Spacer()
+                        Text("\(trigger.count) min")
+                            .font(LiquidDesignTokens.Typography.labelSmall)
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var coachReasonBreakdown: some View {
+        let reasonCounts = buildReasonBreakdown()
+        if !reasonCounts.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                TrackedLabel(
+                    text: "Self-Reported Reasons",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                ForEach(reasonCounts, id: \.reason) { item in
+                    HStack(spacing: 8) {
+                        Image(systemName: item.reason.isLegitimate ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(item.reason.isLegitimate
+                                ? LiquidDesignTokens.Spectral.mint
+                                : LiquidDesignTokens.Spectral.amber)
+                            .frame(width: 16)
+                        Text(item.reason.displayName)
+                            .font(LiquidDesignTokens.Typography.bodySmall)
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                        Spacer()
+                        Text("\(item.count)×")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func coachPersonalizedTips(report: FocusCoachWeeklyReport) -> some View {
+        let tips = allCoachingTips(from: report)
+        if !tips.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                TrackedLabel(
+                    text: "Personalized Coaching",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                ForEach(tips, id: \.self) { tip in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                            .padding(.top, 2)
+                        Text(tip)
+                            .font(.system(size: 11, weight: .regular, design: .rounded))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    }
+                }
+            }
+            .padding(.top, 4)
         }
     }
 
@@ -339,7 +524,14 @@ struct InsightsView: View {
     }
 
     private func buildCoachReport() -> FocusCoachWeeklyReport {
-        let sessions = allSessions.filter { $0.type == .focus }.map { session in
+        let now = Date()
+        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
+        let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -14, to: now) ?? now
+
+        let thisWeekSessions = allSessions.filter { $0.type == .focus && $0.startedAt >= sevenDaysAgo }
+        let prevWeekSessions = allSessions.filter { $0.type == .focus && $0.startedAt >= fourteenDaysAgo && $0.startedAt < sevenDaysAgo }
+
+        let sessions = thisWeekSessions.map { session in
             FocusCoachInsightsBuilder.SessionSnapshot(
                 id: session.id,
                 type: session.type.rawValue,
@@ -349,6 +541,33 @@ struct InsightsView: View {
                 completed: session.completed
             )
         }
+        let prevSessions = prevWeekSessions.map { session in
+            FocusCoachInsightsBuilder.SessionSnapshot(
+                id: session.id,
+                type: session.type.rawValue,
+                duration: session.duration,
+                startedAt: session.startedAt,
+                endedAt: session.endedAt,
+                completed: session.completed
+            )
+        }
+        let interruptions = coachInterruptions.filter { $0.detectedAt >= sevenDaysAgo }.map {
+            FocusCoachInsightsBuilder.InterruptionSnapshot(
+                kind: $0.kind,
+                reason: $0.reason,
+                isLegitimate: $0.isLegitimate,
+                detectedAt: $0.detectedAt
+            )
+        }
+        let attempts = coachAttempts.filter { $0.deliveredAt >= sevenDaysAgo }.map {
+            FocusCoachInsightsBuilder.AttemptSnapshot(
+                kind: $0.kind,
+                outcome: $0.outcome,
+                riskScore: $0.riskScore,
+                deliveredAt: $0.deliveredAt,
+                resolvedAt: $0.resolvedAt
+            )
+        }
         let appSnapshots = appUsageEntries.map { entry in
             FocusCoachInsightsBuilder.AppUsageSnapshot(
                 appName: entry.appName,
@@ -356,28 +575,75 @@ struct InsightsView: View {
                 category: entry.category.rawValue
             )
         }
+        let intentSnapshots = taskIntents.map {
+            FocusCoachInsightsBuilder.TaskIntentSnapshot(
+                sessionId: $0.sessionId,
+                taskType: $0.taskType
+            )
+        }
         return FocusCoachInsightsBuilder().build(
             sessions: sessions,
-            interruptions: [],
-            attempts: [],
-            appUsage: appSnapshots
+            interruptions: interruptions,
+            attempts: attempts,
+            appUsage: appSnapshots,
+            taskIntents: intentSnapshots,
+            previousWeekSessions: prevSessions
         )
     }
 
-    private func coachingTip(from report: FocusCoachWeeklyReport) -> String? {
+    private func allCoachingTips(from report: FocusCoachWeeklyReport) -> [String] {
+        var tips: [String] = []
         if report.completionRate < 0.5 {
-            return "Try shorter sessions (15–20 min) to build momentum. Research shows completing shorter blocks builds self-efficacy (Steel, 2007)."
+            tips.append("Try shorter sessions (15–20 min) to build momentum. Research shows completing shorter blocks builds self-efficacy (Steel, 2007).")
         }
         if report.interventionWinRate > 0 && report.interventionWinRate < 0.3 {
-            return "Coach prompts aren't helping much yet. Consider adjusting prompt budget or try the \"Clean Restart\" action — structured re-engagement works better than willpower alone (Rozental, 2018)."
+            tips.append("Coach prompts aren't helping much yet. Consider adjusting prompt budget or try the \"Clean Restart\" action — structured re-engagement works better than willpower alone (Rozental, 2018).")
         }
         if !report.topTriggers.isEmpty {
-            return "Your top distraction is \(report.topTriggers[0].label). Consider adding it to a block profile during focus sessions."
+            tips.append("Your top distraction is \(report.topTriggers[0].label). Consider adding it to a block profile during focus sessions.")
         }
         if report.completionRate > 0.85 {
-            return "Strong completion rate! You're building consistent focus habits. Micro-breaks between sessions boost vigor and reduce fatigue (Albulescu, 2022)."
+            tips.append("Strong completion rate! You're building consistent focus habits. Micro-breaks between sessions boost vigor and reduce fatigue (Albulescu, 2022).")
         }
-        return nil
+        if report.recoverySpeedSeconds > 120 {
+            tips.append("Your avg recovery takes \(formatRecoverySpeed(report.recoverySpeedSeconds)). Practicing mental contrasting (MCII) before sessions can reduce drift response time (Wang, 2021).")
+        }
+        if let trend = report.weekOverWeekTrend, trend < -0.1 {
+            tips.append("Completion dropped this week. Consider reviewing your session length — shorter focused blocks may help rebuild consistency.")
+        }
+        // Resistance-aware tip
+        let highResistanceIntents = taskIntents.filter { $0.expectedResistance >= 4 }
+        if highResistanceIntents.count >= 3 {
+            tips.append("You frequently report high resistance. Try pairing difficult tasks with 'implementation intentions': specify exactly when, where, and how you'll start (Gollwitzer, 1999).")
+        }
+        let legitimateRatio = report.legitimateInterruptionRatio
+        if legitimateRatio > 0.7 && report.totalInterruptions >= 3 {
+            tips.append("Most of your interruptions are legitimate. Consider scheduling focus blocks when meetings and obligations are unlikely.")
+        }
+        return tips
+    }
+
+    private func formatRecoverySpeed(_ seconds: Double) -> String {
+        if seconds < 60 { return "\(Int(seconds))s" }
+        return "\(Int(seconds / 60))m \(Int(seconds.truncatingRemainder(dividingBy: 60)))s"
+    }
+
+    private struct ReasonCount: Sendable {
+        let reason: FocusCoachReason
+        let count: Int
+    }
+
+    private func buildReasonBreakdown() -> [ReasonCount] {
+        var counts: [FocusCoachReason: Int] = [:]
+        for interruption in coachInterruptions {
+            if let reason = interruption.reason {
+                counts[reason, default: 0] += 1
+            }
+        }
+        return counts.map { ReasonCount(reason: $0.key, count: $0.value) }
+            .sorted { $0.count > $1.count }
+            .prefix(5)
+            .map { $0 }
     }
 
     private struct BehavioralInsight {

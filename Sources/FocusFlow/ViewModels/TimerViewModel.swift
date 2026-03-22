@@ -119,6 +119,15 @@ final class TimerViewModel {
     private var coachTickCounter: Int = 0
     private var pauseCountThisSession: Int = 0
 
+    /// Whether the reason chip sheet should be shown (driven by coach engine anomaly detection)
+    var showCoachReasonSheet: Bool = false
+    var pendingReasonKind: FocusCoachInterruptionKind = .drift
+
+    /// Pre-session intention data (set from IdlePopoverContent, persisted on startFocus)
+    var coachTaskTitle: String = ""
+    var coachTaskType: FocusCoachTaskType = .deepWork
+    var coachResistance: Int = 3
+
     // MARK: - Computed
     var progress: Double {
         guard totalSeconds > 0 else { return 0 }
@@ -192,6 +201,8 @@ final class TimerViewModel {
         }
         // Start app usage tracking and nudge timer at launch (not deferred to popover open)
         AppUsageTracker.shared.start(timerVM: self, modelContext: modelContext)
+        // Wire Focus Coach to persistent SwiftData store
+        coachEngine.configureStore(SwiftDataCoachStore(modelContext: modelContext))
         log("configure() complete")
     }
 
@@ -327,6 +338,21 @@ final class TimerViewModel {
         pauseCountThisSession = 0
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
         coachEngine.startSession(id: session.id)
+        // Persist TaskIntent from pre-session card if coach is enabled and user entered a title
+        if settings?.coachRealtimeEnabled == true, !coachTaskTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+            let intent = TaskIntent(
+                title: coachTaskTitle,
+                taskType: coachTaskType,
+                expectedResistance: coachResistance,
+                suggestedDurationMinutes: selectedMinutes,
+                sessionId: session.id
+            )
+            modelContext?.insert(intent)
+            coachEngine.currentTaskIntentId = intent.id
+            saveContext()
+        }
+        coachTaskTitle = ""
+        coachResistance = 3
         // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()
     }
@@ -496,6 +522,20 @@ final class TimerViewModel {
         remainingSeconds = 0
         totalSeconds = 0
 
+        // Focus Coach: detect mid-session stop anomaly for reason capture
+        if settings?.coachReasonPromptsEnabled == true, let lastSession = lastCompletedSession {
+            let elapsed = lastSession.endedAt.map { $0.timeIntervalSince(lastSession.startedAt) } ?? 0
+            let classifier = FocusCoachAnomalyClassifier()
+            let event = FocusCoachAnomalyClassifier.SessionEvent.midSessionStop(
+                elapsedSeconds: Int(elapsed),
+                totalSeconds: Int(lastSession.duration)
+            )
+            if classifier.shouldPromptReason(event: event) {
+                showCoachReasonSheet = true
+                pendingReasonKind = .midSessionStop
+            }
+        }
+
         showSessionComplete = true
         openCompletionWindow?()
         log("stopForReflection: showSessionComplete=\(showSessionComplete), openCompletionWindow called")
@@ -649,6 +689,27 @@ final class TimerViewModel {
             coachTickCounter += 1
             if coachTickCounter % 30 == 0 {
                 _ = coachEngine.tick()
+                // Check if engine triggered reason sheet
+                if coachEngine.shouldShowReasonSheet, !showCoachReasonSheet {
+                    showCoachReasonSheet = true
+                    pendingReasonKind = coachEngine.pendingAnomalyKind ?? .drift
+                    coachEngine.shouldShowReasonSheet = false
+                }
+            }
+        }
+
+        // Focus Coach: feed break overrun signal during breaks
+        if case .onBreak = state, settings?.coachRealtimeEnabled == true {
+            if remainingSeconds <= 0 {
+                let overrunSeconds = Double(overtimeSeconds)
+                coachEngine.updateBreakOverrun(overrunSeconds)
+                // Check for break overrun anomaly (≥2 min)
+                let classifier = FocusCoachAnomalyClassifier()
+                if classifier.shouldPromptReason(event: .breakOverrun(seconds: Int(overrunSeconds))),
+                   !showCoachReasonSheet {
+                    showCoachReasonSheet = true
+                    pendingReasonKind = .breakOverrun
+                }
             }
         }
 

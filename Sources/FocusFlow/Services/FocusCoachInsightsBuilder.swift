@@ -46,6 +46,7 @@ struct FocusCoachInsightsBuilder: Sendable {
         let startedAt: Date
         let endedAt: Date?
         let completed: Bool
+        var taskType: String?
     }
 
     struct InterruptionSnapshot: Sendable {
@@ -60,6 +61,7 @@ struct FocusCoachInsightsBuilder: Sendable {
         let outcome: FocusCoachOutcome?
         let riskScore: Double
         let deliveredAt: Date
+        let resolvedAt: Date?
     }
 
     struct AppUsageSnapshot: Sendable {
@@ -68,11 +70,18 @@ struct FocusCoachInsightsBuilder: Sendable {
         let category: String
     }
 
+    struct TaskIntentSnapshot: Sendable {
+        let sessionId: UUID?
+        let taskType: FocusCoachTaskType
+    }
+
     func build(
         sessions: [SessionSnapshot],
         interruptions: [InterruptionSnapshot],
         attempts: [AttemptSnapshot],
-        appUsage: [AppUsageSnapshot]
+        appUsage: [AppUsageSnapshot],
+        taskIntents: [TaskIntentSnapshot] = [],
+        previousWeekSessions: [SessionSnapshot] = []
     ) -> FocusCoachWeeklyReport {
         let focusSessions = sessions.filter { $0.type == "focus" }
 
@@ -129,13 +138,45 @@ struct FocusCoachInsightsBuilder: Sendable {
             }
         }
 
-        // Recovery speed (time between intervention delivery and outcome resolution)
-        // Approximated as average gap between consecutive attempts
-        let recoverySpeed: Double = 0 // Simplified — would need resolvedAt timestamps
+        // Recovery speed: average time between intervention delivery and resolution
+        let resolvedAttempts = attempts.compactMap { attempt -> Double? in
+            guard let resolved = attempt.resolvedAt else { return nil }
+            return resolved.timeIntervalSince(attempt.deliveredAt)
+        }
+        let recoverySpeed = resolvedAttempts.isEmpty ? 0 : resolvedAttempts.reduce(0, +) / Double(resolvedAttempts.count)
 
         // Legitimate interruption ratio
         let legitimateCount = interruptions.filter(\.isLegitimate).count
         let legitimateRatio = interruptions.isEmpty ? 0 : Double(legitimateCount) / Double(interruptions.count)
+
+        // Best session length by task type: find the avg duration of completed sessions per type
+        var sessionsByType: [FocusCoachTaskType: [Int]] = [:]
+        let intentMap = Dictionary(grouping: taskIntents) { $0.sessionId }
+        for session in focusSessions where session.completed {
+            let taskType: FocusCoachTaskType
+            if let sid = intentMap.first(where: { $0.key == session.id })?.value.first?.taskType {
+                taskType = sid
+            } else if let rawType = session.taskType, let t = FocusCoachTaskType(rawValue: rawType) {
+                taskType = t
+            } else {
+                taskType = .deepWork
+            }
+            sessionsByType[taskType, default: []].append(Int(session.duration / 60))
+        }
+        let bestSessionLengthByTaskType = sessionsByType.mapValues { durations in
+            durations.reduce(0, +) / max(1, durations.count)
+        }
+
+        // Week-over-week trend: compare completion rate vs previous week
+        let prevFocusSessions = previousWeekSessions.filter { $0.type == "focus" }
+        let weekOverWeekTrend: Double?
+        if !prevFocusSessions.isEmpty {
+            let prevCompleted = prevFocusSessions.filter(\.completed).count
+            let prevRate = Double(prevCompleted) / Double(prevFocusSessions.count)
+            weekOverWeekTrend = completionRate - prevRate
+        } else {
+            weekOverWeekTrend = nil
+        }
 
         return FocusCoachWeeklyReport(
             avgStartLatencySeconds: avgStartLatency,
@@ -145,10 +186,40 @@ struct FocusCoachInsightsBuilder: Sendable {
             totalSessions: focusSessions.count,
             totalInterruptions: interruptions.count,
             topTriggers: topTriggers,
-            bestSessionLengthByTaskType: [:],
+            bestSessionLengthByTaskType: bestSessionLengthByTaskType,
             recoverySpeedSeconds: recoverySpeed,
             legitimateInterruptionRatio: legitimateRatio,
-            weekOverWeekTrend: nil
+            weekOverWeekTrend: weekOverWeekTrend
         )
+    }
+
+    // MARK: - Intervention Effectiveness
+
+    /// Per-intervention-kind effectiveness breakdown for insights UI
+    struct InterventionEffectiveness: Sendable {
+        let kind: FocusCoachInterventionKind
+        let totalCount: Int
+        let improvedCount: Int
+        let winRate: Double
+    }
+
+    func interventionEffectiveness(attempts: [AttemptSnapshot]) -> [InterventionEffectiveness] {
+        var grouped: [FocusCoachInterventionKind: (total: Int, improved: Int)] = [:]
+        for attempt in attempts {
+            guard let outcome = attempt.outcome else { continue }
+            let kind = attempt.kind
+            var entry = grouped[kind, default: (total: 0, improved: 0)]
+            entry.total += 1
+            if outcome == .improved { entry.improved += 1 }
+            grouped[kind] = entry
+        }
+        return grouped.map { kind, stats in
+            InterventionEffectiveness(
+                kind: kind,
+                totalCount: stats.total,
+                improvedCount: stats.improved,
+                winRate: stats.total > 0 ? Double(stats.improved) / Double(stats.total) : 0
+            )
+        }.sorted { $0.totalCount > $1.totalCount }
     }
 }

@@ -34,7 +34,7 @@ final class InMemoryCoachStore: FocusCoachPersisting {
 final class FocusCoachEngine {
     private let scorer = FocusCoachRiskScorer()
     private let policy = FocusCoachInterventionPolicy()
-    private let store: FocusCoachPersisting
+    private(set) var store: FocusCoachPersisting
 
     // MARK: - State
     private(set) var currentSignals = FocusCoachSignals.zero
@@ -45,6 +45,9 @@ final class FocusCoachEngine {
     private(set) var sessionStartedAt: Date?
     private(set) var isActive = false
 
+    /// The TaskIntent ID for the current session (set from pre-session card)
+    var currentTaskIntentId: UUID?
+
     /// Published for UI observation
     var riskLevel: FocusCoachRiskLevel { lastRiskResult.level }
     var riskScore: Double { lastRiskResult.score }
@@ -52,8 +55,18 @@ final class FocusCoachEngine {
     /// Prompt budget (configurable via settings)
     var promptBudget: Int = 4
 
+    /// Whether the reason chip sheet should be shown (set by anomaly detection)
+    var shouldShowReasonSheet = false
+    var pendingAnomalyKind: FocusCoachInterruptionKind?
+
     init(store: FocusCoachPersisting = InMemoryCoachStore()) {
         self.store = store
+    }
+
+    /// Replaces the persistence store (e.g., from InMemory to SwiftData).
+    /// Call during app configuration before any sessions start.
+    func configureStore(_ newStore: FocusCoachPersisting) {
+        self.store = newStore
     }
 
     // MARK: - Session Lifecycle
@@ -66,12 +79,17 @@ final class FocusCoachEngine {
         promptState = .initial
         lastRiskResult = .stable
         lastDecision = .none
+        shouldShowReasonSheet = false
+        pendingAnomalyKind = nil
     }
 
     func endSession() {
         isActive = false
         currentSessionId = nil
         sessionStartedAt = nil
+        currentTaskIntentId = nil
+        shouldShowReasonSheet = false
+        pendingAnomalyKind = nil
     }
 
     // MARK: - Signal Ingestion
@@ -130,6 +148,13 @@ final class FocusCoachEngine {
             store.saveInterventionAttempt(attempt)
             promptState.promptCountThisSession += 1
             promptState.lastPromptAt = now
+        }
+
+        // Trigger reason chip sheet for repeated drift (≥3 consecutive high-risk windows)
+        let classifier = FocusCoachAnomalyClassifier()
+        if classifier.shouldPromptReason(event: .repeatedDrift(consecutiveHighRiskWindows: promptState.consecutiveHighRiskWindows)) {
+            shouldShowReasonSheet = true
+            pendingAnomalyKind = .drift
         }
 
         return decision.kind == .none ? nil : decision
