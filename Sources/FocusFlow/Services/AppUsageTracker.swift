@@ -15,9 +15,10 @@ final class AppUsageTracker {
     private var modelContext: ModelContext?
     private var tickCount: Int = 0
 
-    // Per-app tracking state
-    private var currentAppBundleId: String = ""
-    private var currentAppName: String = ""
+    // Coach signal tracking
+    private var appSwitchTimestamps: [Date] = []
+    private var lastFrontmostBundleId: String = ""
+    private var inactivitySeconds: Int = 0
 
     private init() {}
 
@@ -32,6 +33,9 @@ final class AppUsageTracker {
         idleSeconds = 0
         nudgeCount = 0
         tickCount = 0
+        appSwitchTimestamps = []
+        lastFrontmostBundleId = ""
+        inactivitySeconds = 0
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -59,7 +63,13 @@ final class AppUsageTracker {
         guard let vm = timerVM else { return }
 
         tickCount += 1
-        trackFrontmostApp(isFocusing: vm.state == .focusing)
+        let isFocusing = vm.state == .focusing
+        trackFrontmostApp(isFocusing: isFocusing)
+
+        // Feed coach signals every 30 seconds during focus
+        if isFocusing, vm.settings?.coachRealtimeEnabled == true, tickCount % 30 == 0 {
+            feedCoachSignals(vm: vm)
+        }
 
         // Only count idle time when not in a session
         let isIdle = vm.state == .idle && !vm.isOvertime
@@ -107,6 +117,20 @@ final class AppUsageTracker {
         // Skip FocusFlow itself
         if bundleId == Bundle.main.bundleIdentifier { return }
 
+        // Track app switches for coach signals
+        if bundleId != lastFrontmostBundleId {
+            if !lastFrontmostBundleId.isEmpty {
+                appSwitchTimestamps.append(Date())
+                // Keep only last 2 minutes of timestamps
+                let cutoff = Date().addingTimeInterval(-120)
+                appSwitchTimestamps.removeAll { $0 < cutoff }
+            }
+            lastFrontmostBundleId = bundleId
+            inactivitySeconds = 0
+        } else {
+            inactivitySeconds += 1
+        }
+
         let today = Calendar.current.startOfDay(for: Date())
 
         // Find or create entry for this app + today
@@ -142,6 +166,42 @@ final class AppUsageTracker {
         } catch {
             log("Failed to track app usage: \(error)")
         }
+    }
+
+    // MARK: - Coach Signal Feed
+
+    private func feedCoachSignals(vm: TimerViewModel) {
+        let switchRate = FocusCoachEngine.computeAppSwitchRate(
+            switchTimestamps: appSwitchTimestamps,
+            windowSeconds: 60
+        )
+
+        // Compute non-work foreground ratio from today's during-focus entries
+        var totalFocusSeconds: Int = 0
+        var distractingFocusSeconds: Int = 0
+        if let ctx = modelContext {
+            let today = Calendar.current.startOfDay(for: Date())
+            let descriptor = FetchDescriptor<AppUsageEntry>(
+                predicate: #Predicate { $0.date == today }
+            )
+            if let entries = try? ctx.fetch(descriptor) {
+                for entry in entries {
+                    totalFocusSeconds += entry.duringFocusSeconds
+                    if entry.category == .distracting {
+                        distractingFocusSeconds += entry.duringFocusSeconds
+                    }
+                }
+            }
+        }
+        let nonWorkRatio = totalFocusSeconds > 0
+            ? Double(distractingFocusSeconds) / Double(totalFocusSeconds)
+            : 0
+
+        var signals = vm.coachEngine.currentSignals
+        signals.appSwitchesPerMinute = switchRate
+        signals.nonWorkForegroundRatio = nonWorkRatio
+        signals.inactivityBurstSeconds = Double(inactivitySeconds)
+        vm.coachEngine.recordBehaviorSample(signals)
     }
 
     // MARK: - Nudge
