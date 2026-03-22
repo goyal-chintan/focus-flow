@@ -147,6 +147,20 @@ final class CalendarService {
         }
     }
 
+    @discardableResult
+    func deleteEvent(eventId: String) -> Bool {
+        guard authStatus == .authorized else { return false }
+        guard let event = store.event(withIdentifier: eventId) else { return false }
+        do {
+            try store.remove(event, span: .thisEvent, commit: true)
+            log("Deleted calendar event: \(eventId)")
+            return true
+        } catch {
+            log("Failed to delete event: \(error)")
+            return false
+        }
+    }
+
     private func log(_ message: String) {
         print("[CalendarService] \(message)")
     }

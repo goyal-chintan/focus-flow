@@ -304,6 +304,23 @@ struct ManualSessionView: View {
         saveWithFeedback(modelContext, errorBinding: $saveError)
         // Notify TimerViewModel to refresh the menu-bar today-total immediately.
         NotificationCenter.default.post(name: .focusSessionLoggedManually, object: nil)
+        // Sync to Calendar if integration is enabled (mirrors TimerViewModel behaviour).
+        if settings?.calendarIntegrationEnabled == true {
+            let calName = settings?.calendarName ?? "FocusFlow"
+            let calId = settings?.selectedCalendarId ?? ""
+            let eventId = CalendarService.shared.createEvent(
+                title: session.label,
+                startDate: session.startedAt,
+                endDate: session.endedAt ?? computedEndTime,
+                notes: session.achievement,
+                calendarName: calName,
+                calendarId: calId.isEmpty ? nil : calId
+            )
+            if let eventId {
+                session.calendarEventId = eventId
+                saveWithFeedback(modelContext, errorBinding: $saveError)
+            }
+        }
     }
 }
 
