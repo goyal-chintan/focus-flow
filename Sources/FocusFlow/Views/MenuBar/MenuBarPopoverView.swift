@@ -402,7 +402,11 @@ private struct IdlePopoverContent: View {
     let coachEnabled: Bool
     @Binding var coachTaskType: FocusCoachTaskType
     @Binding var coachResistance: Int
+    let recoveryState: CrashRecoveryState?
+    let recoveryProject: Project?
     let onStartFocus: () -> Void
+    let onResumeRecovery: () -> Void
+    let onDiscardRecovery: () -> Void
 
     @State private var showCustomSlider: Bool = false
 
@@ -410,6 +414,14 @@ private struct IdlePopoverContent: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Crash recovery banner — highest priority
+            if let recovery = recoveryState {
+                recoveryBanner(recovery)
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 12)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+            }
+
             // Coach pre-session intention card
             if coachEnabled {
                 FocusCoachPreSessionCard(
@@ -498,6 +510,84 @@ private struct IdlePopoverContent: View {
             gradient: LiquidDesignTokens.Gradient.focus,
             action: onStartFocus
         )
+    }
+
+    private func recoveryBanner(_ recovery: CrashRecoveryState) -> some View {
+        let remaining = Int(recovery.remainingSeconds)
+        let mins = remaining / 60
+        let secs = remaining % 60
+        let timeString = String(format: "%d:%02d", mins, secs)
+        let minutesAgo = Int(Date().timeIntervalSince(recovery.checkpointDate) / 60)
+        let agoText = minutesAgo < 1 ? "just now" : "\(minutesAgo)m ago"
+        let projectName = recoveryProject?.name ?? recovery.customLabel ?? "Focus"
+        let totalMins = Int(recovery.totalSeconds / 60)
+
+        return VStack(spacing: 10) {
+            // Header
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.orange)
+                Text("Session Interrupted")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(agoText)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Details
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(projectName)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text("\(totalMins)-min session · \(timeString) remaining\(recovery.isPaused ? " · paused" : "")")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            // Action buttons
+            HStack(spacing: 8) {
+                GradientCTAButton(
+                    title: "Resume Session",
+                    icon: "play.fill",
+                    gradient: LiquidDesignTokens.Gradient.focus,
+                    action: onResumeRecovery
+                )
+
+                Button(action: onDiscardRecovery) {
+                    Text("Discard")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: 90)
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.orange.opacity(0.4), .orange.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        }
     }
 
 }
@@ -1179,9 +1269,17 @@ extension MenuBarPopoverView {
                 get: { timerVM.coachResistance },
                 set: { timerVM.coachResistance = $0 }
             ),
+            recoveryState: timerVM.recoveryState,
+            recoveryProject: timerVM.recoveryProject,
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
+            },
+            onResumeRecovery: {
+                timerVM.resumeFromRecovery()
+            },
+            onDiscardRecovery: {
+                timerVM.discardRecovery()
             }
         )
     }

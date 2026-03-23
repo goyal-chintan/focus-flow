@@ -16,6 +16,38 @@ enum PostCompletionAction {
     case endSession
 }
 
+// MARK: - Crash Recovery State
+/// Lightweight checkpoint written to UserDefaults every 30s during active focus.
+/// Survives crashes because macOS flushes UserDefaults to plist automatically.
+struct CrashRecoveryState: Codable {
+    let sessionId: UUID
+    var remainingSeconds: TimeInterval
+    let totalSeconds: TimeInterval
+    var isPaused: Bool
+    var checkpointDate: Date
+    let projectId: UUID?
+    let customLabel: String?
+    let completedFocusSessions: Int
+
+    private static let key = "FocusFlow.crashRecoveryState"
+    /// Maximum age before recovery is considered stale.
+    static let maxRecoveryAge: TimeInterval = 2 * 60 * 60 // 2 hours
+
+    func save() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        UserDefaults.standard.set(data, forKey: Self.key)
+    }
+
+    static func load() -> CrashRecoveryState? {
+        guard let data = UserDefaults.standard.data(forKey: Self.key) else { return nil }
+        return try? JSONDecoder().decode(CrashRecoveryState.self, from: data)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: Self.key)
+    }
+}
+
 @MainActor
 @Observable
 final class TimerViewModel {
@@ -38,6 +70,12 @@ final class TimerViewModel {
     var pauseStartTime: Date? = nil
     var pauseElapsed: TimeInterval = 0
     private var pauseTimer: Timer? = nil
+
+    // MARK: - Crash Recovery
+    /// Set during `configure()` if a recoverable session is detected from a previous crash.
+    var recoveryState: CrashRecoveryState? = nil
+    /// The project associated with the recoverable session (fetched from DB).
+    var recoveryProject: Project? = nil
 
     /// Focus sessions shorter than this are treated as test/noise sessions and removed from history.
     private static let minimumRetainedFocusSeconds: TimeInterval = 5 * 60
@@ -222,6 +260,7 @@ final class TimerViewModel {
         log("settings loaded: \(settings != nil)")
         seedDefaultProfiles()
         cleanupOrphanedSessions()
+        checkForRecoverableSession()
         purgeShortFocusSessions()
         loadTodayStats()
         // Don't call BlockingService.cleanupIfNeeded() here — it prompts for
@@ -299,6 +338,127 @@ final class TimerViewModel {
             }
         }
         saveContext()
+    }
+
+    /// Checks UserDefaults for a crash recovery checkpoint and populates `recoveryState` if valid.
+    private func checkForRecoverableSession() {
+        guard let saved = CrashRecoveryState.load() else { return }
+
+        let timeSinceCrash = Date().timeIntervalSince(saved.checkpointDate)
+
+        // Too stale — discard recovery state
+        if timeSinceCrash > CrashRecoveryState.maxRecoveryAge {
+            log("Recovery state too stale (\(Int(timeSinceCrash))s) — clearing")
+            CrashRecoveryState.clear()
+            return
+        }
+
+        // Verify the session still exists in the database
+        let sessionId = saved.sessionId
+        let predicate = #Predicate<FocusSession> { $0.id == sessionId }
+        let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
+        guard let session = try? modelContext?.fetch(descriptor).first else {
+            log("Recovery session not found in DB — clearing")
+            CrashRecoveryState.clear()
+            return
+        }
+
+        // Calculate adjusted remaining time
+        var adjustedRemaining = saved.remainingSeconds
+        if !saved.isPaused {
+            // Timer was running — subtract time elapsed since crash
+            adjustedRemaining -= timeSinceCrash
+        }
+
+        if adjustedRemaining <= 0 {
+            // Session would have completed while app was down — mark complete
+            log("Recovery: session completed while away — marking complete")
+            session.endedAt = session.startedAt.addingTimeInterval(session.duration)
+            session.completed = true
+            saveContext()
+            CrashRecoveryState.clear()
+            loadTodayStats()
+            return
+        }
+
+        // Valid recovery — populate observable state for UI banner
+        var recovery = saved
+        recovery.remainingSeconds = adjustedRemaining
+        recovery.checkpointDate = saved.checkpointDate
+        recoveryState = recovery
+
+        // Fetch the associated project for display
+        if let projectId = saved.projectId {
+            let projPredicate = #Predicate<Project> { $0.id == projectId }
+            let projDescriptor = FetchDescriptor<Project>(predicate: projPredicate)
+            recoveryProject = try? modelContext?.fetch(projDescriptor).first
+        }
+
+        log("Recovery available: \(Int(adjustedRemaining))s remaining, paused=\(saved.isPaused), crashed \(Int(timeSinceCrash))s ago")
+    }
+
+    /// Resumes a focus session from crash recovery state.
+    func resumeFromRecovery() {
+        guard let recovery = recoveryState else { return }
+        log("Resuming from crash recovery: \(Int(recovery.remainingSeconds))s remaining")
+
+        // Fetch the session from DB
+        let sessionId = recovery.sessionId
+        let predicate = #Predicate<FocusSession> { $0.id == sessionId }
+        let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
+        guard let session = try? modelContext?.fetch(descriptor).first else {
+            log("Recovery session vanished from DB — aborting resume")
+            discardRecovery()
+            return
+        }
+
+        // Restore timer state
+        currentSession = session
+        session.endedAt = nil // Re-open the session
+        remainingSeconds = recovery.remainingSeconds
+        totalSeconds = recovery.totalSeconds
+        selectedProject = recoveryProject
+        customLabel = recovery.customLabel ?? ""
+        completedFocusSessions = recovery.completedFocusSessions
+        isOvertime = false
+        overtimeSeconds = 0
+
+        if recovery.isPaused {
+            state = .paused
+            pauseStartTime = Date()
+            pauseElapsed = 0
+            startPauseTimer()
+        } else {
+            state = .focusing
+            startTimer()
+        }
+
+        // Re-activate blocking if the project has a blocking profile
+        activateBlocking()
+
+        // Restart coach for this session
+        coachEngine.startSession(id: session.id)
+        pauseCountThisSession = 0
+        strongPromptsShownThisSession = 0
+        coachTickCounter = 0
+
+        saveContext()
+        saveCrashRecoveryCheckpoint()
+
+        // Clear recovery UI state
+        recoveryState = nil
+        recoveryProject = nil
+
+        log("Session resumed successfully")
+    }
+
+    /// Discards crash recovery state without resuming. Session record stays in DB as-is.
+    func discardRecovery() {
+        log("Discarding crash recovery")
+        clearCrashRecoveryState()
+        recoveryState = nil
+        recoveryProject = nil
+        loadTodayStats()
     }
 
     private func purgeShortFocusSessions() {
@@ -413,6 +573,7 @@ final class TimerViewModel {
             settings?.lastUsedProjectId = project.id.uuidString
         }
         saveContext() // Persist session immediately — crash safety
+        saveCrashRecoveryCheckpoint() // Write initial recovery state to UserDefaults
         startTimer()
         // Focus Coach: start session tracking
         pauseCountThisSession = 0
@@ -545,6 +706,28 @@ final class TimerViewModel {
         guard let currentSession, currentSession.endedAt == nil else { return }
         currentSession.endedAt = Date()
         saveContext(caller: "appTermination")
+        saveCrashRecoveryCheckpoint()
+    }
+
+    /// Writes current timer state to UserDefaults for crash recovery.
+    private func saveCrashRecoveryCheckpoint() {
+        guard let session = currentSession, state == .focusing || state == .paused else { return }
+        let checkpoint = CrashRecoveryState(
+            sessionId: session.id,
+            remainingSeconds: remainingSeconds,
+            totalSeconds: totalSeconds,
+            isPaused: state == .paused,
+            checkpointDate: Date(),
+            projectId: session.project?.id,
+            customLabel: session.customLabel,
+            completedFocusSessions: completedFocusSessions
+        )
+        checkpoint.save()
+    }
+
+    /// Clears crash recovery state from UserDefaults — called on every normal session ending.
+    private func clearCrashRecoveryState() {
+        CrashRecoveryState.clear()
     }
 
     func startBreak() {
@@ -563,6 +746,7 @@ final class TimerViewModel {
         let session = FocusSession(type: type, duration: duration)
         modelContext?.insert(session)
         currentSession = session
+        clearCrashRecoveryState() // Focus session ended, break doesn't need recovery
         startTimer()
         closePopover()
     }
@@ -577,6 +761,7 @@ final class TimerViewModel {
         pauseCountThisSession += 1
         coachEngine.updatePauseCount(pauseCountThisSession)
         startPauseTimer()
+        saveCrashRecoveryCheckpoint() // Persist paused state for crash recovery
     }
 
     /// Maximum single session duration: 4 hours (prevents runaway extension)
@@ -612,6 +797,7 @@ final class TimerViewModel {
         pauseElapsed = 0
         state = .focusing
         startTimer()
+        saveCrashRecoveryCheckpoint() // Persist resumed state for crash recovery
 
         if wasPauseExtended && settings?.coachReasonPromptsEnabled == true {
             showPauseReasonChips = true
@@ -644,6 +830,7 @@ final class TimerViewModel {
         strongPromptsShownThisSession = 0
         lastIdleInterventionAt = nil
         coachEngine.endSession()
+        clearCrashRecoveryState()
         if let session = currentSession {
             session.endedAt = Date()
             session.completed = false
@@ -688,6 +875,7 @@ final class TimerViewModel {
         session.endedAt = Date()
         session.completed = false
         saveContext()
+        clearCrashRecoveryState()
 
         lastCompletedDuration = session.duration
         lastCompletedLabel = session.label
@@ -789,6 +977,7 @@ final class TimerViewModel {
         strongPromptsShownThisSession = 0
         lastIdleInterventionAt = nil
         coachEngine.endSession()
+        clearCrashRecoveryState()
         if let session = currentSession {
             modelContext?.delete(session)
             saveContext()
@@ -913,6 +1102,7 @@ final class TimerViewModel {
         if coachTickCounter % 30 == 0 {
             currentSession?.endedAt = Date()
             saveContext()
+            saveCrashRecoveryCheckpoint()
         }
 
         // Focus Coach: tick every 30 seconds during active focus
@@ -971,6 +1161,7 @@ final class TimerViewModel {
         currentSession?.endedAt = Date()
         currentSession?.completed = true
         saveContext()
+        clearCrashRecoveryState()
 
         let wasType = currentSession?.type
 
