@@ -1101,35 +1101,42 @@ private struct OvertimePopoverContent: View {
                 // Window not open — inline quick actions (e.g. if window was dismissed)
                 GlassEffectContainer {
                     VStack(spacing: 8) {
-                        HStack(spacing: 8) {
-                            GradientCTAButton(
-                                title: "Take a Break",
-                                icon: "cup.and.saucer.fill",
-                                gradient: LiquidDesignTokens.Gradient.breakStart,
-                                action: onTakeBreak
-                            )
+                        // Primary CTA — coached path (full width, no truncation)
+                        GradientCTAButton(
+                            title: "Take a Break",
+                            icon: "cup.and.saucer.fill",
+                            gradient: LiquidDesignTokens.Gradient.breakStart,
+                            action: onTakeBreak
+                        )
 
+                        // Secondary actions row — lower visual weight
+                        HStack(spacing: 8) {
                             Button(action: onSkipBreak) {
-                                HStack(spacing: 6) {
+                                HStack(spacing: 5) {
                                     Image(systemName: "forward.fill")
-                                        .font(.system(size: 11))
+                                        .font(.system(size: 10))
                                     Text("Skip Break")
-                                        .font(.system(size: 13, weight: .medium))
+                                        .font(.system(size: 12, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 10)
                             }
-                            .frame(minHeight: 44)
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.capsule)
+
+                            Button(action: onFinishSession) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill")
+                                        .font(.system(size: 10))
+                                    Text(cycleProgress >= 1.0 ? "Complete Block 🎉" : "Finish Session")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                            }
                             .buttonStyle(.glass)
                             .buttonBorderShape(.capsule)
                         }
-
-                        GradientCTAButton(
-                            title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Finish Session",
-                            icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill",
-                            gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress),
-                            action: onFinishSession
-                        )
                     }
                 }
             }
