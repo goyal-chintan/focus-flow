@@ -467,7 +467,7 @@ struct CalendarTabView: View {
 
     private func remindersInGroup(_ group: ReminderGroup) -> [RemindersService.ReminderItem] {
         let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) else { return [] }
         switch group {
         case .pastAndToday:
             return reminders.filter {
@@ -520,23 +520,19 @@ struct CalendarTabView: View {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                     completingReminderId = reminder.id
                 }
-                Task {
+                Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(400))
                     let didComplete = RemindersService.shared.completeReminder(identifier: reminder.id)
                     guard didComplete else {
-                        await MainActor.run {
-                            completingReminderId = nil
-                            reminderSaveError = "Could not complete reminder."
-                        }
+                        completingReminderId = nil
+                        reminderSaveError = "Could not complete reminder."
                         return
                     }
-                    await MainActor.run {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            reminders.removeAll { $0.id == reminder.id }
-                        }
-                        needsReminderRefresh = true
-                        completingReminderId = nil
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        reminders.removeAll { $0.id == reminder.id }
                     }
+                    needsReminderRefresh = true
+                    completingReminderId = nil
                 }
             } label: {
                 Image(systemName: completingReminderId == reminder.id ? "checkmark.circle.fill" : "circle")
@@ -605,16 +601,14 @@ struct CalendarTabView: View {
             Button("Delete", role: .destructive) {
                 guard let target = reminderToConfirmDelete else { return }
                 reminderToConfirmDelete = nil
-                Task {
+                Task { @MainActor in
                     let didDelete = RemindersService.shared.deleteReminder(identifier: target.id)
-                    await MainActor.run {
-                        if didDelete {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                reminders.removeAll { $0.id == target.id }
-                            }
-                        } else {
-                            reminderSaveError = "Could not delete reminder."
+                    if didDelete {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            reminders.removeAll { $0.id == target.id }
                         }
+                    } else {
+                        reminderSaveError = "Could not delete reminder."
                     }
                 }
             }
@@ -742,7 +736,7 @@ struct CalendarTabView: View {
                 .buttonBorderShape(.capsule)
 
                 Button(isCreating ? "Add Reminder" : "Save Changes") {
-                    Task {
+                    Task { @MainActor in
                         if isCreating {
                             let id = RemindersService.shared.createReminder(
                                 title: reminderDraftTitle,
@@ -937,7 +931,7 @@ struct CalendarTabView: View {
         await reminderLoadTask?.value
     }
 
-    private func loadRemindersInternal() async {
+    @MainActor private func loadRemindersInternal() async {
         guard settings?.remindersIntegrationEnabled == true else {
             reminders = []
             remindersError = nil

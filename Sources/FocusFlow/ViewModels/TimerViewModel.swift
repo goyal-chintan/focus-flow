@@ -325,14 +325,15 @@ final class TimerViewModel {
         let predicate = #Predicate<FocusSession> { $0.endedAt == nil }
         let descriptor = FetchDescriptor<FocusSession>(predicate: predicate)
         guard let orphans = try? modelContext?.fetch(descriptor) else { return }
+        let recoveryId = CrashRecoveryState.load()?.sessionId
         for session in orphans {
+            // Don't touch the session if crash recovery is pointing to it
+            if session.id == recoveryId { continue }
             let elapsed = Date().timeIntervalSince(session.startedAt)
             let minimumKeep = session.type == .focus ? Self.minimumRetainedFocusSeconds : 60
             if elapsed < minimumKeep {
-                // Delete sessions with less than 1 minute — not worth keeping
                 modelContext?.delete(session)
             } else {
-                // Cap the duration at what was planned
                 session.endedAt = session.startedAt.addingTimeInterval(min(elapsed, session.duration))
                 session.completed = false
             }
@@ -464,9 +465,11 @@ final class TimerViewModel {
     private func purgeShortFocusSessions() {
         let descriptor = FetchDescriptor<FocusSession>()
         guard let sessions = try? modelContext?.fetch(descriptor) else { return }
+        let recoveryId = recoveryState?.sessionId
 
         var deletedAny = false
         for session in sessions where session.type == .focus && session.endedAt != nil && session.actualDuration < Self.minimumRetainedFocusSeconds {
+            if session.id == recoveryId { continue }
             if lastCompletedSession?.id == session.id {
                 lastCompletedSession = nil
                 lastCompletedDuration = nil
@@ -505,9 +508,8 @@ final class TimerViewModel {
     func loadTodayStats() {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: Date())
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        // Fetch only sessions that started today or yesterday (covers cross-midnight)
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: startOfDay)!
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay),
+              let yesterday = calendar.date(byAdding: .day, value: -1, to: startOfDay) else { return }
         var descriptor = FetchDescriptor<FocusSession>(
             predicate: #Predicate<FocusSession> { session in
                 session.startedAt >= yesterday
@@ -1003,6 +1005,7 @@ final class TimerViewModel {
         currentSession?.endedAt = Date()
         currentSession?.completed = false
         saveContext()
+        clearCrashRecoveryState()
         currentSession = nil
         state = .idle
         remainingSeconds = 0
