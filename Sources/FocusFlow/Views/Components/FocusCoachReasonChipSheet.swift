@@ -151,6 +151,7 @@ struct FocusCoachReasonChipSheet: View {
         case .drift: "You drifted — what's going on?"
         case .fakeStart: "Started but didn't focus — why?"
         case .missedStart: "Missed your planned start"
+        case .projectSwitch: "Why are you switching?"
         }
     }
 
@@ -162,6 +163,9 @@ struct FocusCoachReasonChipSheet: View {
         case .fatigue: "bed.double.fill"
         case .legitDistraction: "bell.badge.fill"
         case .resistanceAvoidance: "arrow.uturn.backward.circle.fill"
+        case .taskComplete: "checkmark.circle.fill"
+        case .higherPriority: "exclamationmark.arrow.triangle.2.circlepath"
+        case .contextChanged: "arrow.triangle.branch"
         case .other: "ellipsis.circle.fill"
         }
     }

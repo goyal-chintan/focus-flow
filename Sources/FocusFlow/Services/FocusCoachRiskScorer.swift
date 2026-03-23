@@ -84,7 +84,7 @@ struct FocusCoachRiskScorer: Sendable {
     /// False-positive dampening factor when a legitimate reason was recently given
     private let legitimateReasonDampeningFactor: Double = 0.6
 
-    func score(_ signals: FocusCoachSignals) -> FocusCoachRiskResult {
+    func score(_ signals: FocusCoachSignals, profile: CoachPersonalProfile? = nil) -> FocusCoachRiskResult {
         let startDelayNorm = normalize(signals.startDelaySeconds, max: maxStartDelay)
         let appSwitchNorm = normalize(signals.appSwitchesPerMinute, max: maxAppSwitches)
         let nonWorkNorm = clamp(signals.nonWorkForegroundRatio)
@@ -115,11 +115,15 @@ struct FocusCoachRiskScorer: Sendable {
         ].filter { $0 > 0.01 }.count
         let confidence = clamp(Double(activeSignals) / 4.0)
 
+        // Use personal thresholds if calibrated, otherwise defaults
+        let driftThreshold = profile?.effectiveDriftThreshold ?? 0.35
+        let highRiskThreshold = profile?.effectiveHighRiskThreshold ?? 0.65
+
         let level: FocusCoachRiskLevel
         switch finalScore {
-        case 0..<0.35:
+        case 0..<driftThreshold:
             level = .stable
-        case 0.35..<0.65:
+        case driftThreshold..<highRiskThreshold:
             level = .driftRisk
         default:
             level = .highRisk

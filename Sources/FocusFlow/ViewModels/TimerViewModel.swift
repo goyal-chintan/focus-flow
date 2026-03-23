@@ -40,7 +40,7 @@ final class TimerViewModel {
     private var pauseTimer: Timer? = nil
 
     /// Focus sessions shorter than this are treated as test/noise sessions and removed from history.
-    private static let minimumRetainedFocusSeconds: TimeInterval = 11 * 60
+    private static let minimumRetainedFocusSeconds: TimeInterval = 5 * 60
 
     var pauseTimeString: String {
         let mins = Int(pauseElapsed) / 60
@@ -108,15 +108,25 @@ final class TimerViewModel {
     private var currentDay: Date = Calendar.current.startOfDay(for: Date())
     private var midnightTimer: Timer?
 
-    // MARK: - Window Callback
+    // MARK: - Window Lifecycle
     /// Set by FocusFlowApp to open the session-complete window from any context
     var openCompletionWindow: (() -> Void)?
     /// Set by FocusFlowApp to open the strong coach intervention window
     var openCoachInterventionWindow: (() -> Void)?
-    /// Set by FocusFlowApp to close menu-bar popover after commit actions.
-    var requestPopoverClose: (() -> Void)?
     /// Set by FocusFlowApp to request foreground activation based on policy.
     var requestAppActivation: (() -> Void)?
+
+    /// Direct reference to the MenuBarExtra's hosting window.
+    /// Set by PopoverWindowAccessor embedded in MenuBarPopoverView.
+    /// Using a direct reference avoids the fragile responder-chain
+    /// `NSApp.sendAction(NSPopover.performClose)` that silently fails
+    /// when another window is key.
+    weak var popoverWindow: NSWindow?
+
+    /// Reliably closes the menu bar popover using direct window reference.
+    func closePopover() {
+        popoverWindow?.close()
+    }
 
     // MARK: - Private
     private var timer: Timer?
@@ -136,6 +146,8 @@ final class TimerViewModel {
     /// Whether the reason chip sheet should be shown (driven by coach engine anomaly detection)
     var showCoachReasonSheet: Bool = false
     var pendingReasonKind: FocusCoachInterruptionKind = .drift
+    /// Non-blocking inline reason chips shown when resuming from an extended pause (≥2 min).
+    var showPauseReasonChips: Bool = false
     var showCoachInterventionWindow: Bool = false
     var activeCoachInterventionDecision: FocusCoachDecision?
     var currentCoachQuickPromptDecision: FocusCoachDecision?
@@ -395,6 +407,7 @@ final class TimerViewModel {
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
+        coachEngine.currentTaskResistance = coachResistance
         coachEngine.startSession(id: session.id)
         // Persist TaskIntent from pre-session check-in if coach is enabled
         if settings?.coachRealtimeEnabled == true {
@@ -413,7 +426,66 @@ final class TimerViewModel {
         coachResistance = 3
         // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()
-        requestPopoverClose?()
+        closePopover()
+    }
+
+    /// Switches to a different project mid-session, splitting the current session.
+    /// - The current session is saved with elapsed time (project A).
+    /// - A new session starts with the remaining time (project B).
+    /// - Blocking profile swaps if the new project has a different one.
+    func switchProject(to newProject: Project?, reason: FocusCoachReason) {
+        guard state == .focusing || state == .paused, let _ = settings else { return }
+        let wasState = state
+
+        // 1. Save elapsed time on current session
+        let elapsed = totalSeconds - remainingSeconds
+        if let session = currentSession {
+            session.endedAt = Date()
+            session.completed = false
+            if elapsed >= Self.minimumRetainedFocusSeconds {
+                saveContext()
+            } else {
+                modelContext?.delete(session)
+                saveContext()
+            }
+        }
+
+        // 2. Record the switch as a coach interruption
+        coachEngine.recordAnomaly(kind: .projectSwitch, reason: reason, sessionId: currentSession?.id)
+
+        // 3. Deactivate old blocking profile
+        deactivateBlocking()
+
+        // 4. Switch project and start new session with remaining time
+        selectedProject = newProject
+        let newDuration = max(remainingSeconds, 60) // at least 1 min
+        totalSeconds = newDuration
+        remainingSeconds = newDuration
+        state = .focusing
+
+        let session = FocusSession(
+            type: .focus,
+            duration: newDuration,
+            project: selectedProject,
+            customLabel: customLabel.isEmpty ? nil : customLabel
+        )
+        modelContext?.insert(session)
+        currentSession = session
+        saveContext()
+
+        // 5. Resume timer if we were paused
+        if wasState == .paused {
+            pauseTimer?.invalidate()
+            pauseTimer = nil
+            pauseStartTime = nil
+            pauseElapsed = 0
+        }
+        startTimer()
+
+        // 6. Activate new blocking profile
+        activateBlocking()
+
+        log("switchProject: switched to \(newProject?.name ?? "none"), remaining=\(Int(newDuration))s")
     }
 
     private func log(_ msg: String) {
@@ -467,6 +539,7 @@ final class TimerViewModel {
         modelContext?.insert(session)
         currentSession = session
         startTimer()
+        closePopover()
     }
 
     func pause() {
@@ -507,13 +580,20 @@ final class TimerViewModel {
 
     func resume() {
         guard state == .paused else { return }
+        let wasPauseExtended = pauseElapsed >= 120 // 2+ min pause
         pauseTimer?.invalidate()
         pauseTimer = nil
         pauseStartTime = nil
         pauseElapsed = 0
         state = .focusing
         startTimer()
-        requestPopoverClose?()
+
+        if wasPauseExtended && settings?.coachReasonPromptsEnabled == true {
+            showPauseReasonChips = true
+            pendingReasonKind = .drift
+        }
+
+        closePopover()
     }
 
     func stop() {
@@ -528,6 +608,7 @@ final class TimerViewModel {
         isManualStop = false
         showSessionComplete = false
         showCoachReasonSheet = false
+        showPauseReasonChips = false
         pendingReasonKind = .drift
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
@@ -613,9 +694,11 @@ final class TimerViewModel {
         }
 
         showSessionComplete = true
-        openCompletionWindow?()
-        requestPopoverClose?()
-        requestAppActivation?()
+        closePopover()
+        DispatchQueue.main.async { [weak self] in
+            self?.openCompletionWindow?()
+            self?.requestAppActivation?()
+        }
         log("stopForReflection: showSessionComplete=\(showSessionComplete), openCompletionWindow called")
     }
 
@@ -629,6 +712,7 @@ final class TimerViewModel {
         isManualStop = false
         showSessionComplete = false
         showCoachReasonSheet = false
+        showPauseReasonChips = false
         pendingReasonKind = .drift
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
@@ -645,6 +729,7 @@ final class TimerViewModel {
         isManualStop = false
         showSessionComplete = false
         showCoachReasonSheet = false
+        showPauseReasonChips = false
         pendingReasonKind = .drift
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
@@ -668,6 +753,7 @@ final class TimerViewModel {
         isManualStop = false
         showSessionComplete = false
         showCoachReasonSheet = false
+        showPauseReasonChips = false
         pendingReasonKind = .drift
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
@@ -688,6 +774,7 @@ final class TimerViewModel {
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
+        closePopover()
     }
 
     func skipBreak() {
@@ -707,6 +794,7 @@ final class TimerViewModel {
         remainingSeconds = 0
         totalSeconds = 0
         loadTodayStats()
+        closePopover()
     }
 
     // MARK: - Blocking
@@ -888,9 +976,11 @@ final class TimerViewModel {
         remainingSeconds = 0
         state = .idle
         showSessionComplete = true
-        openCompletionWindow?()
-        requestPopoverClose?()
-        requestAppActivation?()
+        closePopover()
+        DispatchQueue.main.async { [weak self] in
+            self?.openCompletionWindow?()
+            self?.requestAppActivation?()
+        }
         currentCoachQuickPromptDecision = nil
         activeCoachInterventionDecision = nil
         showCoachInterventionWindow = false
@@ -990,6 +1080,7 @@ final class TimerViewModel {
         showSessionComplete = false
         isManualStop = false
         showCoachReasonSheet = false
+        showPauseReasonChips = false
         pendingReasonKind = .drift
 
         if action == .continueOvertime {
@@ -997,7 +1088,7 @@ final class TimerViewModel {
             return
         }
 
-        requestPopoverClose?()
+        closePopover()
 
         // Resolve completion and leave overtime mode.
         timer?.invalidate()
@@ -1042,6 +1133,17 @@ final class TimerViewModel {
         pendingReasonKind = .breakOverrun
     }
 
+    /// Records the pause extension reason and dismisses the inline chips.
+    func recordPauseReason(_ reason: FocusCoachReason?) {
+        coachEngine.recordAnomaly(kind: .drift, reason: reason, sessionId: currentSession?.id)
+        showPauseReasonChips = false
+    }
+
+    /// Dismisses pause reason chips without recording (auto-timeout or user swipe).
+    func dismissPauseReasonChips() {
+        showPauseReasonChips = false
+    }
+
     // MARK: - Focus Coach Actions
 
     /// Records an anomaly reason (user-selected chip) via the coach engine.
@@ -1057,7 +1159,7 @@ final class TimerViewModel {
             if state == .paused { resume() }
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
-            requestPopoverClose?()
+            closePopover()
         case .cleanRestart5m:
             coachEngine.recordInterventionOutcome(.improved)
             currentCoachQuickPromptDecision = nil
@@ -1143,11 +1245,11 @@ final class TimerViewModel {
             if route.didConsumeStrongBudget {
                 strongPromptsShownThisSession += 1
             }
-            if settings.coachBringAppToFrontOnStrongPrompt {
-                requestAppActivation?()
+            closePopover()
+            DispatchQueue.main.async { [weak self] in
+                self?.openCoachInterventionWindow?()
+                self?.requestAppActivation?()
             }
-            requestPopoverClose?()
-            openCoachInterventionWindow?()
         } else if route.quickPromptDecision != nil {
             coachEngine.recordDeliveredIntervention(kind: .quickPrompt, riskScore: coachEngine.riskScore)
         }
@@ -1219,11 +1321,11 @@ final class TimerViewModel {
                     riskScore: opportunityContext.driftConfidence,
                     sessionId: nil
                 )
-                if settings.coachBringAppToFrontOnStrongPrompt {
-                    requestAppActivation?()
+                closePopover()
+                DispatchQueue.main.async { [weak self] in
+                    self?.openCoachInterventionWindow?()
+                    self?.requestAppActivation?()
                 }
-                requestPopoverClose?()
-                openCoachInterventionWindow?()
             } else {
                 currentIdleStarterDecision = decision
             }

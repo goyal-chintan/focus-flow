@@ -48,11 +48,17 @@ final class FocusCoachEngine {
     /// The TaskIntent ID for the current session (set from pre-session card)
     var currentTaskIntentId: UUID?
 
+    /// Current task resistance (1-5) for adaptive threshold scaling
+    var currentTaskResistance: Int = 3
+
+    /// Personal profile calibrated from historical data
+    private(set) var personalProfile: CoachPersonalProfile = .uncalibrated
+
     /// Published for UI observation
     var riskLevel: FocusCoachRiskLevel { lastRiskResult.level }
     var riskScore: Double { lastRiskResult.score }
 
-    /// Prompt budget (configurable via settings)
+    /// Prompt budget (adaptive or from settings)
     var promptBudget: Int = 4
 
     /// Whether the reason chip sheet should be shown (set by anomaly detection)
@@ -81,6 +87,9 @@ final class FocusCoachEngine {
         lastDecision = .none
         shouldShowReasonSheet = false
         pendingAnomalyKind = nil
+
+        // Calibrate personal profile from 14-day rolling window
+        calibrateProfile()
     }
 
     func endSession() {
@@ -118,8 +127,8 @@ final class FocusCoachEngine {
     func tick(now: Date = Date()) -> FocusCoachDecision? {
         guard isActive else { return nil }
 
-        // Score current signals
-        lastRiskResult = scorer.score(currentSignals)
+        // Score current signals using personal profile
+        lastRiskResult = scorer.score(currentSignals, profile: personalProfile)
 
         // Update consecutive high-risk window tracking
         if lastRiskResult.level == .highRisk {
@@ -128,12 +137,17 @@ final class FocusCoachEngine {
             promptState.consecutiveHighRiskWindows = 0
         }
 
+        // Use adaptive prompt budget from personal profile if calibrated
+        let effectiveBudget = personalProfile.isCalibrated
+            ? personalProfile.adaptivePromptBudget
+            : promptBudget
+
         // Get intervention decision
         let decision = policy.decide(
             now: now,
             risk: lastRiskResult.level,
             state: promptState,
-            promptBudget: promptBudget
+            promptBudget: effectiveBudget
         )
 
         lastDecision = decision
@@ -225,7 +239,7 @@ final class FocusCoachEngine {
         }.count
     }
 
-        // MARK: - Coach Signals Computation
+    // MARK: - Coach Signals Computation
 
     /// Computes app-switch rate from a window of recent app changes.
     static func computeAppSwitchRate(switchTimestamps: [Date], windowSeconds: TimeInterval = 60) -> Double {
@@ -235,5 +249,17 @@ final class FocusCoachEngine {
         let recentSwitches = switchTimestamps.filter { $0 >= windowStart }
         let windowMinutes = windowSeconds / 60.0
         return Double(recentSwitches.count) / windowMinutes
+    }
+
+    // MARK: - Adaptive Calibration
+
+    /// Calibrates the personal profile from a 14-day rolling window of intervention outcomes.
+    func calibrateProfile() {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+        let recentAttempts = store.attempts.filter { $0.deliveredAt > cutoff }
+        personalProfile = CoachPersonalProfile.calibrate(
+            from: recentAttempts,
+            currentResistance: currentTaskResistance
+        )
     }
 }

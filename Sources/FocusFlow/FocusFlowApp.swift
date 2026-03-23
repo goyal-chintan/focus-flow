@@ -75,9 +75,6 @@ struct FocusFlowApp: App {
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
                 .preferredColorScheme(.dark)
-                .onAppear {
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                }
         }
         .defaultSize(width: 720, height: 520)
         .modelContainer(container)
@@ -160,9 +157,6 @@ private struct WindowLauncherBridge: View {
                 }
                 timerVM.openCoachInterventionWindow = {
                     openWindow(id: "coach-intervention")
-                }
-                timerVM.requestPopoverClose = {
-                    NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
                 }
                 timerVM.requestAppActivation = {
                     NSApplication.shared.activate(ignoringOtherApps: true)

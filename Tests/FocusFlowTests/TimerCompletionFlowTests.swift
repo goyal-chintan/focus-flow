@@ -126,15 +126,9 @@ final class TimerCompletionFlowTests: XCTestCase {
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
-        var closeRequests = 0
-        vm.requestPopoverClose = {
-            closeRequests += 1
-        }
-
         vm.startFocus()
 
         XCTAssertEqual(vm.state, .focusing)
-        XCTAssertEqual(closeRequests, 1)
     }
 
     func testStrongPromptRequestsSingleSurfacePresentationWithForeground() throws {
@@ -152,12 +146,8 @@ final class TimerCompletionFlowTests: XCTestCase {
         settings.coachInterventionMode = .balanced
         try container.mainContext.save()
 
-        var closeRequests = 0
         var coachWindowOpenRequests = 0
         var appActivationRequests = 0
-        vm.requestPopoverClose = {
-            closeRequests += 1
-        }
         vm.openCoachInterventionWindow = {
             coachWindowOpenRequests += 1
         }
@@ -171,9 +161,11 @@ final class TimerCompletionFlowTests: XCTestCase {
             frontmostCategory: .productive
         )
 
+        // openCoachInterventionWindow & requestAppActivation are now dispatched async
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertTrue(vm.showCoachInterventionWindow)
         XCTAssertEqual(coachWindowOpenRequests, 1)
-        XCTAssertEqual(closeRequests, 1)
         XCTAssertEqual(appActivationRequests, 1)
         XCTAssertNil(vm.currentIdleStarterDecision)
     }
