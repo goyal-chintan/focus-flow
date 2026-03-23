@@ -74,7 +74,7 @@ struct MenuBarPopoverView: View {
                     LinearGradient(
                         colors: [
                             Color.black.opacity(0.16),
-                            Color(hex: 0x0C1322).opacity(0.1),
+                            Color.black.opacity(0.08),
                             Color.black.opacity(0.2)
                         ],
                         startPoint: .top,
@@ -165,7 +165,7 @@ struct MenuBarPopoverView: View {
                 TrackedLabel(
                     text: timerVM.isFocusOvertime ? "Overtime" : "Break Over",
                     font: LiquidDesignTokens.Typography.labelSmall,
-                    color: timerVM.isFocusOvertime ? Color(hex: 0x3DA86A) : Color.orange,
+                    color: timerVM.isFocusOvertime ? LiquidDesignTokens.Spectral.mint : Color.orange,
                     tracking: 1.8
                 )
                 Text(timerVM.isFocusOvertime ? (timerVM.selectedProject?.name ?? "Focus") : "Break")
@@ -511,6 +511,7 @@ private struct FocusingPopoverContent: View {
     let canReduceTime: Bool
     let canExtendTime: Bool
     let showPauseReasonChips: Bool
+    let cycleProgress: Double
     let onPause: () -> Void
     let onExtendTime: () -> Void
     let onReduceTime: () -> Void
@@ -538,30 +539,21 @@ private struct FocusingPopoverContent: View {
 
             // Pause / Stop buttons — native glass
             HStack(spacing: 12) {
-                Button(action: onPause) {
-                    Label("Pause", systemImage: "pause.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .frame(minHeight: 44)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
+                GradientCTAButton(
+                    title: "Pause",
+                    icon: "pause.fill",
+                    gradient: LiquidDesignTokens.Gradient.pause,
+                    foregroundColor: Color(hex: 0x332200),
+                    action: onPause
+                )
                 .accessibilityLabel("Pause focus session")
 
-                Button {
-                    withAnimation(FFMotion.section) { onShowStopConfirmation() }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "stop.fill")
-                        Text("Stop")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                }
-                .frame(minHeight: 44)
-                .buttonStyle(.glassProminent)
-                .tint(Color.red)
-                .buttonBorderShape(.capsule)
+                GradientCTAButton(
+                    title: "Stop",
+                    icon: "stop.fill",
+                    gradient: LiquidDesignTokens.Gradient.stop,
+                    action: { withAnimation(FFMotion.section) { onShowStopConfirmation() } }
+                )
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)
@@ -707,25 +699,23 @@ private struct FocusingPopoverContent: View {
 
             ProjectPickerView(selectedProject: $switchTarget)
 
-            Button {
-                guard switchTarget?.id != selectedProject?.id else {
-                    withAnimation(FFMotion.section) { showProjectSwitcher = false }
-                    return
+            GradientCTAButton(
+                title: "Continue",
+                icon: "arrow.right",
+                gradient: LiquidDesignTokens.Gradient.focus,
+                action: {
+                    guard switchTarget?.id != selectedProject?.id else {
+                        withAnimation(FFMotion.section) { showProjectSwitcher = false }
+                        return
+                    }
+                    withAnimation(FFMotion.section) {
+                        showProjectSwitcher = false
+                        showSwitchReasonChips = true
+                    }
                 }
-                withAnimation(FFMotion.section) {
-                    showProjectSwitcher = false
-                    showSwitchReasonChips = true
-                }
-            } label: {
-                Text("Continue")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-            .buttonBorderShape(.capsule)
+            )
             .disabled(switchTarget == nil || switchTarget?.id == selectedProject?.id)
+            .opacity((switchTarget == nil || switchTarget?.id == selectedProject?.id) ? 0.5 : 1.0)
         }
         .padding(10)
         .background(
@@ -805,19 +795,18 @@ private struct FocusingPopoverContent: View {
                 .font(LiquidDesignTokens.Typography.labelLarge)
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
-            Button {
+            GradientCTAButton(
+                title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Save & End",
+                icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "square.and.arrow.down",
+                gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress)
+            ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                     saveAnimating = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     onSaveStop()
                 }
-            } label: {
-                Label("Save & End", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
             .scaleEffect(saveAnimating ? 0.92 : 1.0)
             .opacity(saveAnimating ? 0.7 : 1.0)
 
@@ -847,8 +836,7 @@ private struct FocusingPopoverContent: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
         }
-        .padding(12)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
     }
 }
 
@@ -859,6 +847,7 @@ private struct PausedPopoverContent: View {
     let pauseWarningColor: Color
     let pauseWarningMessage: String
     @Binding var showStopConfirmation: Bool
+    let cycleProgress: Double
     let onResume: () -> Void
     let onShowStopConfirmation: () -> Void
     let onSaveStop: () -> Void
@@ -887,7 +876,7 @@ private struct PausedPopoverContent: View {
                 action: onResume
             )
 
-            // End Session — native glass button
+            // End Session — plain text link
             Button {
                 withAnimation(FFMotion.section) { onShowStopConfirmation() }
             } label: {
@@ -913,19 +902,18 @@ private struct PausedPopoverContent: View {
 
     private var pausedStopConfirmation: some View {
         VStack(spacing: 8) {
-            Button {
+            GradientCTAButton(
+                title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Save & End",
+                icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "square.and.arrow.down",
+                gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress)
+            ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                     saveAnimating = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     onSaveStop()
                 }
-            } label: {
-                Label("Save & End", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
             .scaleEffect(saveAnimating ? 0.92 : 1.0)
             .opacity(saveAnimating ? 0.7 : 1.0)
 
@@ -955,7 +943,7 @@ private struct PausedPopoverContent: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
         }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
     }
 }
 
@@ -965,6 +953,7 @@ private struct OvertimePopoverContent: View {
     @Binding var selectedProject: Project?
     let overtimeString: String
     let showSessionComplete: Bool
+    let cycleProgress: Double
     let onBringWindowToFront: () -> Void
     let onTakeBreak: () -> Void
     let onSkipBreak: () -> Void
@@ -1016,21 +1005,12 @@ private struct OvertimePopoverContent: View {
                 GlassEffectContainer {
                     VStack(spacing: 8) {
                         HStack(spacing: 8) {
-                            Button(action: onTakeBreak) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "cup.and.saucer.fill")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                                    Text("Take a Break")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                            }
-                            .frame(minHeight: 44)
-                            .buttonStyle(.glassProminent)
-                            .buttonBorderShape(.capsule)
+                            GradientCTAButton(
+                                title: "Take a Break",
+                                icon: "cup.and.saucer.fill",
+                                gradient: LiquidDesignTokens.Gradient.breakStart,
+                                action: onTakeBreak
+                            )
 
                             Button(action: onSkipBreak) {
                                 HStack(spacing: 6) {
@@ -1047,19 +1027,12 @@ private struct OvertimePopoverContent: View {
                             .buttonBorderShape(.capsule)
                         }
 
-                        Button(action: onFinishSession) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 12, weight: .medium))
-                                Text("Finish Session")
-                                    .font(.system(size: 14, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                        }
-                        .frame(minHeight: 44)
-                        .buttonStyle(.glass)
-                        .buttonBorderShape(.capsule)
+                        GradientCTAButton(
+                            title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Finish Session",
+                            icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill",
+                            gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress),
+                            action: onFinishSession
+                        )
                     }
                 }
             }
@@ -1222,6 +1195,7 @@ extension MenuBarPopoverView {
             canReduceTime: timerVM.canReduceTime,
             canExtendTime: timerVM.canExtendTime,
             showPauseReasonChips: timerVM.showPauseReasonChips,
+            cycleProgress: timerVM.cycleProgress,
             onPause: { timerVM.pause() },
             onExtendTime: {
                 timerVM.extendTimer()
@@ -1247,6 +1221,7 @@ extension MenuBarPopoverView {
             pauseWarningColor: timerVM.pauseWarningLevel.color,
             pauseWarningMessage: timerVM.pauseWarningMessage,
             showStopConfirmation: $showStopConfirmation,
+            cycleProgress: timerVM.cycleProgress,
             onResume: { timerVM.resume() },
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
@@ -1283,6 +1258,7 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             overtimeString: timerVM.overtimeTimeString,
             showSessionComplete: timerVM.showSessionComplete,
+            cycleProgress: timerVM.cycleProgress,
             onBringWindowToFront: {
                 timerVM.openCompletionWindow?()
                 timerVM.requestAppActivation?()

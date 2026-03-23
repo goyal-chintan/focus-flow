@@ -107,6 +107,8 @@ struct ProjectFormView: View {
                         IconCell(sfSymbol: sfSymbol, selected: sfSymbol == icon)
                     }
                     .buttonStyle(.plain)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                     .animation(.spring(response: 0.22, dampingFraction: 0.8), value: icon)
                 }
             }

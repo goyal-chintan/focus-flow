@@ -162,8 +162,8 @@ final class NotificationService: ObservableObject {
         NSSound(named: NSSound.Name("Sosumi"))?.play()
         guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Long break!"
-        content.body = "You've been on break for \(minutes) minutes. Time to get back to work!"
+        content.title = "Break hit \(minutes) minutes"
+        content.body = "Your \(minutes)-minute break is well past planned. Jump back in?"
         content.sound = UNNotificationSound.defaultCritical
         let request = UNNotificationRequest(identifier: "break-critical", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { error in

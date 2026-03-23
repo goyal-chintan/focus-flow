@@ -97,14 +97,14 @@ struct CoachInterventionWindowView: View {
                     if let action = pendingAction {
                         skipReasonPanel(for: action)
                             .transition(.asymmetric(
-                                insertion: .move(edge: .bottom).combined(with: .opacity),
+                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
                                 removal: .opacity
                             ))
                     } else {
                         actionStack
                             .transition(.asymmetric(
                                 insertion: .opacity,
-                                removal: .move(edge: .top).combined(with: .opacity)
+                                removal: .opacity.combined(with: .scale(scale: 0.95, anchor: .top))
                             ))
                     }
                 }

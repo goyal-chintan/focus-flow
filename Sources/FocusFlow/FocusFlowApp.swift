@@ -3,9 +3,11 @@ import SwiftData
 
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
+    @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
         let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self])
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("FocusFlow", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("FocusFlow.store")
@@ -98,6 +100,14 @@ struct FocusFlowApp: App {
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
+
+        // Keyboard shortcuts
+        Settings {
+            CompanionWindowView()
+                .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
+                .preferredColorScheme(.dark)
+        }
     }
 
     private var liveStatusText: String? {
@@ -160,6 +170,14 @@ private struct WindowLauncherBridge: View {
                 }
                 timerVM.requestAppActivation = {
                     NSApplication.shared.activate(ignoringOtherApps: true)
+                }
+                // Graceful shutdown — save session state on app termination
+                NotificationCenter.default.addObserver(
+                    forName: NSApplication.willTerminateNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    timerVM.saveSessionBeforeTermination()
                 }
             }
     }

@@ -111,8 +111,8 @@ struct ProjectPickerView: View {
                 Button("Create") {
                     createProject()
                 }
-                .buttonStyle(.glassProminent)
-                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                .buttonStyle(.glass)
+                .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
                 .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
