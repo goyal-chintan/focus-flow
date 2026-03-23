@@ -278,7 +278,14 @@ struct MenuBarPopoverView: View {
             }
         }
         .contentTransition(.opacity)
-        .animation(.easeInOut(duration: 0.2), value: timerVM.state)
+        .transaction { t in
+            // Only animate discrete state transitions, not per-second observable updates.
+            // This prevents the blanket .animation() from re-triggering layout passes
+            // when overtime text or progress values change every tick.
+            if t.animation != nil {
+                t.animation = .easeInOut(duration: 0.2)
+            }
+        }
     }
 
     // MARK: - Footer
@@ -1173,8 +1180,8 @@ private struct BreakOvertimePopoverContent: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
-            .background(Capsule(style: .continuous).fill(Color.orange.opacity(0.12)))
-            .scaleEffect(pulse ? 1.04 : 1.0)
+            .background(Capsule(style: .continuous).fill(Color.orange.opacity(pulse ? 0.2 : 0.12)))
+            .opacity(pulse ? 1.0 : 0.7)
             .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: pulse)
             .onAppear { pulse = true }
 
