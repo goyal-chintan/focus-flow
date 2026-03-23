@@ -12,11 +12,10 @@ struct TodayStatsView: View {
     /// Sessions that overlap with today (includes cross-midnight sessions from yesterday)
     private var todaySessions: [FocusSession] {
         let start = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return [] }
         return allSessions.filter { session in
             guard session.type == .focus && session.actualDuration >= 60 else { return false }
             let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
-            // Include if session overlaps today at all
             return sessionEnd > start && session.startedAt < tomorrow
         }
     }
@@ -24,7 +23,7 @@ struct TodayStatsView: View {
     /// Focus time attributed to today only (handles cross-midnight correctly)
     private func todayPortion(of session: FocusSession) -> TimeInterval {
         let start = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return 0 }
         let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
         let overlapStart = max(session.startedAt, start)
         let overlapEnd = min(sessionEnd, tomorrow)

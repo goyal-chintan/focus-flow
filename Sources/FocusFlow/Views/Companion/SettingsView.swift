@@ -447,7 +447,7 @@ struct SettingsView: View {
                         get: { settings.calendarIntegrationEnabled },
                         set: { newValue in
                             if newValue {
-                                Task { await enableCalendarIntegration() }
+                                Task { @MainActor in await enableCalendarIntegration() }
                             } else {
                                 settings.calendarIntegrationEnabled = false
                                 settings.selectedCalendarId = ""
@@ -659,7 +659,7 @@ struct SettingsView: View {
                     get: { settings.remindersIntegrationEnabled },
                     set: { newValue in
                         if newValue {
-                            Task { await enableRemindersIntegration() }
+                            Task { @MainActor in await enableRemindersIntegration() }
                         } else {
                             settings.remindersIntegrationEnabled = false
                             settings.selectedReminderListId = ""
@@ -759,7 +759,7 @@ struct SettingsView: View {
         }
     }
 
-    private func enableCalendarIntegration() async {
+    @MainActor private func enableCalendarIntegration() async {
         guard !isEnablingCalendar else { return }
         isEnablingCalendar = true
         defer { isEnablingCalendar = false }
@@ -831,7 +831,7 @@ struct SettingsView: View {
         }
     }
 
-    private func enableRemindersIntegration() async {
+    @MainActor private func enableRemindersIntegration() async {
         guard !isEnablingReminders else { return }
         isEnablingReminders = true
         defer { isEnablingReminders = false }

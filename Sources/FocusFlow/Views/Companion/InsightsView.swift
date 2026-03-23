@@ -155,7 +155,7 @@ struct InsightsView: View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let daysWithSessions = (0..<7).filter { offset in
-            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return false }
             return focusSessions.contains { calendar.isDate($0.startedAt, inSameDayAs: day) }
         }.count
         return Double(daysWithSessions) / 7.0
@@ -163,7 +163,7 @@ struct InsightsView: View {
 
     private func calculateCompletionRate() -> Double {
         let calendar = Calendar.current
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date()))!
+        guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date())) else { return 0 }
         let recentSessions = focusSessions.filter { $0.startedAt >= weekAgo }
         guard !recentSessions.isEmpty else { return 0 }
         let completed = recentSessions.filter(\.completed).count
@@ -175,7 +175,7 @@ struct InsightsView: View {
         let today = calendar.startOfDay(for: Date())
         let goal = dailyGoal
         let daysMetGoal = (0..<7).filter { offset in
-            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return false }
             let dayTotal = focusSessions
                 .filter { calendar.isDate($0.startedAt, inSameDayAs: day) }
                 .reduce(0.0) { $0 + $1.actualDuration }
@@ -828,8 +828,8 @@ struct InsightsView: View {
         }
 
         // 2. Consistency analysis — quality-gated (not just showing up)
-        let last14Days = (0..<14).map { offset -> (Date, TimeInterval) in
-            let day = calendar.date(byAdding: .day, value: -offset, to: today)!
+        let last14Days = (0..<14).compactMap { offset -> (Date, TimeInterval)? in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
             let total = focusSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: day) }
                 .reduce(0.0) { $0 + $1.actualDuration }
             return (day, total)
@@ -893,8 +893,8 @@ struct InsightsView: View {
         }
 
         // 4. Performance trend comparison (this week vs last week) — actionable
-        let thisWeekStart = calendar.date(byAdding: .day, value: -6, to: today)!
-        let lastWeekStart = calendar.date(byAdding: .day, value: -13, to: today)!
+        guard let thisWeekStart = calendar.date(byAdding: .day, value: -6, to: today),
+              let lastWeekStart = calendar.date(byAdding: .day, value: -13, to: today) else { return insights }
         let thisWeekSessions = focusSessions.filter { $0.startedAt >= thisWeekStart }
         let thisWeekMinutes = thisWeekSessions.reduce(0.0) { $0 + $1.actualDuration } / 60
         let lastWeekMinutes = focusSessions.filter {
@@ -1455,8 +1455,8 @@ struct InsightsView: View {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         return (0..<30).map { offset in
-            let day = calendar.date(byAdding: .day, value: -(29 - offset), to: today)!
-            let nextDay = calendar.date(byAdding: .day, value: 1, to: day)!
+            guard let day = calendar.date(byAdding: .day, value: -(29 - offset), to: today),
+                  let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { return 0 }
             return focusSessions.reduce(0.0) { sum, session in
                 let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
                 guard sessionEnd > day && session.startedAt < nextDay else { return sum }

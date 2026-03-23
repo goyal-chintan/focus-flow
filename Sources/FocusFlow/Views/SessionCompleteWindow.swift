@@ -444,33 +444,29 @@ struct SessionCompleteWindowView: View {
 
     private func continueOvertimeAndDismiss() {
         hasHandledAction = true
-        Task {
+        Task { @MainActor in
             await timerVM.saveReflection(
                 mood: selectedMood,
                 achievement: achievement.isEmpty ? nil : achievement,
                 reminderIdsToComplete: selectedReminderItems.map(\.id),
                 splits: showSplits ? splits : nil
             )
-            await MainActor.run {
-                timerVM.continueAfterCompletion(action: .continueOvertime)
-                dismissWindow(id: "session-complete")
-            }
+            timerVM.continueAfterCompletion(action: .continueOvertime)
+            dismissWindow(id: "session-complete")
         }
     }
 
     private func saveAndDismiss(action: PostCompletionAction) {
         hasHandledAction = true
-        Task {
+        Task { @MainActor in
             await timerVM.saveReflection(
                 mood: selectedMood,
                 achievement: achievement.isEmpty ? nil : achievement,
                 reminderIdsToComplete: selectedReminderItems.map(\.id),
                 splits: showSplits ? splits : nil
             )
-            await MainActor.run {
-                timerVM.continueAfterCompletion(action: action)
-                dismissWindow(id: "session-complete")
-            }
+            timerVM.continueAfterCompletion(action: action)
+            dismissWindow(id: "session-complete")
         }
     }
 
