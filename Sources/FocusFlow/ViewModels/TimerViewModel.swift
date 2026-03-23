@@ -202,6 +202,14 @@ final class TimerViewModel {
         settings?.sessionsBeforeLongBreak ?? 4
     }
 
+    /// Progress through the current Pomodoro cycle (0.0 → 1.0).
+    /// At 1.0 the user has earned a long break — celebrate completion.
+    var cycleProgress: Double {
+        let total = max(1, sessionsBeforeLongBreak)
+        let position = completedFocusSessions % total
+        return position == 0 && completedFocusSessions > 0 ? 1.0 : Double(position) / Double(total)
+    }
+
     // MARK: - Setup
     private var isConfigured = false
 
@@ -338,10 +346,16 @@ final class TimerViewModel {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: Date())
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        // Fetch sessions that overlap with today (handles cross-midnight)
-        let descriptor = FetchDescriptor<FocusSession>()
-        guard let allSessions = try? modelContext?.fetch(descriptor) else { return }
-        let focusSessions = allSessions.filter { session in
+        // Fetch only sessions that started today or yesterday (covers cross-midnight)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: startOfDay)!
+        var descriptor = FetchDescriptor<FocusSession>(
+            predicate: #Predicate<FocusSession> { session in
+                session.startedAt >= yesterday
+            }
+        )
+        descriptor.sortBy = [SortDescriptor(\.startedAt, order: .reverse)]
+        guard let recentSessions = try? modelContext?.fetch(descriptor) else { return }
+        let focusSessions = recentSessions.filter { session in
             guard session.type == .focus else { return false }
             if session.endedAt != nil, session.actualDuration < Self.minimumRetainedFocusSeconds {
                 return false
@@ -349,15 +363,18 @@ final class TimerViewModel {
             let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
             return sessionEnd > startOfDay && session.startedAt < tomorrow
         }
-        todaySessionCount = focusSessions.filter(\.completed).count
-        // Attribute only today's portion of each session
-        todayFocusTime = focusSessions.reduce(0) { sum, session in
+        let newCount = focusSessions.filter(\.completed).count
+        let newFocusTime = focusSessions.reduce(0) { sum, session in
             let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
             let overlapStart = max(session.startedAt, startOfDay)
             let overlapEnd = min(sessionEnd, tomorrow)
             return sum + max(0, overlapEnd.timeIntervalSince(overlapStart))
         }
-        completedFocusSessions = todaySessionCount
+        // Only update @Observable properties if values actually changed (avoids unnecessary re-renders)
+        if todaySessionCount != newCount { todaySessionCount = newCount }
+        // Reconcile with DB — allow up to 60s drift from live tick incrementing
+        if abs(todayFocusTime - newFocusTime) > 60 { todayFocusTime = newFocusTime }
+        if completedFocusSessions != newCount { completedFocusSessions = newCount }
     }
 
     // MARK: - Actions
@@ -395,6 +412,7 @@ final class TimerViewModel {
         if let project = selectedProject {
             settings?.lastUsedProjectId = project.id.uuidString
         }
+        saveContext() // Persist session immediately — crash safety
         startTimer()
         // Focus Coach: start session tracking
         pauseCountThisSession = 0
@@ -520,6 +538,13 @@ final class TimerViewModel {
                 }
             }
         }
+    }
+
+    /// Called on app termination to flush active session state to disk.
+    func saveSessionBeforeTermination() {
+        guard let currentSession, currentSession.endedAt == nil else { return }
+        currentSession.endedAt = Date()
+        saveContext(caller: "appTermination")
     }
 
     func startBreak() {
@@ -838,12 +863,13 @@ final class TimerViewModel {
 
     private func startPauseTimer() {
         pauseTimer?.invalidate()
-        pauseTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.tickPause()
             }
         }
-        RunLoop.main.add(pauseTimer!, forMode: .common)
+        pauseTimer = t
+        RunLoop.main.add(t, forMode: .common)
     }
 
     @MainActor
@@ -865,18 +891,32 @@ final class TimerViewModel {
             overtimeSeconds += 1
             currentSession?.endedAt = Date()
             updateBreakOverrunReasonPromptIfNeeded()
+            // Increment live focus time counter (no DB query needed)
+            if state == .focusing || isOvertime {
+                todayFocusTime += 1
+            }
             if overtimeSeconds % 30 == 0 {
                 saveContext()
+                loadTodayStats() // Reconcile with DB periodically
             }
-            loadTodayStats()
             return
         }
         guard remainingSeconds > 0 else { return }
         remainingSeconds -= 1
+        // Increment live focus time during active focus
+        if state == .focusing {
+            todayFocusTime += 1
+        }
+
+        // Checkpoint save every 30s — crash recovery for session progress
+        coachTickCounter += 1
+        if coachTickCounter % 30 == 0 {
+            currentSession?.endedAt = Date()
+            saveContext()
+        }
 
         // Focus Coach: tick every 30 seconds during active focus
         if state == .focusing, settings?.coachRealtimeEnabled == true {
-            coachTickCounter += 1
             if coachTickCounter % 30 == 0 {
                 if let decision = coachEngine.tick() {
                     routeCoachDecision(decision)
@@ -895,12 +935,14 @@ final class TimerViewModel {
             if remainingSeconds <= 0 {
                 let overrunSeconds = Double(overtimeSeconds)
                 coachEngine.updateBreakOverrun(overrunSeconds)
-                // Check for break overrun anomaly (≥2 min)
-                let classifier = FocusCoachAnomalyClassifier()
-                if classifier.shouldPromptReason(event: .breakOverrun(seconds: Int(overrunSeconds))),
-                   !showCoachReasonSheet {
-                    showCoachReasonSheet = true
-                    pendingReasonKind = .breakOverrun
+                // Check for break overrun anomaly (≥2 min) — only check every 30s
+                if overtimeSeconds % 30 == 0 {
+                    let classifier = FocusCoachAnomalyClassifier()
+                    if classifier.shouldPromptReason(event: .breakOverrun(seconds: Int(overrunSeconds))),
+                       !showCoachReasonSheet {
+                        showCoachReasonSheet = true
+                        pendingReasonKind = .breakOverrun
+                    }
                 }
             }
         }

@@ -163,7 +163,7 @@ struct TimerRingView: View {
         }())
         .onChange(of: isActive, initial: true) { _, active in
             if active {
-                withAnimation(FFMotion.breathing) {
+                withAnimation(.easeInOut(duration: 1.5)) {
                     glowPulse = true
                 }
             } else {

@@ -95,6 +95,58 @@ enum LiquidDesignTokens {
             startPoint: .leading,
             endPoint: .trailing
         )
+        static let pause = LinearGradient(
+            colors: [Color(hex: 0xCC8800), Color(hex: 0xE6A820), Color(hex: 0xF0C040)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        static let stop = LinearGradient(
+            colors: [Color(hex: 0xC03030), Color(hex: 0xD94848), Color(hex: 0xEF6B6B)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+
+        /// Interpolated blue→green gradient based on Pomodoro cycle progress.
+        /// progress 0.0 = pure blue (just started), 1.0 = pure green (earned it).
+        static func cycleCompletion(progress: Double) -> LinearGradient {
+            let p = min(max(progress, 0), 1)
+
+            // Blue endpoints (focus gradient)
+            let blueStart = (r: 0x5B, g: 0x9E, b: 0xF8)
+            let blueMid   = (r: 0x6A, g: 0xAB, b: 0xFF)
+            let blueEnd   = (r: 0xA5, g: 0xC4, b: 0xFF)
+
+            // Green endpoints (breakStart gradient)
+            let greenStart = (r: 0x34, g: 0xC7, b: 0x7B)
+            let greenMid   = (r: 0x5E, g: 0xD4, b: 0xA0)
+            let greenEnd   = (r: 0x8C, g: 0xE6, b: 0xC0)
+
+            func lerp(_ a: Int, _ b: Int) -> Double {
+                Double(a) + (Double(b) - Double(a)) * p
+            }
+
+            let c1 = Color(
+                red: lerp(blueStart.r, greenStart.r) / 255,
+                green: lerp(blueStart.g, greenStart.g) / 255,
+                blue: lerp(blueStart.b, greenStart.b) / 255
+            )
+            let c2 = Color(
+                red: lerp(blueMid.r, greenMid.r) / 255,
+                green: lerp(blueMid.g, greenMid.g) / 255,
+                blue: lerp(blueMid.b, greenMid.b) / 255
+            )
+            let c3 = Color(
+                red: lerp(blueEnd.r, greenEnd.r) / 255,
+                green: lerp(blueEnd.g, greenEnd.g) / 255,
+                blue: lerp(blueEnd.b, greenEnd.b) / 255
+            )
+
+            return LinearGradient(
+                colors: [c1, c2, c3],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
     }
 
     // MARK: - Padding

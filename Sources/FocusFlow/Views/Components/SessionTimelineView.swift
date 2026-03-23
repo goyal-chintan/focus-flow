@@ -73,14 +73,14 @@ struct SessionTimelineView: View {
                     Text(session.label)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                        .lineLimit(1)
+                        .lineLimit(2)
 
                     // Achievement or generated description
                     if let achievement = session.achievement, !achievement.isEmpty {
                         Text(achievement)
                             .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(3)
                     } else {
                         Text("\(Int(session.actualDuration / 60))m \(session.completed ? "completed" : "incomplete") session")
                             .font(.system(size: 12, weight: .regular))

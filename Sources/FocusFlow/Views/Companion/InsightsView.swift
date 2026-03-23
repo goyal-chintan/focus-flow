@@ -1667,7 +1667,7 @@ private struct SparklineView: View {
                     for point in points.dropFirst() {
                         path.addLine(to: point)
                     }
-                    path.addLine(to: CGPoint(x: points.last!.x, y: geo.size.height))
+                    path.addLine(to: CGPoint(x: points[points.count - 1].x, y: geo.size.height))
                     path.closeSubpath()
                 }
                 .fill(

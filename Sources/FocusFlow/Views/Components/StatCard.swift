@@ -15,6 +15,7 @@ struct StatCard: View {
                 .frame(width: 30, height: 30)
                 .symbolRenderingMode(.hierarchical)
                 .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm, style: .continuous))
+                .accessibilityHidden(true)
 
             Text(value)
                 .font(.system(size: 24, weight: .bold, design: .rounded))

@@ -409,21 +409,13 @@ struct SessionCompleteWindowView: View {
                     }
 
                     // Finish / Save & Done
-                    Button {
+                    GradientCTAButton(
+                        title: timerVM.cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : (timerVM.isManualStop ? "Save & Done" : "Finish Session"),
+                        icon: timerVM.cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill",
+                        gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: timerVM.cycleProgress)
+                    ) {
                         saveAndDismiss(action: .endSession)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 12, weight: .medium))
-                            Text(timerVM.isManualStop ? "Save & Done" : "Finish Session")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
                     }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
-                    .tint(LiquidDesignTokens.Spectral.mint)
 
                     // Discard — only for manual stops (no reason to discard a naturally-completed session)
                     if timerVM.isManualStop {

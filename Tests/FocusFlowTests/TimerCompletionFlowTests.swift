@@ -190,12 +190,12 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertEqual(vm.pendingReasonKind, .breakOverrun)
     }
 
-    func testConfigurePurgesExistingFocusSessionsUnderElevenMinutes() throws {
+    func testConfigurePurgesExistingFocusSessionsUnderMinimumRetained() throws {
         let container = try makeInMemoryContainer()
         let now = Date()
 
-        let shortFocus = FocusSession(type: .focus, duration: 10 * 60)
-        shortFocus.startedAt = now.addingTimeInterval(-10 * 60)
+        let shortFocus = FocusSession(type: .focus, duration: 4 * 60)
+        shortFocus.startedAt = now.addingTimeInterval(-4 * 60)
         shortFocus.endedAt = now
         shortFocus.completed = true
 
@@ -216,7 +216,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         let focusSessions = sessions.filter { $0.type == .focus }
 
         XCTAssertEqual(focusSessions.count, 1)
-        XCTAssertGreaterThanOrEqual(focusSessions.first?.actualDuration ?? 0, 11 * 60)
+        XCTAssertGreaterThanOrEqual(focusSessions.first?.actualDuration ?? 0, 5 * 60)
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {
