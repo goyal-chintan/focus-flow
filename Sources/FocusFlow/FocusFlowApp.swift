@@ -35,7 +35,7 @@ struct FocusFlowApp: App {
             MenuBarPopoverView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
-                .background(CompletionWindowLauncher(timerVM: timerVM))
+                .background(WindowLauncherBridge(timerVM: timerVM))
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: menuBarIconName)
@@ -74,6 +74,7 @@ struct FocusFlowApp: App {
             CompanionWindowView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
+                .preferredColorScheme(.dark)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
@@ -85,6 +86,17 @@ struct FocusFlowApp: App {
             SessionCompleteWindowView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
+                .preferredColorScheme(.dark)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .modelContainer(container)
+
+        Window("Focus Coach", id: "coach-intervention") {
+            CoachInterventionWindowView()
+                .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
+                .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
@@ -133,9 +145,9 @@ struct FocusFlowApp: App {
     }
 }
 
-/// Invisible view that wires up the openWindow action to TimerViewModel.
+/// Invisible view that wires up openWindow actions to TimerViewModel.
 /// Lives inside MenuBarExtra content so it has access to @Environment(\.openWindow).
-private struct CompletionWindowLauncher: View {
+private struct WindowLauncherBridge: View {
     let timerVM: TimerViewModel
     @Environment(\.openWindow) private var openWindow
 
@@ -145,6 +157,14 @@ private struct CompletionWindowLauncher: View {
             .onAppear {
                 timerVM.openCompletionWindow = {
                     openWindow(id: "session-complete")
+                }
+                timerVM.openCoachInterventionWindow = {
+                    openWindow(id: "coach-intervention")
+                }
+                timerVM.requestPopoverClose = {
+                    NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+                }
+                timerVM.requestAppActivation = {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
             }

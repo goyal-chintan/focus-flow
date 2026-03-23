@@ -138,18 +138,6 @@ final class FocusCoachEngine {
 
         lastDecision = decision
 
-        // Record intervention attempt if it's a prompt (not none or soft strip)
-        if decision.kind == .quickPrompt || decision.kind == .strongPrompt {
-            let attempt = InterventionAttempt(
-                kind: decision.kind == .strongPrompt ? .strongPrompt : .quickPrompt,
-                riskScore: lastRiskResult.score,
-                sessionId: currentSessionId
-            )
-            store.saveInterventionAttempt(attempt)
-            promptState.promptCountThisSession += 1
-            promptState.lastPromptAt = now
-        }
-
         // Trigger reason chip sheet for repeated drift (≥3 consecutive high-risk windows)
         let classifier = FocusCoachAnomalyClassifier()
         if classifier.shouldPromptReason(event: .repeatedDrift(consecutiveHighRiskWindows: promptState.consecutiveHighRiskWindows)) {
@@ -158,6 +146,24 @@ final class FocusCoachEngine {
         }
 
         return decision.kind == .none ? nil : decision
+    }
+
+    /// Records a concrete intervention actually delivered to the user.
+    /// This is called by presentation-routing code so analytics reflect the shown surface.
+    func recordDeliveredIntervention(
+        kind: FocusCoachInterventionKind,
+        riskScore: Double? = nil,
+        sessionId: UUID? = nil,
+        now: Date = Date()
+    ) {
+        let attempt = InterventionAttempt(
+            kind: kind,
+            riskScore: riskScore ?? lastRiskResult.score,
+            sessionId: sessionId ?? currentSessionId
+        )
+        store.saveInterventionAttempt(attempt)
+        promptState.promptCountThisSession += 1
+        promptState.lastPromptAt = now
     }
 
     // MARK: - Anomaly Reason Recording
@@ -181,26 +187,45 @@ final class FocusCoachEngine {
     // MARK: - Intervention Outcome
 
     /// Records user response to an intervention prompt.
-    func recordInterventionOutcome(_ outcome: FocusCoachOutcome) {
+    func recordInterventionOutcome(_ outcome: FocusCoachOutcome, skipReason: FocusCoachSkipReason? = nil) {
         if let lastAttempt = store.attempts.last {
             lastAttempt.outcome = outcome
             lastAttempt.resolvedAt = Date()
+            if let reason = skipReason {
+                lastAttempt.skipReasonRaw = reason.rawValue
+            }
 
             if outcome == .snoozed {
-                // Default 10-minute snooze
-                promptState.snoozedUntil = Date().addingTimeInterval(600)
+                // Extend snooze duration for legitimate skip reasons — don't re-interrupt mid-meeting
+                let snoozeMinutes: TimeInterval = skipReason?.isLegitimate == true ? 20 : 10
+                promptState.snoozedUntil = Date().addingTimeInterval(snoozeMinutes * 60)
             }
         }
     }
 
     // MARK: - Snooze
 
-    func snooze(minutes: Int) {
-        promptState.snoozedUntil = Date().addingTimeInterval(TimeInterval(minutes * 60))
-        recordInterventionOutcome(.snoozed)
+    func snooze(minutes: Int, skipReason: FocusCoachSkipReason? = nil) {
+        let effectiveMinutes = skipReason?.isLegitimate == true ? max(minutes, 20) : minutes
+        promptState.snoozedUntil = Date().addingTimeInterval(TimeInterval(effectiveMinutes * 60))
+        recordInterventionOutcome(.snoozed, skipReason: skipReason)
     }
 
-    // MARK: - Coach Signals Computation
+    // MARK: - Pattern Analysis
+
+    /// Returns how many times the user selected "lowPriorityWork" as a skip reason
+    /// in the last `lookbackDays` days. Uses the in-memory store (backed by SwiftData in production).
+    func recentLowPrioritySkipCount(lookbackDays: Int = 7) -> Int {
+        let cutoff = Calendar.current.date(
+            byAdding: .day, value: -lookbackDays, to: Date()
+        ) ?? Date()
+        return store.attempts.filter { attempt in
+            attempt.skipReasonRaw == FocusCoachSkipReason.lowPriorityWork.rawValue
+                && attempt.deliveredAt > cutoff
+        }.count
+    }
+
+        // MARK: - Coach Signals Computation
 
     /// Computes app-switch rate from a window of recent app changes.
     static func computeAppSwitchRate(switchTimestamps: [Date], windowSeconds: TimeInterval = 60) -> Double {

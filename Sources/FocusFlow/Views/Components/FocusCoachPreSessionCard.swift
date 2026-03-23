@@ -10,6 +10,17 @@ struct FocusCoachPreSessionCard: View {
     @State private var isExpanded = false
     @State private var isHovered = false
 
+    private var effortBinding: Binding<Double> {
+        Binding(
+            get: { Double(resistanceLevel) },
+            set: { newValue in
+                withAnimation(FFMotion.control) {
+                    resistanceLevel = Int(newValue.rounded())
+                }
+            }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
             // Header row
@@ -27,28 +38,36 @@ struct FocusCoachPreSessionCard: View {
 
                     // Collapsed summary
                     if !isExpanded {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 4) {
                             Text(selectedTaskType.displayName)
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
                                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                             Text("·")
                                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                             Text(resistanceLabel)
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
                                 .foregroundStyle(resistanceColor)
+                                .lineLimit(1)
                         }
+                        .layoutPriority(1)
                     }
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
 
             if isExpanded {
                 expandedContent
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .padding(LiquidDesignTokens.Spacing.medium)
@@ -85,47 +104,37 @@ struct FocusCoachPreSessionCard: View {
                 }
             }
 
-            // Resistance — with clear human explanation
-            VStack(alignment: .leading, spacing: 4) {
+            // Effort slider with larger hit area
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("How much are you dreading this?")
+                    Text("Mental effort")
                         .font(LiquidDesignTokens.Typography.labelSmall)
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
 
                     Spacer()
 
                     Text(resistanceLabel)
-                        .font(LiquidDesignTokens.Typography.labelSmall)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(resistanceColor)
+                        .monospacedDigit()
                 }
 
-                // Discrete resistance dots (1-5)
-                HStack(spacing: LiquidDesignTokens.Spacing.small) {
-                    ForEach(1...5, id: \.self) { level in
-                        Circle()
-                            .fill(level <= resistanceLevel ? resistanceColor : Color.white.opacity(0.08))
-                            .frame(width: 12, height: 12)
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(
-                                        level <= resistanceLevel ? resistanceColor.opacity(0.5) : Color.white.opacity(0.06),
-                                        lineWidth: 0.5
-                                    )
-                            )
-                            .onTapGesture {
-                                withAnimation(FFMotion.control) {
-                                    resistanceLevel = level
-                                }
-                            }
-                            .accessibilityLabel("Level \(level)")
-                            .accessibilityAddTraits(level == resistanceLevel ? .isSelected : [])
-                    }
-                }
+                Slider(value: effortBinding, in: 1...5, step: 1)
+                    .tint(resistanceColor)
+                    .accessibilityLabel("Mental effort")
+                    .accessibilityValue(resistanceLabel)
 
-                Text("High resistance = gentler coaching pace")
+                HStack {
+                    Text("Low")
+                    Spacer()
+                    Text("High")
+                }
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.75))
+
+                Text("Higher effort tells coach to use a gentler ramp-up.")
                     .font(.system(size: 9, weight: .regular, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.6))
-                    .padding(.top, 1)
             }
         }
     }
@@ -142,12 +151,11 @@ struct FocusCoachPreSessionCard: View {
             Text(type.displayName)
                 .font(.system(size: 11, weight: isSelected ? .semibold : .medium, design: .rounded))
                 .lineLimit(1)
-                .fixedSize()
                 .foregroundStyle(isSelected
                     ? LiquidDesignTokens.Spectral.electricBlue
                     : LiquidDesignTokens.Surface.onSurfaceMuted)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.vertical, 7)
                 .background {
                     Capsule()
                         .fill(isSelected
@@ -171,11 +179,11 @@ struct FocusCoachPreSessionCard: View {
 
     private var resistanceLabel: String {
         switch resistanceLevel {
-        case 1: "Easy"
-        case 2: "Manageable"
-        case 3: "Some effort"
-        case 4: "Tough"
-        default: "Dreading it"
+        case 1: "Low"
+        case 2: "Light"
+        case 3: "Moderate"
+        case 4: "High"
+        default: "Very high"
         }
     }
 

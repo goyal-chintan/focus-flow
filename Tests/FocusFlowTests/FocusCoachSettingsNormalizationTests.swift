@@ -35,8 +35,33 @@ final class FocusCoachSettingsNormalizationTests: XCTestCase {
         var settings = AppSettings()
         settings.coachPromptBudgetPerSession = 4
         settings.coachDefaultSnoozeMinutes = 10
+        settings.coachMaxStrongPromptsPerSession = 2
+        settings.coachInterventionModeRawValue = FocusCoachInterventionMode.adaptiveStrict.rawValue
         FocusCoachSettingsNormalizer.normalize(&settings)
         XCTAssertEqual(settings.coachPromptBudgetPerSession, 4)
         XCTAssertEqual(settings.coachDefaultSnoozeMinutes, 10)
+        XCTAssertEqual(settings.coachMaxStrongPromptsPerSession, 2)
+        XCTAssertEqual(settings.coachInterventionMode, .adaptiveStrict)
+    }
+
+    func testMaxStrongPromptsPerSessionIsClamped() {
+        var settings = AppSettings()
+        settings.coachMaxStrongPromptsPerSession = 99
+        FocusCoachSettingsNormalizer.normalize(&settings)
+        XCTAssertEqual(settings.coachMaxStrongPromptsPerSession, 6)
+    }
+
+    func testMaxStrongPromptsPerSessionMinimumIsClamped() {
+        var settings = AppSettings()
+        settings.coachMaxStrongPromptsPerSession = 0
+        FocusCoachSettingsNormalizer.normalize(&settings)
+        XCTAssertEqual(settings.coachMaxStrongPromptsPerSession, 1)
+    }
+
+    func testInvalidInterventionModeFallsBackToBalanced() {
+        var settings = AppSettings()
+        settings.coachInterventionModeRawValue = "unknown-mode"
+        FocusCoachSettingsNormalizer.normalize(&settings)
+        XCTAssertEqual(settings.coachInterventionMode, .balanced)
     }
 }

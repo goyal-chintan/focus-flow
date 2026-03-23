@@ -380,6 +380,8 @@ struct ProjectsListView: View {
                 }
                 .foregroundStyle(.secondary)
                 .padding(.leading, 4)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Toggle archived projects")
@@ -396,7 +398,7 @@ struct ProjectsListView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
     }

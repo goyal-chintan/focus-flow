@@ -21,10 +21,34 @@ final class AppUsageTracker {
     private var inactivitySeconds: Int = 0
     private var hasEngagedProductively: Bool = false
     private var startDelaySeconds: Double = 0
+    private var lastFrontmostCategory: AppUsageEntry.AppCategory = .neutral
+
+    // MARK: - Public context accessors (used by FocusCoachContext builder)
+
+    /// The localized name of the current foreground app (nil when FocusFlow is front, or unknown).
+    var currentFrontmostAppName: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return NSRunningApplication
+            .runningApplications(withBundleIdentifier: lastFrontmostBundleId)
+            .first?.localizedName
+    }
+
+    /// The `AppUsageEntry.AppCategory` of the current foreground app (for TimerViewModel usage).
+    var currentFrontmostCategory: AppUsageEntry.AppCategory { lastFrontmostCategory }
+
+    /// The AppUsageCategory of the current foreground app (for FocusCoachContext usage).
+    var currentFrontmostAppUsageCategory: AppUsageCategory {
+        switch lastFrontmostCategory {
+        case .productive:   return .productive
+        case .neutral:      return .neutral
+        case .distracting:  return .distracting
+        }
+    }
 
     private init() {}
 
-    // MARK: - Lifecycle
+        // MARK: - Lifecycle
 
     func start(timerVM: TimerViewModel, modelContext: ModelContext) {
         guard !isTracking else { return }
@@ -40,6 +64,7 @@ final class AppUsageTracker {
         inactivitySeconds = 0
         hasEngagedProductively = false
         startDelaySeconds = 0
+        lastFrontmostCategory = .neutral
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -86,7 +111,17 @@ final class AppUsageTracker {
             if enabled {
                 let nextNudgeSeconds = nudgeInterval(for: nudgeCount, baseMinutes: threshold)
                 if idleSeconds >= nextNudgeSeconds {
-                    sendNudge(escalationLevel: nudgeCount)
+                    vm.evaluateIdleStarterIntervention(
+                        idleSeconds: idleSeconds,
+                        escalationLevel: nudgeCount,
+                        frontmostCategory: lastFrontmostCategory
+                    )
+                    let presentedInAppPrompt = vm.showCoachInterventionWindow
+                        || vm.activeCoachInterventionDecision != nil
+                        || vm.currentIdleStarterDecision != nil
+                    if !presentedInAppPrompt {
+                        sendNudge(escalationLevel: nudgeCount)
+                    }
                     nudgeCount += 1
                 }
             }
@@ -94,6 +129,7 @@ final class AppUsageTracker {
             if idleSeconds > 0 {
                 idleSeconds = 0
                 nudgeCount = 0
+                vm.currentIdleStarterDecision = nil
             }
         }
     }
@@ -117,6 +153,7 @@ final class AppUsageTracker {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
         let bundleId = frontApp.bundleIdentifier ?? "unknown"
         let appName = frontApp.localizedName ?? "Unknown"
+        lastFrontmostCategory = AppUsageEntry.classify(bundleIdentifier: bundleId, appName: appName)
 
         // Skip FocusFlow itself
         if bundleId == Bundle.main.bundleIdentifier { return }

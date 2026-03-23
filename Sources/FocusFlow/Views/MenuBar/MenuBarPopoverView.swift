@@ -6,15 +6,11 @@ struct MenuBarPopoverView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.modelContext) private var modelContext
     @State private var showStopConfirmation = false
-    @State private var didConfigure = false
 
     var body: some View {
         popoverShell
-            .task(id: didConfigure) {
-                if !didConfigure {
-                    didConfigure = true
-                    timerVM.ensureConfigured(modelContext: modelContext)
-                }
+            .task {
+                timerVM.ensureConfigured(modelContext: modelContext)
             }
             .onChange(of: timerVM.state) { _, _ in
                 showStopConfirmation = false
@@ -59,6 +55,7 @@ struct MenuBarPopoverView: View {
 
                 footerSection
             }
+            .frame(width: 310)
         }
         .frame(width: 310)
         .background(
@@ -87,7 +84,6 @@ struct MenuBarPopoverView: View {
                 .shadow(color: Color.black.opacity(0.28), radius: 12, y: 8)
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .animation(FFMotion.section, value: timerVM.state)
     }
 
     // MARK: - Header Bar (focusing, paused, break, overtime)
@@ -111,8 +107,7 @@ struct MenuBarPopoverView: View {
             Spacer()
             HStack(spacing: 12) {
                 Button {
-                    openWindow(id: "stats")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    openStatsWindow(requestedTab: nil)
                 } label: {
                     Image(systemName: "chart.bar.fill")
                         .font(.system(size: 11, weight: .medium))
@@ -214,22 +209,40 @@ struct MenuBarPopoverView: View {
                 FocusCoachStripView(model: model)
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 4)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
+            }
 
-                // Quick prompt overlay when coach decides to intervene
-                if let promptModel = FocusCoachPresentationMapper.mapDecision(timerVM.coachEngine.lastDecision) {
-                    FocusCoachQuickPromptView(
-                        model: promptModel,
-                        onAction: { action in
-                            timerVM.handleCoachAction(action)
-                        },
-                        onDismiss: {
-                            timerVM.dismissCoachPrompt()
+            // Quick prompt overlay when coach decides to intervene
+            if let promptModel = FocusCoachPresentationMapper.mapDecision(timerVM.activeCoachPopoverDecision ?? .none) {
+                FocusCoachQuickPromptView(
+                    model: promptModel,
+                    onAction: { action in
+                        timerVM.handleCoachAction(action)
+                    },
+                    onDismiss: {
+                        timerVM.dismissCoachPrompt()
+                    }
+                )
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 4)
+                .transition(.opacity)
+
+                if timerVM.state == .idle {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let summary = timerVM.idleStarterSummary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                    )
+                        if let recommended = timerVM.idleStarterRecommendedMinutes {
+                            Text("Recommended duration: \(recommended)m")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                .monospacedDigit()
+                        }
+                    }
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                    .padding(.top, 4)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
         }
@@ -274,8 +287,7 @@ struct MenuBarPopoverView: View {
                     .monospacedDigit()
 
                 Button {
-                    openWindow(id: "stats")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    openStatsWindow(requestedTab: .settings)
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 12))
@@ -284,7 +296,7 @@ struct MenuBarPopoverView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open settings")
+                .accessibilityLabel("Open Settings")
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             .padding(.vertical, 10)
@@ -358,6 +370,18 @@ struct MenuBarPopoverView: View {
     private var defaultTimeString: String {
         let mins = max(5, timerVM.selectedMinutes)
         return String(format: "%02d:00", mins)
+    }
+
+    private func openStatsWindow(requestedTab: CompanionTab?) {
+        if let requestedTab {
+            UserDefaults.standard.set(requestedTab.rawValue, forKey: "companionRequestedTab")
+        }
+        // Close popover first so performClose cannot target the newly opened companion window.
+        NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+        DispatchQueue.main.async {
+            openWindow(id: "stats")
+            timerVM.requestAppActivation?()
+        }
     }
 }
 
@@ -434,7 +458,7 @@ private struct IdlePopoverContent: View {
 
             if showCustomSlider {
                 customSlider
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
     }
@@ -496,7 +520,7 @@ private struct FocusingPopoverContent: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                 }
-                .frame(minHeight: 34)
+                .frame(minHeight: 44)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
                 .accessibilityLabel("Pause focus session")
@@ -511,7 +535,7 @@ private struct FocusingPopoverContent: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 }
-                .frame(minHeight: 34)
+                .frame(minHeight: 44)
                 .buttonStyle(.glassProminent)
                 .tint(Color.red)
                 .buttonBorderShape(.capsule)
@@ -545,7 +569,7 @@ private struct FocusingPopoverContent: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
             }
-            .frame(minHeight: 34)
+            .frame(minHeight: 44)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canReduceTime)
@@ -563,7 +587,7 @@ private struct FocusingPopoverContent: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
             }
-            .frame(minHeight: 34)
+            .frame(minHeight: 44)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canExtendTime)
@@ -619,7 +643,7 @@ private struct FocusingPopoverContent: View {
                 }
             } label: {
                 Label("Save & End", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
@@ -636,7 +660,7 @@ private struct FocusingPopoverContent: View {
             } label: {
                 Label("Discard Session", systemImage: "trash")
                     .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
@@ -647,7 +671,7 @@ private struct FocusingPopoverContent: View {
                 withAnimation(FFMotion.control) { onCancelStop() }
             } label: {
                 Text("Cancel")
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
@@ -727,7 +751,7 @@ private struct PausedPopoverContent: View {
                 }
             } label: {
                 Label("Save & End", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
@@ -744,7 +768,7 @@ private struct PausedPopoverContent: View {
             } label: {
                 Label("Discard Session", systemImage: "trash")
                     .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
@@ -755,7 +779,7 @@ private struct PausedPopoverContent: View {
                 withAnimation(FFMotion.control) { onCancelStop() }
             } label: {
                 Text("Cancel")
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
@@ -805,14 +829,15 @@ private struct OvertimePopoverContent: View {
                         HStack(spacing: 6) {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                             Text("Log & Continue →")
                                 .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                     }
                     .buttonStyle(.glassProminent)
-                    .tint(LiquidDesignTokens.Spectral.electricBlue)
                     .buttonBorderShape(.capsule)
                 }
             } else {
@@ -824,15 +849,16 @@ private struct OvertimePopoverContent: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: "cup.and.saucer.fill")
                                         .font(.system(size: 11))
+                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                                     Text("Take a Break")
                                         .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
                             }
-                            .frame(minHeight: 34)
+                            .frame(minHeight: 44)
                             .buttonStyle(.glassProminent)
-                            .tint(LiquidDesignTokens.Spectral.primaryContainer)
                             .buttonBorderShape(.capsule)
 
                             Button(action: onSkipBreak) {
@@ -845,7 +871,7 @@ private struct OvertimePopoverContent: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
                             }
-                            .frame(minHeight: 34)
+                            .frame(minHeight: 44)
                             .buttonStyle(.glass)
                             .buttonBorderShape(.capsule)
                         }
@@ -860,7 +886,7 @@ private struct OvertimePopoverContent: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                         }
-                        .frame(minHeight: 34)
+                        .frame(minHeight: 44)
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
                     }
@@ -887,7 +913,6 @@ private struct OvertimePopoverContent: View {
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
-        .animation(FFMotion.section, value: showSessionComplete)
     }
 }
 
@@ -1015,7 +1040,6 @@ extension MenuBarPopoverView {
                 timerVM.startFocus()
             }
         )
-        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     fileprivate var focusingContent: some View {
@@ -1038,7 +1062,6 @@ extension MenuBarPopoverView {
             onDiscardStop: { timerVM.abandonSession() },
             onCancelStop: { showStopConfirmation = false }
         )
-        .transition(.opacity)
     }
 
     fileprivate var pausedContent: some View {
@@ -1055,7 +1078,6 @@ extension MenuBarPopoverView {
             onDiscardStop: { timerVM.abandonSession() },
             onCancelStop: { showStopConfirmation = false }
         )
-        .transition(.opacity)
     }
 
     fileprivate var breakContent: some View {
@@ -1064,7 +1086,6 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             onSkipBreak: { timerVM.skipBreak() }
         )
-        .transition(.opacity)
     }
 
     fileprivate var breakOvertimeContent: some View {
@@ -1077,7 +1098,6 @@ extension MenuBarPopoverView {
                 timerVM.continueAfterCompletion(action: .endSession)
             }
         )
-        .transition(.opacity)
     }
 
     fileprivate var overtimeContent: some View {
@@ -1088,7 +1108,7 @@ extension MenuBarPopoverView {
             showSessionComplete: timerVM.showSessionComplete,
             onBringWindowToFront: {
                 timerVM.openCompletionWindow?()
-                NSApplication.shared.activate(ignoringOtherApps: true)
+                timerVM.requestAppActivation?()
             },
             onTakeBreak: {
                 timerVM.continueAfterCompletion(action: .takeBreak)
@@ -1100,6 +1120,5 @@ extension MenuBarPopoverView {
                 timerVM.continueAfterCompletion(action: .endSession)
             }
         )
-        .transition(.opacity)
     }
 }

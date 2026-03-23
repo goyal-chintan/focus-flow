@@ -285,6 +285,8 @@ struct SessionEditView: View {
                         .font(.caption2)
                 }
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -293,7 +295,7 @@ struct SessionEditView: View {
                     totalDuration: calculatedActualDuration,
                     splits: $splits
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity)
             }
         }
     }

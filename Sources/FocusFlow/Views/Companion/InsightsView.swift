@@ -36,7 +36,7 @@ struct InsightsView: View {
             }
             .padding(24)
         }
-        .background(.ultraThinMaterial)
+        .background(.clear)
         .animation(FFMotion.section, value: selectedHour)
     }
 
@@ -135,19 +135,19 @@ struct InsightsView: View {
 
     private var focusScoreLabel: String {
         switch focusScore {
-        case 80...100: "EXCELLENT"
-        case 50..<80: "GOOD"
-        case 30..<50: "BUILDING"
-        default: "STARTING"
+        case 80...100: "SUSTAINED"
+        case 50..<80: "EMERGING"
+        case 30..<50: "FRAGILE"
+        default: "BOOTSTRAP"
         }
     }
 
     private var focusScoreSummary: String {
         switch focusScore {
-        case 80...100: "Outstanding focus — keep this rhythm going"
-        case 50..<80: "Good progress — building strong habits"
-        case 30..<50: "Getting started — consistency is key"
-        default: "Every session counts — start small"
+        case 80...100: "You are sustaining deep-work volume and consistency."
+        case 50..<80: "You are showing regular starts with moderate session depth."
+        case 30..<50: "Your pattern is active but shallow; depth is the bottleneck."
+        default: "Data is early — use consistent starts to stabilize your baseline."
         }
     }
 
@@ -238,12 +238,15 @@ struct InsightsView: View {
                     coachEmptyState
                 } else {
                     coachHeroMetrics(report: report)
+                    coachRecoveryFunnel(report: report)
+                    coachCalibration(report: report)
                     coachTrendIndicator(report: report)
                     coachRecoverySpeed(report: report)
                     coachBestSessionByType(report: report)
                     coachInterventionEffectiveness
                     coachTopTriggers(report: report)
                     coachReasonBreakdown
+                    coachNextBestExperiment(report: report)
                     coachPersonalizedTips(report: report)
                 }
             }
@@ -346,6 +349,109 @@ struct InsightsView: View {
                     .monospacedDigit()
                 Spacer()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func coachRecoveryFunnel(report: FocusCoachWeeklyReport) -> some View {
+        if report.recoveryFunnel.prompted > 0 {
+            VStack(alignment: .leading, spacing: 6) {
+                TrackedLabel(
+                    text: "Recovery Funnel",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                HStack(spacing: 10) {
+                    funnelPill(
+                        title: "Prompted",
+                        value: "\(report.recoveryFunnel.prompted)",
+                        color: LiquidDesignTokens.Spectral.electricBlue
+                    )
+                    funnelPill(
+                        title: "Acted",
+                        value: "\(report.recoveryFunnel.acted)",
+                        color: LiquidDesignTokens.Spectral.amber
+                    )
+                    funnelPill(
+                        title: "Recovered <2m",
+                        value: "\(report.recoveryFunnel.recoveredWithin2Minutes)",
+                        color: LiquidDesignTokens.Spectral.mint
+                    )
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func coachCalibration(report: FocusCoachWeeklyReport) -> some View {
+        let calibration = report.confidenceCalibration
+        let hasData = calibration.highRiskAttempts + calibration.lowRiskAttempts > 0
+        if hasData {
+            let highRate = calibration.highRiskAttempts > 0
+                ? Double(calibration.highRiskRecovered) / Double(calibration.highRiskAttempts)
+                : 0
+            let lowRate = calibration.lowRiskAttempts > 0
+                ? Double(calibration.lowRiskRecovered) / Double(calibration.lowRiskAttempts)
+                : 0
+
+            VStack(alignment: .leading, spacing: 6) {
+                TrackedLabel(
+                    text: "Confidence Calibration",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+
+                HStack(spacing: 8) {
+                    Label("High risk: \(Int(highRate * 100))% recovery (\(calibration.highRiskRecovered)/\(calibration.highRiskAttempts))",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 8) {
+                    Label("Lower risk: \(Int(lowRate * 100))% recovery (\(calibration.lowRiskRecovered)/\(calibration.lowRiskAttempts))",
+                          systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func coachNextBestExperiment(report: FocusCoachWeeklyReport) -> some View {
+        if let experiment = report.nextBestExperiment, !experiment.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                TrackedLabel(
+                    text: "Next Best Experiment",
+                    font: LiquidDesignTokens.Typography.labelSmall,
+                    tracking: 1.5
+                )
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "flask.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                        .padding(.top, 1)
+                    Text(experiment)
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
+                        .fill(LiquidDesignTokens.Spectral.amber.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
+                                .strokeBorder(LiquidDesignTokens.Spectral.amber.opacity(0.2), lineWidth: 0.5)
+                        )
+                )
+            }
+            .padding(.top, 4)
         }
     }
 
@@ -532,6 +638,29 @@ struct InsightsView: View {
         }
     }
 
+    private func funnelPill(title: String, value: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(color)
+                .monospacedDigit()
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
+                .fill(color.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
+                        .strokeBorder(color.opacity(0.16), lineWidth: 0.5)
+                )
+        )
+    }
+
     private func buildCoachReport() -> FocusCoachWeeklyReport {
         let now = Date()
         let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
@@ -603,23 +732,35 @@ struct InsightsView: View {
     private func allCoachingTips(from report: FocusCoachWeeklyReport) -> [String] {
         var tips: [String] = []
         if report.completionRate < 0.5 {
-            tips.append("Try shorter sessions (15–20 min) to build momentum. Research shows completing shorter blocks builds self-efficacy (Steel, 2007).")
+            tips.append("Completion is below 50%. Shorten planned blocks to 15–20m for the next week; higher completion strengthens self-efficacy (Steel, 2007).")
         }
-        if report.interventionWinRate > 0 && report.interventionWinRate < 0.3 {
-            tips.append("Coach prompts aren't helping much yet. Consider adjusting prompt budget or try the \"Clean Restart\" action — structured re-engagement works better than willpower alone (Rozental, 2018).")
-        }
+            if report.interventionWinRate > 0 && report.interventionWinRate < 0.3 {
+                tips.append("Coach prompts aren't helping much yet. Consider adjusting prompt budget or try the \"Clean Restart\" action — structured re-engagement works better than willpower alone (Rozental, 2018).")
+            }
         if !report.topTriggers.isEmpty {
             tips.append("Your top distraction is \(report.topTriggers[0].label). Consider adding it to a block profile during focus sessions.")
         }
         if report.completionRate > 0.85 {
-            tips.append("Strong completion rate! You're building consistent focus habits. Micro-breaks between sessions boost vigor and reduce fatigue (Albulescu, 2022).")
+            tips.append("Completion exceeds 85%. Keep break structure explicit; micro-breaks preserve vigor and reduce fatigue (Albulescu, 2022).")
         }
-        if report.recoverySpeedSeconds > 120 {
-            tips.append("Your avg recovery takes \(formatRecoverySpeed(report.recoverySpeedSeconds)). Practicing mental contrasting (MCII) before sessions can reduce drift response time (Wang, 2021).")
-        }
-        if let trend = report.weekOverWeekTrend, trend < -0.1 {
-            tips.append("Completion dropped this week. Consider reviewing your session length — shorter focused blocks may help rebuild consistency.")
-        }
+            if report.recoverySpeedSeconds > 120 {
+                tips.append("Your avg recovery takes \(formatRecoverySpeed(report.recoverySpeedSeconds)). Practicing mental contrasting (MCII) before sessions can reduce drift response time (Wang, 2021).")
+            }
+            if report.recoveryFunnel.prompted >= 6 {
+                let actedRate = Double(report.recoveryFunnel.acted) / Double(max(report.recoveryFunnel.prompted, 1))
+                if actedRate < 0.35 {
+                    tips.append("Only \(Int(actedRate * 100))% of prompts convert to action. Reduce noise by lowering prompt budget and relying on strong prompts for high-risk windows only.")
+                }
+                let fastRecoveryRate = report.recoveryFunnel.acted > 0
+                    ? Double(report.recoveryFunnel.recoveredWithin2Minutes) / Double(report.recoveryFunnel.acted)
+                    : 0
+                if fastRecoveryRate < 0.4 {
+                    tips.append("Recovery is slow after acting (\(Int(fastRecoveryRate * 100))% within 2 min). Try 5m restart as default response to rebuild momentum faster.")
+                }
+            }
+            if let trend = report.weekOverWeekTrend, trend < -0.1 {
+                tips.append("Completion dropped this week. Consider reviewing your session length — shorter focused blocks may help rebuild consistency.")
+            }
         // Resistance-aware tip
         let highResistanceIntents = taskIntents.filter { $0.expectedResistance >= 4 }
         if highResistanceIntents.count >= 3 {
@@ -682,13 +823,6 @@ struct InsightsView: View {
                     text: "Your breaks tend to run long — \(Int(longBreakRatio * 100))% of your breaks exceed the average of \(Int(avgBreak / 60))m. Once you pause, you take extended breaks. Try setting a timer for breaks too.",
                     sentiment: .warning,
                     color: .orange
-                ))
-            } else if avgBreak < 180 {
-                insights.append(BehavioralInsight(
-                    icon: "bolt.fill",
-                    text: "You take quick, efficient breaks — averaging just \(Int(avgBreak / 60))m. Your recovery style is sprint-like, keeping momentum high.",
-                    sentiment: .positive,
-                    color: .green
                 ))
             }
         }
@@ -846,16 +980,32 @@ struct InsightsView: View {
 
     private var appUsageSection: some View {
         LiquidGlassPanel {
-            DisclosureGroup(isExpanded: $showAppUsage) {
-                appUsageContent
-                    .padding(.top, 8)
-            } label: {
-                LiquidSectionHeader(
-                    "App Usage",
-                    subtitle: appUsageSummary
-                )
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    withAnimation(FFMotion.section) { showAppUsage.toggle() }
+                } label: {
+                    HStack {
+                        LiquidSectionHeader(
+                            "App Usage",
+                            subtitle: appUsageSummary
+                        )
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showAppUsage ? 90 : 0))
+                            .animation(FFMotion.section, value: showAppUsage)
+                    }
+                    .contentShape(Rectangle())
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+
+                if showAppUsage {
+                    appUsageContent
+                        .padding(.top, 8)
+                }
             }
-            .tint(.secondary)
             .padding(16)
         }
     }
@@ -1229,15 +1379,11 @@ struct InsightsView: View {
         return "\(Int(avg / 60))m"
     }
 
-    private var breakRate: String {
+    private var breakPerFocusSessionValue: String {
         let totalFocusSessions = focusSessions.filter(\.completed).count
         guard totalFocusSessions > 0 else { return "—" }
         let ratio = Double(totalBreaks) / Double(totalFocusSessions)
-        return String(format: "%.0f%%", ratio * 100)
-    }
-
-    private var breakRateSubtitle: String {
-        totalBreaks > 0 ? "Breaks/sessions" : "No data"
+        return String(format: "%.2f", ratio)
     }
 
     private var bestDay: TimeInterval {
@@ -1285,11 +1431,11 @@ struct InsightsView: View {
                         subtitle: totalBreaks > 0 ? "\(totalBreaks) breaks" : nil
                     )
                     StatCard(
-                        title: "Break Rate",
-                        value: breakRate,
+                        title: "Breaks / Focus",
+                        value: breakPerFocusSessionValue,
                         icon: "arrow.triangle.branch",
                         color: .teal,
-                        subtitle: breakRateSubtitle
+                        subtitle: "Average breaks taken per completed focus session"
                     )
                     StatCard(
                         title: "Best Day",
@@ -1326,35 +1472,51 @@ struct InsightsView: View {
         let firstHalf = data.prefix(15).reduce(0, +)
         let secondHalf = data.suffix(15).reduce(0, +)
         guard firstHalf > 0 else {
-            return secondHalf > 0 ? "Getting started — keep building the habit!" : "No data yet"
+            return secondHalf > 0 ? "Recent activity detected; baseline is still stabilizing." : "No measurable focus data yet."
         }
         let change = ((secondHalf - firstHalf) / firstHalf) * 100
         if change > 10 {
-            return "Trending up \(Int(change))% — great momentum!"
+            return "30-day focused time is up \(Int(change))%."
         } else if change < -10 {
-            return "Down \(Int(abs(change)))% from earlier — a fresh start awaits"
+            return "30-day focused time is down \(Int(abs(change)))%."
         }
-        return "Steady pace — consistency is key"
+        return "30-day focused time is stable."
     }
 
     // MARK: - Science Tips
 
     private var scienceTipsSection: some View {
         LiquidGlassPanel {
-            DisclosureGroup(isExpanded: $showScienceTips) {
-                VStack(spacing: 10) {
-                    ForEach(contextualTips, id: \.title) { tip in
-                        scienceTipCard(tip)
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    withAnimation(FFMotion.section) { showScienceTips.toggle() }
+                } label: {
+                    HStack {
+                        LiquidSectionHeader(
+                            "Focus Science",
+                            subtitle: "Research-backed tips for your patterns"
+                        )
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showScienceTips ? 90 : 0))
+                            .animation(FFMotion.section, value: showScienceTips)
                     }
+                    .contentShape(Rectangle())
+                    .frame(minHeight: 44)
                 }
-                .padding(.top, 8)
-            } label: {
-                LiquidSectionHeader(
-                    "Focus Science",
-                    subtitle: "Research-backed tips for your patterns"
-                )
+                .buttonStyle(.plain)
+
+                if showScienceTips {
+                    VStack(spacing: 10) {
+                        ForEach(contextualTips, id: \.title) { tip in
+                            scienceTipCard(tip)
+                        }
+                    }
+                    .padding(.top, 8)
+                }
             }
-            .tint(.secondary)
             .padding(16)
         }
     }

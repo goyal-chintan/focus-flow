@@ -33,8 +33,33 @@ final class AppUsageEntry {
 
     /// Categorizes apps into productive, neutral, or distracting
     var category: AppCategory {
+        Self.classify(bundleIdentifier: bundleIdentifier, appName: appName)
+    }
+
+    enum AppCategory: String, Codable {
+        case productive
+        case neutral
+        case distracting
+
+        var label: String {
+            switch self {
+            case .productive: "Productive"
+            case .neutral: "Neutral"
+            case .distracting: "Distracting"
+            }
+        }
+    }
+
+    static func classify(bundleIdentifier: String, appName: String) -> AppCategory {
         let id = bundleIdentifier.lowercased()
         let name = appName.lowercased()
+
+        // High-confidence distracting aliases from app title first (browser tabs/window titles).
+        if name.contains("youtube") || name.contains("twitter") || name.contains("x.com") ||
+           name.contains("reddit") || name.contains("instagram") || name.contains("tiktok") ||
+           name.contains("facebook") || name.contains("netflix") || name.contains("spotify") {
+            return .distracting
+        }
 
         // Development tools
         if id.contains("xcode") || id.contains("vscode") || id.contains("visual-studio") ||
@@ -61,19 +86,19 @@ final class AppUsageEntry {
             return .neutral
         }
 
-        // Browsers — neutral (could be either)
-        if id.contains("safari") || id.contains("chrome") || id.contains("firefox") ||
-           id.contains("brave") || id.contains("arc") || id.contains("edge") ||
-           id.contains("opera") || id.contains("orion") {
-            return .neutral
-        }
-
         // Entertainment / social media
         if id.contains("music") || id.contains("spotify") || id.contains("netflix") ||
            id.contains("youtube") || id.contains("twitter") || id.contains("reddit") ||
            id.contains("instagram") || id.contains("tiktok") || id.contains("facebook") ||
            id.contains("game") || id.contains("steam") {
             return .distracting
+        }
+
+        // Browsers — neutral (could be either)
+        if id.contains("safari") || id.contains("chrome") || id.contains("firefox") ||
+           id.contains("brave") || id.contains("arc") || id.contains("edge") ||
+           id.contains("opera") || id.contains("orion") {
+            return .neutral
         }
 
         // System utilities — neutral
@@ -83,19 +108,5 @@ final class AppUsageEntry {
         }
 
         return .neutral
-    }
-
-    enum AppCategory: String, Codable {
-        case productive
-        case neutral
-        case distracting
-
-        var label: String {
-            switch self {
-            case .productive: "Productive"
-            case .neutral: "Neutral"
-            case .distracting: "Distracting"
-            }
-        }
     }
 }

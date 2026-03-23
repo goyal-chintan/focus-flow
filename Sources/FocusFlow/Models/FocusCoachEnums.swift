@@ -27,6 +27,78 @@ enum FocusCoachTaskType: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Skip / Snooze Reasons (Why User is Declining to Focus Right Now)
+
+/// A user-selected reason for skipping or snoozing a coach intervention.
+enum FocusCoachSkipReason: String, CaseIterable, Sendable {
+    // MARK: Genuine reasons (isLegitimate = true → snooze extended to 20m)
+    case urgentTask       = "urgentTask"
+    case inMeeting        = "inMeeting"
+    case takingBreak      = "takingBreak"
+    case notWell          = "notWell"
+
+    // MARK: Being honest (isLegitimate = false)
+    case lowPriorityWork  = "lowPriorityWork"
+    case procrastinating  = "procrastinating"
+    case cantFocus        = "cantFocus"
+    case justTired        = "justTired"
+    case doneForToday     = "doneForToday"
+
+    var displayName: String {
+        switch self {
+        case .urgentTask:      "Urgent task"
+        case .inMeeting:       "In a meeting"
+        case .takingBreak:     "Real break"
+        case .notWell:         "Not feeling well"
+        case .lowPriorityWork: "Low-priority work"
+        case .procrastinating: "Procrastinating"
+        case .cantFocus:       "Can't focus"
+        case .justTired:       "Just tired"
+        case .doneForToday:    "Done for today"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .urgentTask:      "🔥"
+        case .inMeeting:       "🗓"
+        case .takingBreak:     "☕"
+        case .notWell:         "😓"
+        case .lowPriorityWork: "🔀"
+        case .procrastinating: "😬"
+        case .cantFocus:       "🌀"
+        case .justTired:       "🛋"
+        case .doneForToday:    "🌙"
+        }
+    }
+
+    /// Genuine reasons = legitimate interruptions → extend snooze to 20m
+    var isLegitimate: Bool {
+        switch self {
+        case .urgentTask, .inMeeting, .takingBreak, .notWell: return true
+        default: return false
+        }
+    }
+
+    /// Group label for the skip reason panel
+    var group: SkipReasonGroup {
+        isLegitimate ? .genuineReason : .beingHonest
+    }
+
+    enum SkipReasonGroup: String {
+        case genuineReason = "Genuine reason"
+        case beingHonest   = "Being honest"
+    }
+
+    /// Genuine reasons in display order
+    static let genuineReasons: [FocusCoachSkipReason] =
+        [.urgentTask, .inMeeting, .takingBreak, .notWell]
+
+    /// Honest reasons in display order
+    static let honestReasons: [FocusCoachSkipReason] =
+        [.lowPriorityWork, .procrastinating, .cantFocus, .justTired, .doneForToday]
+}
+
 // MARK: - Anomaly Reasons (Why Focus Was Interrupted)
 
 enum FocusCoachReason: String, Codable, CaseIterable {
@@ -127,6 +199,22 @@ enum FocusCoachRiskLevel: String, Codable, CaseIterable {
         case .stable: "Stable"
         case .driftRisk: "Drift Risk"
         case .highRisk: "High Risk"
+        }
+    }
+}
+
+// MARK: - Coach Intervention Mode
+
+enum FocusCoachInterventionMode: String, Codable, CaseIterable {
+    case balanced
+    case adaptiveStrict
+    case sessionRescue
+
+    var displayName: String {
+        switch self {
+        case .balanced: "Balanced"
+        case .adaptiveStrict: "Adaptive Strict"
+        case .sessionRescue: "Session Rescue"
         }
     }
 }

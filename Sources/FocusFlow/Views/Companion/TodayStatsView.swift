@@ -58,18 +58,14 @@ struct TodayStatsView: View {
             }
             .padding(24)
         }
-        .background(.ultraThinMaterial)
+        .background(.clear)
         .sheet(isPresented: $showManualEntry) {
-            ManualSessionView()
-        }
-        .onChange(of: showManualEntry) { wasShowing, isShowing in
-            // Sheet was dismissed — assume session was logged (no way to distinguish cancel)
-            if wasShowing && !isShowing {
+            ManualSessionView(onSave: {
                 withAnimation(FFMotion.section) { showLoggedToast = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     withAnimation(FFMotion.section) { showLoggedToast = false }
                 }
-            }
+            })
         }
         .overlay(alignment: .top) {
             if showLoggedToast {
@@ -387,7 +383,7 @@ struct TodayStatsView: View {
                 }
 
                 if dueReminders.count > 3 {
-                    Text("\(dueReminders.count - 3) more in Calendar")
+                    Text("\(dueReminders.count - 3) more in Reminders")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.blue)
                         .frame(maxWidth: .infinity, alignment: .trailing)

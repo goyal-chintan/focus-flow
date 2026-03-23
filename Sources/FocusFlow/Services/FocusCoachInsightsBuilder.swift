@@ -13,11 +13,27 @@ struct FocusCoachWeeklyReport: Sendable {
     let recoverySpeedSeconds: Double
     let legitimateInterruptionRatio: Double
     let weekOverWeekTrend: Double?
+    let recoveryFunnel: RecoveryFunnel
+    let confidenceCalibration: ConfidenceCalibration
+    let nextBestExperiment: String?
 
     struct TriggerMetric: Sendable {
         let label: String
         let count: Int
         let icon: String
+    }
+
+    struct RecoveryFunnel: Sendable {
+        let prompted: Int
+        let acted: Int
+        let recoveredWithin2Minutes: Int
+    }
+
+    struct ConfidenceCalibration: Sendable {
+        let highRiskAttempts: Int
+        let highRiskRecovered: Int
+        let lowRiskAttempts: Int
+        let lowRiskRecovered: Int
     }
 
     static let empty = FocusCoachWeeklyReport(
@@ -31,7 +47,10 @@ struct FocusCoachWeeklyReport: Sendable {
         bestSessionLengthByTaskType: [:],
         recoverySpeedSeconds: 0,
         legitimateInterruptionRatio: 0,
-        weekOverWeekTrend: nil
+        weekOverWeekTrend: nil,
+        recoveryFunnel: .init(prompted: 0, acted: 0, recoveredWithin2Minutes: 0),
+        confidenceCalibration: .init(highRiskAttempts: 0, highRiskRecovered: 0, lowRiskAttempts: 0, lowRiskRecovered: 0),
+        nextBestExperiment: nil
     )
 }
 
@@ -178,6 +197,49 @@ struct FocusCoachInsightsBuilder: Sendable {
             weekOverWeekTrend = nil
         }
 
+        let prompted = attempts.count
+        let acted = attempts.filter { attempt in
+            guard let outcome = attempt.outcome else { return false }
+            return outcome == .improved || outcome == .snoozed
+        }.count
+        let recoveredWithin2Minutes = attempts.filter { attempt in
+            guard attempt.outcome == .improved, let resolvedAt = attempt.resolvedAt else { return false }
+            return resolvedAt.timeIntervalSince(attempt.deliveredAt) <= 120
+        }.count
+        let recoveryFunnel = FocusCoachWeeklyReport.RecoveryFunnel(
+            prompted: prompted,
+            acted: acted,
+            recoveredWithin2Minutes: recoveredWithin2Minutes
+        )
+
+        let highRisk = attempts.filter { $0.riskScore >= 0.75 }
+        let lowRisk = attempts.filter { $0.riskScore < 0.75 }
+        let confidenceCalibration = FocusCoachWeeklyReport.ConfidenceCalibration(
+            highRiskAttempts: highRisk.count,
+            highRiskRecovered: highRisk.filter { $0.outcome == .improved }.count,
+            lowRiskAttempts: lowRisk.count,
+            lowRiskRecovered: lowRisk.filter { $0.outcome == .improved }.count
+        )
+
+        let nextBestExperiment: String?
+        if prompted >= 8 && recoveryFunnel.prompted > 0 {
+            let actedRate = Double(recoveryFunnel.acted) / Double(max(recoveryFunnel.prompted, 1))
+            if actedRate < 0.35 {
+                nextBestExperiment = "Reduce prompt budget by 1 and prioritize strong interventions during high-risk windows."
+            } else if recoveryFunnel.acted > 0 {
+                let fastRecoveryRate = Double(recoveryFunnel.recoveredWithin2Minutes) / Double(max(recoveryFunnel.acted, 1))
+                if fastRecoveryRate < 0.4 {
+                    nextBestExperiment = "Switch to Session Rescue mode for 7 days and test shorter 5–10m restart actions."
+                } else {
+                    nextBestExperiment = "Keep current intervention mode and increase default session start to your best-performing duration."
+                }
+            } else {
+                nextBestExperiment = "Enable skip action and keep prompts concise to improve action conversion."
+            }
+        } else {
+            nextBestExperiment = nil
+        }
+
         return FocusCoachWeeklyReport(
             avgStartLatencySeconds: avgStartLatency,
             avgSessionMinutes: avgMinutes,
@@ -189,7 +251,10 @@ struct FocusCoachInsightsBuilder: Sendable {
             bestSessionLengthByTaskType: bestSessionLengthByTaskType,
             recoverySpeedSeconds: recoverySpeed,
             legitimateInterruptionRatio: legitimateRatio,
-            weekOverWeekTrend: weekOverWeekTrend
+            weekOverWeekTrend: weekOverWeekTrend,
+            recoveryFunnel: recoveryFunnel,
+            confidenceCalibration: confidenceCalibration,
+            nextBestExperiment: nextBestExperiment
         )
     }
 

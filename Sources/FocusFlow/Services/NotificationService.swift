@@ -62,12 +62,40 @@ final class NotificationService: ObservableObject {
         }
     }
 
-    func sendFocusComplete(sound: String) {
-        send(title: "Focus session complete!", body: "Great work! Time for a break.", sound: sound)
+    func sendFocusComplete(sessionMinutes: Int = 0, sessionLabel: String = "", streak: Int = 0, dailyProgress: Int = 0, sound: String) {
+        let title: String
+        let body: String
+        if streak >= 3 {
+            title = "🔥 \(streak)-session streak!"
+            body = sessionMinutes > 0 ? "Crushed \(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel). Keep the streak alive — time for a break." : "Incredible momentum. Take a well-earned break."
+        } else if sessionMinutes >= 45 {
+            title = "Deep work complete 💪"
+            body = "\(sessionMinutes) minutes of \(sessionLabel.isEmpty ? "focused work" : sessionLabel) — that's serious output. Break time."
+        } else if dailyProgress >= 80 {
+            title = "Almost there!"
+            body = "You're at \(dailyProgress)% of your daily goal. One more push and you've got it."
+        } else {
+            title = "Focus session done"
+            body = sessionMinutes > 0 ? "\(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel) logged. Take a real break." : "Great work! Time for a break."
+        }
+        send(title: title, body: body, sound: sound)
     }
 
-    func sendBreakComplete(sound: String) {
-        send(title: "Break's over!", body: "Ready to focus again?", sound: sound)
+    func sendBreakComplete(sessionCount: Int = 0, dailyGoalMinutes: Int = 120, completedMinutes: Int = 0, sound: String) {
+        let remaining = max(0, dailyGoalMinutes - completedMinutes)
+        let title: String
+        let body: String
+        if remaining <= 0 {
+            title = "Daily goal hit! 🎯"
+            body = "You've completed your \(dailyGoalMinutes)m focus goal for today. Nice work."
+        } else if sessionCount >= 3 {
+            title = "Session \(sessionCount + 1) loading…"
+            body = "\(remaining)m left to hit your goal. You're on a roll — lock back in."
+        } else {
+            title = "Break's over — \(remaining)m to go"
+            body = "You've done \(completedMinutes)m of your \(dailyGoalMinutes)m goal. Ready for the next block?"
+        }
+        send(title: title, body: body, sound: sound)
     }
 
     func sendSessionCompletePrompt(duration: TimeInterval, label: String, sound: String) {
