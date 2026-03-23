@@ -9,6 +9,11 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         popoverShell
+            .background(
+                PopoverWindowAccessor { window in
+                    timerVM.popoverWindow = window
+                }
+            )
             .task {
                 timerVM.ensureConfigured(modelContext: modelContext)
             }
@@ -119,7 +124,7 @@ struct MenuBarPopoverView: View {
                 .accessibilityLabel("Open statistics")
 
                 Button {
-                    NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+                    timerVM.closePopover()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .medium))
@@ -252,24 +257,28 @@ struct MenuBarPopoverView: View {
 
     @ViewBuilder
     private var stateSection: some View {
-        if timerVM.isOvertime {
-            if timerVM.isFocusOvertime {
-                overtimeContent
+        Group {
+            if timerVM.isOvertime {
+                if timerVM.isFocusOvertime {
+                    overtimeContent
+                } else {
+                    breakOvertimeContent
+                }
             } else {
-                breakOvertimeContent
-            }
-        } else {
-            switch timerVM.state {
-            case .idle:
-                idleContent
-            case .focusing:
-                focusingContent
-            case .paused:
-                pausedContent
-            case .onBreak:
-                breakContent
+                switch timerVM.state {
+                case .idle:
+                    idleContent
+                case .focusing:
+                    focusingContent
+                case .paused:
+                    pausedContent
+                case .onBreak:
+                    breakContent
+                }
             }
         }
+        .contentTransition(.opacity)
+        .animation(.easeInOut(duration: 0.2), value: timerVM.state)
     }
 
     // MARK: - Footer
@@ -377,7 +386,7 @@ struct MenuBarPopoverView: View {
             UserDefaults.standard.set(requestedTab.rawValue, forKey: "companionRequestedTab")
         }
         // Close popover first so performClose cannot target the newly opened companion window.
-        NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+        timerVM.closePopover()
         DispatchQueue.main.async {
             openWindow(id: "stats")
             timerVM.requestAppActivation?()
@@ -497,9 +506,11 @@ private struct IdlePopoverContent: View {
 
 private struct FocusingPopoverContent: View {
     @Binding var showStopConfirmation: Bool
+    @Binding var selectedProject: Project?
     let projectName: String?
     let canReduceTime: Bool
     let canExtendTime: Bool
+    let showPauseReasonChips: Bool
     let onPause: () -> Void
     let onExtendTime: () -> Void
     let onReduceTime: () -> Void
@@ -507,12 +518,24 @@ private struct FocusingPopoverContent: View {
     let onSaveStop: () -> Void
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
+    let onPauseReasonSelected: (FocusCoachReason) -> Void
+    let onPauseReasonDismissed: () -> Void
+    let onSwitchProject: (Project?, FocusCoachReason) -> Void
 
     @State private var saveAnimating = false
     @State private var discardAnimating = false
+    @State private var showProjectSwitcher = false
+    @State private var switchTarget: Project?
+    @State private var showSwitchReasonChips = false
 
     var body: some View {
         VStack(spacing: 12) {
+            // Inline pause reason chips (shown after resuming from 2+ min pause)
+            if showPauseReasonChips {
+                pauseReasonChipStrip
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             // Pause / Stop buttons — native glass
             HStack(spacing: 12) {
                 Button(action: onPause) {
@@ -546,6 +569,28 @@ private struct FocusingPopoverContent: View {
             // -5/+5 min Extension buttons
             extensionButtons
                 .padding(.top, 8)
+
+            // Switch project inline flow
+            if showProjectSwitcher {
+                projectSwitcherInline
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            } else if showSwitchReasonChips {
+                switchReasonChipStrip
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                Button {
+                    withAnimation(FFMotion.section) { showProjectSwitcher = true }
+                } label: {
+                    Label("Switch Project", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .frame(minHeight: 34)
+                .accessibilityLabel("Switch to a different project")
+            }
 
             if showStopConfirmation {
                 stopConfirmation
@@ -595,6 +640,132 @@ private struct FocusingPopoverContent: View {
             .accessibilityLabel("Extend time by 5 minutes")
             .help(canExtendTime ? "Extend session by 5 minutes" : "Maximum session length (4 hours) reached")
         }
+    }
+
+    private var pauseReasonChipStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Long pause — what happened?")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                Spacer()
+                Button {
+                    withAnimation(FFMotion.section) { onPauseReasonDismissed() }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss pause reason")
+            }
+
+            FlowLayout(spacing: 6) {
+                ForEach(FocusCoachReason.allCases, id: \.self) { reason in
+                    Button {
+                        withAnimation(FFMotion.section) { onPauseReasonSelected(reason) }
+                    } label: {
+                        Text(reason.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.orange.opacity(0.08))
+                .strokeBorder(Color.orange.opacity(0.15), lineWidth: 0.5)
+        )
+        .padding(.top, 6)
+    }
+
+    private var projectSwitcherInline: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Switch to:")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                Spacer()
+                Button {
+                    withAnimation(FFMotion.section) { showProjectSwitcher = false }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            ProjectPickerView(selectedProject: $switchTarget)
+
+            Button {
+                guard switchTarget?.id != selectedProject?.id else {
+                    withAnimation(FFMotion.section) { showProjectSwitcher = false }
+                    return
+                }
+                withAnimation(FFMotion.section) {
+                    showProjectSwitcher = false
+                    showSwitchReasonChips = true
+                }
+            } label: {
+                Text("Continue")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(.blue)
+            .buttonBorderShape(.capsule)
+            .disabled(switchTarget == nil || switchTarget?.id == selectedProject?.id)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.blue.opacity(0.06))
+                .strokeBorder(Color.blue.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
+    private var switchReasonChipStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Why switching?")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+
+            let switchReasons: [FocusCoachReason] = [.taskComplete, .higherPriority, .contextChanged, .other]
+            FlowLayout(spacing: 6) {
+                ForEach(switchReasons, id: \.self) { reason in
+                    Button {
+                        withAnimation(FFMotion.section) {
+                            showSwitchReasonChips = false
+                            onSwitchProject(switchTarget, reason)
+                        }
+                    } label: {
+                        Text(reason.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.blue.opacity(0.06))
+                .strokeBorder(Color.blue.opacity(0.12), lineWidth: 0.5)
+        )
     }
 
     private var nextUpCard: some View {
@@ -1043,11 +1214,14 @@ extension MenuBarPopoverView {
     }
 
     fileprivate var focusingContent: some View {
-        FocusingPopoverContent(
+        @Bindable var vm = timerVM
+        return FocusingPopoverContent(
             showStopConfirmation: $showStopConfirmation,
+            selectedProject: $vm.selectedProject,
             projectName: timerVM.selectedProject?.name,
             canReduceTime: timerVM.canReduceTime,
             canExtendTime: timerVM.canExtendTime,
+            showPauseReasonChips: timerVM.showPauseReasonChips,
             onPause: { timerVM.pause() },
             onExtendTime: {
                 timerVM.extendTimer()
@@ -1060,7 +1234,10 @@ extension MenuBarPopoverView {
             },
             onSaveStop: { timerVM.stopForReflection() },
             onDiscardStop: { timerVM.abandonSession() },
-            onCancelStop: { showStopConfirmation = false }
+            onCancelStop: { showStopConfirmation = false },
+            onPauseReasonSelected: { reason in timerVM.recordPauseReason(reason) },
+            onPauseReasonDismissed: { timerVM.dismissPauseReasonChips() },
+            onSwitchProject: { project, reason in timerVM.switchProject(to: project, reason: reason) }
         )
     }
 

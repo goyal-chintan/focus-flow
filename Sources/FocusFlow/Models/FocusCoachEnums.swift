@@ -108,6 +108,9 @@ enum FocusCoachReason: String, Codable, CaseIterable {
     case fatigue
     case legitDistraction
     case resistanceAvoidance
+    case taskComplete
+    case higherPriority
+    case contextChanged
     case other
 
     var displayName: String {
@@ -118,6 +121,9 @@ enum FocusCoachReason: String, Codable, CaseIterable {
         case .fatigue: "Fatigue"
         case .legitDistraction: "Legit Distraction"
         case .resistanceAvoidance: "Resistance / Avoidance"
+        case .taskComplete: "Task Complete"
+        case .higherPriority: "Higher Priority"
+        case .contextChanged: "Context Changed"
         case .other: "Other"
         }
     }
@@ -125,7 +131,8 @@ enum FocusCoachReason: String, Codable, CaseIterable {
     /// Reasons considered legitimate (not avoidance) for false-positive dampening
     var isLegitimate: Bool {
         switch self {
-        case .urgentMeeting, .familyPersonal, .stressSpike, .fatigue, .legitDistraction:
+        case .urgentMeeting, .familyPersonal, .stressSpike, .fatigue, .legitDistraction,
+             .taskComplete, .higherPriority, .contextChanged:
             return true
         case .resistanceAvoidance, .other:
             return false
@@ -141,6 +148,7 @@ enum FocusCoachInterruptionKind: String, Codable, CaseIterable {
     case drift
     case breakOverrun
     case midSessionStop
+    case projectSwitch
 
     var displayName: String {
         switch self {
@@ -149,6 +157,7 @@ enum FocusCoachInterruptionKind: String, Codable, CaseIterable {
         case .drift: "Drift"
         case .breakOverrun: "Break Overrun"
         case .midSessionStop: "Mid-Session Stop"
+        case .projectSwitch: "Project Switch"
         }
     }
 }
