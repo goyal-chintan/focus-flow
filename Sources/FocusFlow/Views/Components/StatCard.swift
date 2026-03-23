@@ -12,7 +12,8 @@ struct StatCard: View {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(color)
-                .frame(width: 28, height: 28)
+                .frame(width: 30, height: 30)
+                .symbolRenderingMode(.hierarchical)
                 .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm, style: .continuous))
 
             Text(value)
@@ -32,7 +33,8 @@ struct StatCard: View {
                 Text(subtitle)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(color)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

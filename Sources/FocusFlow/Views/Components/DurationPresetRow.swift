@@ -34,16 +34,12 @@ struct DurationPresetRow: View {
     private func presetPill(_ mins: Int) -> some View {
         let isSelected = !isCustomActive && selectedMinutes == mins
         return Button {
-            withAnimation(FFMotion.control) {
-                selectedMinutes = mins
-            }
-            withAnimation(FFMotion.section) {
-                isCustomActive = false
-            }
+            withAnimation(FFMotion.control) { selectedMinutes = mins }
+            withAnimation(FFMotion.section) { isCustomActive = false }
         } label: {
             Text("\(mins)")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .frame(maxWidth: .infinity, minHeight: 30)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonBorderShape(.capsule)
         .if(isSelected) { view in
@@ -58,13 +54,11 @@ struct DurationPresetRow: View {
 
     private var customPill: some View {
         Button {
-            withAnimation(FFMotion.section) {
-                isCustomActive = true
-            }
+            withAnimation(FFMotion.section) { isCustomActive = true }
         } label: {
-            Text("CUST")
+            Text("Custom")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .frame(maxWidth: .infinity, minHeight: 30)
+                .frame(minWidth: 68, minHeight: 44)
         }
         .buttonBorderShape(.capsule)
         .if(isCustomActive) { view in

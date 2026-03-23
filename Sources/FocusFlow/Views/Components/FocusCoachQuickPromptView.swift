@@ -75,7 +75,7 @@ struct FocusCoachQuickPromptView: View {
 
     @ViewBuilder
     private func actionButton(for action: FocusCoachQuickAction) -> some View {
-        let isPrimary = action == .returnNow
+        let isPrimary = action == .returnNow || action == .startFocusNow
         let isHovered = hoveredAction == action
 
         Button(action: { onAction(action) }) {
@@ -114,8 +114,10 @@ struct FocusCoachQuickPromptView: View {
     private func iconName(for action: FocusCoachQuickAction) -> String {
         switch action {
         case .returnNow: "arrow.uturn.backward"
+        case .startFocusNow: "play.fill"
         case .cleanRestart5m: "arrow.clockwise"
         case .snooze10m: "moon.zzz"
+        case .skipCheck: "forward.frame"
         }
     }
 }

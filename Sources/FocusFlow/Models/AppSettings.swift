@@ -32,6 +32,17 @@ final class AppSettings {
     var coachReasonPromptsEnabled: Bool = true
     var coachDefaultSnoozeMinutes: Int = 10
     var coachCollectRawDomains: Bool = false
+    var coachIdleStarterEnabled: Bool = true
+    var coachAutoOpenPopoverOnStrongPrompt: Bool = true
+    var coachBringAppToFrontOnStrongPrompt: Bool = true
+    var coachAllowSkipAction: Bool = true
+    var coachMaxStrongPromptsPerSession: Int = 2
+    var coachInterventionModeRawValue: String = FocusCoachInterventionMode.balanced.rawValue
+
+    var coachInterventionMode: FocusCoachInterventionMode {
+        get { FocusCoachInterventionMode(rawValue: coachInterventionModeRawValue) ?? .balanced }
+        set { coachInterventionModeRawValue = newValue.rawValue }
+    }
 
     // Smart defaults
     var lastUsedProjectId: String? = nil
@@ -58,5 +69,11 @@ final class AppSettings {
         self.coachReasonPromptsEnabled = true
         self.coachDefaultSnoozeMinutes = 10
         self.coachCollectRawDomains = false
+        self.coachIdleStarterEnabled = true
+        self.coachAutoOpenPopoverOnStrongPrompt = true
+        self.coachBringAppToFrontOnStrongPrompt = true
+        self.coachAllowSkipAction = true
+        self.coachMaxStrongPromptsPerSession = 2
+        self.coachInterventionModeRawValue = FocusCoachInterventionMode.balanced.rawValue
     }
 }

@@ -14,12 +14,20 @@ final class SwiftDataCoachStore: @preconcurrency FocusCoachPersisting {
 
     func saveInterruption(_ interruption: CoachInterruption) {
         modelContext.insert(interruption)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            print("[SwiftDataCoachStore] Failed to save interruption: \(error.localizedDescription)")
+        }
     }
 
     func saveInterventionAttempt(_ attempt: InterventionAttempt) {
         modelContext.insert(attempt)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            print("[SwiftDataCoachStore] Failed to save intervention attempt: \(error.localizedDescription)")
+        }
     }
 
     var interruptions: [CoachInterruption] {

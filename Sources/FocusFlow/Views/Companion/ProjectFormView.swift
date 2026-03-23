@@ -85,6 +85,8 @@ struct ProjectFormView: View {
                             .shadow(color: item.color.opacity(item.name == color ? 0.4 : 0), radius: 6, y: 2)
                     }
                     .buttonStyle(.plain)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                     .animation(.spring(response: 0.22, dampingFraction: 0.8), value: color)
                     .help(item.name.capitalized)
                 }
@@ -142,7 +144,7 @@ struct ProjectFormView: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.up.chevron.down")
+                    Image(systemName: "chevron.down")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }

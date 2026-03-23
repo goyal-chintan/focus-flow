@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ManualSessionView: View {
+    var onSave: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -217,6 +218,8 @@ struct ManualSessionView: View {
                         .font(.caption2)
                 }
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -225,7 +228,7 @@ struct ManualSessionView: View {
                     totalDuration: TimeInterval(max(5, duration) * 60),
                     splits: $splits
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity)
 
                 // Split total validation
                 if splits.count > 1 {
@@ -258,8 +261,10 @@ struct ManualSessionView: View {
                 icon: "checkmark",
                 role: .primary
             ) {
-                save()
-                dismiss()
+                if save() {
+                    onSave?()
+                    dismiss()
+                }
             }
             .disabled(!canSave)
         }
@@ -271,8 +276,13 @@ struct ManualSessionView: View {
             .foregroundStyle(.secondary)
     }
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         let clampedDuration = max(5, duration)
+        guard clampedDuration >= 11 else {
+            saveError = "Focus sessions shorter than 11 minutes are treated as test sessions and are not saved."
+            return false
+        }
         let computedEndTime = startTime.addingTimeInterval(TimeInterval(clampedDuration * 60))
         let session = FocusSession(
             type: .focus,
@@ -321,6 +331,6 @@ struct ManualSessionView: View {
                 saveWithFeedback(modelContext, errorBinding: $saveError)
             }
         }
+        return true
     }
 }
-

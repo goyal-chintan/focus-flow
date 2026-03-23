@@ -45,6 +45,7 @@ struct WeeklyStatsView: View {
                                 .font(.system(size: 13, weight: selectedPeriod == period ? .semibold : .medium))
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
+                                .frame(minHeight: 44)
                         }
                         .if(selectedPeriod == period) { view in
                             view.buttonStyle(.glassProminent)

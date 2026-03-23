@@ -157,6 +157,13 @@ final class RemindersService {
         catch { print("[RemindersService] completeReminder failed: \(error.localizedDescription)"); return false }
     }
 
+    @discardableResult
+    func deleteReminder(identifier: String) -> Bool {
+        guard let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
+        do { try store.remove(item, commit: true); return true }
+        catch { print("[RemindersService] deleteReminder failed: \(error.localizedDescription)"); return false }
+    }
+
     func updateReminder(identifier: String, title: String, notes: String?, dueDate: Date?) -> Bool {
         guard let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
         item.title = title.trimmingCharacters(in: .whitespacesAndNewlines)

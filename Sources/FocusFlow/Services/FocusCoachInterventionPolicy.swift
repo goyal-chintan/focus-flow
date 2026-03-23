@@ -18,14 +18,18 @@ struct FocusCoachPromptState: Sendable {
 /// Quick recovery actions presented in prompts
 enum FocusCoachQuickAction: String, Codable, CaseIterable {
     case returnNow
+    case startFocusNow
     case cleanRestart5m
     case snooze10m
+    case skipCheck
 
     var displayName: String {
         switch self {
         case .returnNow: "Return Now"
+        case .startFocusNow: "Start Focus Now"
         case .cleanRestart5m: "Clean Restart (5m)"
         case .snooze10m: "Snooze 10m"
+        case .skipCheck: "Skip this check"
         }
     }
 }
@@ -43,6 +47,20 @@ struct FocusCoachDecision: Sendable {
     let kind: FocusCoachDecisionKind
     let suggestedActions: [FocusCoachQuickAction]
     let message: String?
+    /// Optional personalisation snapshot — populated when the intervention window is shown.
+    let context: FocusCoachContext?
+
+    init(
+        kind: FocusCoachDecisionKind,
+        suggestedActions: [FocusCoachQuickAction],
+        message: String?,
+        context: FocusCoachContext? = nil
+    ) {
+        self.kind = kind
+        self.suggestedActions = suggestedActions
+        self.message = message
+        self.context = context
+    }
 
     static let none = FocusCoachDecision(kind: .none, suggestedActions: [], message: nil)
 }

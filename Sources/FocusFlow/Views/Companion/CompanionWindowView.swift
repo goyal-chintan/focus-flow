@@ -46,6 +46,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
 
 struct CompanionWindowView: View {
     @State private var selectedTab: CompanionTab = .today
+    @AppStorage("companionRequestedTab") private var requestedTabRaw: String = ""
 
     var body: some View {
         NavigationSplitView {
@@ -59,6 +60,17 @@ struct CompanionWindowView: View {
                 .background(windowBackground)
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            if let tab = CompanionTab(rawValue: requestedTabRaw), tab != .today {
+                selectedTab = tab
+            }
+            requestedTabRaw = ""
+        }
+        .onChange(of: requestedTabRaw) { _, newValue in
+            guard !newValue.isEmpty, let tab = CompanionTab(rawValue: newValue) else { return }
+            selectedTab = tab
+            requestedTabRaw = ""
+        }
     }
 
     private var sidebar: some View {

@@ -152,4 +152,51 @@ final class FocusCoachInsightsBuilderTests: XCTestCase {
         )
         XCTAssertEqual(report.avgSessionMinutes, 25)
     }
+
+    func testBuildsRecoveryFunnelAndCalibration() {
+        let now = Date()
+        let attempts: [FocusCoachInsightsBuilder.AttemptSnapshot] = [
+            .init(
+                kind: .quickPrompt,
+                outcome: .improved,
+                riskScore: 0.82,
+                deliveredAt: now.addingTimeInterval(-300),
+                resolvedAt: now.addingTimeInterval(-220)
+            ),
+            .init(
+                kind: .quickPrompt,
+                outcome: .ignored,
+                riskScore: 0.88,
+                deliveredAt: now.addingTimeInterval(-200),
+                resolvedAt: now.addingTimeInterval(-20)
+            ),
+            .init(
+                kind: .strongPrompt,
+                outcome: .improved,
+                riskScore: 0.52,
+                deliveredAt: now.addingTimeInterval(-180),
+                resolvedAt: now.addingTimeInterval(-120)
+            ),
+            .init(
+                kind: .quickPrompt,
+                outcome: .snoozed,
+                riskScore: 0.61,
+                deliveredAt: now.addingTimeInterval(-100),
+                resolvedAt: now.addingTimeInterval(-40)
+            )
+        ]
+
+        let report = builder.build(
+            sessions: makeSessions(count: 4),
+            interruptions: makeInterruptions(count: 2),
+            attempts: attempts,
+            appUsage: []
+        )
+
+        XCTAssertEqual(report.recoveryFunnel.prompted, 4)
+        XCTAssertEqual(report.recoveryFunnel.acted, 3)
+        XCTAssertEqual(report.recoveryFunnel.recoveredWithin2Minutes, 2)
+        XCTAssertEqual(report.confidenceCalibration.highRiskAttempts, 2)
+        XCTAssertEqual(report.confidenceCalibration.lowRiskAttempts, 2)
+    }
 }

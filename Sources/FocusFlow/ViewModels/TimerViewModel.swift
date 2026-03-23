@@ -10,6 +10,7 @@ enum TimerState: Equatable {
 }
 
 enum PostCompletionAction {
+    case continueOvertime
     case continueFocusing
     case takeBreak
     case endSession
@@ -37,6 +38,9 @@ final class TimerViewModel {
     var pauseStartTime: Date? = nil
     var pauseElapsed: TimeInterval = 0
     private var pauseTimer: Timer? = nil
+
+    /// Focus sessions shorter than this are treated as test/noise sessions and removed from history.
+    private static let minimumRetainedFocusSeconds: TimeInterval = 11 * 60
 
     var pauseTimeString: String {
         let mins = Int(pauseElapsed) / 60
@@ -107,6 +111,12 @@ final class TimerViewModel {
     // MARK: - Window Callback
     /// Set by FocusFlowApp to open the session-complete window from any context
     var openCompletionWindow: (() -> Void)?
+    /// Set by FocusFlowApp to open the strong coach intervention window
+    var openCoachInterventionWindow: (() -> Void)?
+    /// Set by FocusFlowApp to close menu-bar popover after commit actions.
+    var requestPopoverClose: (() -> Void)?
+    /// Set by FocusFlowApp to request foreground activation based on policy.
+    var requestAppActivation: (() -> Void)?
 
     // MARK: - Private
     private var timer: Timer?
@@ -116,12 +126,26 @@ final class TimerViewModel {
 
     // MARK: - Focus Coach
     private(set) var coachEngine = FocusCoachEngine()
+    private let coachPlanner = FocusCoachInterventionPlanner()
+    private let coachOpportunityModel = FocusCoachOpportunityModel()
     private var coachTickCounter: Int = 0
     private var pauseCountThisSession: Int = 0
+    private var strongPromptsShownThisSession: Int = 0
+    private var lastIdleInterventionAt: Date?
 
     /// Whether the reason chip sheet should be shown (driven by coach engine anomaly detection)
     var showCoachReasonSheet: Bool = false
     var pendingReasonKind: FocusCoachInterruptionKind = .drift
+    var showCoachInterventionWindow: Bool = false
+    var activeCoachInterventionDecision: FocusCoachDecision?
+    var currentCoachQuickPromptDecision: FocusCoachDecision?
+    var currentIdleStarterDecision: FocusCoachDecision?
+    var idleStarterSummary: String?
+    var idleStarterRecommendedMinutes: Int?
+
+    var activeCoachPopoverDecision: FocusCoachDecision? {
+        currentCoachQuickPromptDecision ?? currentIdleStarterDecision
+    }
 
     /// Pre-session intention data (set from IdlePopoverContent, persisted on startFocus)
     var coachTaskType: FocusCoachTaskType = .deepWork
@@ -177,8 +201,9 @@ final class TimerViewModel {
         loadSettings()
         log("settings loaded: \(settings != nil)")
         seedDefaultProfiles()
-        loadTodayStats()
         cleanupOrphanedSessions()
+        purgeShortFocusSessions()
+        loadTodayStats()
         // Don't call BlockingService.cleanupIfNeeded() here — it prompts for
         // admin password if stale /etc/hosts entries exist, which is jarring on
         // app launch. Instead, cleanup happens in deactivateBlocking().
@@ -195,6 +220,7 @@ final class TimerViewModel {
         // Refresh today-total whenever a session is manually logged from the Companion window.
         NotificationCenter.default.addObserver(forName: .focusSessionLoggedManually, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
+                self?.purgeShortFocusSessions()
                 self?.loadTodayStats()
             }
         }
@@ -242,7 +268,8 @@ final class TimerViewModel {
         guard let orphans = try? modelContext?.fetch(descriptor) else { return }
         for session in orphans {
             let elapsed = Date().timeIntervalSince(session.startedAt)
-            if elapsed < 60 {
+            let minimumKeep = session.type == .focus ? Self.minimumRetainedFocusSeconds : 60
+            if elapsed < minimumKeep {
                 // Delete sessions with less than 1 minute — not worth keeping
                 modelContext?.delete(session)
             } else {
@@ -254,6 +281,26 @@ final class TimerViewModel {
         saveContext()
     }
 
+    private func purgeShortFocusSessions() {
+        let descriptor = FetchDescriptor<FocusSession>()
+        guard let sessions = try? modelContext?.fetch(descriptor) else { return }
+
+        var deletedAny = false
+        for session in sessions where session.type == .focus && session.endedAt != nil && session.actualDuration < Self.minimumRetainedFocusSeconds {
+            if lastCompletedSession?.id == session.id {
+                lastCompletedSession = nil
+                lastCompletedDuration = nil
+                lastCompletedLabel = nil
+            }
+            modelContext?.delete(session)
+            deletedAny = true
+        }
+
+        if deletedAny {
+            saveContext()
+        }
+    }
+
     private func loadSettings() {
         let descriptor = FetchDescriptor<AppSettings>()
         settings = try? modelContext?.fetch(descriptor).first
@@ -263,7 +310,8 @@ final class TimerViewModel {
             saveContext()
             settings = newSettings
         }
-        if let settings {
+        if var settings {
+            FocusCoachSettingsNormalizer.normalize(&settings)
             selectedMinutes = Int(settings.focusDuration / 60)
             if selectedProject == nil,
                let lastId = settings.lastUsedProjectId,
@@ -283,6 +331,9 @@ final class TimerViewModel {
         guard let allSessions = try? modelContext?.fetch(descriptor) else { return }
         let focusSessions = allSessions.filter { session in
             guard session.type == .focus else { return false }
+            if session.endedAt != nil, session.actualDuration < Self.minimumRetainedFocusSeconds {
+                return false
+            }
             let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
             return sessionEnd > startOfDay && session.startedAt < tomorrow
         }
@@ -335,6 +386,14 @@ final class TimerViewModel {
         startTimer()
         // Focus Coach: start session tracking
         pauseCountThisSession = 0
+        strongPromptsShownThisSession = 0
+        lastIdleInterventionAt = nil
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        currentCoachQuickPromptDecision = nil
+        currentIdleStarterDecision = nil
+        idleStarterSummary = nil
+        idleStarterRecommendedMinutes = nil
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
         coachEngine.startSession(id: session.id)
         // Persist TaskIntent from pre-session check-in if coach is enabled
@@ -354,9 +413,11 @@ final class TimerViewModel {
         coachResistance = 3
         // Project-based blocking only: activate if selected project has a profile.
         activateBlocking()
+        requestPopoverClose?()
     }
 
     private func log(_ msg: String) {
+        #if DEBUG
         let path = "/tmp/focusflow_debug.log"
         let entry = "[\(Date())] \(msg)\n"
         if FileManager.default.fileExists(atPath: path) {
@@ -368,6 +429,7 @@ final class TimerViewModel {
         } else {
             try? entry.write(toFile: path, atomically: true, encoding: .utf8)
         }
+        #endif
     }
 
     /// Saves the model context, logging errors. Non-critical saves (cleanup, stats refresh)
@@ -451,6 +513,7 @@ final class TimerViewModel {
         pauseElapsed = 0
         state = .focusing
         startTimer()
+        requestPopoverClose?()
     }
 
     func stop() {
@@ -466,12 +529,21 @@ final class TimerViewModel {
         showSessionComplete = false
         showCoachReasonSheet = false
         pendingReasonKind = .drift
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        currentCoachQuickPromptDecision = nil
+        currentIdleStarterDecision = nil
+        idleStarterSummary = nil
+        idleStarterRecommendedMinutes = nil
+        strongPromptsShownThisSession = 0
+        lastIdleInterventionAt = nil
         coachEngine.endSession()
         if let session = currentSession {
             session.endedAt = Date()
             session.completed = false
-            // Delete sessions with less than 1 minute of actual focus
-            if session.actualDuration < 60 {
+            // Keep only meaningful focus sessions in history.
+            let minimumKeep = session.type == .focus ? Self.minimumRetainedFocusSeconds : 60
+            if session.actualDuration < minimumKeep {
                 modelContext?.delete(session)
             }
             saveContext()
@@ -496,7 +568,7 @@ final class TimerViewModel {
         // Too short to be worth a reflection window — just discard
         let elapsed = Date().timeIntervalSince(session.startedAt)
         log("stopForReflection: elapsed=\(elapsed)s, openCompletionWindow set=\(openCompletionWindow != nil)")
-        if elapsed < 60 {
+        if elapsed < Self.minimumRetainedFocusSeconds {
             abandonSession()
             return
         }
@@ -522,6 +594,9 @@ final class TimerViewModel {
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        currentCoachQuickPromptDecision = nil
 
         // Focus Coach: detect mid-session stop anomaly for reason capture
         if settings?.coachReasonPromptsEnabled == true, let lastSession = lastCompletedSession {
@@ -539,6 +614,8 @@ final class TimerViewModel {
 
         showSessionComplete = true
         openCompletionWindow?()
+        requestPopoverClose?()
+        requestAppActivation?()
         log("stopForReflection: showSessionComplete=\(showSessionComplete), openCompletionWindow called")
     }
 
@@ -553,6 +630,9 @@ final class TimerViewModel {
         showSessionComplete = false
         showCoachReasonSheet = false
         pendingReasonKind = .drift
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        currentCoachQuickPromptDecision = nil
         lastCompletedSession = nil
         lastCompletedDuration = nil
         lastCompletedLabel = nil
@@ -566,6 +646,9 @@ final class TimerViewModel {
         showSessionComplete = false
         showCoachReasonSheet = false
         pendingReasonKind = .drift
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        currentCoachQuickPromptDecision = nil
         lastCompletedSession = nil
         lastCompletedDuration = nil
         lastCompletedLabel = nil
@@ -586,6 +669,14 @@ final class TimerViewModel {
         showSessionComplete = false
         showCoachReasonSheet = false
         pendingReasonKind = .drift
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        currentCoachQuickPromptDecision = nil
+        currentIdleStarterDecision = nil
+        idleStarterSummary = nil
+        idleStarterRecommendedMinutes = nil
+        strongPromptsShownThisSession = 0
+        lastIdleInterventionAt = nil
         coachEngine.endSession()
         if let session = currentSession {
             modelContext?.delete(session)
@@ -605,6 +696,9 @@ final class TimerViewModel {
         isOvertime = false
         overtimeSeconds = 0
         showSessionComplete = false
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        currentCoachQuickPromptDecision = nil
         currentSession?.endedAt = Date()
         currentSession?.completed = false
         saveContext()
@@ -682,6 +776,7 @@ final class TimerViewModel {
         if isOvertime {
             overtimeSeconds += 1
             currentSession?.endedAt = Date()
+            updateBreakOverrunReasonPromptIfNeeded()
             if overtimeSeconds % 30 == 0 {
                 saveContext()
             }
@@ -695,7 +790,9 @@ final class TimerViewModel {
         if state == .focusing, settings?.coachRealtimeEnabled == true {
             coachTickCounter += 1
             if coachTickCounter % 30 == 0 {
-                _ = coachEngine.tick()
+                if let decision = coachEngine.tick() {
+                    routeCoachDecision(decision)
+                }
                 // Check if engine triggered reason sheet
                 if coachEngine.shouldShowReasonSheet, !showCoachReasonSheet {
                     showCoachReasonSheet = true
@@ -775,7 +872,12 @@ final class TimerViewModel {
                 saveContext()
             }
         } else {
-            NotificationService.shared.sendBreakComplete(sound: settings?.completionSound ?? "Glass")
+            NotificationService.shared.sendBreakComplete(
+                sessionCount: todaySessionCount,
+                dailyGoalMinutes: Int((settings?.dailyFocusGoal ?? 7200) / 60),
+                completedMinutes: Int(todayFocusTime / 60),
+                sound: settings?.completionSound ?? "Glass"
+            )
         }
 
         // Enter overtime — timer keeps running, counting up
@@ -787,6 +889,11 @@ final class TimerViewModel {
         state = .idle
         showSessionComplete = true
         openCompletionWindow?()
+        requestPopoverClose?()
+        requestAppActivation?()
+        currentCoachQuickPromptDecision = nil
+        activeCoachInterventionDecision = nil
+        showCoachInterventionWindow = false
     }
 
     // MARK: - Reflection
@@ -877,23 +984,40 @@ final class TimerViewModel {
     }
 
     func continueAfterCompletion(action: PostCompletionAction) {
-        // Stop overtime timer
+        if showCoachReasonSheet && pendingReasonKind == .breakOverrun {
+            recordCoachReason(kind: .breakOverrun, reason: nil)
+        }
+        showSessionComplete = false
+        isManualStop = false
+        showCoachReasonSheet = false
+        pendingReasonKind = .drift
+
+        if action == .continueOvertime {
+            // Keep overtime state and timer running.
+            return
+        }
+
+        requestPopoverClose?()
+
+        // Resolve completion and leave overtime mode.
         timer?.invalidate()
         timer = nil
         isOvertime = false
         overtimeSeconds = 0
 
-        // Final save of session endedAt (includes overtime)
-        if let session = currentSession ?? lastCompletedSession {
-            session.endedAt = Date()
+        if let session = lastCompletedSession ?? currentSession {
+            if session.type == .focus && session.actualDuration < Self.minimumRetainedFocusSeconds {
+                modelContext?.delete(session)
+            } else {
+                session.endedAt = Date()
+            }
             saveContext()
         }
         loadTodayStats()
 
-        showSessionComplete = false
-        isManualStop = false
-
         switch action {
+        case .continueOvertime:
+            break
         case .continueFocusing:
             startFocus()
         case .takeBreak:
@@ -902,10 +1026,20 @@ final class TimerViewModel {
             deactivateBlocking()
             state = .idle
             loadTodayStats()
+            currentSession = nil
         }
 
-        currentSession = nil
         lastCompletedSession = nil
+    }
+
+    func updateBreakOverrunReasonPromptIfNeeded(completedSessionType: SessionType? = nil) {
+        let sessionType = completedSessionType ?? lastCompletedSession?.type
+        guard settings?.coachReasonPromptsEnabled == true,
+              sessionType != .focus,
+              overtimeSeconds >= 120,
+              !showCoachReasonSheet else { return }
+        showCoachReasonSheet = true
+        pendingReasonKind = .breakOverrun
     }
 
     // MARK: - Focus Coach Actions
@@ -916,25 +1050,240 @@ final class TimerViewModel {
     }
 
     /// Handles a coach quick action selection.
-    func handleCoachAction(_ action: FocusCoachQuickAction) {
+    func handleCoachAction(_ action: FocusCoachQuickAction, skipReason: FocusCoachSkipReason? = nil) {
         switch action {
         case .returnNow:
             coachEngine.recordInterventionOutcome(.improved)
-            if state == .paused {
-                resume()
-            }
+            if state == .paused { resume() }
+            currentCoachQuickPromptDecision = nil
+            currentIdleStarterDecision = nil
+            requestPopoverClose?()
         case .cleanRestart5m:
             coachEngine.recordInterventionOutcome(.improved)
+            currentCoachQuickPromptDecision = nil
+            currentIdleStarterDecision = nil
             abandonSession()
             selectedMinutes = 5
             startFocus()
         case .snooze10m:
-            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10)
+            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
+            currentCoachQuickPromptDecision = nil
+            currentIdleStarterDecision = nil
+        case .startFocusNow:
+            coachEngine.recordInterventionOutcome(.improved)
+            currentCoachQuickPromptDecision = nil
+            currentIdleStarterDecision = nil
+            if let recommended = idleStarterRecommendedMinutes {
+                selectedMinutes = recommended
+            }
+            startFocus()
+        case .skipCheck:
+            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
+            currentCoachQuickPromptDecision = nil
+            currentIdleStarterDecision = nil
         }
+        // NOTE: Do NOT call dismissCoachInterventionWindow() here.
+        // The view's dismiss() is the single owner of window lifecycle.
     }
 
     /// Dismisses the current coach prompt.
     func dismissCoachPrompt() {
         coachEngine.recordInterventionOutcome(.dismissed)
+        currentCoachQuickPromptDecision = nil
+        currentIdleStarterDecision = nil
+    }
+
+    func dismissCoachInterventionWindow() {
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        if let prompt = currentCoachQuickPromptDecision, prompt.kind == .quickPrompt {
+            currentCoachQuickPromptDecision = nil
+        }
+    }
+
+    private func routeCoachDecision(_ decision: FocusCoachDecision) {
+        guard let settings else { return }
+        let mode = settings.coachInterventionMode
+        let route = coachPlanner.routeActiveDecision(
+            decision,
+            mode: mode,
+            riskScore: coachEngine.riskScore,
+            strongShownCount: strongPromptsShownThisSession,
+            maxStrongPrompts: settings.coachMaxStrongPromptsPerSession,
+            allowSkipAction: settings.coachAllowSkipAction
+        )
+
+        currentCoachQuickPromptDecision = route.quickPromptDecision
+
+        if let strongDecision = route.strongWindowDecision {
+            // Build personalisation context for in-session drift
+            let rawCategory = AppUsageTracker.shared.currentFrontmostCategory
+            let entryCategory: AppUsageEntry.AppCategory
+            switch rawCategory {
+            case .productive:  entryCategory = .productive
+            case .neutral:     entryCategory = .neutral
+            case .distracting: entryCategory = .distracting
+            }
+            let coachCtx = buildCoachContext(
+                idleSeconds: 0,
+                frontmostCategory: entryCategory,
+                frontmostAppName: AppUsageTracker.shared.currentFrontmostAppName
+            )
+            let contextualDecision = FocusCoachDecision(
+                kind: strongDecision.kind,
+                suggestedActions: strongDecision.suggestedActions,
+                message: strongDecision.message,
+                context: coachCtx
+            )
+            activeCoachInterventionDecision = contextualDecision
+            showCoachInterventionWindow = true
+            // Single-surface orchestration: strong prompt window suppresses popover prompt.
+            currentCoachQuickPromptDecision = nil
+            coachEngine.recordDeliveredIntervention(kind: .strongPrompt, riskScore: coachEngine.riskScore)
+            if route.didConsumeStrongBudget {
+                strongPromptsShownThisSession += 1
+            }
+            if settings.coachBringAppToFrontOnStrongPrompt {
+                requestAppActivation?()
+            }
+            requestPopoverClose?()
+            openCoachInterventionWindow?()
+        } else if route.quickPromptDecision != nil {
+            coachEngine.recordDeliveredIntervention(kind: .quickPrompt, riskScore: coachEngine.riskScore)
+        }
+    }
+
+    func evaluateIdleStarterIntervention(
+        idleSeconds: Int,
+        escalationLevel: Int,
+        frontmostCategory: AppUsageEntry.AppCategory
+    ) {
+        guard state == .idle, !isOvertime, let settings else { return }
+        guard settings.antiProcrastinationEnabled, settings.coachIdleStarterEnabled else {
+            currentIdleStarterDecision = nil
+            return
+        }
+
+        let now = Date()
+        let hour = Calendar.current.component(.hour, from: now)
+        let opportunityContext = coachOpportunityModel.idleStarterContext(
+            idleSeconds: idleSeconds,
+            escalationLevel: escalationLevel,
+            frontmostCategory: frontmostCategory,
+            hourOfDay: hour,
+            minutesUntilNextCalendarEvent: nil,
+            defaultMinutes: max(5, selectedMinutes)
+        )
+        let route = coachPlanner.routeIdleStarter(
+            driftConfidence: opportunityContext.driftConfidence,
+            focusOpportunity: opportunityContext.focusOpportunity,
+            mode: settings.coachInterventionMode,
+            allowSkipAction: settings.coachAllowSkipAction
+        )
+
+        if route.shouldPresent, var decision = route.decision {
+            if let last = lastIdleInterventionAt, Date().timeIntervalSince(last) < 120 {
+                return
+            }
+            idleStarterSummary = opportunityContext.summary
+            idleStarterRecommendedMinutes = opportunityContext.recommendedDurationMinutes
+
+            // Build personalisation context snapshot
+            let coachCtx = buildCoachContext(
+                idleSeconds: idleSeconds,
+                frontmostCategory: frontmostCategory,
+                frontmostAppName: AppUsageTracker.shared.currentFrontmostAppName
+            )
+
+            if decision.suggestedActions.contains(.startFocusNow) {
+                decision = FocusCoachDecision(
+                    kind: decision.kind,
+                    suggestedActions: decision.suggestedActions,
+                    message: "\(opportunityContext.summary)",
+                    context: coachCtx
+                )
+            }
+            let shouldEscalateToWindow = escalationLevel >= 1 || settings.coachInterventionMode == .sessionRescue
+            if shouldEscalateToWindow {
+                activeCoachInterventionDecision = FocusCoachDecision(
+                    kind: .strongPrompt,
+                    suggestedActions: decision.suggestedActions,
+                    message: decision.message,
+                    context: coachCtx
+                )
+                showCoachInterventionWindow = true
+                // Single-surface orchestration: strong prompt window suppresses popover prompt.
+                currentIdleStarterDecision = nil
+                coachEngine.recordDeliveredIntervention(
+                    kind: .strongPrompt,
+                    riskScore: opportunityContext.driftConfidence,
+                    sessionId: nil
+                )
+                if settings.coachBringAppToFrontOnStrongPrompt {
+                    requestAppActivation?()
+                }
+                requestPopoverClose?()
+                openCoachInterventionWindow?()
+            } else {
+                currentIdleStarterDecision = decision
+            }
+            lastIdleInterventionAt = Date()
+        } else {
+            currentIdleStarterDecision = nil
+        }
+    }
+
+    // MARK: - Coach Context Builder
+
+    /// Builds a personalised `FocusCoachContext` snapshot from current state.
+    /// Called whenever an intervention decision is routed to the window.
+    private func buildCoachContext(
+        idleSeconds: Int,
+        frontmostCategory: AppUsageEntry.AppCategory,
+        frontmostAppName: String?
+    ) -> FocusCoachContext {
+        let hour = Calendar.current.component(.hour, from: Date())
+
+        let appCategory: AppUsageCategory
+        switch frontmostCategory {
+        case .productive:   appCategory = .productive
+        case .neutral:      appCategory = .neutral
+        case .distracting:  appCategory = .distracting
+        }
+
+        // Query today's top distracting app from SwiftData
+        var topDistractingName: String? = nil
+        var topDistractingMinutes: Int = 0
+        if let ctx = modelContext {
+            let today = Calendar.current.startOfDay(for: Date())
+            let descriptor = FetchDescriptor<AppUsageEntry>(
+                predicate: #Predicate { e in e.date >= today }
+            )
+            do {
+                let entries = try ctx.fetch(descriptor)
+                let topDistracting = entries
+                    .filter { AppUsageEntry.classify(bundleIdentifier: $0.bundleIdentifier, appName: $0.appName) == .distracting }
+                    .max { $0.outsideFocusSeconds < $1.outsideFocusSeconds }
+                if let top = topDistracting, top.outsideFocusSeconds > 0 {
+                    topDistractingName = top.appName
+                    topDistractingMinutes = top.outsideFocusSeconds / 60
+                }
+            } catch {
+                log("buildCoachContext: SwiftData fetch failed: \(error)")
+            }
+        }
+
+        return FocusCoachContext(
+            idleSeconds: idleSeconds,
+            frontmostAppName: frontmostAppName,
+            frontmostAppCategory: appCategory,
+            todayFocusSeconds: todayFocusTime,
+            dailyGoalSeconds: settings?.dailyFocusGoal ?? 7200,
+            todaySessionCount: todaySessionCount,
+            hourOfDay: hour,
+            topDistractingAppName: topDistractingName,
+            topDistractingAppMinutes: topDistractingMinutes,
+            recentLowPriorityWorkCount: coachEngine.recentLowPrioritySkipCount()
+        )
     }
 }

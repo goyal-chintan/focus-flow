@@ -128,9 +128,24 @@ final class FocusCoachEngineTests: XCTestCase {
         let decision = engine.tick()
 
         if decision?.kind == .quickPrompt || decision?.kind == .strongPrompt {
+            engine.recordDeliveredIntervention(
+                kind: decision?.kind == .strongPrompt ? .strongPrompt : .quickPrompt
+            )
             XCTAssertEqual(store.attempts.count, 1)
             XCTAssertGreaterThan(store.attempts.first?.riskScore ?? 0, 0)
         }
+    }
+
+    func testRecordDeliveredInterventionPersistsAttempt() {
+        let store = InMemoryCoachStore()
+        let engine = FocusCoachEngine(store: store)
+        engine.startSession(id: UUID())
+
+        engine.recordDeliveredIntervention(kind: .quickPrompt, riskScore: 0.74)
+
+        XCTAssertEqual(store.attempts.count, 1)
+        XCTAssertEqual(store.attempts.first?.kind, .quickPrompt)
+        XCTAssertEqual(store.attempts.first?.riskScore ?? 0, 0.74, accuracy: 0.001)
     }
 
     // MARK: - Snooze

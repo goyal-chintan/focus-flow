@@ -12,6 +12,7 @@ struct SessionCompleteWindowView: View {
     @State private var selectedReminderItems: [RemindersService.ReminderItem] = []
     @State private var showReminderPicker = false
     @State private var hasHandledAction = false
+    @State private var capturedReason: FocusCoachReason? = nil
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -44,9 +45,19 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 0) {
             VStack(spacing: 20) {
                 focusHeaderSection
-                // Coach reason capture for mid-session stops
+                // Coach reason capture or confirmation pill
                 if timerVM.showCoachReasonSheet {
                     coachReasonSection
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity.combined(with: .scale(scale: 0.97))
+                        ))
+                } else if let reason = capturedReason {
+                    reasonConfirmationPill(reason)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.97)),
+                            removal: .opacity
+                        ))
                 }
                 moodSection
                 achievementSection
@@ -55,6 +66,7 @@ struct SessionCompleteWindowView: View {
                 remindersSection
             }
             .padding(24)
+            .animation(FFMotion.section, value: timerVM.showCoachReasonSheet)
 
             footerBar
         }
@@ -129,6 +141,7 @@ struct SessionCompleteWindowView: View {
             FocusCoachReasonChipSheet(
                 anomalyKind: timerVM.pendingReasonKind,
                 onSelect: { reason in
+                    capturedReason = reason
                     timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: reason)
                     timerVM.showCoachReasonSheet = false
                 },
@@ -141,6 +154,27 @@ struct SessionCompleteWindowView: View {
                 }
             )
         }
+    }
+
+    @ViewBuilder
+    private func reasonConfirmationPill(_ reason: FocusCoachReason) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.green)
+            Text("Reason captured: **\(reason.displayName)**")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.green.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.green.opacity(0.15), lineWidth: 0.5))
+        )
     }
 
     private var moodSection: some View {
@@ -163,11 +197,26 @@ struct SessionCompleteWindowView: View {
                 tracking: 1.8
             )
 
-            TextField("Log your wins — one per line...", text: $achievement, axis: .vertical)
-                .lineLimit(4...8)
-                .textFieldStyle(.plain)
-                .padding(10)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            ZStack(alignment: .topLeading) {
+                if achievement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Log your wins — one per line...")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+
+                TextEditor(text: $achievement)
+                    .scrollContentBackground(.hidden)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    .frame(minHeight: 96, maxHeight: 160)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .accessibilityLabel("Achievements")
+            }
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
 
             if !achievement.isEmpty {
                 achievementPreview
@@ -227,6 +276,8 @@ struct SessionCompleteWindowView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.roundedRectangle(radius: 12))
@@ -238,7 +289,7 @@ struct SessionCompleteWindowView: View {
                     totalDuration: timerVM.lastCompletedDuration ?? 0,
                     splits: $splits
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity)
             }
         }
     }
@@ -409,7 +460,7 @@ struct SessionCompleteWindowView: View {
                 splits: showSplits ? splits : nil
             )
             await MainActor.run {
-                timerVM.continueAfterCompletion(action: .continueFocusing)
+                timerVM.continueAfterCompletion(action: .continueOvertime)
                 dismissWindow(id: "session-complete")
             }
         }
@@ -434,12 +485,15 @@ struct SessionCompleteWindowView: View {
     // MARK: - Break Completion
 
     private var breakContent: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             breakHeaderSection
+            if timerVM.showCoachReasonSheet {
+                breakReasonSection
+            }
             breakActionsSection
         }
         .padding(18)
-        .frame(width: 340)
+        .frame(width: timerVM.showCoachReasonSheet ? 420 : 340)
     }
 
     private var breakHeaderSection: some View {
@@ -489,6 +543,33 @@ struct SessionCompleteWindowView: View {
                     dismissWindow(id: "session-complete")
                 }
             }
+        }
+    }
+
+    private var breakReasonSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TrackedLabel(
+                text: "What Extended Your Break?",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
+            Text("This helps your coach distinguish legitimate interruptions from avoidable drift.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            FocusCoachReasonChipSheet(
+                anomalyKind: .breakOverrun,
+                onSelect: { reason in
+                    timerVM.recordCoachReason(kind: .breakOverrun, reason: reason)
+                    timerVM.showCoachReasonSheet = false
+                },
+                onSnooze: {
+                    timerVM.showCoachReasonSheet = false
+                },
+                onDismiss: {
+                    timerVM.recordCoachReason(kind: .breakOverrun, reason: nil)
+                    timerVM.showCoachReasonSheet = false
+                }
+            )
         }
     }
 
@@ -552,31 +633,21 @@ struct SessionCompleteWindowView: View {
 
     private func bringWindowToFront() {
         NSApplication.shared.activate(ignoringOtherApps: true)
-        // Try immediately and with delays to catch the window at different lifecycle stages
-        for delay in [0.0, 0.2, 0.5] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                // Find our window — match by content size since hiddenTitleBar may blank the title
-                let allWindows = NSApplication.shared.windows
-                NSLog("FocusFlow: [delay=\(delay)] window count=\(allWindows.count), titles=\(allWindows.map { $0.title })")
-                for window in allWindows {
-                    // Match by: not the menu bar panel, not the stats window, has content
-                    if window.title == "Session Complete" || window.identifier?.rawValue.contains("session-complete") == true {
-                        NSLog("FocusFlow: Found window by title/id: \(window.title)")
-                        window.level = .floating
-                        window.makeKeyAndOrderFront(nil)
-                        window.center()
-                        return
-                    }
-                }
-                // Fallback: find the newest non-panel window that isn't the stats window
-                if let window = allWindows.last(where: {
-                    !$0.title.isEmpty && $0.title != "FocusFlow" && !($0 is NSPanel) && $0.isVisible
-                }) {
-                    NSLog("FocusFlow: Fallback window: \(window.title) frame=\(window.frame)")
-                    window.level = .floating
-                    window.makeKeyAndOrderFront(nil)
-                    window.center()
-                }
+        DispatchQueue.main.async {
+            let allWindows = NSApplication.shared.windows
+            for window in allWindows where window.identifier?.rawValue.contains("session-complete") == true {
+                window.level = .floating
+                window.makeKeyAndOrderFront(nil)
+                window.center()
+                return
+            }
+            // Fallback: newest non-panel, non-stats window
+            if let window = allWindows.last(where: {
+                !$0.title.isEmpty && $0.title != "FocusFlow" && !($0 is NSPanel) && $0.isVisible
+            }) {
+                window.level = .floating
+                window.makeKeyAndOrderFront(nil)
+                window.center()
             }
         }
     }

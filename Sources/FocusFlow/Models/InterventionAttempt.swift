@@ -11,6 +11,7 @@ final class InterventionAttempt {
     var riskScore: Double
     var dismissed: Bool
     var outcomeRawValue: String?
+    var skipReasonRaw: String?
     var deliveredAt: Date
     var resolvedAt: Date?
 
@@ -24,6 +25,11 @@ final class InterventionAttempt {
         set { outcomeRawValue = newValue?.rawValue }
     }
 
+    var skipReason: FocusCoachSkipReason? {
+        get { skipReasonRaw.flatMap { FocusCoachSkipReason(rawValue: $0) } }
+        set { skipReasonRaw = newValue?.rawValue }
+    }
+
     init(
         kind: FocusCoachInterventionKind,
         riskScore: Double,
@@ -35,6 +41,7 @@ final class InterventionAttempt {
         self.riskScore = riskScore
         self.dismissed = false
         self.outcomeRawValue = nil
+        self.skipReasonRaw = nil
         self.deliveredAt = Date()
         self.resolvedAt = nil
     }
