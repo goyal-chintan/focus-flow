@@ -195,9 +195,9 @@ final class TimerViewModel {
     // MARK: - Guardian Session Spine
     /// Durable earned-block record. Outlives lastCompletedSession across break/defer cycles.
     /// Cleared ONLY on: newer focus block completes, day-close summary dismissed, day rollover.
-    @Published private(set) var completedBlockContext: CompletedBlockContext? = nil
+    private(set) var completedBlockContext: CompletedBlockContext? = nil
     /// Tracks the current or most-recent break episode, linked to the earned block.
-    @Published private(set) var breakEpisodeContext: BreakEpisodeContext? = nil
+    private(set) var breakEpisodeContext: BreakEpisodeContext? = nil
     /// Active suppression window when user has explicitly opted out of guardian prompts.
     private(set) var suppressionWindow: InterventionSuppressionWindow? = nil
 
@@ -1813,7 +1813,8 @@ final class TimerViewModel {
             driftConfidence: opportunityContext.driftConfidence,
             focusOpportunity: opportunityContext.focusOpportunity,
             mode: settings.coachInterventionMode,
-            allowSkipAction: settings.coachAllowSkipAction
+            allowSkipAction: settings.coachAllowSkipAction,
+            engagementMode: selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
         )
 
         if route.shouldPresent, var decision = route.decision {
