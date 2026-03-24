@@ -188,4 +188,12 @@ final class AppUsageEntry {
         }
         return nil
     }
+
+    /// Converts a persisted recommendation target/context key into user-facing text.
+    /// Example: `app:com.openai.chatgpt` -> `com.openai.chatgpt`.
+    static func recommendationDisplayLabel(for targetOrContextKey: String) -> String {
+        let trimmed = targetOrContextKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("app:") else { return trimmed }
+        return String(trimmed.dropFirst(4))
+    }
 }

@@ -90,14 +90,15 @@ final class FocusCoachBlockingRecommendationEngine {
         // Don't re-surface within 24h of last recommendation
         if let last = risk.lastRecommendationTimestamp,
            Date().timeIntervalSince(last) < 24 * 3600 { return nil }
+        let displayName = AppUsageEntry.recommendationDisplayLabel(for: risk.contextDisplayName)
         return BlockingRecommendation(
             kind: .block,
             contextKey: contextKey,
-            displayName: risk.contextDisplayName,
+            displayName: displayName,
             projectId: risk.projectId,
             workMode: risk.workMode,
             projectName: projectName,
-            copyText: recommendationCopy(for: risk, kind: .block, projectName: projectName),
+            copyText: recommendationCopy(displayName: displayName, risk: risk, kind: .block, projectName: projectName),
             suggestedActions: [.block, .warnOnly, .notNow]
         )
     }
@@ -111,14 +112,15 @@ final class FocusCoachBlockingRecommendationEngine {
     ) -> BlockingRecommendation? {
         guard let risk = riskFor(contextKey: contextKey, projectId: projectId, workMode: workMode),
               risk.shouldRecommendAllow else { return nil }
+        let displayName = AppUsageEntry.recommendationDisplayLabel(for: risk.contextDisplayName)
         return BlockingRecommendation(
             kind: .allow,
             contextKey: contextKey,
-            displayName: risk.contextDisplayName,
+            displayName: displayName,
             projectId: risk.projectId,
             workMode: risk.workMode,
             projectName: projectName,
-            copyText: recommendationCopy(for: risk, kind: .allow, projectName: projectName),
+            copyText: recommendationCopy(displayName: displayName, risk: risk, kind: .allow, projectName: projectName),
             suggestedActions: [.allow]
         )
     }
@@ -197,8 +199,13 @@ final class FocusCoachBlockingRecommendationEngine {
 
     // MARK: - Copy Generation
 
-    private func recommendationCopy(for risk: ProjectContextRisk, kind: BlockingRecommendation.Kind, projectName: String? = nil) -> String {
-        let name = risk.contextDisplayName
+    private func recommendationCopy(
+        displayName: String,
+        risk: ProjectContextRisk,
+        kind: BlockingRecommendation.Kind,
+        projectName: String? = nil
+    ) -> String {
+        let name = displayName
         let project = projectName ?? "your current project"
         let mode = risk.workMode.displayName
 

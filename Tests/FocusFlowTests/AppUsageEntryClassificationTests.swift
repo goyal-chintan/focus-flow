@@ -67,4 +67,14 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         )
         XCTAssertNil(target)
     }
+
+    func testRecommendationDisplayLabelStripsAppPrefix() {
+        let label = AppUsageEntry.recommendationDisplayLabel(for: "app:com.mitchellh.ghostty")
+        XCTAssertEqual(label, "com.mitchellh.ghostty")
+    }
+
+    func testRecommendationDisplayLabelKeepsDomainUntouched() {
+        let label = AppUsageEntry.recommendationDisplayLabel(for: "youtube.com")
+        XCTAssertEqual(label, "youtube.com")
+    }
 }

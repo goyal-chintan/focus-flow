@@ -258,8 +258,8 @@ struct InsightsView: View {
         guard !recent.isEmpty else { return [] }
 
         var grouped = [String: (focus: Int, outside: Int)]()
+
         for entry in recent {
-            guard entry.category == .distracting else { continue }
             guard let target = AppUsageEntry.recommendedBlockTarget(
                 bundleIdentifier: entry.bundleIdentifier,
                 appName: entry.appName
@@ -280,8 +280,9 @@ struct InsightsView: View {
             let confidence = min(0.98, 0.62 + min(0.25, weightedSeconds / 7200.0) + min(0.08, lowPriorityWeight * 0.02))
             let focusMinutes = totals.focus / 60
             let outsideMinutes = totals.outside / 60
+            let displayTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
             return GuardianRecommendation(
-                target: target,
+                target: displayTarget,
                 confidence: confidence,
                 reason: "\(focusMinutes)m during focus, \(outsideMinutes)m outside focus in the last 7 days."
             )

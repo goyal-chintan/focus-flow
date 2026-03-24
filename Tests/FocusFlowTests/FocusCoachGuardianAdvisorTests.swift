@@ -78,4 +78,50 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
         )
         XCTAssertEqual(state, .challenge)
     }
+
+    func testRecommendationReasonUsesFriendlyLabelForAppContextTarget() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "ChatGPT",
+                bundleIdentifier: "com.openai.chatgpt",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 600
+            )
+        ]
+        let project = Project(name: "Write RFC")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: "com.openai.chatgpt",
+            frontmostAppName: "ChatGPT",
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
+        XCTAssertFalse(recommendation?.reason.contains("app:") ?? true)
+        XCTAssertTrue(recommendation?.reason.contains("com.openai.chatgpt") ?? false)
+    }
+
+    func testRecommendationFallsBackToNonWebAppContextFromEntries() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "ChatGPT",
+                bundleIdentifier: "com.openai.chatgpt",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 1800
+            )
+        ]
+        let project = Project(name: "Deep Work")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: nil,
+            frontmostAppName: nil,
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
+    }
 }
