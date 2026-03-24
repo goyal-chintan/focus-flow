@@ -72,6 +72,7 @@ struct FocusCoachGuardianAdvisor: Sendable {
         inReleaseWindow: Bool,
         driftConfidence: Double,
         hasRecommendation: Bool,
+        hasRepeatedProjectPattern: Bool = false,
         engagementMode: GuardianEngagementMode = .adaptive
     ) -> FocusCoachGuardianState {
         if inReleaseWindow { return .release }
@@ -84,6 +85,7 @@ struct FocusCoachGuardianAdvisor: Sendable {
         }
 
         if driftConfidence >= engagementMode.outsideSessionChallengeThreshold ||
+            hasRepeatedProjectPattern ||
            (driftConfidence >= 0.65 && hasRecommendation && engagementMode != .passive) {
             return .challenge
         }

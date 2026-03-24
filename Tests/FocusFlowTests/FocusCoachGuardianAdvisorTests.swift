@@ -54,4 +54,28 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
         let duration = advisor.releaseDuration(for: .doneForToday)
         XCTAssertEqual(duration, 90 * 60)
     }
+
+    func testOutsideSessionChallengeStateRequiresConfidenceOrRepeatedPattern() {
+        let state = advisor.guardianState(
+            isInActiveSession: false,
+            inReleaseWindow: false,
+            driftConfidence: 0.72,
+            hasRecommendation: false,
+            hasRepeatedProjectPattern: false,
+            engagementMode: .adaptive
+        )
+        XCTAssertEqual(state, .watchful)
+    }
+
+    func testOutsideSessionRepeatedPatternPromotesChallenge() {
+        let state = advisor.guardianState(
+            isInActiveSession: false,
+            inReleaseWindow: false,
+            driftConfidence: 0.72,
+            hasRecommendation: false,
+            hasRepeatedProjectPattern: true,
+            engagementMode: .adaptive
+        )
+        XCTAssertEqual(state, .challenge)
+    }
 }

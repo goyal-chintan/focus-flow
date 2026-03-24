@@ -197,4 +197,60 @@ final class FocusCoachEngineTests: XCTestCase {
         engine.updateBreakOverrun(60)
         XCTAssertEqual(engine.currentSignals.breakOverrunSeconds, 60)
     }
+
+    // MARK: - Outside-session learning loop
+
+    func testOutsideSessionAvoidantClassificationBuildsRepeatedProjectPattern() {
+        let store = InMemoryCoachStore()
+        let engine = FocusCoachEngine(store: store)
+        let defaults = UserDefaults(suiteName: "test.drift.engine.\(UUID().uuidString)")!
+        let driftStore = DriftMemoryStore(defaults: defaults)
+        engine.configureDriftMemory(driftStore)
+
+        var observation = SuspiciousContextObservation(
+            bundleIdentifier: "com.apple.Safari",
+            localizedAppName: "Safari",
+            selectedProjectId: UUID(),
+            selectedProjectName: "Ship launch",
+            selectedWorkMode: .deepWork,
+            isInSession: false
+        )
+        observation.browserHost = "youtube.com"
+        engine.handleNewObservation(observation)
+
+        engine.recordOutsideSessionClassification(.procrastinating)
+        engine.recordOutsideSessionClassification(.procrastinating)
+
+        XCTAssertTrue(engine.hasRepeatedProjectPattern(for: observation))
+    }
+
+    func testOutsideSessionPlannedClassificationFeedsProjectScopedAllowSignal() {
+        let store = InMemoryCoachStore()
+        let engine = FocusCoachEngine(store: store)
+        let defaults = UserDefaults(suiteName: "test.drift.engine.\(UUID().uuidString)")!
+        let driftStore = DriftMemoryStore(defaults: defaults)
+        engine.configureDriftMemory(driftStore)
+
+        var observation = SuspiciousContextObservation(
+            bundleIdentifier: "com.apple.Safari",
+            localizedAppName: "Safari",
+            selectedProjectId: UUID(),
+            selectedProjectName: "Interview prep",
+            selectedWorkMode: .learning,
+            isInSession: false
+        )
+        observation.browserHost = "docs.google.com"
+        engine.handleNewObservation(observation)
+
+        engine.recordOutsideSessionClassification(.plannedWork)
+        engine.recordOutsideSessionClassification(.plannedWork)
+
+        XCTAssertTrue(
+            driftStore.projectScopedAllowance(
+                projectId: observation.selectedProjectId,
+                workMode: observation.selectedWorkMode,
+                appOrDomain: observation.normalizedContextKey
+            )
+        )
+    }
 }
