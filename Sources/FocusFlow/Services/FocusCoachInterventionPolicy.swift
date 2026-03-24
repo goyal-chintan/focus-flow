@@ -23,15 +23,19 @@ enum FocusCoachQuickAction: String, Codable, CaseIterable {
     case snooze10m
     case skipCheck
     case blockForProject
+    case markOffDuty
+    case isPlanned
 
     var displayName: String {
         switch self {
         case .returnNow: "Return Now"
         case .startFocusNow: "Start Focus Now"
-        case .cleanRestart5m: "Clean Restart (5m)"
+        case .cleanRestart5m: "Start 5m rescue block"
         case .snooze10m: "Snooze 10m"
         case .skipCheck: "Skip this check"
-        case .blockForProject: "Block for project"
+        case .blockForProject: "Block these for this project"
+        case .markOffDuty: "Mark off-duty for now"
+        case .isPlanned: "This is planned"
         }
     }
 }

@@ -72,8 +72,18 @@ struct FocusCoachInterventionPlanner: Sendable {
         riskScore: Double,
         strongShownCount: Int,
         maxStrongPrompts: Int,
-        allowSkipAction: Bool = false
+        allowSkipAction: Bool = false,
+        engagementMode: GuardianEngagementMode = .adaptive
     ) -> ActiveDecisionRoute {
+        // Passive mode: suppress all popover and hard dialog interventions
+        if engagementMode == .passive {
+            return ActiveDecisionRoute(
+                quickPromptDecision: nil,
+                strongWindowDecision: nil,
+                didConsumeStrongBudget: false
+            )
+        }
+
         let surface = surfaceForActiveDecision(
             decisionKind: decision.kind,
             mode: mode,
@@ -125,8 +135,14 @@ struct FocusCoachInterventionPlanner: Sendable {
         driftConfidence: Double,
         focusOpportunity: Double,
         mode: FocusCoachInterventionMode,
-        allowSkipAction: Bool
+        allowSkipAction: Bool,
+        engagementMode: GuardianEngagementMode = .adaptive
     ) -> IdleStarterRoute {
+        // Passive mode: suppress idle starter — ambient ring only
+        if engagementMode == .passive {
+            return IdleStarterRoute(shouldPresent: false, decision: nil)
+        }
+
         guard shouldShowIdleStarter(
             driftConfidence: driftConfidence,
             focusOpportunity: focusOpportunity,
