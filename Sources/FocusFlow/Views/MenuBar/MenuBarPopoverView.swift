@@ -642,6 +642,7 @@ private struct IdlePopoverContent: View {
                     HStack(spacing: 6) {
                         Image(systemName: "play.fill")
                             .font(.system(size: 12, weight: .bold))
+                            .accessibilityHidden(true)
                         Text("Resume Session")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .lineLimit(1)

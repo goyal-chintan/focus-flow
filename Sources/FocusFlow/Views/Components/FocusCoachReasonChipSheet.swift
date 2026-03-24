@@ -45,10 +45,15 @@ struct FocusCoachReasonChipSheet: View {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
                 // SECTION: Legitimate
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Legitimate")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 9))
+                            .accessibilityHidden(true)
+                        Text("Legitimate")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
 
                     FlowLayout(spacing: LiquidDesignTokens.Spacing.small) {
                         ForEach(FocusCoachReason.legitimateChips, id: \.rawValue) { reason in
