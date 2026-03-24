@@ -30,6 +30,7 @@ struct CalendarTabView: View {
     @State private var reminderToConfirmDelete: RemindersService.ReminderItem? = nil
     @State private var needsReminderRefresh = false
     @State private var showDaySessions: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var calendar: Calendar { Calendar.current }
     private var settings: AppSettings? { allSettings.first }
@@ -40,8 +41,8 @@ struct CalendarTabView: View {
             VStack(spacing: 20) {
                 headerSection
                 monthGridSection
-                    .animation(FFMotion.section, value: selectedDate)
-                    .animation(FFMotion.section, value: displayedMonth)
+                    .animation(reduceMotion ? nil : FFMotion.section, value: selectedDate)
+                    .animation(reduceMotion ? nil : FFMotion.section, value: displayedMonth)
                 dayDetailSection
                 remindersSection
             }
@@ -98,7 +99,7 @@ struct CalendarTabView: View {
                 // Month navigation
                 HStack(spacing: 12) {
                     Button {
-                        withAnimation(FFMotion.section) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                             shiftDisplayedMonth(by: -1)
                         }
                     } label: {
@@ -116,7 +117,7 @@ struct CalendarTabView: View {
                         .frame(minWidth: 140)
 
                     Button {
-                        withAnimation(FFMotion.section) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                             shiftDisplayedMonth(by: 1)
                         }
                     } label: {
@@ -130,7 +131,7 @@ struct CalendarTabView: View {
                     .accessibilityLabel("Next month")
 
                     Button {
-                        withAnimation(FFMotion.section) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                             displayedMonth = Date()
                             selectedDate = calendar.startOfDay(for: Date())
                         }
@@ -245,7 +246,7 @@ struct CalendarTabView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(FFMotion.control) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) {
                 selectedDate = date
             }
         }
@@ -345,7 +346,7 @@ struct CalendarTabView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 0) {
                         Button {
-                            withAnimation(FFMotion.section) {
+                            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                                 showDaySessions.toggle()
                             }
                         } label: {
@@ -355,7 +356,7 @@ struct CalendarTabView: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(.tertiary)
                                     .rotationEffect(.degrees(showDaySessions ? 90 : 0))
-                                    .animation(FFMotion.control, value: showDaySessions)
+                                    .animation(reduceMotion ? nil : FFMotion.control, value: showDaySessions)
                             }
                             .contentShape(Rectangle())
                         }
@@ -517,7 +518,7 @@ struct CalendarTabView: View {
     private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
         HStack(spacing: 10) {
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3, dampingFraction: 0.6)) {
                     completingReminderId = reminder.id
                 }
                 Task { @MainActor in
@@ -528,7 +529,7 @@ struct CalendarTabView: View {
                         reminderSaveError = "Could not complete reminder."
                         return
                     }
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.3)) {
                         reminders.removeAll { $0.id == reminder.id }
                     }
                     needsReminderRefresh = true
@@ -604,7 +605,7 @@ struct CalendarTabView: View {
                 Task { @MainActor in
                     let didDelete = RemindersService.shared.deleteReminder(identifier: target.id)
                     if didDelete {
-                        withAnimation(.easeInOut(duration: 0.3)) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.3)) {
                             reminders.removeAll { $0.id == target.id }
                         }
                     } else {
@@ -914,7 +915,7 @@ struct CalendarTabView: View {
 
         // Only animate if there are actual changes
         if oldIds != newIds {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.3)) {
                 reminders = fetched
             }
         } else {

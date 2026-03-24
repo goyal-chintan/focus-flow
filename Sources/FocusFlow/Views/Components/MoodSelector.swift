@@ -3,6 +3,7 @@ import SwiftUI
 struct MoodSelector: View {
     @Binding var selectedMood: FocusMood?
     var style: Style = .compact
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Style {
         /// For companion window views (ManualSession, SessionEdit)
@@ -89,7 +90,7 @@ struct MoodSelector: View {
             .contentShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .animation(FFMotion.control, value: isSelected)
+        .animation(reduceMotion ? nil : FFMotion.control, value: isSelected)
         .accessibilityLabel(isSelected ? "\(mood.rawValue), selected" : mood.rawValue)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

@@ -23,6 +23,8 @@ struct SessionCompleteWindowView: View {
     @State private var showReminderPicker = false
     @State private var hasHandledAction = false
     @State private var capturedReason: FocusCoachReason? = nil
+    @State private var depositPulse: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -133,7 +135,7 @@ struct SessionCompleteWindowView: View {
             }
             .scaleEffect(appeared ? 1.0 : 0.85)
             .opacity(appeared ? 1.0 : 0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: appeared)
+            .animation(FFMotion.reward, value: appeared)
 
             // Earned time headline
             if let ctx = earnedContext {
@@ -296,8 +298,22 @@ struct SessionCompleteWindowView: View {
                         icon: timerVM.cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill",
                         gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: timerVM.cycleProgress)
                     ) {
-                        saveAndDismiss(action: .endSession)
+                        if reduceMotion {
+                            saveAndDismiss(action: .endSession)
+                        } else {
+                            withAnimation(FFMotion.reward) { depositPulse = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                saveAndDismiss(action: .endSession)
+                            }
+                        }
                     }
+                    .background(
+                        Circle()
+                            .fill(LiquidDesignTokens.Spectral.mint.opacity(depositPulse ? 0.25 : 0))
+                            .blur(radius: 8)
+                            .scaleEffect(depositPulse ? 1.2 : 0.8)
+                            .animation(FFMotion.reward, value: depositPulse)
+                    )
                     .accessibilityLabel("End session with today's progress")
 
                     // Discard — only for manual stops

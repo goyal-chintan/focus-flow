@@ -65,9 +65,9 @@ struct FocusCoachQuickPromptView: View {
                 )
         }
         .opacity(appear ? 1 : 0)
-        .offset(y: reduceMotion ? 0 : (appear ? 0 : 8))
+        .offset(y: reduceMotion ? 0 : (appear ? 0 : 5))
         .onAppear {
-            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.popover) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.warning) {
                 appear = true
             }
         }
@@ -106,7 +106,7 @@ struct FocusCoachQuickPromptView: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.warning) {
                 hoveredAction = hovering ? action : nil
             }
         }

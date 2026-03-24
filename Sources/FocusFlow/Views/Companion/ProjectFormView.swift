@@ -12,6 +12,7 @@ struct ProjectFormView: View {
     @Binding var guardianSensitivity: GuardianSensitivity
     @Binding var difficultyBias: DifficultyBias
     @Query(sort: \BlockProfile.createdAt) private var blockProfiles: [BlockProfile]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: String
     let onSave: () -> Void
 
@@ -93,7 +94,7 @@ struct ProjectFormView: View {
                     .buttonStyle(.plain)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
-                    .animation(.spring(response: 0.22, dampingFraction: 0.8), value: color)
+                    .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.8), value: color)
                     .help(item.name.capitalized)
                 }
             }
@@ -115,7 +116,7 @@ struct ProjectFormView: View {
                     .buttonStyle(.plain)
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
-                    .animation(.spring(response: 0.22, dampingFraction: 0.8), value: icon)
+                    .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.8), value: icon)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

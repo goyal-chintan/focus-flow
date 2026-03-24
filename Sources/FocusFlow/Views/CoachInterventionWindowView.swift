@@ -7,7 +7,10 @@ struct CoachInterventionWindowView: View {
     /// When set, the action buttons are replaced by reason chips for this action
     @State private var pendingAction: FocusCoachQuickAction? = nil
     @State private var selectedSkipReason: FocusCoachSkipReason? = nil
+    @State private var confirmedSkipReason: FocusCoachSkipReason? = nil
+    @State private var isConfirming: Bool = false
     @State private var coachMessage: CoachMessage? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var decision: FocusCoachDecision? {
         timerVM.activeCoachInterventionDecision
@@ -115,7 +118,7 @@ struct CoachInterventionWindowView: View {
                     }
                 }
                 .padding(18)
-                .animation(FFMotion.section, value: pendingAction == nil)
+                .animation(reduceMotion ? nil : FFMotion.section, value: pendingAction == nil)
             }
         }
         .frame(width: 360)
@@ -229,7 +232,7 @@ struct CoachInterventionWindowView: View {
             // Back + prompt row
             HStack(spacing: 0) {
                 Button {
-                    withAnimation(FFMotion.section) { pendingAction = nil }
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { pendingAction = nil }
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
@@ -297,8 +300,10 @@ struct CoachInterventionWindowView: View {
             : Color.white.opacity(0.6)                  // honest → neutral (amber reserved for context pill/warnings)
 
         Button {
-            withAnimation(FFMotion.control) { selectedSkipReason = reason }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) { selectedSkipReason = reason }
+            confirmedSkipReason = reason
+            isConfirming = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 commitAction(action, reason: reason)
             }
         } label: {
@@ -321,16 +326,30 @@ struct CoachInterventionWindowView: View {
                         lineWidth: 0.5))
             }
             .scaleEffect(isSelected ? 1.04 : 1.0)
+            .scaleEffect(isConfirming && confirmedSkipReason == reason ? 0.96 : 1.0)
+            .animation(reduceMotion ? nil : FFMotion.commit, value: isConfirming)
+            .background(
+                Circle()
+                    .fill(skipPulseColor(for: confirmedSkipReason).opacity(confirmedSkipReason == reason ? 0.3 : 0))
+                    .blur(radius: 6)
+                    .scaleEffect(confirmedSkipReason == reason ? 1.3 : 0.8)
+                    .animation(reduceMotion ? nil : FFMotion.reward, value: confirmedSkipReason)
+            )
             .frame(minHeight: 44, alignment: .center)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .animation(FFMotion.control, value: isSelected)
+        .animation(reduceMotion ? nil : FFMotion.control, value: isSelected)
         .accessibilityLabel(reason.displayName)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: - Helpers
+
+    private func skipPulseColor(for reason: FocusCoachSkipReason?) -> Color {
+        guard let reason else { return .clear }
+        return reason.isLegitimate ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.amber
+    }
 
     private func commitAction(_ action: FocusCoachQuickAction, reason: FocusCoachSkipReason?) {
         timerVM.handleCoachAction(action, skipReason: reason)

@@ -5,6 +5,7 @@ struct WeeklyStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @State private var selectedPeriod: Period = .week
     @State private var selectedDayIndex: Int? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Period: String, CaseIterable {
         case week = "7 Days"
@@ -23,8 +24,8 @@ struct WeeklyStatsView: View {
             .padding(24)
         }
         .background(.ultraThinMaterial)
-        .animation(FFMotion.section, value: selectedPeriod)
-        .animation(FFMotion.section, value: selectedDayIndex)
+        .animation(reduceMotion ? nil : FFMotion.section, value: selectedPeriod)
+        .animation(reduceMotion ? nil : FFMotion.section, value: selectedDayIndex)
         .onChange(of: selectedPeriod) { _, _ in selectedDayIndex = nil }
     }
 

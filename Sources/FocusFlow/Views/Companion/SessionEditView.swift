@@ -18,6 +18,7 @@ struct SessionEditView: View {
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
     @State private var showDeleteConfirm = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
@@ -265,7 +266,7 @@ struct SessionEditView: View {
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3, dampingFraction: 0.8)) {
                     showSplits.toggle()
                     if showSplits && splits.isEmpty {
                         splits = [TimeSplitView.SplitEntry(

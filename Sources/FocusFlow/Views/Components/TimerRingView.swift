@@ -9,17 +9,55 @@ struct TimerRingView: View {
     var pauseDuration: TimeInterval = 0
     var pauseTimeString: String = "0:00"
     var overrunSeconds: TimeInterval = 0
+    var labelColorOverride: Color? = nil
 
     private let ringSize: CGFloat = 170
     private let strokeWidth: CGFloat = 6
 
     @State private var glowPulse: Bool = false
+    @State private var breathingOpacity: Double = 0.06
+    @State private var breakBreathingOpacity: Double = 0.06
+    @State private var completionBurst: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isActive: Bool {
         switch state {
         case .focusing, .paused, .onBreak: true
         case .idle: false
         }
+    }
+
+    // MARK: - Motion Computed Properties
+
+    private var pauseStrokeWidth: CGFloat {
+        guard case .paused = state else { return strokeWidth }
+        if pauseDuration > 180 { return 3.5 }
+        if pauseDuration > 60 {
+            let t = (pauseDuration - 60) / 120
+            return strokeWidth - (CGFloat(t) * 1.0)
+        }
+        let t = min(pauseDuration / 60, 1.0)
+        return strokeWidth - (CGFloat(t) * 1.5)
+    }
+
+    private var breakBreathingAmplitude: Double {
+        guard case .onBreak = state else { return 0 }
+        if progress > 0.6 {
+            let t = (progress - 0.6) / 0.4
+            return 0.14 - (t * 0.08)
+        }
+        return 0.14
+    }
+
+    private var breakOvertimeStrokeWidth: CGFloat {
+        guard case .onBreak = state, isOvertime else { return strokeWidth }
+        if overrunSeconds > 180 { return 3.5 }
+        if overrunSeconds > 60 {
+            let t = (overrunSeconds - 60) / 120
+            return strokeWidth - (CGFloat(t) * 1.0)
+        }
+        let t = min(overrunSeconds / 60, 1.0)
+        return strokeWidth - (CGFloat(t) * 1.5)
     }
 
     // MARK: - Outer Ring Computed Properties
@@ -66,6 +104,33 @@ struct TimerRingView: View {
 
     var body: some View {
         ZStack {
+            // Idle breathing glow — CPU-safe, only animates opacity
+            if !isActive && !reduceMotion {
+                Circle()
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(breathingOpacity))
+                    .blur(radius: 12)
+                    .frame(width: ringSize + 20, height: ringSize + 20)
+                    .animation(FFMotion.breathing, value: breathingOpacity)
+            }
+
+            // Break recovery breathing — calms in last 40%
+            if case .onBreak = state, !reduceMotion {
+                Circle()
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(breakBreathingOpacity))
+                    .blur(radius: 12)
+                    .frame(width: ringSize + 20, height: ringSize + 20)
+                    .animation(FFMotion.breathing, value: breakBreathingOpacity)
+            }
+
+            // Completion mint burst
+            if completionBurst && !reduceMotion {
+                Circle()
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.3))
+                    .blur(radius: 20)
+                    .frame(width: ringSize + 40, height: ringSize + 40)
+                    .transition(.opacity)
+            }
+
             // Outer halo — only visible when active (no gray track in idle)
             if isActive {
                 outerHaloArc
@@ -154,9 +219,11 @@ struct TimerRingView: View {
                     TrackedLabel(
                         text: label,
                         font: .system(size: 10, weight: .medium),
-                        color: labelColor.opacity(0.65),
+                        color: (labelColorOverride ?? labelColor).opacity(0.65),
                         tracking: 2.2
                     )
+                    .contentTransition(.interpolate)
+                    .animation(FFMotion.section, value: label)
 
                     if case .onBreak = state, overrunSeconds > 0 {
                         Text("+\(Int(overrunSeconds / 60))m over")
@@ -175,17 +242,54 @@ struct TimerRingView: View {
             if isOvertime {
                 return "Overtime, session complete"
             }
-            return state == .idle ? "Ready" : "\(Int(min(progress, 1.0) * 100)) percent complete"
+            return label
         }())
         .onChange(of: isActive, initial: true) { _, active in
             if active {
-                withAnimation(.easeInOut(duration: 1.5)) {
+                withAnimation(FFMotion.commit) {
                     glowPulse = true
+                }
+                // Stop idle breathing immediately (view is removed, reset state)
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) {
+                    breathingOpacity = 0.06
                 }
             } else {
                 withAnimation(.easeOut(duration: 0.4)) {
                     glowPulse = false
                 }
+                if !reduceMotion {
+                    breathingOpacity = 0.14
+                }
+            }
+        }
+        .onChange(of: isOvertime) { oldValue, newValue in
+            if newValue && !oldValue && state == .focusing && !reduceMotion {
+                withAnimation(FFMotion.reward) {
+                    completionBurst = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        completionBurst = false
+                    }
+                }
+            }
+        }
+        .onChange(of: state, initial: true) { _, newState in
+            if case .onBreak = newState, !reduceMotion {
+                breakBreathingOpacity = breakBreathingAmplitude
+            } else {
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) {
+                    breakBreathingOpacity = 0.06
+                }
+            }
+        }
+        .onChange(of: progress) { _, _ in
+            if case .onBreak = state, progress > 0.6, !reduceMotion {
+                breakBreathingOpacity = breakBreathingAmplitude
             }
         }
     }
@@ -266,11 +370,12 @@ struct TimerRingView: View {
                         ],
                         center: .center
                     ),
-                    style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                    style: StrokeStyle(lineWidth: pauseStrokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
                 .shadow(color: pauseRingColor.opacity(glowPulse ? 0.55 : 0.2), radius: glowPulse ? 14 : 6)
                 .animation(FFMotion.progress, value: progress)
+                .animation(FFMotion.progress, value: pauseDuration)
         }
     }
 
@@ -282,9 +387,10 @@ struct TimerRingView: View {
                 Circle()
                     .stroke(
                         Color(hex: 0xE6A820).opacity(0.6),
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                        style: StrokeStyle(lineWidth: breakOvertimeStrokeWidth, lineCap: .round)
                     )
                     .shadow(color: Color(hex: 0xE6A820).opacity(0.3), radius: 8)
+                    .animation(FFMotion.progress, value: overrunSeconds)
 
                 // Dark yellow overtime fill — progress beyond 1.0, map to 0→1 range
                 let overtimeProgress = min(max(progress - 1.0, 0) / 0.5, 1.0)
@@ -292,11 +398,12 @@ struct TimerRingView: View {
                     .trim(from: 0, to: max(0.001, overtimeProgress))
                     .stroke(
                         Color(hex: 0xCC8800).opacity(0.9),
-                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
+                        style: StrokeStyle(lineWidth: breakOvertimeStrokeWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
                     .shadow(color: Color(hex: 0xCC8800).opacity(0.5), radius: 10)
                     .animation(FFMotion.progress, value: progress)
+                    .animation(FFMotion.progress, value: overrunSeconds)
             } else {
                 // Focus overtime: blue ring base with green overlay growing as overtime increases
                 // Base: full blue ring (same as focusing)

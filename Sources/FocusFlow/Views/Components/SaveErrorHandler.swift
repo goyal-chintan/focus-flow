@@ -4,13 +4,14 @@ import SwiftData
 /// Lightweight save wrapper that surfaces errors as user-visible feedback
 struct SaveErrorModifier: ViewModifier {
     @Binding var saveError: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .top) {
                 if let error = saveError {
                     SaveErrorBanner(message: error) {
-                        withAnimation(.spring(response: 0.3)) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3)) {
                             saveError = nil
                         }
                     }

@@ -293,8 +293,22 @@ enum FFMotion {
     /// Control interactions — snappy spring for buttons, toggles
     static let control: Animation = .spring(response: 0.26, dampingFraction: 0.82)
 
-    /// Breathing ambient animation — slow, meditative loop
-    static let breathing: Animation = .easeInOut(duration: 1.8).repeatForever(autoreverses: true)
+    /// Warning/intervention surfaces — tight, precise, no bounce (Gillison 2019: firm not punishing)
+    /// Spec §11: "warning motion: subtle pulse/tighten, 140-220ms"
+    static let warning: Animation = .easeOut(duration: 0.18)
+
+    /// Reward/celebration — slight overshoot for delight (Harkin 2016: concrete progress feedback)
+    /// Spec §11: "reward motion: single glow/settle, 220-320ms"
+    static let reward: Animation = .spring(response: 0.32, dampingFraction: 0.65)
+
+    /// Commitment lock-in — firm spring, minimal overshoot (Steel 2007: commitment devices)
+    static let commit: Animation = .spring(response: 0.28, dampingFraction: 0.75)
+
+    /// CPU-safe breathing — opacity-only oscillation on a STATIC-blur overlay.
+    /// The blur radius stays fixed (pre-rendered); only opacity animates.
+    /// This avoids the 60fps shadow re-rasterization that caused the original
+    /// breathing animation to be removed (commit 6a7940e, Mar 23 2026).
+    static let breathing: Animation = .easeInOut(duration: 2.2).repeatForever(autoreverses: true)
 
     /// Progress ring updates — smooth easing
     static let progress: Animation = .easeInOut(duration: 0.75)
