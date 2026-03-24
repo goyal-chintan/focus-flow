@@ -51,6 +51,7 @@ struct SettingsView: View {
                 .padding(24)
             }
             .background(.clear)
+            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
             .saveErrorOverlay($saveError)
             .onAppear {
                 if settings.calendarIntegrationEnabled {

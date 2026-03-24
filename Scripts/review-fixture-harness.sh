@@ -48,6 +48,13 @@ for appearance in light dark; do
   done
 done
 
+for shared_file in "$ARTIFACT_ROOT/manifest.json" "$ARTIFACT_ROOT/journey.md" "$ARTIFACT_ROOT/functional-proof.json"; do
+  if [[ ! -f "$shared_file" ]]; then
+    echo "Missing artifact: $shared_file"
+    missing=$((missing + 1))
+  fi
+done
+
 if [[ $missing -gt 0 ]]; then
   echo "Artifact verification failed: $missing required captures missing."
   exit 2

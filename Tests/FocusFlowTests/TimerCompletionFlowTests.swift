@@ -185,10 +185,32 @@ final class TimerCompletionFlowTests: XCTestCase {
         let vm = TimerViewModel()
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
+        var closeRequests = 0
+        vm.onPopoverCloseRequested = { closeRequests += 1 }
 
         vm.startFocus()
 
         XCTAssertEqual(vm.state, .focusing)
+        XCTAssertEqual(closeRequests, 1)
+    }
+
+    func testContinueAfterCompletionEndSessionRequestsPopoverClose() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+        var closeRequests = 0
+        vm.onPopoverCloseRequested = { closeRequests += 1 }
+
+        vm.startFocus()
+        let active = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
+        active.startedAt = Date().addingTimeInterval(-8 * 60)
+        try container.mainContext.save()
+        vm.stopForReflection()
+
+        vm.continueAfterCompletion(action: .endSession)
+
+        XCTAssertEqual(closeRequests, 3) // startFocus + stopForReflection + continueAfterCompletion
     }
 
     func testStrongPromptRequestsSingleSurfacePresentationWithForeground() throws {

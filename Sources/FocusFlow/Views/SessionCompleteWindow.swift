@@ -28,6 +28,7 @@ struct SessionCompleteWindowView: View {
                 focusContent
             }
         }
+        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
         .interactiveDismissDisabled()
         .onAppear {
             bringWindowToFront()
@@ -607,7 +608,7 @@ struct SessionCompleteWindowView: View {
         .background(
             Rectangle()
                 .fill(.ultraThinMaterial)
-                .overlay(Color.black.opacity(0.2))
+                .overlay(LiquidDesignTokens.Surface.materialOverlay)
         )
     }
 
