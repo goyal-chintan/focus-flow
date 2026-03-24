@@ -33,6 +33,8 @@ struct MenuBarPopoverView: View {
 
                 timerHeroSection
 
+                earnedTokenBadge
+
                 stateSection
 
                 if let error = timerVM.startError {
@@ -175,6 +177,28 @@ struct MenuBarPopoverView: View {
             }
             .padding(.top, 12)
             .padding(.bottom, 4)
+        }
+    }
+
+    // MARK: - Earned Token Badge (shown after block completes, until next session starts)
+
+    @ViewBuilder
+    private var earnedTokenBadge: some View {
+        if let ctx = timerVM.completedBlockContext, timerVM.state != .focusing {
+            HStack(spacing: 4) {
+                Text("✦ \(ctx.durationMinutes)m earned")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.mint)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.10))
+                    .overlay(Capsule().strokeBorder(LiquidDesignTokens.Spectral.mint.opacity(0.18), lineWidth: 0.5))
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .padding(.bottom, 2)
         }
     }
 
@@ -432,7 +456,7 @@ private struct IdlePopoverContent: View {
             }
 
             // Coach pre-session intention card
-            if coachEnabled {
+            if coachEnabled && selectedProject == nil {
                 FocusCoachPreSessionCard(
                     selectedTaskType: $coachTaskType,
                     resistanceLevel: $coachResistance
@@ -461,7 +485,7 @@ private struct IdlePopoverContent: View {
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
 
-            Text("Guardian watches for browsing, off-project work, and long drift.")
+            Text("Guardian watches for browsing, off-project coding, low-priority work, and long drift.")
                 .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(.secondary.opacity(0.6))
                 .multilineTextAlignment(.center)
@@ -840,7 +864,7 @@ private struct FocusingPopoverContent: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
 
-            let switchReasons: [FocusCoachReason] = [.taskComplete, .higherPriority, .contextChanged, .other]
+            let switchReasons: [FocusCoachReason] = [.requiredSwitch, .meeting, .familyPersonal, .procrastinating]
             FlowLayout(spacing: 6) {
                 ForEach(switchReasons, id: \.self) { reason in
                     Button {

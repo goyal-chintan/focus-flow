@@ -102,50 +102,74 @@ enum FocusCoachSkipReason: String, CaseIterable, Sendable {
 // MARK: - Anomaly Reasons (Why Focus Was Interrupted)
 
 enum FocusCoachReason: String, Codable, CaseIterable {
-    case urgentMeeting
+    // MARK: Legitimate (6)
+    case meeting
     case familyPersonal
-    case stressSpike
+    case plannedResearch
+    case requiredSwitch
+    case realBreak
     case fatigue
-    case legitDistraction
-    case resistanceAvoidance
-    case taskComplete
-    case higherPriority
-    case contextChanged
-    case other
+
+    // MARK: Avoidant (6)
+    case lowPriorityWork
+    case procrastinating
+    case vibeCodingDrift
+    case overPlanning
+    case scrollingBrowsing
+    case avoidingHardPart
 
     var displayName: String {
         switch self {
-        case .urgentMeeting: "Urgent Meeting"
+        case .meeting: "Meeting"
         case .familyPersonal: "Family / Personal"
-        case .stressSpike: "Stress Spike"
+        case .plannedResearch: "Planned Research"
+        case .requiredSwitch: "Required Switch"
+        case .realBreak: "Real Break"
         case .fatigue: "Fatigue"
-        case .legitDistraction: "Legit Distraction"
-        case .resistanceAvoidance: "Resistance / Avoidance"
-        case .taskComplete: "Task Complete"
-        case .higherPriority: "Higher Priority"
-        case .contextChanged: "Context Changed"
-        case .other: "Other"
+        case .lowPriorityWork: "Low-Priority Work"
+        case .procrastinating: "Procrastinating"
+        case .vibeCodingDrift: "Vibe Coding Drift"
+        case .overPlanning: "Over-Planning"
+        case .scrollingBrowsing: "Scrolling / Browsing"
+        case .avoidingHardPart: "Avoiding Hard Part"
         }
     }
 
-    /// Reasons considered legitimate (not avoidance) for false-positive dampening
+    var icon: String {
+        switch self {
+        case .meeting: "person.2.fill"
+        case .familyPersonal: "house.fill"
+        case .plannedResearch: "book.fill"
+        case .requiredSwitch: "arrow.triangle.2.circlepath"
+        case .realBreak: "cup.and.saucer.fill"
+        case .fatigue: "zzz"
+        case .lowPriorityWork: "tray.fill"
+        case .procrastinating: "clock.badge.xmark"
+        case .vibeCodingDrift: "chevron.left.forwardslash.chevron.right"
+        case .overPlanning: "list.bullet.clipboard"
+        case .scrollingBrowsing: "safari.fill"
+        case .avoidingHardPart: "exclamationmark.triangle.fill"
+        }
+    }
+
+    /// Legitimate reasons (real interruptions) vs. avoidance — used for false-positive dampening.
     var isLegitimate: Bool {
         switch self {
-        case .urgentMeeting, .familyPersonal, .stressSpike, .fatigue, .legitDistraction,
-             .taskComplete, .higherPriority, .contextChanged:
+        case .meeting, .familyPersonal, .plannedResearch, .requiredSwitch, .realBreak, .fatigue:
             return true
-        case .resistanceAvoidance, .other:
+        case .lowPriorityWork, .procrastinating, .vibeCodingDrift, .overPlanning,
+             .scrollingBrowsing, .avoidingHardPart:
             return false
         }
     }
 
     static let legitimateChips: [FocusCoachReason] = [
-        .urgentMeeting, .familyPersonal, .stressSpike, .fatigue,
-        .legitDistraction, .taskComplete, .higherPriority, .contextChanged
+        .meeting, .familyPersonal, .plannedResearch, .requiredSwitch, .realBreak, .fatigue
     ]
 
     static let avoidantChips: [FocusCoachReason] = [
-        .resistanceAvoidance, .other
+        .lowPriorityWork, .procrastinating, .vibeCodingDrift, .overPlanning,
+        .scrollingBrowsing, .avoidingHardPart
     ]
 }
 

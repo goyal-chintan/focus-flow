@@ -8,6 +8,9 @@ struct ProjectFormView: View {
     @Binding var color: String
     @Binding var icon: String
     @Binding var selectedBlockProfile: BlockProfile?
+    @Binding var workMode: WorkMode
+    @Binding var guardianSensitivity: GuardianSensitivity
+    @Binding var difficultyBias: DifficultyBias
     @Query(sort: \BlockProfile.createdAt) private var blockProfiles: [BlockProfile]
     let title: String
     let onSave: () -> Void
@@ -43,6 +46,9 @@ struct ProjectFormView: View {
                 colorSection
                 iconSection
                 blockProfileSection
+                workModeSection
+                guardianSensitivitySection
+                difficultyBiasSection
                 actionButtons
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -143,6 +149,117 @@ struct ProjectFormView: View {
                         .font(.subheadline)
                         .lineLimit(1)
                         .truncationMode(.tail)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var workModeSection: some View {
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Work Mode")
+
+            Menu {
+                ForEach(WorkMode.allCases, id: \.self) { mode in
+                    Button {
+                        workMode = mode
+                    } label: {
+                        HStack {
+                            Image(systemName: mode.icon)
+                            Text(mode.displayName)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: workMode.icon)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(workMode.displayName)
+                        .font(.subheadline)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var guardianSensitivitySection: some View {
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Guardian Sensitivity")
+
+            Menu {
+                ForEach(GuardianSensitivity.allCases, id: \.self) { sensitivity in
+                    Button {
+                        guardianSensitivity = sensitivity
+                    } label: {
+                        Text(sensitivity.displayName)
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "sensor.tag.radiowaves.forward")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(guardianSensitivity.displayName)
+                        .font(.subheadline)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var difficultyBiasSection: some View {
+        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
+            sectionLabel("Difficulty Bias")
+
+            Menu {
+                ForEach(DifficultyBias.allCases, id: \.self) { bias in
+                    Button {
+                        difficultyBias = bias
+                    } label: {
+                        Text(bias.displayName)
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "dial.medium")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(difficultyBias.displayName)
+                        .font(.subheadline)
+                        .lineLimit(1)
 
                     Spacer()
 

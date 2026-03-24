@@ -183,18 +183,7 @@ struct FocusCoachReasonChipSheet: View {
     }
 
     private func iconName(for reason: FocusCoachReason) -> String {
-        switch reason {
-        case .urgentMeeting: "calendar.badge.exclamationmark"
-        case .familyPersonal: "house.fill"
-        case .stressSpike: "bolt.heart.fill"
-        case .fatigue: "bed.double.fill"
-        case .legitDistraction: "bell.badge.fill"
-        case .resistanceAvoidance: "arrow.uturn.backward.circle.fill"
-        case .taskComplete: "checkmark.circle.fill"
-        case .higherPriority: "exclamationmark.arrow.triangle.2.circlepath"
-        case .contextChanged: "arrow.triangle.branch"
-        case .other: "ellipsis.circle.fill"
-        }
+        reason.icon
     }
 
     private func chipAccent(for reason: FocusCoachReason) -> Color {

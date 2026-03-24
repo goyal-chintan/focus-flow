@@ -247,6 +247,11 @@ struct TodayStatsView: View {
                         .font(.system(size: 13, weight: .medium))
                 }
                 Spacer()
+                if earnedBlocksToday > 0 {
+                    Text("✦ \(Int(totalFocusTime / 60))m")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.mint)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)

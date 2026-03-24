@@ -57,7 +57,7 @@ final class FocusCoachEngineTests: XCTestCase {
         let engine = FocusCoachEngine(store: store)
         let sessionId = UUID()
         engine.startSession(id: sessionId)
-        engine.recordAnomaly(kind: .midSessionStop, reason: .urgentMeeting, sessionId: sessionId)
+        engine.recordAnomaly(kind: .midSessionStop, reason: .meeting, sessionId: sessionId)
 
         XCTAssertEqual(store.interruptions.count, 1)
         XCTAssertTrue(store.interruptions.last?.isLegitimate == true)
@@ -68,7 +68,7 @@ final class FocusCoachEngineTests: XCTestCase {
         let store = InMemoryCoachStore()
         let engine = FocusCoachEngine(store: store)
         engine.startSession(id: UUID())
-        engine.recordAnomaly(kind: .drift, reason: .resistanceAvoidance, sessionId: nil)
+        engine.recordAnomaly(kind: .drift, reason: .procrastinating, sessionId: nil)
 
         XCTAssertFalse(store.interruptions.last?.isLegitimate ?? true)
     }
@@ -79,7 +79,7 @@ final class FocusCoachEngineTests: XCTestCase {
         engine.startSession(id: UUID())
 
         // Record legitimate reason — should set recentLegitimateReason
-        engine.recordAnomaly(kind: .midSessionStop, reason: .urgentMeeting, sessionId: nil)
+        engine.recordAnomaly(kind: .midSessionStop, reason: .meeting, sessionId: nil)
         XCTAssertTrue(engine.currentSignals.recentLegitimateReason)
     }
 

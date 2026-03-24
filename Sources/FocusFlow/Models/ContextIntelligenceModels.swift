@@ -13,16 +13,21 @@ struct SuspiciousContextObservation {
     var terminalWorkspace: String?    // git repo root path if detectable
     var editorWorkspace: String?      // editor workspace/project name
     var selectedProjectId: UUID?
+    var selectedProjectName: String?
     var selectedWorkMode: WorkMode?
     var isInSession: Bool
+    /// Preliminary system-inferred disposition. Set by AppUsageTracker at observation time;
+    /// may be overridden by the user via reason-chip selection.
+    var suggestedDisposition: ContextDisposition? = nil
 
     init(bundleIdentifier: String, localizedAppName: String, selectedProjectId: UUID? = nil,
-         selectedWorkMode: WorkMode? = nil, isInSession: Bool) {
+         selectedProjectName: String? = nil, selectedWorkMode: WorkMode? = nil, isInSession: Bool) {
         self.id = UUID()
         self.timestamp = Date()
         self.bundleIdentifier = bundleIdentifier
         self.localizedAppName = localizedAppName
         self.selectedProjectId = selectedProjectId
+        self.selectedProjectName = selectedProjectName
         self.selectedWorkMode = selectedWorkMode
         self.isInSession = isInSession
     }

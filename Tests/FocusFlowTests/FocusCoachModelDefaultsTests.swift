@@ -43,18 +43,18 @@ final class FocusCoachModelDefaultsTests: XCTestCase {
         let interruption = CoachInterruption(
             sessionId: UUID(),
             kind: .midSessionStop,
-            reason: .urgentMeeting,
+            reason: .meeting,
             riskScoreAtDetection: 0.8
         )
         XCTAssertTrue(interruption.isLegitimate)
-        XCTAssertEqual(interruption.reason, .urgentMeeting)
+        XCTAssertEqual(interruption.reason, .meeting)
     }
 
     func testCoachInterruptionAvoidanceNotLegitimate() {
         let interruption = CoachInterruption(
             sessionId: UUID(),
             kind: .drift,
-            reason: .resistanceAvoidance
+            reason: .procrastinating
         )
         XCTAssertFalse(interruption.isLegitimate)
     }
@@ -80,8 +80,8 @@ final class FocusCoachModelDefaultsTests: XCTestCase {
     // MARK: - Enum Coverage
 
     func testReasonLegitimacyClassification() {
-        let legitimate: [FocusCoachReason] = [.urgentMeeting, .familyPersonal, .stressSpike, .fatigue, .legitDistraction]
-        let notLegitimate: [FocusCoachReason] = [.resistanceAvoidance, .other]
+        let legitimate: [FocusCoachReason] = [.meeting, .familyPersonal, .plannedResearch, .realBreak, .fatigue, .requiredSwitch]
+        let notLegitimate: [FocusCoachReason] = [.procrastinating, .vibeCodingDrift, .overPlanning, .scrollingBrowsing, .avoidingHardPart, .lowPriorityWork]
         for reason in legitimate {
             XCTAssertTrue(reason.isLegitimate, "\(reason) should be legitimate")
         }

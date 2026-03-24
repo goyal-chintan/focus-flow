@@ -123,6 +123,24 @@ enum StoreMigrator {
             column: "ZCOACHINTERVENTIONMODE",
             sqlType: "VARCHAR",
             defaultSQLValue: "'balanced'"
+        ),
+        ColumnMigration(
+            table: "ZPROJECT",
+            column: "ZWORKMODE",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "'deep_work'"
+        ),
+        ColumnMigration(
+            table: "ZPROJECT",
+            column: "ZGUARDIANSENSITIVITY",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "'normal'"
+        ),
+        ColumnMigration(
+            table: "ZPROJECT",
+            column: "ZDIFFICULTYBIAS",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "'moderate'"
         )
     ]
 

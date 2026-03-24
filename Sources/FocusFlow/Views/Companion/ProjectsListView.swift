@@ -16,6 +16,9 @@ struct ProjectsListView: View {
     @State private var formColor = "blue"
     @State private var formIcon = "folder.fill"
     @State private var formBlockProfile: BlockProfile?
+    @State private var formWorkMode: WorkMode = .deepWork
+    @State private var formGuardianSensitivity: GuardianSensitivity = .normal
+    @State private var formDifficultyBias: DifficultyBias = .moderate
     @State private var projectToArchive: Project?
     @State private var saveError: String?
     @State private var showArchivedSection = false
@@ -232,6 +235,9 @@ struct ProjectsListView: View {
                 formColor = project.color
                 formIcon = project.icon ?? "folder.fill"
                 formBlockProfile = project.blockProfile
+                formWorkMode = project.workMode
+                formGuardianSensitivity = project.guardianSensitivity
+                formDifficultyBias = project.difficultyBias
                 editingProject = project
                 showingAddSheet = true
             } label: {
@@ -334,6 +340,9 @@ struct ProjectsListView: View {
             color: $formColor,
             icon: $formIcon,
             selectedBlockProfile: $formBlockProfile,
+            workMode: $formWorkMode,
+            guardianSensitivity: $formGuardianSensitivity,
+            difficultyBias: $formDifficultyBias,
             title: editingProject == nil ? "New Project" : "Edit Project"
         ) {
             var savedProject: Project?
@@ -343,6 +352,9 @@ struct ProjectsListView: View {
                 editing.color = formColor
                 editing.icon = formIcon
                 editing.blockProfile = formBlockProfile
+                editing.workMode = formWorkMode
+                editing.guardianSensitivity = formGuardianSensitivity
+                editing.difficultyBias = formDifficultyBias
                 savedProject = editing
             } else {
                 let project = Project(
@@ -351,6 +363,9 @@ struct ProjectsListView: View {
                     icon: formIcon
                 )
                 project.blockProfile = formBlockProfile
+                project.workMode = formWorkMode
+                project.guardianSensitivity = formGuardianSensitivity
+                project.difficultyBias = formDifficultyBias
                 modelContext.insert(project)
                 savedProject = project
             }
@@ -471,6 +486,9 @@ struct ProjectsListView: View {
         formColor = "blue"
         formIcon = "folder.fill"
         formBlockProfile = nil
+        formWorkMode = .deepWork
+        formGuardianSensitivity = .normal
+        formDifficultyBias = .moderate
     }
 
     private func colorFromName(_ name: String) -> Color {
