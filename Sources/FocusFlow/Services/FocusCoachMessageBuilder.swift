@@ -8,7 +8,7 @@ enum ResolvedCoachSignal: Sendable {
     case releaseWindowActive
     case blockRecommendation(target: String)
     case lowPriorityPattern(count: Int)
-    case distractingAppActive(appName: String, formattedIdle: String)
+    case distractingAppActive(appName: String, formattedIdle: String, workMode: WorkMode?, projectName: String?)
     case longIdle(formattedDuration: String)
     case noSessionsLateDay(formattedHour: String, projectName: String?)
     case lowGoalProgress(percent: Int, goalMinutes: Int, projectName: String?)
@@ -50,8 +50,8 @@ struct CoachMessage: Sendable {
             return "Recommend blocking \(target) for this project"
         case .lowPriorityPattern(let count):
             return "Low-priority pattern ×\(count) this week"
-        case .distractingAppActive(let app, let idle):
-            return "\(app) · \(idle) idle"
+        case .distractingAppActive(let app, _, let workMode, let projectName):
+            return FocusCoachMessageBuilder.exactMismatchLabel(appName: app, domain: nil, workMode: workMode, projectName: projectName)
         case .longIdle(let dur):
             return "\(dur) since last work"
         case .noSessionsLateDay(let t, _):
@@ -91,7 +91,7 @@ enum FocusCoachMessageBuilder {
             return .lowPriorityPattern(count: context.recentLowPriorityWorkCount)
         }
         if context.isInDistractingApp, let app = context.frontmostAppName, context.idleSeconds > 600 {
-            return .distractingAppActive(appName: app, formattedIdle: context.formattedIdle)
+            return .distractingAppActive(appName: app, formattedIdle: context.formattedIdle, workMode: context.selectedWorkMode, projectName: context.selectedProjectName)
         }
         if context.idleSeconds > 1800 {
             return .longIdle(formattedDuration: context.formattedIdle)
@@ -125,7 +125,7 @@ enum FocusCoachMessageBuilder {
             return "\(target) is repeatedly pulling attention away from your planned work"
         case .lowPriorityPattern(let count):
             return "Low-priority work replaced planned focus \(count) times this week"
-        case .distractingAppActive(let app, let idle):
+        case .distractingAppActive(let app, let idle, _, _):
             return "You've been on \(app) for \(idle)"
         case .longIdle(let dur):
             return "\(dur) since your last focused block"
@@ -168,7 +168,7 @@ enum FocusCoachMessageBuilder {
                 "Pattern detected from your own skips: low-priority activity is replacing the intended task. Start a 5-minute rescue block or mark off-duty honestly.",
                 .priority
             )
-        case .distractingAppActive(let app, _):
+        case .distractingAppActive(let app, _, _, _):
             return (
                 "\(app) has held foreground long enough to derail restart momentum. Decide now: rescue block, break, or off-duty.",
                 .distraction
@@ -180,7 +180,7 @@ enum FocusCoachMessageBuilder {
             )
         case .noSessionsLateDay:
             return (
-                "No shame signal here, only trajectory: one started block now is still meaningful.",
+                "You're still in the recovery window. Ready when you are.",
                 .timeUrgency
             )
         case .lowGoalProgress:
@@ -214,4 +214,53 @@ enum FocusCoachMessageBuilder {
         let period = hour < 12 ? "AM" : "PM"
         return "\(h)\(period)"
     }
+
+    // MARK: - Exact mismatch label (FIX 3 / fix-p4)
+
+    /// Produces a rich, context-aware drift label for the risk strip.
+    /// Falls back gracefully when optional parameters are nil.
+    static func exactMismatchLabel(
+        appName: String,
+        domain: String?,
+        workMode: WorkMode?,
+        projectName: String?
+    ) -> String {
+        let workModeLabel = workMode?.displayName ?? "your focus block"
+
+        // AI/chat tool loop pattern
+        let aiApps = ["ChatGPT", "Claude", "Gemini", "Copilot", "Perplexity"]
+        if aiApps.contains(where: { appName.localizedCaseInsensitiveContains($0) }) {
+            return "ChatGPT loop during \(workModeLabel) — looks like over-planning"
+        }
+
+        // Editor with wrong repo
+        let editorApps = ["Xcode", "Cursor", "VS Code", "Visual Studio Code", "Nova", "Zed"]
+        if editorApps.contains(where: { appName.localizedCaseInsensitiveContains($0) }),
+           let projectName, !projectName.isEmpty {
+            return "\(appName) repo does not match \(projectName)"
+        }
+
+        // Browser with distracting domain
+        if let domain {
+            let domainLabel = domain.hasPrefix("www.") ? String(domain.dropFirst(4)) : domain
+            return "\(appName) on \(domainLabel) during \(workModeLabel)"
+        }
+
+        // Generic fallback with workMode context
+        if let workMode {
+            return "\(appName) during \(workMode.displayName)"
+        }
+
+        return "\(appName) — off-plan for this context"
+    }
+
+    // MARK: - Break recovery copy (fix-c7 part B)
+
+    /// Message shown when a break has overrun. `overrunMinutes` is the excess beyond planned break duration.
+    static func breakOverrunMessage(overrunMinutes: Int) -> String {
+        "Break ran \(overrunMinutes) minutes over. Your last earned block is still saved. Ready to return or done for now?"
+    }
+
+    /// Confirmation copy shown after the user opts out of further coaching pressure.
+    static let optOutConfirmation = "Saved. I'll stop pushing for now."
 }

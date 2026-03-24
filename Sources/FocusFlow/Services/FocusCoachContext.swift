@@ -17,6 +17,7 @@ struct FocusCoachContext: Sendable {
     let dailyGoalSeconds: TimeInterval
     let todaySessionCount: Int
     let selectedProjectName: String?
+    let selectedWorkMode: WorkMode?
 
     // MARK: - Time of day
     let hourOfDay: Int

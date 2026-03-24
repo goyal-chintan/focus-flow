@@ -382,7 +382,13 @@ final class TimerViewModel {
         // Wire drift classification memory and latest observation updates
         coachEngine.configureDriftMemory(driftMemoryStore)
         AppUsageTracker.shared.onSuspiciousObservation = { [weak self] observation in
-            self?.coachEngine.latestObservation = observation
+            self?.coachEngine.handleNewObservation(observation)
+        }
+        // Escalate guardian state when an avoidant observation has no project-scoped allowance
+        coachEngine.onAvoidantObservationWithoutAllowance = { [weak self] _ in
+            guard let self else { return }
+            self.coachEngine.shouldShowReasonSheet = true
+            self.coachEngine.pendingAnomalyKind = .drift
         }
         log("configure() complete")
     }
@@ -655,6 +661,13 @@ final class TimerViewModel {
             startError = "Minimum session duration is 5 minutes."
             return
         }
+        startFocusInternal()
+    }
+
+    /// Core focus-starting logic, callable from any valid pre-focus state.
+    /// Callers must validate preconditions (state, duration, settings) before invoking.
+    private func startFocusInternal() {
+        let duration = focusDuration
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
@@ -1136,12 +1149,11 @@ final class TimerViewModel {
         clearCrashRecoveryState()
         currentSession = nil
         breakEpisodeContext = nil  // Break episode is discarded on skip; completedBlockContext preserved
-        // Pass through .idle only as implementation detail of startFocus()'s guard
-        state = .idle
         remainingSeconds = 0
         totalSeconds = 0
         loadTodayStats()
-        startFocus()
+        // Transition onBreak → focusing directly; never touch .idle
+        startFocusInternal()
     }
 
     func skipBreak() {
@@ -2000,6 +2012,7 @@ final class TimerViewModel {
             dailyGoalSeconds: settings?.dailyFocusGoal ?? 7200,
             todaySessionCount: todaySessionCount,
             selectedProjectName: selectedProject?.name,
+            selectedWorkMode: selectedProject?.workMode,
             hourOfDay: hour,
             topDistractingAppName: topDistractingName,
             topDistractingAppMinutes: topDistractingMinutes,

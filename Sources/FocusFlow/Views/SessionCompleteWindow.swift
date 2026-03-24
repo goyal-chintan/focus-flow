@@ -536,7 +536,7 @@ struct SessionCompleteWindowView: View {
                 .foregroundStyle(isOverrun ? LiquidDesignTokens.Spectral.amber : .blue)
                 .accessibilityHidden(true)
 
-            Text("Break Complete")
+            Text(isOverrun ? "Break ran long" : "Reset complete")
                 .font(.system(size: 20, weight: .semibold))
 
             if timerVM.isOvertime {

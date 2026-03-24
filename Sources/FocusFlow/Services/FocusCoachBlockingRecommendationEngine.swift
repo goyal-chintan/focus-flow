@@ -67,7 +67,7 @@ final class FocusCoachBlockingRecommendationEngine {
     // MARK: - Recommendations
 
     /// Returns a block recommendation if evidence threshold is met, nil otherwise.
-    func blockRecommendation(for contextKey: String) -> BlockingRecommendation? {
+    func blockRecommendation(for contextKey: String, projectName: String? = nil) -> BlockingRecommendation? {
         guard let risk = risks[contextKey], risk.shouldRecommendBlock else { return nil }
         // Don't re-surface within 24h of last recommendation
         if let last = risk.lastRecommendationTimestamp,
@@ -78,12 +78,14 @@ final class FocusCoachBlockingRecommendationEngine {
             displayName: risk.contextDisplayName,
             projectId: risk.projectId,
             workMode: risk.workMode,
-            copyText: recommendationCopy(for: risk, kind: .block)
+            projectName: projectName,
+            copyText: recommendationCopy(for: risk, kind: .block, projectName: projectName),
+            suggestedActions: [.block, .warnOnly, .notNow]
         )
     }
 
     /// Returns an allow recommendation if evidence threshold is met, nil otherwise.
-    func allowRecommendation(for contextKey: String) -> BlockingRecommendation? {
+    func allowRecommendation(for contextKey: String, projectName: String? = nil) -> BlockingRecommendation? {
         guard let risk = risks[contextKey], risk.shouldRecommendAllow else { return nil }
         return BlockingRecommendation(
             kind: .allow,
@@ -91,7 +93,9 @@ final class FocusCoachBlockingRecommendationEngine {
             displayName: risk.contextDisplayName,
             projectId: risk.projectId,
             workMode: risk.workMode,
-            copyText: recommendationCopy(for: risk, kind: .allow)
+            projectName: projectName,
+            copyText: recommendationCopy(for: risk, kind: .allow, projectName: projectName),
+            suggestedActions: [.allow]
         )
     }
 
@@ -102,9 +106,9 @@ final class FocusCoachBlockingRecommendationEngine {
 
     // MARK: - Copy Generation
 
-    private func recommendationCopy(for risk: ProjectContextRisk, kind: BlockingRecommendation.Kind) -> String {
+    private func recommendationCopy(for risk: ProjectContextRisk, kind: BlockingRecommendation.Kind, projectName: String? = nil) -> String {
         let name = risk.contextDisplayName
-        let project = "this project"  // Will be enriched with actual project name when available
+        let project = projectName ?? "your current project"
         let mode = risk.workMode.displayName
 
         switch kind {
@@ -118,6 +122,8 @@ final class FocusCoachBlockingRecommendationEngine {
             return "\(name) keeps replacing \(mode) on \(project). Block it for this project?"
         case .allow:
             return "\(name) was confirmed as planned work on \(project) multiple times. Allow it?"
+        case .warnOnly, .notNow:
+            return ""
         }
     }
 
@@ -133,11 +139,27 @@ final class FocusCoachBlockingRecommendationEngine {
 // MARK: - BlockingRecommendation
 
 struct BlockingRecommendation {
-    enum Kind { case block, allow }
+    enum Kind {
+        case block, allow
+        case warnOnly  // "Warn Only" — show a warning instead of blocking
+        case notNow    // "Not Now" — dismiss recommendation without action
+
+        var label: String {
+            switch self {
+            case .block: return "Block"
+            case .allow: return "Allow"
+            case .warnOnly: return "Warn Only"
+            case .notNow: return "Not Now"
+            }
+        }
+    }
     let kind: Kind
     let contextKey: String
     let displayName: String
     let projectId: UUID
     let workMode: WorkMode
+    let projectName: String?
     let copyText: String
+    /// The three actions always offered for a block recommendation: block, warn only, not now.
+    let suggestedActions: [Kind]
 }

@@ -57,6 +57,11 @@ final class FocusCoachEngine {
     /// Latest suspicious-context observation from AppUsageTracker (updated each foreground change).
     var latestObservation: SuspiciousContextObservation?
 
+    /// Called when an avoidant observation (procrastinating / lowPriorityWork) arrives during an
+    /// active session and DriftMemory has no project-scoped allowance for it.
+    /// Wire in TimerViewModel to trigger guardian-state escalation.
+    var onAvoidantObservationWithoutAllowance: ((SuspiciousContextObservation) -> Void)?
+
     /// The TaskIntent ID for the current session (set from pre-session card)
     var currentTaskIntentId: UUID?
 
@@ -90,6 +95,32 @@ final class FocusCoachEngine {
     /// Wires the drift memory store. Call during app configuration.
     func configureDriftMemory(_ store: DriftMemoryStore) {
         self.driftMemoryStore = store
+    }
+
+    // MARK: - Observation Routing
+
+    /// Processes a new suspicious context observation from AppUsageTracker.
+    /// Stores it in `latestObservation` and, during active sessions, routes avoidant
+    /// dispositions to guardian escalation unless DriftMemory grants a project-scoped allowance.
+    func handleNewObservation(_ observation: SuspiciousContextObservation) {
+        latestObservation = observation
+
+        guard isActive,
+              let disposition = observation.suggestedDisposition,
+              disposition.isAvoidant else { return }
+
+        let appOrDomain = observation.browserHost ?? observation.localizedAppName
+        let projectId   = observation.selectedProjectId
+        let workMode    = observation.selectedWorkMode
+
+        // Skip challenge if user has previously confirmed this context as planned work
+        if let store = driftMemoryStore,
+           store.projectScopedAllowance(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain) {
+            return
+        }
+
+        // Route to guardian advisor for potential escalation
+        onAvoidantObservationWithoutAllowance?(observation)
     }
 
     // MARK: - Session Lifecycle
@@ -252,7 +283,10 @@ final class FocusCoachEngine {
             }
 
             // Surface block recommendation if evidence threshold is now met
-            if let rec = blockingRecommendationEngine.blockRecommendation(for: contextKey) {
+            if let rec = blockingRecommendationEngine.blockRecommendation(
+                for: contextKey,
+                projectName: latestObservation?.selectedProjectName
+            ) {
                 pendingBlockingRecommendation = rec
                 blockingRecommendationEngine.markRecommendationSurfaced(contextKey: contextKey)
             }

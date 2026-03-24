@@ -186,6 +186,7 @@ final class AppUsageTracker {
                 appName: appName,
                 isInSession: isFocusing,
                 selectedProjectId: timerVM?.selectedProject?.id,
+                selectedProjectName: timerVM?.selectedProject?.name,
                 selectedWorkMode: timerVM?.selectedProject?.workMode
             )
             onSuspiciousObservation?(obs)
@@ -283,12 +284,14 @@ final class AppUsageTracker {
         appName: String,
         isInSession: Bool,
         selectedProjectId: UUID?,
+        selectedProjectName: String?,
         selectedWorkMode: WorkMode?
     ) -> SuspiciousContextObservation {
         var obs = SuspiciousContextObservation(
             bundleIdentifier: bundleId,
             localizedAppName: appName,
             selectedProjectId: selectedProjectId,
+            selectedProjectName: selectedProjectName,
             selectedWorkMode: selectedWorkMode,
             isInSession: isInSession
         )
@@ -303,9 +306,85 @@ final class AppUsageTracker {
             obs.editorWorkspace = extractEditorWorkspace(bundleId: bundleId, appName: appName)
         }
 
+        // Classify preliminary disposition during active focus sessions
+        if isInSession {
+            obs.suggestedDisposition = classifyDisposition(
+                bundleId: bundleId,
+                appName: appName,
+                browserHost: obs.browserHost
+            )
+        }
+
         return obs
     }
 
+    /// Infers a preliminary ContextDisposition for an observation made during a focus session.
+    private func classifyDisposition(
+        bundleId: String,
+        appName: String,
+        browserHost: String?
+    ) -> ContextDisposition {
+        // Docs / notes apps → least suspicious
+        let docsApps = ["com.apple.Notes", "com.notion.id", "md.obsidian",
+                        "com.evernote.Evernote", "com.microsoft.Word",
+                        "com.apple.iWork.Pages", "net.shinyfrog.bear"]
+        if docsApps.contains(bundleId) || bundleId.contains("notion") || bundleId.contains("obsidian") {
+            return .plannedResearch
+        }
+
+        // Terminals / editors → required context switch (working, just elsewhere)
+        if isTerminalOrEditor(bundleId: bundleId) {
+            return .requiredContextSwitch
+        }
+
+        // AI / chat tools → procrastinating by default (user can override)
+        if isAIChatTool(bundleId, appName) {
+            return .procrastinating
+        }
+
+        // Browsers: check the specific domain for stronger signal
+        if isBrowser(bundleId: bundleId) {
+            let socialEntertainment: [String] = [
+                "youtube.com", "twitter.com", "x.com", "reddit.com",
+                "instagram.com", "tiktok.com", "netflix.com", "twitch.tv",
+                "facebook.com", "9gag.com", "buzzfeed.com"
+            ]
+            let newsForums: [String] = [
+                "news.ycombinator.com", "medium.com", "substack.com",
+                "theverge.com", "techcrunch.com", "hackernews.com",
+                "bbc.com", "cnn.com", "nytimes.com"
+            ]
+            if let host = browserHost {
+                if socialEntertainment.contains(where: { host.contains($0) }) {
+                    return .procrastinating
+                }
+                if newsForums.contains(where: { host.contains($0) }) {
+                    return .lowPriorityWork
+                }
+            }
+            // Unknown browser context → procrastinating by default during focus
+            return .procrastinating
+        }
+
+        // Default for unrecognised apps during focus
+        return .procrastinating
+    }
+
+    /// Returns true for AI assistants, chat tools, and messaging apps
+    /// that are typically unrelated to focused work.
+    private func isAIChatTool(_ bundleId: String, _ appName: String) -> Bool {
+        let id = bundleId.lowercased()
+        let name = appName.lowercased()
+        let idMatches = id.contains("anthropic") || id.contains("openai") ||
+                        id.contains("slack") || id.contains("discord") ||
+                        id.contains("telegram") || id.contains("whatsapp") ||
+                        id.contains("copilot")
+        let nameMatches = name.contains("claude") || name.contains("chatgpt") ||
+                          name.contains("cursor ai") || name.contains("copilot") ||
+                          name.contains("slack") || name.contains("discord") ||
+                          name.contains("telegram") || name.contains("whatsapp")
+        return idMatches || nameMatches
+    }
     private func isBrowser(bundleId: String) -> Bool {
         let browsers = ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser",
                         "org.mozilla.firefox", "com.microsoft.edgemac", "com.operasoftware.Opera"]

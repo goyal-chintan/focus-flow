@@ -25,7 +25,7 @@ final class FocusCoachInsightsBuilderTests: XCTestCase {
         (0..<count).map { i in
             FocusCoachInsightsBuilder.InterruptionSnapshot(
                 kind: .drift,
-                reason: legitimate ? .urgentMeeting : .resistanceAvoidance,
+                reason: legitimate ? .meeting : .procrastinating,
                 isLegitimate: legitimate,
                 detectedAt: Date().addingTimeInterval(-Double(i) * 600)
             )

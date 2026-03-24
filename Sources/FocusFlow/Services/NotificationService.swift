@@ -91,16 +91,16 @@ final class NotificationService: ObservableObject {
         let body: String
         if streak >= 3 {
             title = "🔥 \(streak)-session streak!"
-            body = sessionMinutes > 0 ? "Crushed \(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel). Keep the streak alive — time for a break." : "Incredible momentum. Take a well-earned break."
+            body = sessionMinutes > 0 ? "Your \(streak)-day streak is running. \(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel) banked." : "Your \(streak)-day streak is running. Ready to protect it?"
         } else if sessionMinutes >= 45 {
             title = "Deep work complete 💪"
             body = "\(sessionMinutes) minutes of \(sessionLabel.isEmpty ? "focused work" : sessionLabel) — that's serious output. Break time."
         } else if dailyProgress >= 80 {
             title = "Almost there!"
-            body = "You're at \(dailyProgress)% of your daily goal. One more push and you've got it."
+            body = "One block left to hit your goal for today."
         } else {
             title = "Focus session done"
-            body = sessionMinutes > 0 ? "\(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel) logged. Take a real break." : "Session complete. Take a well-earned break."
+            body = sessionMinutes > 0 ? "\(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel) logged. Break time." : "Break time. Session saved."
         }
         send(title: title, body: body, sound: sound)
     }
@@ -114,7 +114,7 @@ final class NotificationService: ObservableObject {
             body = "You've completed your \(dailyGoalMinutes)m focus goal for today. Nice work."
         } else if sessionCount >= 3 {
             title = "Session \(sessionCount + 1) loading…"
-            body = "\(remaining)m left to hit your goal. You're on a roll — lock back in."
+            body = "You've protected \(sessionCount) blocks today. \(remaining)m left — start another?"
         } else {
             title = "Break's over — \(remaining)m to go"
             body = "You've done \(completedMinutes)m of your \(dailyGoalMinutes)m goal. Ready for the next block?"

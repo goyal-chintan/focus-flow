@@ -50,6 +50,41 @@ final class AppUsageEntry {
         }
     }
 
+    /// Context-aware classification for use during focus sessions.
+    /// Browsers and AI/chat tools are treated as distracting during focus; terminals/editors stay neutral.
+    func classifyForContext(isInFocusSession: Bool, projectWorkMode: WorkMode?) -> AppCategory {
+        guard isInFocusSession else {
+            return Self.classify(bundleIdentifier: bundleIdentifier, appName: appName)
+        }
+        let id = bundleIdentifier.lowercased()
+        let name = appName.lowercased()
+
+        // AI/chat tools → distracting during focus
+        if id.contains("anthropic") || id.contains("openai") || id.contains("slack") ||
+           id.contains("discord") || id.contains("telegram") || id.contains("whatsapp") ||
+           name.contains("claude") || name.contains("chatgpt") || name.contains("copilot") ||
+           name.contains("slack") || name.contains("discord") {
+            return .distracting
+        }
+
+        // Browsers → distracting during focus
+        if id.contains("safari") || id.contains("chrome") || id.contains("firefox") ||
+           id.contains("brave") || id.contains("arc") || id.contains("edge") ||
+           id.contains("opera") || id.contains("orion") {
+            return .distracting
+        }
+
+        // Terminals/editors → neutral during focus (working, just in a different tool)
+        if id.contains("terminal") || id.contains("iterm") || id.contains("warp") ||
+           id.contains("xcode") || id.contains("vscode") || id.contains("cursor") ||
+           id.contains("jetbrains") || id.contains("sublime") ||
+           name.contains("terminal") || name.contains("code") {
+            return .neutral
+        }
+
+        return Self.classify(bundleIdentifier: bundleIdentifier, appName: appName)
+    }
+
     static func classify(bundleIdentifier: String, appName: String) -> AppCategory {
         let id = bundleIdentifier.lowercased()
         let name = appName.lowercased()
