@@ -591,25 +591,38 @@ private struct IdlePopoverContent: View {
                 Spacer()
             }
 
-            // Action buttons
+    // Action buttons
             HStack(spacing: 8) {
-                GradientCTAButton(
-                    title: "Resume Session",
-                    icon: "play.fill",
-                    gradient: LiquidDesignTokens.Gradient.focus,
-                    action: onResumeRecovery
-                )
+                Button(action: onResumeRecovery) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Resume Session")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(LiquidDesignTokens.Gradient.focus)
+                    }
+                    .clipShape(Capsule(style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Resume recovered session")
 
                 Button(action: onDiscardRecovery) {
                     Text("Discard")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .frame(maxWidth: 90)
                 .accessibilityLabel("Discard recovered session")
             }
         }
