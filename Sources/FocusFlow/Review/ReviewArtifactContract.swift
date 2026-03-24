@@ -16,12 +16,16 @@ enum ReviewArtifactContract {
         "session_complete_focus_complete",
         "session_complete_manual_stop",
         "session_complete_break_complete",
+        "session_complete_earned_stage",
+        "session_complete_recovery_chips",
         "coach_quick_prompt",
         "coach_strong_window",
+        "coach_window_dismiss",
         "settings_calendar_permissions",
         "settings_reminders_permissions",
-        "first_run_initial_render",
-        "first_run_first_toggle"
+        "today_stats_view",
+        "break_complete_reason_sheet_hidden",
+        "break_complete_reason_sheet_visible"
     ]
 
     static func requiredArtifactPaths(
