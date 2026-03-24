@@ -166,6 +166,8 @@ struct FocusCoachReasonChipSheet: View {
             }
             .scaleEffect(isSelected ? 1.03 : 1.0)
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .accessibilityLabel(reason.displayName)
         .accessibilityAddTraits(isSelected ? .isSelected : [])

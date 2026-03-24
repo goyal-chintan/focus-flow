@@ -646,7 +646,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
             "isOvertime": "\(vm.isOvertime)",
             "lastCompletedSessionID": vm.lastCompletedSession?.id.uuidString ?? "nil"
         ]
-        vm.continueAfterCompletion(action: .takeBreak)
+        vm.continueAfterCompletion(action: .takeBreak(duration: nil))
         vm.continueAfterCompletion(action: .endSession)
         let completionFlow = CanonicalFlowProof(
             id: "completion_take_break_continue_end",

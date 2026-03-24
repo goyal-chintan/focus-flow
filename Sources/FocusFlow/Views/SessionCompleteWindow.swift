@@ -276,7 +276,7 @@ struct SessionCompleteWindowView: View {
                         icon: "timer",
                         role: .secondary
                     ) {
-                        saveAndDismiss(action: .takeBreak)
+                        saveAndDismiss(action: .takeBreak(duration: 300))
                     }
                     .accessibilityLabel("Take a 5 minute reset break")
 
@@ -286,7 +286,7 @@ struct SessionCompleteWindowView: View {
                         icon: "cup.and.saucer.fill",
                         role: .secondary
                     ) {
-                        saveAndDismiss(action: .takeBreak)
+                        saveAndDismiss(action: .takeBreak(duration: nil))
                     }
                     .accessibilityLabel("Take a full break")
 
@@ -651,6 +651,8 @@ struct SessionCompleteWindowView: View {
                             .strokeBorder(LiquidDesignTokens.Spectral.amber.opacity(0.3), lineWidth: 0.5))
                 )
         }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .foregroundStyle(LiquidDesignTokens.Spectral.amber)
         .accessibilityLabel(title)

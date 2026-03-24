@@ -674,7 +674,7 @@ private struct FocusingPopoverContent: View {
                     title: "Pause",
                     icon: "pause.fill",
                     gradient: LiquidDesignTokens.Gradient.pause,
-                    foregroundColor: Color(hex: 0x332200),
+                    foregroundColor: .white,
                     action: onPause
                 )
                 .accessibilityLabel("Pause focus session")
@@ -1008,7 +1008,7 @@ private struct PausedPopoverContent: View {
                 title: "Resume Focus",
                 icon: "play.fill",
                 gradient: LiquidDesignTokens.Gradient.resume,
-                foregroundColor: Color(hex: 0x332200),
+                foregroundColor: .white,
                 action: onResume
             )
 
@@ -1421,7 +1421,7 @@ extension MenuBarPopoverView {
                 timerVM.requestAppActivation?()
             },
             onTakeBreak: {
-                timerVM.continueAfterCompletion(action: .takeBreak)
+                timerVM.continueAfterCompletion(action: .takeBreak(duration: nil))
             },
             onSkipBreak: {
                 timerVM.continueAfterCompletion(action: .continueFocusing)
