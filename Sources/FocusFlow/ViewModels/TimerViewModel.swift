@@ -9,6 +9,67 @@ enum TimerState: Equatable {
     case onBreak(SessionType)
 }
 
+#if DEBUG
+extension TimerViewModel {
+    /// Lightweight setup used by UI evidence/snapshot tests to avoid side effects
+    /// from full app configuration (timers, tracker bootstrapping, save observers).
+    func configureForEvidence(modelContext: ModelContext, settings: AppSettings) {
+        timer?.invalidate()
+        pauseTimer?.invalidate()
+        midnightTimer?.invalidate()
+
+        timer = nil
+        pauseTimer = nil
+        midnightTimer = nil
+
+        self.modelContext = modelContext
+        self.settings = settings
+        isConfigured = true
+        coachEngine.configureStore(SwiftDataCoachStore(modelContext: modelContext))
+    }
+
+    /// Seeds deterministic completion/overtime state without running timers.
+    func seedEvidenceCompletionState(
+        sessionType: SessionType,
+        project: Project?,
+        customLabel: String?,
+        duration: TimeInterval,
+        overtimeSeconds: Int
+    ) {
+        let session = FocusSession(
+            type: sessionType,
+            duration: duration,
+            project: project,
+            customLabel: customLabel
+        )
+        session.startedAt = Date().addingTimeInterval(-duration)
+        session.endedAt = Date()
+        session.completed = true
+
+        selectedProject = project
+        state = .idle
+        remainingSeconds = 0
+        totalSeconds = duration
+
+        lastCompletedSession = session
+        lastCompletionWasBreak = (sessionType != .focus)
+        if sessionType == .focus {
+            lastCompletedFocusSession = session
+            lastCompletedDuration = duration
+            lastCompletedLabel = session.label
+        } else {
+            lastCompletedDuration = nil
+            lastCompletedLabel = nil
+        }
+
+        isOvertime = overtimeSeconds > 0
+        self.overtimeSeconds = max(0, overtimeSeconds)
+        showSessionComplete = true
+        isManualStop = false
+    }
+}
+#endif
+
 enum PostCompletionAction {
     case continueOvertime
     case continueFocusing
