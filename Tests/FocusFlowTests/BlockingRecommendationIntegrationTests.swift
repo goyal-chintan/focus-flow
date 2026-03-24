@@ -124,4 +124,36 @@ struct BlockingRecommendationIntegrationTests {
         #expect(engine.blockRecommendation(for: contextKey, projectId: project1, workMode: .deepWork) != nil)
         #expect(engine.blockRecommendation(for: contextKey, projectId: project2, workMode: .deepWork) != nil)
     }
+
+    @Test("app-context recommendation copy strips app prefix in display labels")
+    func appContextRecommendationCopyUsesFriendlyDisplayLabel() {
+        let engine = makeEngine()
+        let projectId = UUID()
+        let contextKey = "app:com.mitchellh.ghostty"
+
+        engine.recordAvoidant(
+            projectId: projectId,
+            workMode: .deepWork,
+            contextKey: contextKey,
+            displayName: contextKey
+        )
+        engine.recordAvoidant(
+            projectId: projectId,
+            workMode: .deepWork,
+            contextKey: contextKey,
+            displayName: contextKey
+        )
+
+        let rec = engine.blockRecommendation(
+            for: contextKey,
+            projectId: projectId,
+            workMode: .deepWork,
+            projectName: "Compiler Work"
+        )
+
+        #expect(rec != nil)
+        #expect(rec?.displayName == "com.mitchellh.ghostty")
+        #expect(rec?.copyText.contains("app:") == false)
+        #expect(rec?.copyText.contains("com.mitchellh.ghostty") == true)
+    }
 }

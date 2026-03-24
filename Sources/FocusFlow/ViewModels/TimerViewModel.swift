@@ -1742,8 +1742,16 @@ final class TimerViewModel {
             ?? currentCoachQuickPromptDecision?.context?.suggestedBlockTarget
             ?? currentIdleStarterDecision?.context?.suggestedBlockTarget else { return }
         guard let project = selectedProject else { return }
+        let isAppTarget = target.lowercased().hasPrefix("app:")
+        let normalizedAppTarget = isAppTarget
+            ? AppUsageEntry.recommendationDisplayLabel(for: target)
+            : nil
         if project.blockProfile == nil {
-            let profile = BlockProfile(name: "\(project.name) Guard", websites: [target])
+            let profile = BlockProfile(
+                name: "\(project.name) Guard",
+                websites: isAppTarget ? [] : [target],
+                apps: normalizedAppTarget.map { [$0] } ?? []
+            )
             modelContext?.insert(profile)
             project.blockProfile = profile
             saveContext()
@@ -1754,10 +1762,17 @@ final class TimerViewModel {
             return
         }
         guard let profile = project.blockProfile else { return }
-        var websites = profile.blockedWebsites
-        if websites.contains(target) { return }
-        websites.append(target)
-        profile.blockedWebsites = websites
+        if isAppTarget, let appTarget = normalizedAppTarget {
+            var apps = profile.blockedApps
+            if apps.contains(appTarget) { return }
+            apps.append(appTarget)
+            profile.blockedApps = apps
+        } else {
+            var websites = profile.blockedWebsites
+            if websites.contains(target) { return }
+            websites.append(target)
+            profile.blockedWebsites = websites
+        }
         saveContext()
         if state == .focusing || state == .paused {
             deactivateBlocking()

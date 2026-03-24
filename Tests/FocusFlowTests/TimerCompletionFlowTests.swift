@@ -458,6 +458,87 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertTrue(vm.isInReleaseWindow, "classifyBreakRecovery(.doneForNow) must activate the suppression window")
     }
 
+    func testBlockForProjectStoresAppContextTargetInBlockedApps() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let project = Project(name: "Core Architecture")
+        container.mainContext.insert(project)
+        vm.selectedProject = project
+
+        vm.currentCoachQuickPromptDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.blockForProject],
+            message: "Block app target",
+            context: FocusCoachContext(
+                idleSeconds: 0,
+                frontmostAppName: "Ghostty",
+                frontmostBundleIdentifier: "com.mitchellh.ghostty",
+                frontmostAppCategory: .neutral,
+                isInActiveSession: false,
+                todayFocusSeconds: 0,
+                dailyGoalSeconds: 3600,
+                todaySessionCount: 0,
+                selectedProjectName: project.name,
+                selectedWorkMode: .deepWork,
+                hourOfDay: 10,
+                topDistractingAppName: nil,
+                topDistractingAppMinutes: 0,
+                recentLowPriorityWorkCount: 0,
+                suggestedBlockTarget: "app:com.mitchellh.ghostty",
+                blockRecommendationReason: "ghostty drift",
+                inReleaseWindow: false
+            )
+        )
+
+        vm.handleCoachAction(.blockForProject)
+
+        XCTAssertTrue(project.blockProfile?.blockedApps.contains("com.mitchellh.ghostty") ?? false)
+        XCTAssertFalse(project.blockProfile?.blockedWebsites.contains("app:com.mitchellh.ghostty") ?? true)
+    }
+
+    func testBlockForProjectKeepsDomainBehaviorInBlockedWebsites() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let project = Project(name: "Research")
+        container.mainContext.insert(project)
+        vm.selectedProject = project
+
+        vm.currentCoachQuickPromptDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.blockForProject],
+            message: "Block domain target",
+            context: FocusCoachContext(
+                idleSeconds: 0,
+                frontmostAppName: "Safari",
+                frontmostBundleIdentifier: "com.apple.Safari",
+                frontmostAppCategory: .distracting,
+                isInActiveSession: false,
+                todayFocusSeconds: 0,
+                dailyGoalSeconds: 3600,
+                todaySessionCount: 0,
+                selectedProjectName: project.name,
+                selectedWorkMode: .deepWork,
+                hourOfDay: 10,
+                topDistractingAppName: nil,
+                topDistractingAppMinutes: 0,
+                recentLowPriorityWorkCount: 0,
+                suggestedBlockTarget: "youtube.com",
+                blockRecommendationReason: "youtube drift",
+                inReleaseWindow: false
+            )
+        )
+
+        vm.handleCoachAction(.blockForProject)
+
+        XCTAssertTrue(project.blockProfile?.blockedWebsites.contains("youtube.com") ?? false)
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,
