@@ -218,6 +218,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
     private func renderMenuBar(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
         let view = MenuBarPopoverView()
             .environment(fixture.vm)
+            .modelContainer(fixture.container)
             .environment(\.modelContext, fixture.context)
             .padding(16)
             .background(backgroundColor(for: appearance))
@@ -225,17 +226,25 @@ final class UIEvidenceCaptureTests: XCTestCase {
     }
 
     private func renderSessionComplete(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
-        let view = SessionCompleteWindowView()
+        let baseView = SessionCompleteWindowView()
             .environment(fixture.vm)
+            .modelContainer(fixture.container)
             .environment(\.modelContext, fixture.context)
             .padding(16)
             .background(backgroundColor(for: appearance))
+        let view: AnyView
+        if appearance == .dark {
+            view = AnyView(baseView.foregroundStyle(.white))
+        } else {
+            view = AnyView(baseView)
+        }
         return try render(view, appearance: appearance, size: CGSize(width: 560, height: 920))
     }
 
     private func renderCoachWindow(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
         let view = CoachInterventionWindowView()
             .environment(fixture.vm)
+            .modelContainer(fixture.container)
             .environment(\.modelContext, fixture.context)
             .padding(16)
             .background(backgroundColor(for: appearance))
@@ -243,11 +252,18 @@ final class UIEvidenceCaptureTests: XCTestCase {
     }
 
     private func renderSettings(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
-        let view = SettingsView()
+        let baseView = SettingsView(initialScrollTarget: .integrations)
+            .modelContainer(fixture.container)
             .environment(\.modelContext, fixture.context)
             .frame(width: 720, height: 520)
             .padding(16)
             .background(backgroundColor(for: appearance))
+        let view: AnyView
+        if appearance == .dark {
+            view = AnyView(baseView.foregroundStyle(.white))
+        } else {
+            view = AnyView(baseView)
+        }
         return try render(view, appearance: appearance, size: CGSize(width: 760, height: 560))
     }
 
@@ -256,15 +272,45 @@ final class UIEvidenceCaptureTests: XCTestCase {
         appearance: ReviewArtifactAppearance,
         size: CGSize
     ) throws -> CGImage {
-        let renderer = ImageRenderer(
-            content: view
-                .environment(\.colorScheme, appearance == .dark ? .dark : .light)
-        )
-        renderer.scale = 2
-        renderer.proposedSize = ProposedViewSize(size)
+        let rootView = view.environment(\.colorScheme, appearance == .dark ? .dark : .light)
+        let host = NSHostingView(rootView: rootView)
+        host.frame = NSRect(origin: .zero, size: size)
+        host.layoutSubtreeIfNeeded()
+        let targetAppearance = appearance == .dark ? NSAppearance(named: .darkAqua) : NSAppearance(named: .aqua)
 
-        guard let image = renderer.cgImage else {
-            throw CaptureError.renderFailed("ImageRenderer returned nil")
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.isOpaque = false
+        window.appearance = targetAppearance
+        host.appearance = targetAppearance
+        window.contentView = host
+        window.displayIfNeeded()
+
+        // Let onAppear/state-driven updates settle before bitmap capture.
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.08))
+        host.layoutSubtreeIfNeeded()
+        host.displayIfNeeded()
+
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            throw CaptureError.renderFailed("Unable to create bitmap representation")
+        }
+        if let targetAppearance {
+            targetAppearance.performAsCurrentDrawingAppearance {
+                host.cacheDisplay(in: host.bounds, to: rep)
+            }
+        } else {
+            host.cacheDisplay(in: host.bounds, to: rep)
+        }
+
+        guard let image = rep.cgImage else {
+            throw CaptureError.renderFailed("AppKit host snapshot returned nil image")
         }
         return image
     }
