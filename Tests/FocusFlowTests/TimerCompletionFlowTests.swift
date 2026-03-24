@@ -338,6 +338,73 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(focusSessions.first?.actualDuration ?? 0, 5 * 60)
     }
 
+    // MARK: - Phase 1 Spine Tests
+
+    func testDeferBreakAndStartNextBlockEndsInFocusingNotIdle() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        // Put VM in onBreak so deferBreakAndStartNextBlock guard passes
+        vm.state = .onBreak(.shortBreak)
+        vm.deferBreakAndStartNextBlock()
+
+        XCTAssertEqual(vm.state, .focusing, "deferBreakAndStartNextBlock must end in .focusing, not .idle")
+    }
+
+    func testCompletedBlockContextIsNonNilAfterFocusSessionCompletes() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        let active = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
+        active.startedAt = Date().addingTimeInterval(-6 * 60)
+        try container.mainContext.save()
+        vm.stopForReflection()
+
+        XCTAssertNotNil(vm.completedBlockContext, "completedBlockContext must be set after a focus session completes")
+    }
+
+    func testCompletedBlockContextSurvivesDeferBreakAndStartNextBlock() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        // Complete a focus session to populate completedBlockContext
+        vm.startFocus()
+        let active = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
+        active.startedAt = Date().addingTimeInterval(-6 * 60)
+        try container.mainContext.save()
+        vm.stopForReflection()
+        vm.continueAfterCompletion(action: .takeBreak)
+
+        let contextBefore = vm.completedBlockContext
+        XCTAssertNotNil(contextBefore)
+
+        // Now defer the break and start next block
+        vm.deferBreakAndStartNextBlock()
+
+        XCTAssertNotNil(vm.completedBlockContext, "completedBlockContext must survive deferBreakAndStartNextBlock()")
+        XCTAssertEqual(vm.completedBlockContext?.sessionId, contextBefore?.sessionId)
+    }
+
+    func testClassifyBreakRecoveryDoneForNowActivatesSuppressionWindow() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        XCTAssertFalse(vm.isInReleaseWindow, "No release window should be active before classifyBreakRecovery")
+
+        vm.classifyBreakRecovery(.doneForNow)
+
+        XCTAssertTrue(vm.isInReleaseWindow, "classifyBreakRecovery(.doneForNow) must activate the suppression window")
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,

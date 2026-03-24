@@ -319,6 +319,7 @@ struct ProjectsListView: View {
             withAnimation(FFMotion.section) {
                 selectedProject = project
                 timerVM.selectedProject = project
+                timerVM.noteProjectSelected()
             }
         }
         .accessibilityLabel("\(project.name), \(sessionCount) sessions")
@@ -356,6 +357,7 @@ struct ProjectsListView: View {
             saveWithFeedback(modelContext, errorBinding: $saveError)
             if let savedProject {
                 timerVM.selectedProject = savedProject
+                timerVM.noteProjectSelected()
                 selectedProject = savedProject
                 showToast(isNew ? "\(savedProject.name) created" : "\(savedProject.name) updated")
             }

@@ -40,10 +40,34 @@ struct FocusCoachReasonChipSheet: View {
                 .accessibilityLabel("Skip reason")
             }
 
-            // Reason chips grid
-            FlowLayout(spacing: LiquidDesignTokens.Spacing.small) {
-                ForEach(FocusCoachReason.allCases, id: \.rawValue) { reason in
-                    reasonChip(reason)
+            // Reason chips — grouped by type
+            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
+                // SECTION: Legitimate
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Legitimate")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+
+                    FlowLayout(spacing: LiquidDesignTokens.Spacing.small) {
+                        ForEach(FocusCoachReason.legitimateChips, id: \.rawValue) { reason in
+                            reasonChip(reason)
+                        }
+                    }
+                }
+
+                // SECTION: Avoidant
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Avoidant")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.orange.opacity(0.8))
+                        .padding(.horizontal, 4)
+
+                    FlowLayout(spacing: LiquidDesignTokens.Spacing.small) {
+                        ForEach(FocusCoachReason.avoidantChips, id: \.rawValue) { reason in
+                            reasonChip(reason)
+                        }
+                    }
                 }
             }
 

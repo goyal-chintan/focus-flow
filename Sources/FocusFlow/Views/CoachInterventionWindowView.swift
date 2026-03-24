@@ -159,33 +159,6 @@ struct CoachInterventionWindowView: View {
         }
     }
 
-    // MARK: - Quote Block
-
-    @ViewBuilder
-    private func quoteBlock(_ quote: FocusCoachQuote) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("\u{201C}\(quote.text)\u{201D}")
-                .font(.system(size: 12, weight: .regular, design: .serif))
-                .italic()
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.8))
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(3)
-            Text("— \(quote.attribution)")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.5))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .padding(11)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.09), lineWidth: 0.5)
-                )
-        )
-    }
-
     // MARK: - Primary Action Stack
 
     private var actionStack: some View {
