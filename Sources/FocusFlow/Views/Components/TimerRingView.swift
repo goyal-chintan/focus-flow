@@ -8,6 +8,7 @@ struct TimerRingView: View {
     let isOvertime: Bool
     var pauseDuration: TimeInterval = 0
     var pauseTimeString: String = "0:00"
+    var overrunSeconds: TimeInterval = 0
 
     private let ringSize: CGFloat = 170
     private let strokeWidth: CGFloat = 6
@@ -72,6 +73,7 @@ struct TimerRingView: View {
 
             // Tick marks (watch-face aesthetic)
             tickMarks
+                .accessibilityHidden(true)
 
             // Inner disc with shadow
             Circle()
@@ -129,6 +131,13 @@ struct TimerRingView: View {
                         tracking: 2.2
                     )
 
+                    if pauseDuration > 180 {
+                        Text("Consider resuming")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(pauseRingColor.opacity(0.8))
+                            .transition(.opacity)
+                    }
+
                     // Show frozen focus time smaller below
                     Text(timeString)
                         .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -148,6 +157,13 @@ struct TimerRingView: View {
                         color: labelColor.opacity(0.65),
                         tracking: 2.2
                     )
+
+                    if case .onBreak = state, overrunSeconds > 0 {
+                        Text("+\(Int(overrunSeconds / 60))m over")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                            .transition(.opacity)
+                    }
                 }
             }
             .padding(.horizontal, 8)

@@ -156,6 +156,17 @@ struct CoachInterventionWindowView: View {
                     .contentTransition(.opacity)
             }
             Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
     }
 

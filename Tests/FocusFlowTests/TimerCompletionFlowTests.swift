@@ -56,7 +56,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertNotNil(vm.lastCompletedSession)
         XCTAssertEqual(vm.lastCompletedSession?.type, .focus)
 
-        vm.continueAfterCompletion(action: .takeBreak)
+        vm.continueAfterCompletion(action: .takeBreak(duration: nil))
 
         XCTAssertEqual(vm.state, .onBreak(.shortBreak))
         XCTAssertNotNil(vm.lastCompletedSession)
@@ -380,7 +380,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         active.startedAt = Date().addingTimeInterval(-6 * 60)
         try container.mainContext.save()
         vm.stopForReflection()
-        vm.continueAfterCompletion(action: .takeBreak)
+        vm.continueAfterCompletion(action: .takeBreak(duration: nil))
 
         let contextBefore = vm.completedBlockContext
         XCTAssertNotNil(contextBefore)

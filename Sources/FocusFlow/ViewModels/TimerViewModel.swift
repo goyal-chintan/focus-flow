@@ -73,7 +73,8 @@ extension TimerViewModel {
 enum PostCompletionAction {
     case continueOvertime
     case continueFocusing
-    case takeBreak
+    /// `duration: nil` → use the configured short/long break duration; non-nil → override with that many seconds (e.g. 300 for a 5 m reset).
+    case takeBreak(duration: TimeInterval?)
     case endSession
 }
 
@@ -843,14 +844,15 @@ final class TimerViewModel {
         CrashRecoveryState.clear()
     }
 
-    func startBreak() {
+    func startBreak(overrideDuration: TimeInterval? = nil) {
         guard let settings, !isOvertime else { return }
         // Guard against zero/negative sessionsBeforeLongBreak to prevent division-by-zero
         let sessionsPerCycle = max(1, settings.sessionsBeforeLongBreak)
-        let isLongBreak = completedFocusSessions > 0
+        let isLongBreak = overrideDuration == nil
+            && completedFocusSessions > 0
             && (completedFocusSessions % sessionsPerCycle) == 0
         let type: SessionType = isLongBreak ? .longBreak : .shortBreak
-        let duration = isLongBreak ? settings.longBreakDuration : settings.shortBreakDuration
+        let duration = overrideDuration ?? (isLongBreak ? settings.longBreakDuration : settings.shortBreakDuration)
 
         totalSeconds = duration
         remainingSeconds = duration
@@ -1515,7 +1517,7 @@ final class TimerViewModel {
         showPauseReasonChips = false
         pendingReasonKind = .drift
 
-        if action == .continueOvertime {
+        if case .continueOvertime = action {
             // Keep overtime state and timer running.
             return
         }
@@ -1543,8 +1545,8 @@ final class TimerViewModel {
             break
         case .continueFocusing:
             startFocus()
-        case .takeBreak:
-            startBreak()
+        case .takeBreak(let duration):
+            startBreak(overrideDuration: duration)
         case .endSession:
             deactivateBlocking()
             state = .idle
@@ -1598,10 +1600,12 @@ final class TimerViewModel {
             abandonSession()
             selectedMinutes = 5
             startFocus()
+            closePopover()
         case .snooze10m:
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            closePopover()
         case .startFocusNow:
             coachEngine.recordInterventionOutcome(.improved)
             currentCoachQuickPromptDecision = nil
@@ -1610,24 +1614,29 @@ final class TimerViewModel {
                 selectedMinutes = recommended
             }
             startFocus()
+            closePopover()
         case .blockForProject:
             coachEngine.recordInterventionOutcome(.improved)
             applyProjectBlockRecommendation()
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            closePopover()
         case .skipCheck:
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            closePopover()
         case .markOffDuty:
             // Placeholder: wire to enterRelease(reason: .offDuty) when p1-timer-spine lands.
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            closePopover()
         case .isPlanned:
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: nil)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            closePopover()
         }
         // NOTE: Do NOT call dismissCoachInterventionWindow() here.
         // The view's dismiss() is the single owner of window lifecycle.
