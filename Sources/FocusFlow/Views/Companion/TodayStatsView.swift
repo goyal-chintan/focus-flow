@@ -4,6 +4,7 @@ import SwiftData
 struct TodayStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
+    @Query(sort: \CoachInterruption.detectedAt) private var allCoachInterruptions: [CoachInterruption]
 
     private var dailyGoal: TimeInterval {
         max(60, allSettings.first?.dailyFocusGoal ?? 7200)
@@ -12,11 +13,10 @@ struct TodayStatsView: View {
     /// Sessions that overlap with today (includes cross-midnight sessions from yesterday)
     private var todaySessions: [FocusSession] {
         let start = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return [] }
         return allSessions.filter { session in
             guard session.type == .focus && session.actualDuration >= 60 else { return false }
             let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
-            // Include if session overlaps today at all
             return sessionEnd > start && session.startedAt < tomorrow
         }
     }
@@ -24,7 +24,7 @@ struct TodayStatsView: View {
     /// Focus time attributed to today only (handles cross-midnight correctly)
     private func todayPortion(of session: FocusSession) -> TimeInterval {
         let start = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return 0 }
         let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
         let overlapStart = max(session.startedAt, start)
         let overlapEnd = min(sessionEnd, tomorrow)
@@ -34,6 +34,7 @@ struct TodayStatsView: View {
     @State private var showManualEntry = false
     @State private var dueReminders: [RemindersService.ReminderItem] = []
     @State private var showLoggedToast = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -44,6 +45,9 @@ struct TodayStatsView: View {
                 dueRemindersStrip
                 goalProgressBar
                 summarySection
+                nextBestBlockRow
+                guardianLearnedRow
+                streakRow
 
                 if !projectBreakdown.isEmpty {
                     projectsSection
@@ -58,24 +62,21 @@ struct TodayStatsView: View {
             }
             .padding(24)
         }
-        .background(.ultraThinMaterial)
+        .background(.clear)
         .sheet(isPresented: $showManualEntry) {
-            ManualSessionView()
-        }
-        .onChange(of: showManualEntry) { wasShowing, isShowing in
-            // Sheet was dismissed — assume session was logged (no way to distinguish cancel)
-            if wasShowing && !isShowing {
-                withAnimation(FFMotion.section) { showLoggedToast = true }
+            ManualSessionView(onSave: {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showLoggedToast = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    withAnimation(FFMotion.section) { showLoggedToast = false }
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showLoggedToast = false }
                 }
-            }
+            })
         }
         .overlay(alignment: .top) {
             if showLoggedToast {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     Text("Session logged")
                         .font(.system(size: 13, weight: .semibold))
                 }
@@ -84,7 +85,7 @@ struct TodayStatsView: View {
                 .background(.ultraThinMaterial, in: Capsule())
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
                 .padding(.top, 12)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
         .task { await loadDueReminders() }
@@ -101,12 +102,7 @@ struct TodayStatsView: View {
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
             }
 
-            // Goal subtitle directly under title
-            let goalMinutes = dailyGoal / 60
-            let actualMinutes = totalFocusTime / 60
-            let percentage = min(100, Int(actualMinutes / goalMinutes * 100))
-
-            Text("You've reached **\(percentage)%** of your daily deep work goal.")
+            Text(heroMessage)
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
 
@@ -153,29 +149,33 @@ struct TodayStatsView: View {
     }
 
     private var summarySection: some View {
-        HStack(spacing: 12) {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             StatCard(
-                title: "Focus Time",
-                value: totalFocusTime.formattedFocusTime,
-                icon: "timer",
-                color: .blue,
-                subtitle: completedCount > 0 ? "Avg \(averageSessionLength)m/session" : nil
+                title: "Earned Blocks",
+                value: "\(earnedBlocksToday)",
+                icon: "checkmark.seal.fill",
+                color: .mint
             )
 
             StatCard(
-                title: "Sessions",
-                value: "\(completedCount)",
-                icon: "checkmark.circle.fill",
-                color: .green,
-                subtitle: completedCount > 0 ? "\(completedCount) completed" : nil
+                title: "Important Work",
+                value: importantWorkSeconds.formattedFocusTime,
+                icon: "bolt.fill",
+                color: .blue
             )
 
             StatCard(
-                title: "Streak",
-                value: "\(currentStreak)",
-                icon: "flame.fill",
-                color: .orange,
-                subtitle: currentStreak > 0 ? "Keep it going!" : nil
+                title: "Recovered",
+                value: "\(recoveredCount)",
+                icon: "arrow.clockwise",
+                color: .orange
+            )
+
+            StatCard(
+                title: "Goal Runway",
+                value: goalRunwayText,
+                icon: "chart.line.uptrend.xyaxis",
+                color: .gray
             )
         }
         .accessibilityElement(children: .combine)
@@ -184,6 +184,156 @@ struct TodayStatsView: View {
     private var averageSessionLength: Int {
         guard completedCount > 0 else { return 0 }
         return Int(totalFocusTime / Double(completedCount) / 60)
+    }
+
+    // MARK: - Behavioral Metrics
+
+    private var earnedBlocksToday: Int {
+        completedCount
+    }
+
+    private var importantWorkSeconds: TimeInterval {
+        todaySessions
+            .filter { ($0.project?.workMode ?? .deepWork) != .admin }
+            .reduce(0) { $0 + todayPortion(of: $1) }
+    }
+
+    private var recoveredCount: Int {
+        let sessionIds = Set(todaySessions.map { $0.id })
+        return allCoachInterruptions.filter { sessionIds.contains($0.sessionId) }.count
+    }
+
+    private var goalRunwayText: String {
+        let remaining = max(0, dailyGoal - totalFocusTime)
+        let blocks = Int(remaining / (25 * 60))
+        return blocks > 0 ? "\(blocks) blocks" : "Goal met"
+    }
+
+    private var heroMessage: String {
+        let count = earnedBlocksToday
+        switch count {
+        case 0:
+            return "Start your first block"
+        case 1:
+            return "You protected 1 important block today"
+        default:
+            return "You protected \(count) important blocks today"
+        }
+    }
+
+    private var suggestedNextProject: Project? {
+        todaySessions.compactMap { $0.project }.first
+    }
+
+    private var guardianLearnedText: String? {
+        let sessionIds = Set(todaySessions.map { $0.id })
+        let todayInterruptions = allCoachInterruptions.filter { sessionIds.contains($0.sessionId) }
+        guard !todayInterruptions.isEmpty else { return nil }
+
+        // Build specific behavioral insight from classified interruptions
+        let classified = todayInterruptions.filter { $0.reason != nil }
+        guard !classified.isEmpty else {
+            let count = todayInterruptions.count
+            return "Guardian tracked \(count) context event\(count == 1 ? "" : "s") today."
+        }
+
+        let avoidant = classified.filter { !$0.isLegitimate }
+        let legitimate = classified.filter { $0.isLegitimate }
+
+        // Find primary project name from sessions
+        let projectName = todaySessions.compactMap { $0.project?.name }.first
+
+        var parts: [String] = []
+
+        // Most common avoidant reason
+        if let topAvoidant = mostCommonReason(in: avoidant) {
+            if let projectName {
+                parts.append("\(topAvoidant) was off-plan for \(projectName)")
+            } else {
+                parts.append("\(topAvoidant) flagged as avoidant")
+            }
+        }
+
+        // Most common legitimate reason
+        if let topLegit = mostCommonReason(in: legitimate) {
+            parts.append("\(topLegit) confirmed as valid")
+        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: "; ") + "."
+    }
+
+    private func mostCommonReason(in interruptions: [CoachInterruption]) -> String? {
+        let reasons = interruptions.compactMap { $0.reason }
+        guard !reasons.isEmpty else { return nil }
+        let counts = Dictionary(grouping: reasons, by: \.rawValue)
+        return counts.max(by: { $0.value.count < $1.value.count })?.value.first?.displayName
+    }
+
+    // MARK: - New Rows
+
+    @ViewBuilder
+    private var nextBestBlockRow: some View {
+        if let nextProject = suggestedNextProject {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Next best block")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("\(nextProject.name) · 25m")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                Spacer()
+                if earnedBlocksToday > 0 {
+                    Text("✦ \(Int(totalFocusTime / 60))m")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.mint)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.05)))
+        }
+    }
+
+    @ViewBuilder
+    private var guardianLearnedRow: some View {
+        if let text = guardianLearnedText {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "brain")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(text)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.04)))
+        }
+    }
+
+    private var streakRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "flame.fill")
+                .foregroundStyle(.orange)
+                .font(.system(size: 14))
+                .accessibilityHidden(true)
+            Text("Streak")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("\(currentStreak) day\(currentStreak == 1 ? "" : "s")")
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.04)))
     }
 
     private var projectsSection: some View {
@@ -242,6 +392,7 @@ struct TodayStatsView: View {
                                 Image(systemName: entry.key.icon)
                                     .font(.caption)
                                     .foregroundStyle(entry.key.color)
+                                    .accessibilityHidden(true)
 
                                 Text("\(entry.value)")
                                     .font(.subheadline.weight(.semibold))
@@ -272,6 +423,7 @@ struct TodayStatsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.green)
                                     .padding(.top, 2)
+                                    .accessibilityHidden(true)
 
                                 Text(item)
                                     .font(.subheadline)
@@ -365,6 +517,7 @@ struct TodayStatsView: View {
                             Image(systemName: "circle")
                                 .font(.system(size: 16))
                                 .foregroundStyle(.secondary)
+                                .accessibilityLabel("Complete reminder")
                         }
                         .buttonStyle(.plain)
 
@@ -387,7 +540,7 @@ struct TodayStatsView: View {
                 }
 
                 if dueReminders.count > 3 {
-                    Text("\(dueReminders.count - 3) more in Calendar")
+                    Text("\(dueReminders.count - 3) more in Reminders")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.blue)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -429,7 +582,7 @@ struct TodayStatsView: View {
                 print("[TodayStatsView] Failed to complete reminder: \(reminder.title)")
                 return
             }
-            withAnimation {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : .default) {
                 dueReminders.removeAll { $0.id == reminder.id }
             }
         }

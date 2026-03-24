@@ -35,6 +35,7 @@ struct ReminderSelectionSheet: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 24))
                         .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
                     Text(loadError)
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
@@ -45,6 +46,7 @@ struct ReminderSelectionSheet: View {
                     Image(systemName: "checklist")
                         .font(.system(size: 28, weight: .light))
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                     Text("No incomplete reminders")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -61,6 +63,7 @@ struct ReminderSelectionSheet: View {
                                     Image(systemName: selectedIds.contains(reminder.id) ? "checkmark.circle.fill" : "circle")
                                         .font(.system(size: 16))
                                         .foregroundStyle(selectedIds.contains(reminder.id) ? LiquidDesignTokens.Spectral.primaryContainer : .secondary)
+                                        .accessibilityHidden(true)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(reminder.title)
                                             .font(.system(size: 13, weight: .medium))

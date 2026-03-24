@@ -4,17 +4,18 @@ import SwiftData
 /// Lightweight save wrapper that surfaces errors as user-visible feedback
 struct SaveErrorModifier: ViewModifier {
     @Binding var saveError: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .top) {
                 if let error = saveError {
                     SaveErrorBanner(message: error) {
-                        withAnimation(.spring(response: 0.3)) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3)) {
                             saveError = nil
                         }
                     }
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                     .zIndex(100)
                 }
             }
@@ -29,6 +30,7 @@ struct SaveErrorBanner: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
             Text(message)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.primary)
@@ -36,6 +38,7 @@ struct SaveErrorBanner: View {
             Button(action: dismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Dismiss")
             }
             .buttonStyle(.plain)
         }

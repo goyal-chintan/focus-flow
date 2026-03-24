@@ -112,6 +112,83 @@ final class StoreMigratorTests: XCTestCase {
         XCTAssertEqual(columns.filter { $0 == "ZANTIPROCRASTINATIONTHRESHOLDMINUTES" }.count, 1)
         XCTAssertEqual(columns.filter { $0 == "ZREMINDERSINTEGRATIONENABLED" }.count, 1)
         XCTAssertEqual(columns.filter { $0 == "ZSELECTEDREMINDERLISTID" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHREALTIMEENABLED" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHPROMPTBUDGETPERSESSION" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHREASONPROMPTSENABLED" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHDEFAULTSNOOZEMINUTES" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHCOLLECTRAWDOMAINS" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHIDLESTARTERENABLED" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHAUTOOPENPOPOVERONSTRONGPROMPT" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHBRINGAPPTOFRONTONSTRONGPROMPT" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHALLOWSKIPACTION" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHMAXSTRONGPROMPTSPERSESSION" }.count, 1)
+        XCTAssertEqual(columns.filter { $0 == "ZCOACHINTERVENTIONMODE" }.count, 1)
+    }
+
+    func testMigrateAddsFocusCoachSettingsColumnsWithDefaults() throws {
+        let url = try makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let db = try openDB(url)
+        defer { sqlite3_close(db) }
+
+        try exec(db, """
+        CREATE TABLE ZAPPSETTINGS (
+            Z_PK INTEGER PRIMARY KEY,
+            Z_ENT INTEGER,
+            Z_OPT INTEGER,
+            ZAUTOSTARTBREAK INTEGER,
+            ZAUTOSTARTNEXTSESSION INTEGER,
+            ZLAUNCHATLOGIN INTEGER,
+            ZSESSIONSBEFORELONGBREAK INTEGER,
+            ZFOCUSDURATION FLOAT,
+            ZLONGBREAKDURATION FLOAT,
+            ZSHORTBREAKDURATION FLOAT,
+            ZCOMPLETIONSOUND VARCHAR
+        );
+        """)
+
+        try exec(db, """
+        INSERT INTO ZAPPSETTINGS (
+            Z_PK, Z_ENT, Z_OPT, ZAUTOSTARTBREAK, ZAUTOSTARTNEXTSESSION, ZLAUNCHATLOGIN,
+            ZSESSIONSBEFORELONGBREAK, ZFOCUSDURATION, ZLONGBREAKDURATION, ZSHORTBREAKDURATION, ZCOMPLETIONSOUND
+        ) VALUES (1, 1, 1, 1, 0, 1, 4, 1500.0, 900.0, 300.0, 'Glass');
+        """)
+
+        try StoreMigrator.migrateStoreIfNeeded(at: url)
+
+        let columns = try tableColumns(db, table: "ZAPPSETTINGS")
+        XCTAssertTrue(columns.contains("ZCOACHREALTIMEENABLED"))
+        XCTAssertTrue(columns.contains("ZCOACHPROMPTBUDGETPERSESSION"))
+        XCTAssertTrue(columns.contains("ZCOACHREASONPROMPTSENABLED"))
+        XCTAssertTrue(columns.contains("ZCOACHDEFAULTSNOOZEMINUTES"))
+        XCTAssertTrue(columns.contains("ZCOACHCOLLECTRAWDOMAINS"))
+        XCTAssertTrue(columns.contains("ZCOACHIDLESTARTERENABLED"))
+        XCTAssertTrue(columns.contains("ZCOACHAUTOOPENPOPOVERONSTRONGPROMPT"))
+        XCTAssertTrue(columns.contains("ZCOACHBRINGAPPTOFRONTONSTRONGPROMPT"))
+        XCTAssertTrue(columns.contains("ZCOACHALLOWSKIPACTION"))
+        XCTAssertTrue(columns.contains("ZCOACHMAXSTRONGPROMPTSPERSESSION"))
+        XCTAssertTrue(columns.contains("ZCOACHINTERVENTIONMODE"))
+
+        let coachValues = try querySingleCoachColumns(
+            db,
+            sql: "SELECT ZCOACHREALTIMEENABLED, ZCOACHPROMPTBUDGETPERSESSION, ZCOACHREASONPROMPTSENABLED, ZCOACHDEFAULTSNOOZEMINUTES, ZCOACHCOLLECTRAWDOMAINS, ZCOACHIDLESTARTERENABLED, ZCOACHAUTOOPENPOPOVERONSTRONGPROMPT, ZCOACHBRINGAPPTOFRONTONSTRONGPROMPT, ZCOACHALLOWSKIPACTION, ZCOACHMAXSTRONGPROMPTSPERSESSION, ZCOACHINTERVENTIONMODE FROM ZAPPSETTINGS WHERE Z_PK = 1;"
+        )
+        XCTAssertEqual(coachValues.realtimeEnabled, 1)
+        XCTAssertEqual(coachValues.promptBudget, 4)
+        XCTAssertEqual(coachValues.reasonPrompts, 1)
+        XCTAssertEqual(coachValues.snoozeMinutes, 10)
+        XCTAssertEqual(coachValues.collectRawDomains, 0)
+        XCTAssertEqual(coachValues.idleStarterEnabled, 1)
+        XCTAssertEqual(coachValues.autoOpenPopoverOnStrongPrompt, 1)
+        XCTAssertEqual(coachValues.bringAppToFrontOnStrongPrompt, 1)
+        XCTAssertEqual(coachValues.allowSkipAction, 1)
+        XCTAssertEqual(coachValues.maxStrongPromptsPerSession, 2)
+        XCTAssertEqual(coachValues.interventionMode, "balanced")
+
+        // Verify existing data preserved
+        let original = try querySingleText(db, sql: "SELECT ZCOMPLETIONSOUND FROM ZAPPSETTINGS WHERE Z_PK = 1;")
+        XCTAssertEqual(original, "Glass")
     }
 
     private func makeTempStoreURL() throws -> URL {
@@ -211,6 +288,45 @@ final class StoreMigratorTests: XCTestCase {
         return (
             Int(sqlite3_column_int(statement, 0)),
             String(cString: listId)
+        )
+    }
+
+    private func querySingleCoachColumns(_ db: OpaquePointer, sql: String) throws -> (
+        realtimeEnabled: Int,
+        promptBudget: Int,
+        reasonPrompts: Int,
+        snoozeMinutes: Int,
+        collectRawDomains: Int,
+        idleStarterEnabled: Int,
+        autoOpenPopoverOnStrongPrompt: Int,
+        bringAppToFrontOnStrongPrompt: Int,
+        allowSkipAction: Int,
+        maxStrongPromptsPerSession: Int,
+        interventionMode: String
+    ) {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw NSError(domain: "StoreMigratorTests", code: 14)
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw NSError(domain: "StoreMigratorTests", code: 15)
+        }
+        guard let modeText = sqlite3_column_text(statement, 10) else {
+            throw NSError(domain: "StoreMigratorTests", code: 16)
+        }
+        return (
+            Int(sqlite3_column_int(statement, 0)),
+            Int(sqlite3_column_int(statement, 1)),
+            Int(sqlite3_column_int(statement, 2)),
+            Int(sqlite3_column_int(statement, 3)),
+            Int(sqlite3_column_int(statement, 4)),
+            Int(sqlite3_column_int(statement, 5)),
+            Int(sqlite3_column_int(statement, 6)),
+            Int(sqlite3_column_int(statement, 7)),
+            Int(sqlite3_column_int(statement, 8)),
+            Int(sqlite3_column_int(statement, 9)),
+            String(cString: modeText)
         )
     }
 }

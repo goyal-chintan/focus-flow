@@ -10,6 +10,9 @@ final class Project {
     var archived: Bool
     var createdAt: Date
     var blockProfile: BlockProfile?
+    var workMode: WorkMode = WorkMode.deepWork
+    var guardianSensitivity: GuardianSensitivity = GuardianSensitivity.normal
+    var difficultyBias: DifficultyBias = DifficultyBias.moderate
 
     @Relationship(deleteRule: .nullify, inverse: \FocusSession.project)
     var sessions: [FocusSession]

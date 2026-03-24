@@ -9,12 +9,14 @@ struct GradientCTAButton: View {
 
     @State private var isHovering = false
     @State private var isPressed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .bold))
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
             }
@@ -39,8 +41,8 @@ struct GradientCTAButton: View {
             .shadow(color: .black.opacity(0.2), radius: isHovering ? 8 : 4, y: isHovering ? 4 : 2)
             .scaleEffect(isPressed ? 0.97 : (isHovering ? 1.02 : 1.0))
             .brightness(isPressed ? -0.05 : (isHovering ? 0.05 : 0))
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovering)
-            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: isHovering)
+            .animation(reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
         }
         .buttonStyle(.plain)
         .onHover { hovering in

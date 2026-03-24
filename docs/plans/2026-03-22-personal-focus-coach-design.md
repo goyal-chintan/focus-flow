@@ -163,6 +163,54 @@ This powers personalized weekly adaptation.
 
 ---
 
+## 6.1 Premium UI and Motion Quality Bar (Non-Negotiable)
+
+The coach UI must feel **premium, alive, and detailed**, while staying calm.
+
+### Visual Craft Requirements
+
+- Use layered depth (glass + subtle highlights + controlled shadows), not flat cards.
+- Preserve strict spacing rhythm from `LiquidDesignTokens` (no ad-hoc paddings).
+- Typography hierarchy must be editorial and intentional:
+  - state/status first,
+  - action second,
+  - explanation third.
+- Color semantics are strict:
+  - green = stable,
+  - amber = drift risk,
+  - red = high risk,
+  - no decorative color use that conflicts with status meaning.
+
+### Motion and Interaction Requirements
+
+- Every important transition needs purposeful motion:
+  - risk state transitions (green/amber/red) with smooth tint interpolation,
+  - prompt sheet enter/exit with spring + fade,
+  - selection feedback for reason chips (press/selected states),
+  - CTA affordance pulse only for time-sensitive moments.
+- Micro-interactions required:
+  - hover and pressed states for all tappable controls,
+  - immediate visual acknowledgement on tap (no dead-feeling controls),
+  - lightweight progress/attention cues for countdown and re-entry.
+- Motion must remain non-jarring and respect reduced-motion mode.
+
+### Premium Anti-Patterns (Must Fail Review)
+
+- Static, lifeless cards with no interaction feedback.
+- Generic dashboard aesthetic (boxy metric dump without hierarchy).
+- Over-animated surfaces that distract from task execution.
+- Inconsistent button treatments across coach flows.
+
+### Acceptance Criteria (Visual)
+
+1. User can identify current risk state in <1 second.
+2. Primary action is always visually dominant.
+3. All interactive elements show hover/active feedback.
+4. Critical transitions are animated smoothly with no abrupt jumps.
+5. Screenshots/video evidence confirms premium rendering quality in all critical flows.
+
+---
+
 ## 7) Functional Architecture (On-Device)
 
 ### 7.1 Core Entities
@@ -366,4 +414,3 @@ No long forms. Max 1-3 taps plus optional snooze.
 ## 14) Final Product Statement
 
 The Focus Coach should feel like a **calm, intelligent operator**: it understands your failure modes, intervenes at high-leverage moments, distinguishes genuine interruptions from avoidance, and helps you restart quickly with minimal friction.
-

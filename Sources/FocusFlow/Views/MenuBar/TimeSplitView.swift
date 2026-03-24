@@ -107,10 +107,11 @@ struct TimeSplitView: View {
                     Image(systemName: "minus")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Decrease minutes")
 
                 Text("\(splits[index].minutes)m")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -125,10 +126,11 @@ struct TimeSplitView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Increase minutes")
             }
 
             if splits.count > 1 {
@@ -138,10 +140,11 @@ struct TimeSplitView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Remove split")
             }
         }
         .padding(.horizontal, 12)

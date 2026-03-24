@@ -7,3 +7,4 @@ DerivedData/
 # Stitch design mockups (reference only)
 stitch_popover_break_light 2/
 .swiftpm/
+Artifacts/review/

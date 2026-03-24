@@ -18,6 +18,7 @@ struct SessionEditView: View {
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
     @State private var showDeleteConfirm = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
@@ -103,7 +104,7 @@ struct SessionEditView: View {
 
             if !isValid {
                 validationWarning
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
     }
@@ -146,6 +147,7 @@ struct SessionEditView: View {
         HStack(spacing: 8) {
             Image(systemName: "clock")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("Actual")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -166,6 +168,7 @@ struct SessionEditView: View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption)
+                .accessibilityHidden(true)
 
             if editedEndedAt <= editedStartedAt {
                 Text("End time must be after start time")
@@ -200,6 +203,7 @@ struct SessionEditView: View {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -251,6 +255,7 @@ struct SessionEditView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.green)
                                 .padding(.top, 2)
+                                .accessibilityHidden(true)
                             Text(item.trimmingCharacters(in: .whitespaces))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.secondary)
@@ -265,7 +270,7 @@ struct SessionEditView: View {
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3, dampingFraction: 0.8)) {
                     showSplits.toggle()
                     if showSplits && splits.isEmpty {
                         splits = [TimeSplitView.SplitEntry(
@@ -278,13 +283,17 @@ struct SessionEditView: View {
                 HStack {
                     Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
                         .font(.caption)
+                        .accessibilityHidden(true)
                     Text("Split time across projects")
                         .font(.caption)
                     Spacer()
                     Image(systemName: showSplits ? "chevron.up" : "chevron.down")
                         .font(.caption2)
+                        .accessibilityHidden(true)
                 }
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -293,7 +302,7 @@ struct SessionEditView: View {
                     totalDuration: calculatedActualDuration,
                     splits: $splits
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity)
             }
         }
     }

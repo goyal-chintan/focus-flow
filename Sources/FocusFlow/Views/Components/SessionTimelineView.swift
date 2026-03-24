@@ -46,6 +46,7 @@ struct SessionTimelineView: View {
             Image(systemName: "timer")
                 .font(.title2)
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text("No sessions yet today")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -67,20 +68,21 @@ struct SessionTimelineView: View {
                     Image(systemName: session.project?.icon ?? "timer")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(sessionColor(session))
+                        .accessibilityHidden(true)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(session.label)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                        .lineLimit(1)
+                        .lineLimit(2)
 
                     // Achievement or generated description
                     if let achievement = session.achievement, !achievement.isEmpty {
                         Text(achievement)
                             .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(3)
                     } else {
                         Text("\(Int(session.actualDuration / 60))m \(session.completed ? "completed" : "incomplete") session")
                             .font(.system(size: 12, weight: .regular))
@@ -109,6 +111,7 @@ struct SessionTimelineView: View {
                         Image(systemName: mood.icon)
                             .font(.system(size: 11))
                             .foregroundStyle(mood.color)
+                            .accessibilityHidden(true)
                     }
                 }
             }

@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 // MARK: - Obsidian Lens Design System
 // Based on the "Liquid Refraction" DESIGN.md specifications.
@@ -9,13 +12,16 @@ enum LiquidDesignTokens {
 
     // MARK: - Surface Palette (Obsidian Layering)
     enum Surface {
-        static let background = Color(hex: 0x131315)
-        static let containerLow = Color(hex: 0x1C1C1E)
-        static let container = Color(hex: 0x252526)
-        static let containerHigh = Color(hex: 0x2C2C2E)
-        static let containerHighest = Color(hex: 0x353534)
-        static let onSurface = Color(hex: 0xE5E2E1)
-        static let onSurfaceMuted = Color(hex: 0xE5E2E1).opacity(0.55)
+        static let background = Color.adaptive(light: 0xF4F4F6, dark: 0x131315)
+        static let containerLow = Color.adaptive(light: 0xEBEBEF, dark: 0x1C1C1E)
+        static let container = Color.adaptive(light: 0xE4E4E8, dark: 0x252526)
+        static let containerHigh = Color.adaptive(light: 0xDDDDE2, dark: 0x2C2C2E)
+        static let containerHighest = Color.adaptive(light: 0xD6D6DC, dark: 0x353534)
+        static let onSurface = Color.primary
+        static let onSurfaceMuted = Color.secondary
+        static let onProminent = Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF)
+        static let glassStroke = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.08, darkAlpha: 0.08)
+        static let materialOverlay = Color.adaptive(light: 0xFFFFFF, dark: 0x000000, lightAlpha: 0.08, darkAlpha: 0.20)
     }
 
     // MARK: - Spectral Colors (Light Sources)
@@ -95,6 +101,58 @@ enum LiquidDesignTokens {
             startPoint: .leading,
             endPoint: .trailing
         )
+        static let pause = LinearGradient(
+            colors: [Color(hex: 0xCC8800), Color(hex: 0xE6A820), Color(hex: 0xF0C040)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        static let stop = LinearGradient(
+            colors: [Color(hex: 0xC03030), Color(hex: 0xD94848), Color(hex: 0xEF6B6B)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+
+        /// Interpolated blue→green gradient based on Pomodoro cycle progress.
+        /// progress 0.0 = pure blue (just started), 1.0 = pure green (earned it).
+        static func cycleCompletion(progress: Double) -> LinearGradient {
+            let p = min(max(progress, 0), 1)
+
+            // Blue endpoints (focus gradient)
+            let blueStart = (r: 0x5B, g: 0x9E, b: 0xF8)
+            let blueMid   = (r: 0x6A, g: 0xAB, b: 0xFF)
+            let blueEnd   = (r: 0xA5, g: 0xC4, b: 0xFF)
+
+            // Green endpoints (breakStart gradient)
+            let greenStart = (r: 0x34, g: 0xC7, b: 0x7B)
+            let greenMid   = (r: 0x5E, g: 0xD4, b: 0xA0)
+            let greenEnd   = (r: 0x8C, g: 0xE6, b: 0xC0)
+
+            func lerp(_ a: Int, _ b: Int) -> Double {
+                Double(a) + (Double(b) - Double(a)) * p
+            }
+
+            let c1 = Color(
+                red: lerp(blueStart.r, greenStart.r) / 255,
+                green: lerp(blueStart.g, greenStart.g) / 255,
+                blue: lerp(blueStart.b, greenStart.b) / 255
+            )
+            let c2 = Color(
+                red: lerp(blueMid.r, greenMid.r) / 255,
+                green: lerp(blueMid.g, greenMid.g) / 255,
+                blue: lerp(blueMid.b, greenMid.b) / 255
+            )
+            let c3 = Color(
+                red: lerp(blueEnd.r, greenEnd.r) / 255,
+                green: lerp(blueEnd.g, greenEnd.g) / 255,
+                blue: lerp(blueEnd.b, greenEnd.b) / 255
+            )
+
+            return LinearGradient(
+                colors: [c1, c2, c3],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
     }
 
     // MARK: - Padding
@@ -124,7 +182,31 @@ extension Color {
             opacity: alpha
         )
     }
+
+    static func adaptive(light: UInt, dark: UInt, lightAlpha: Double = 1.0, darkAlpha: Double = 1.0) -> Color {
+#if os(macOS)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(hex: isDark ? dark : light, alpha: isDark ? darkAlpha : lightAlpha)
+        })
+#else
+        Color(hex: dark, alpha: darkAlpha)
+#endif
+    }
 }
+
+#if os(macOS)
+private extension NSColor {
+    convenience init(hex: UInt, alpha: Double = 1.0) {
+        self.init(
+            srgbRed: CGFloat(Double((hex >> 16) & 0xFF) / 255),
+            green: CGFloat(Double((hex >> 8) & 0xFF) / 255),
+            blue: CGFloat(Double(hex & 0xFF) / 255),
+            alpha: CGFloat(alpha)
+        )
+    }
+}
+#endif
 
 // MARK: - Gradient Helpers
 
@@ -156,8 +238,8 @@ enum ObsidianGradients {
     static func glassPanel() -> LinearGradient {
         LinearGradient(
             colors: [
-                Color.white.opacity(0.05),
-                Color.white.opacity(0.02)
+                Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.45, darkAlpha: 0.05),
+                Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.20, darkAlpha: 0.02)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -177,7 +259,7 @@ struct ObsidianGlassContainer: ViewModifier {
                     .fill(ObsidianGradients.glassPanel())
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                            .stroke(LiquidDesignTokens.Surface.glassStroke, lineWidth: 0.5)
                     )
             )
     }
@@ -211,8 +293,22 @@ enum FFMotion {
     /// Control interactions — snappy spring for buttons, toggles
     static let control: Animation = .spring(response: 0.26, dampingFraction: 0.82)
 
-    /// Breathing ambient animation — slow, meditative loop
-    static let breathing: Animation = .easeInOut(duration: 1.8).repeatForever(autoreverses: true)
+    /// Warning/intervention surfaces — tight, precise, no bounce (Gillison 2019: firm not punishing)
+    /// Spec §11: "warning motion: subtle pulse/tighten, 140-220ms"
+    static let warning: Animation = .easeOut(duration: 0.18)
+
+    /// Reward/celebration — slight overshoot for delight (Harkin 2016: concrete progress feedback)
+    /// Spec §11: "reward motion: single glow/settle, 220-320ms"
+    static let reward: Animation = .spring(response: 0.32, dampingFraction: 0.65)
+
+    /// Commitment lock-in — firm spring, minimal overshoot (Steel 2007: commitment devices)
+    static let commit: Animation = .spring(response: 0.28, dampingFraction: 0.75)
+
+    /// CPU-safe breathing — opacity-only oscillation on a STATIC-blur overlay.
+    /// The blur radius stays fixed (pre-rendered); only opacity animates.
+    /// This avoids the 60fps shadow re-rasterization that caused the original
+    /// breathing animation to be removed (commit 6a7940e, Mar 23 2026).
+    static let breathing: Animation = .easeInOut(duration: 2.2).repeatForever(autoreverses: true)
 
     /// Progress ring updates — smooth easing
     static let progress: Animation = .easeInOut(duration: 0.75)

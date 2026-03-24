@@ -33,8 +33,68 @@ final class AppUsageEntry {
 
     /// Categorizes apps into productive, neutral, or distracting
     var category: AppCategory {
+        Self.classify(bundleIdentifier: bundleIdentifier, appName: appName)
+    }
+
+    enum AppCategory: String, Codable {
+        case productive
+        case neutral
+        case distracting
+
+        var label: String {
+            switch self {
+            case .productive: "Productive"
+            case .neutral: "Neutral"
+            case .distracting: "Distracting"
+            }
+        }
+    }
+
+    /// Context-aware classification for use during focus sessions.
+    /// Browsers and AI/chat tools are treated as distracting during focus; terminals/editors stay neutral.
+    func classifyForContext(isInFocusSession: Bool, projectWorkMode: WorkMode?) -> AppCategory {
+        guard isInFocusSession else {
+            return Self.classify(bundleIdentifier: bundleIdentifier, appName: appName)
+        }
         let id = bundleIdentifier.lowercased()
         let name = appName.lowercased()
+
+        // AI/chat tools → distracting during focus
+        if id.contains("anthropic") || id.contains("openai") || id.contains("slack") ||
+           id.contains("discord") || id.contains("telegram") || id.contains("whatsapp") ||
+           name.contains("claude") || name.contains("chatgpt") || name.contains("copilot") ||
+           name.contains("slack") || name.contains("discord") {
+            return .distracting
+        }
+
+        // Browsers → distracting during focus
+        if id.contains("safari") || id.contains("chrome") || id.contains("firefox") ||
+           id.contains("brave") || id.contains("arc") || id.contains("edge") ||
+           id.contains("opera") || id.contains("orion") {
+            return .distracting
+        }
+
+        // Terminals/editors → neutral during focus (working, just in a different tool)
+        if id.contains("terminal") || id.contains("iterm") || id.contains("warp") ||
+           id.contains("xcode") || id.contains("vscode") || id.contains("cursor") ||
+           id.contains("jetbrains") || id.contains("sublime") ||
+           name.contains("terminal") || name.contains("code") {
+            return .neutral
+        }
+
+        return Self.classify(bundleIdentifier: bundleIdentifier, appName: appName)
+    }
+
+    static func classify(bundleIdentifier: String, appName: String) -> AppCategory {
+        let id = bundleIdentifier.lowercased()
+        let name = appName.lowercased()
+
+        // High-confidence distracting aliases from app title first (browser tabs/window titles).
+        if name.contains("youtube") || name.contains("twitter") || name.contains("x.com") ||
+           name.contains("reddit") || name.contains("instagram") || name.contains("tiktok") ||
+           name.contains("facebook") || name.contains("netflix") || name.contains("spotify") {
+            return .distracting
+        }
 
         // Development tools
         if id.contains("xcode") || id.contains("vscode") || id.contains("visual-studio") ||
@@ -61,19 +121,19 @@ final class AppUsageEntry {
             return .neutral
         }
 
-        // Browsers — neutral (could be either)
-        if id.contains("safari") || id.contains("chrome") || id.contains("firefox") ||
-           id.contains("brave") || id.contains("arc") || id.contains("edge") ||
-           id.contains("opera") || id.contains("orion") {
-            return .neutral
-        }
-
         // Entertainment / social media
         if id.contains("music") || id.contains("spotify") || id.contains("netflix") ||
            id.contains("youtube") || id.contains("twitter") || id.contains("reddit") ||
            id.contains("instagram") || id.contains("tiktok") || id.contains("facebook") ||
            id.contains("game") || id.contains("steam") {
             return .distracting
+        }
+
+        // Browsers — neutral (could be either)
+        if id.contains("safari") || id.contains("chrome") || id.contains("firefox") ||
+           id.contains("brave") || id.contains("arc") || id.contains("edge") ||
+           id.contains("opera") || id.contains("orion") {
+            return .neutral
         }
 
         // System utilities — neutral
@@ -85,17 +145,28 @@ final class AppUsageEntry {
         return .neutral
     }
 
-    enum AppCategory: String, Codable {
-        case productive
-        case neutral
-        case distracting
+    /// Derives a likely block target from app metadata.
+    /// Returns website domains for browser/social contexts when confidence is high.
+    static func recommendedBlockTarget(bundleIdentifier: String, appName: String) -> String? {
+        let id = bundleIdentifier.lowercased()
+        let name = appName.lowercased()
 
-        var label: String {
-            switch self {
-            case .productive: "Productive"
-            case .neutral: "Neutral"
-            case .distracting: "Distracting"
-            }
+        let mapping: [(needle: String, target: String)] = [
+            ("youtube", "youtube.com"),
+            ("reddit", "reddit.com"),
+            ("x.com", "x.com"),
+            ("twitter", "x.com"),
+            ("instagram", "instagram.com"),
+            ("facebook", "facebook.com"),
+            ("tiktok", "tiktok.com"),
+            ("netflix", "netflix.com"),
+            ("twitch", "twitch.tv"),
+            ("spotify", "spotify.com")
+        ]
+
+        if let hit = mapping.first(where: { name.contains($0.needle) || id.contains($0.needle) }) {
+            return hit.target
         }
+        return nil
     }
 }

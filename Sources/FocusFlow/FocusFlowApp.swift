@@ -3,9 +3,11 @@ import SwiftData
 
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
+    @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self])
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self])
+        let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("FocusFlow", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("FocusFlow.store")
@@ -35,16 +37,18 @@ struct FocusFlowApp: App {
             MenuBarPopoverView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
-                .background(CompletionWindowLauncher(timerVM: timerVM))
+                .background(WindowLauncherBridge(timerVM: timerVM))
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: menuBarIconName)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .accessibilityHidden(true)
 
                 if timerVM.isBlockingActive {
                     Image(systemName: "shield.checkered")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                 }
 
                 if let liveStatusText {
@@ -74,9 +78,7 @@ struct FocusFlowApp: App {
             CompanionWindowView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
-                .onAppear {
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                }
+                .preferredColorScheme(.dark)
         }
         .defaultSize(width: 720, height: 520)
         .modelContainer(container)
@@ -85,10 +87,29 @@ struct FocusFlowApp: App {
             SessionCompleteWindowView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
+                .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
+
+        Window("Focus Coach", id: "coach-intervention") {
+            CoachInterventionWindowView()
+                .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
+                .preferredColorScheme(.dark)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .modelContainer(container)
+
+        // Keyboard shortcuts
+        Settings {
+            CompanionWindowView()
+                .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
+                .preferredColorScheme(.dark)
+        }
     }
 
     private var liveStatusText: String? {
@@ -133,9 +154,9 @@ struct FocusFlowApp: App {
     }
 }
 
-/// Invisible view that wires up the openWindow action to TimerViewModel.
+/// Invisible view that wires up openWindow actions to TimerViewModel.
 /// Lives inside MenuBarExtra content so it has access to @Environment(\.openWindow).
-private struct CompletionWindowLauncher: View {
+private struct WindowLauncherBridge: View {
     let timerVM: TimerViewModel
     @Environment(\.openWindow) private var openWindow
 
@@ -145,7 +166,22 @@ private struct CompletionWindowLauncher: View {
             .onAppear {
                 timerVM.openCompletionWindow = {
                     openWindow(id: "session-complete")
+                }
+                timerVM.openCoachInterventionWindow = {
+                    openWindow(id: "coach-intervention")
+                }
+                timerVM.requestAppActivation = {
                     NSApplication.shared.activate(ignoringOtherApps: true)
+                }
+                // Graceful shutdown — save session state on app termination
+                NotificationCenter.default.addObserver(
+                    forName: NSApplication.willTerminateNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    Task { @MainActor in
+                        timerVM.saveSessionBeforeTermination()
+                    }
                 }
             }
     }

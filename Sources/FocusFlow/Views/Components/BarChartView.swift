@@ -5,6 +5,7 @@ struct BarChartView: View {
     let accentColor: Color
     var selectedIndex: Int? = nil
     var onSelect: ((Int) -> Void)? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let chartHeight: CGFloat = 112
     private var maxValue: Double { max(data.map(\.value).max() ?? 0, 1) }
@@ -62,7 +63,7 @@ struct BarChartView: View {
         .opacity(dimmed ? 0.6 : 1.0)
         .contentShape(Rectangle())
         .onTapGesture { onSelect?(index) }
-        .animation(FFMotion.control, value: selectedIndex)
+        .animation(reduceMotion ? nil : FFMotion.control, value: selectedIndex)
     }
 
     private func formattedHours(_ seconds: Double) -> String {

@@ -40,20 +40,29 @@ struct LiquidActionButton: View {
     }
 
     var body: some View {
-        let label = Label(title, systemImage: icon)
-            .font(LiquidDesignTokens.Typography.controlLabel)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, LiquidDesignTokens.Padding.controlVertical)
-
         if role.isProminent {
-            Button(action: action) { label }
-                .buttonStyle(.glassProminent)
-                .tint(tint ?? role.tint)
-                .buttonBorderShape(.capsule)
+            Button(action: action) {
+                Label(title, systemImage: icon)
+                    .font(LiquidDesignTokens.Typography.controlLabel)
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onProminent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, LiquidDesignTokens.Padding.controlVertical)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(tint ?? role.tint ?? LiquidDesignTokens.Spectral.primaryContainer)
+            .buttonBorderShape(.capsule)
         } else {
-            Button(action: action) { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
+            Button(action: action) {
+                Label(title, systemImage: icon)
+                    .font(LiquidDesignTokens.Typography.controlLabel)
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(role == .destructive ? LiquidDesignTokens.Spectral.destructive : LiquidDesignTokens.Surface.onSurface)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, LiquidDesignTokens.Padding.controlVertical)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
         }
     }
 }
