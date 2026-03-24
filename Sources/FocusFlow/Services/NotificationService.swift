@@ -100,7 +100,7 @@ final class NotificationService: ObservableObject {
             body = "You're at \(dailyProgress)% of your daily goal. One more push and you've got it."
         } else {
             title = "Focus session done"
-            body = sessionMinutes > 0 ? "\(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel) logged. Take a real break." : "Great work! Time for a break."
+            body = sessionMinutes > 0 ? "\(sessionMinutes)m of \(sessionLabel.isEmpty ? "focus" : sessionLabel) logged. Take a real break." : "Session complete. Take a well-earned break."
         }
         send(title: title, body: body, sound: sound)
     }

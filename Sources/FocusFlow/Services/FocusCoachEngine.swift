@@ -45,6 +45,18 @@ final class FocusCoachEngine {
     private(set) var sessionStartedAt: Date?
     private(set) var isActive = false
 
+    /// Drift classification memory store — records planned/avoidant chip confirmations.
+    var driftMemoryStore: DriftMemoryStore?
+
+    /// Blocking recommendation engine — generates project-scoped block/allow suggestions.
+    let blockingRecommendationEngine = FocusCoachBlockingRecommendationEngine()
+
+    /// Pending blocking recommendation to surface to the user (set after evidence threshold met).
+    var pendingBlockingRecommendation: BlockingRecommendation?
+
+    /// Latest suspicious-context observation from AppUsageTracker (updated each foreground change).
+    var latestObservation: SuspiciousContextObservation?
+
     /// The TaskIntent ID for the current session (set from pre-session card)
     var currentTaskIntentId: UUID?
 
@@ -75,6 +87,11 @@ final class FocusCoachEngine {
         self.store = newStore
     }
 
+    /// Wires the drift memory store. Call during app configuration.
+    func configureDriftMemory(_ store: DriftMemoryStore) {
+        self.driftMemoryStore = store
+    }
+
     // MARK: - Session Lifecycle
 
     func startSession(id: UUID) {
@@ -90,6 +107,7 @@ final class FocusCoachEngine {
 
         // Calibrate personal profile from 14-day rolling window
         calibrateProfile()
+        driftMemoryStore?.beginSession()
     }
 
     func endSession() {
@@ -195,6 +213,49 @@ final class FocusCoachEngine {
         // Update signals: legitimate reason dampens future scoring
         if let reason, reason.isLegitimate {
             currentSignals.recentLegitimateReason = true
+        }
+
+        // Record into drift classification memory for learning
+        if let reason, let store = driftMemoryStore {
+            let appOrDomain = latestObservation?.browserHost
+                ?? latestObservation?.localizedAppName
+                ?? "unknown"
+            let projectId = latestObservation?.selectedProjectId
+            let workMode = latestObservation?.selectedWorkMode
+            if reason.isLegitimate {
+                store.recordPlanned(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain)
+            } else {
+                store.recordAvoidant(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain)
+            }
+        }
+
+        // Record into blocking recommendation engine (project-scoped, evidence-gated)
+        if let reason,
+           let projectId = latestObservation?.selectedProjectId,
+           let workMode = latestObservation?.selectedWorkMode {
+            let contextKey = latestObservation?.browserHost
+                ?? latestObservation?.localizedAppName
+                ?? "unknown"
+            let displayName = latestObservation?.browserHost
+                ?? latestObservation?.localizedAppName
+                ?? "unknown"
+            if reason.isLegitimate {
+                blockingRecommendationEngine.recordPlanned(
+                    projectId: projectId, workMode: workMode,
+                    contextKey: contextKey, displayName: displayName
+                )
+            } else {
+                blockingRecommendationEngine.recordAvoidant(
+                    projectId: projectId, workMode: workMode,
+                    contextKey: contextKey, displayName: displayName
+                )
+            }
+
+            // Surface block recommendation if evidence threshold is now met
+            if let rec = blockingRecommendationEngine.blockRecommendation(for: contextKey) {
+                pendingBlockingRecommendation = rec
+                blockingRecommendationEngine.markRecommendationSurfaced(contextKey: contextKey)
+            }
         }
     }
 

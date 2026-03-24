@@ -206,7 +206,10 @@ struct MenuBarPopoverView: View {
                 case .idle: return false
                 }
             }()
-            if isActive {
+            let overlayActive = timerVM.activeCoachPopoverDecision != nil &&
+                FocusCoachPresentationMapper.mapDecision(timerVM.activeCoachPopoverDecision ?? .none) != nil
+
+            if isActive && !overlayActive {
                 let model = FocusCoachPresentationMapper.map(
                     level: timerVM.coachEngine.riskLevel,
                     score: timerVM.coachEngine.riskScore
@@ -218,7 +221,7 @@ struct MenuBarPopoverView: View {
             }
 
             // Quick prompt overlay when coach decides to intervene
-            if let promptModel = FocusCoachPresentationMapper.mapDecision(timerVM.activeCoachPopoverDecision ?? .none) {
+            if let promptModel = overlayActive ? FocusCoachPresentationMapper.mapDecision(timerVM.activeCoachPopoverDecision ?? .none) : nil {
                 FocusCoachQuickPromptView(
                     model: promptModel,
                     onAction: { action in
@@ -370,16 +373,15 @@ struct MenuBarPopoverView: View {
     // MARK: - Helpers
 
     private var stateLabel: String {
-        if timerVM.isOvertime { return timerVM.isFocusOvertime ? "Overtime" : "Break Over" }
         switch timerVM.state {
         case .idle:
-            return "Focus Session"
+            return "Ready"
         case .focusing:
-            return "Remaining"
+            return timerVM.isOvertime ? "Overtime" : "Protecting"
         case .paused:
-            return "Focus Paused"
-        case .onBreak(let type):
-            return type.displayName
+            return "Check"
+        case .onBreak:
+            return "Return"
         }
     }
 
@@ -458,6 +460,13 @@ private struct IdlePopoverContent: View {
             durationPillSelector
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
+
+            Text("Guardian watches for browsing, off-project work, and long drift.")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(.secondary.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
 
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -1305,6 +1314,9 @@ extension MenuBarPopoverView {
                 timerVM.discardRecovery()
             }
         )
+        .onChange(of: timerVM.selectedProject) { _, newValue in
+            if newValue != nil { timerVM.noteProjectSelected() }
+        }
     }
 
     fileprivate var focusingContent: some View {

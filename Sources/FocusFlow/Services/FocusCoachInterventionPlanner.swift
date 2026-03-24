@@ -1,5 +1,62 @@
 import Foundation
 
+// MARK: - Work Intent Window
+
+/// Signals that indicate the user is in an active work context (not off-duty).
+struct WorkIntentSignal: Sendable {
+    /// User opened FocusFlow within the last 15 minutes.
+    var openedAppRecently: Bool
+    /// User selected or viewed a project within the last 15 minutes.
+    var selectedProjectRecently: Bool
+    /// User had a session start attempt that was abandoned or delayed.
+    var recentlyAbandonedStart: Bool
+    /// Current time falls within the user's typical work hours pattern.
+    var withinTypicalWorkHours: Bool
+    /// Current context matches a repeated historical missed-start pattern.
+    var matchesHistoricalMissedStart: Bool
+
+    /// Returns true when enough signals indicate user is in a work-intent context.
+    var isWorkIntentWindow: Bool {
+        let score = [
+            openedAppRecently,
+            selectedProjectRecently,
+            recentlyAbandonedStart,
+            withinTypicalWorkHours,
+            matchesHistoricalMissedStart
+        ].filter { $0 }.count
+        // Require at least 2 signals for outside-session challenge gate
+        return score >= 2
+    }
+}
+
+/// Evaluates whether the current moment is a "work intent window" for outside-session challenges.
+struct WorkIntentWindowDetector: Sendable {
+    /// Evaluate work intent signals from available context.
+    func evaluate(
+        appLastOpenedAt: Date?,
+        projectLastSelectedAt: Date?,
+        lastAbandonedStartAt: Date?,
+        currentHour: Int = Calendar.current.component(.hour, from: Date()),
+        historicalWorkHours: ClosedRange<Int> = 9...18
+    ) -> WorkIntentSignal {
+        let now = Date()
+        let fifteenMinutes: TimeInterval = 15 * 60
+
+        let openedRecently = appLastOpenedAt.map { now.timeIntervalSince($0) < fifteenMinutes } ?? false
+        let selectedRecently = projectLastSelectedAt.map { now.timeIntervalSince($0) < fifteenMinutes } ?? false
+        let abandonedRecently = lastAbandonedStartAt.map { now.timeIntervalSince($0) < fifteenMinutes } ?? false
+        let withinWorkHours = historicalWorkHours.contains(currentHour)
+
+        return WorkIntentSignal(
+            openedAppRecently: openedRecently,
+            selectedProjectRecently: selectedRecently,
+            recentlyAbandonedStart: abandonedRecently,
+            withinTypicalWorkHours: withinWorkHours,
+            matchesHistoricalMissedStart: false  // requires DriftClassificationMemory — wired in Phase 3 integration
+        )
+    }
+}
+
 /// Decides which UI surface should present a coach intervention.
 /// Keeps presentation-routing policy pure and testable.
 struct FocusCoachInterventionPlanner: Sendable {
@@ -131,12 +188,31 @@ struct FocusCoachInterventionPlanner: Sendable {
         }
     }
 
+    /// Returns true when an outside-session hard challenge should fire.
+    /// All three gates must pass: not in release window, not passive, guardian is in challenge
+    /// state, and a work-intent window is detected.
+    func shouldTriggerOutsideSessionChallenge(
+        guardianState: FocusCoachGuardianState,
+        isInReleaseWindow: Bool,
+        workIntentSignal: WorkIntentSignal,
+        engagementMode: GuardianEngagementMode
+    ) -> Bool {
+        guard !isInReleaseWindow else { return false }
+        guard engagementMode != .passive else { return false }
+        guard guardianState == .challenge else { return false }
+        guard workIntentSignal.isWorkIntentWindow else { return false }
+        return true
+    }
+
     func routeIdleStarter(
         driftConfidence: Double,
         focusOpportunity: Double,
         mode: FocusCoachInterventionMode,
         allowSkipAction: Bool,
-        engagementMode: GuardianEngagementMode = .adaptive
+        engagementMode: GuardianEngagementMode = .adaptive,
+        guardianState: FocusCoachGuardianState = .observe,
+        isInReleaseWindow: Bool = false,
+        workIntentSignal: WorkIntentSignal? = nil
     ) -> IdleStarterRoute {
         // Passive mode: suppress idle starter — ambient ring only
         if engagementMode == .passive {
@@ -148,6 +224,20 @@ struct FocusCoachInterventionPlanner: Sendable {
             focusOpportunity: focusOpportunity,
             mode: mode
         ) else {
+            return IdleStarterRoute(shouldPresent: false, decision: nil)
+        }
+
+        // Work-intent gate: when guardian is in challenge state, require an active work-intent
+        // window before firing the hard dialog. If signals are absent, downgrade to watchful
+        // (ambient ring only — no popover or dialog).
+        if let signal = workIntentSignal,
+           guardianState == .challenge,
+           !shouldTriggerOutsideSessionChallenge(
+               guardianState: guardianState,
+               isInReleaseWindow: isInReleaseWindow,
+               workIntentSignal: signal,
+               engagementMode: engagementMode
+           ) {
             return IdleStarterRoute(shouldPresent: false, decision: nil)
         }
 

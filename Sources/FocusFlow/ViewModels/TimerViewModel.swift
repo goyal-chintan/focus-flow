@@ -249,14 +249,24 @@ final class TimerViewModel {
 
     // MARK: - Focus Coach
     private(set) var coachEngine = FocusCoachEngine()
+    private(set) var driftMemoryStore = DriftMemoryStore()
     private let coachPlanner = FocusCoachInterventionPlanner()
     private let coachOpportunityModel = FocusCoachOpportunityModel()
     private let guardianAdvisor = FocusCoachGuardianAdvisor()
+    private let workIntentDetector = WorkIntentWindowDetector()
     private var coachTickCounter: Int = 0
     private var pauseCountThisSession: Int = 0
     private var strongPromptsShownThisSession: Int = 0
     private var lastIdleInterventionAt: Date?
     private var guardianReleaseUntil: Date?
+
+    // MARK: - Work Intent Timestamps
+    /// Time the app was launched — used as a proxy for "opened app recently".
+    let appLaunchTime: Date = Date()
+    /// Set when the user selects or changes a project in the picker.
+    var lastProjectSelectedAt: Date?
+    /// Set when the user is shown an idle-starter prompt but dismisses without starting.
+    var lastAbandonedStartAt: Date?
 
     /// Whether the reason chip sheet should be shown (driven by coach engine anomaly detection)
     var showCoachReasonSheet: Bool = false
@@ -369,6 +379,11 @@ final class TimerViewModel {
         AppUsageTracker.shared.start(timerVM: self, modelContext: modelContext)
         // Wire Focus Coach to persistent SwiftData store
         coachEngine.configureStore(SwiftDataCoachStore(modelContext: modelContext))
+        // Wire drift classification memory and latest observation updates
+        coachEngine.configureDriftMemory(driftMemoryStore)
+        AppUsageTracker.shared.onSuspiciousObservation = { [weak self] observation in
+            self?.coachEngine.latestObservation = observation
+        }
         log("configure() complete")
     }
 
@@ -1607,10 +1622,21 @@ final class TimerViewModel {
     }
 
     /// Dismisses the current coach prompt.
+    /// If an idle-starter decision was active, records it as an abandoned start for
+    /// work-intent window detection — the user was shown a start nudge but didn't act.
     func dismissCoachPrompt() {
         coachEngine.recordInterventionOutcome(.dismissed)
+        if currentIdleStarterDecision != nil {
+            lastAbandonedStartAt = Date()
+        }
         currentCoachQuickPromptDecision = nil
         currentIdleStarterDecision = nil
+    }
+
+    /// Records that the user explicitly selected a project (user-initiated selection).
+    /// Updates `lastProjectSelectedAt` to support work-intent window detection.
+    func noteProjectSelected() {
+        lastProjectSelectedAt = Date()
     }
 
     func dismissCoachInterventionWindow() {
@@ -1809,12 +1835,29 @@ final class TimerViewModel {
             minutesUntilNextCalendarEvent: nil,
             defaultMinutes: max(5, selectedMinutes)
         )
+        let engagementMode = selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
+        let workIntentSignal = workIntentDetector.evaluate(
+            appLastOpenedAt: appLaunchTime,
+            projectLastSelectedAt: lastProjectSelectedAt,
+            lastAbandonedStartAt: lastAbandonedStartAt,
+            currentHour: hour
+        )
+        let currentGuardianState = guardianAdvisor.guardianState(
+            isInActiveSession: false,
+            inReleaseWindow: isInReleaseWindow,
+            driftConfidence: opportunityContext.driftConfidence,
+            hasRecommendation: false,
+            engagementMode: engagementMode
+        )
         let route = coachPlanner.routeIdleStarter(
             driftConfidence: opportunityContext.driftConfidence,
             focusOpportunity: opportunityContext.focusOpportunity,
             mode: settings.coachInterventionMode,
             allowSkipAction: settings.coachAllowSkipAction,
-            engagementMode: selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
+            engagementMode: engagementMode,
+            guardianState: currentGuardianState,
+            isInReleaseWindow: isInReleaseWindow,
+            workIntentSignal: workIntentSignal
         )
 
         if route.shouldPresent, var decision = route.decision {

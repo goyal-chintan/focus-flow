@@ -201,7 +201,7 @@ enum FocusCoachMessageBuilder {
                 )
             }
             return (
-                "Choose a single high-value block and begin. Decisions beat browsing loops.",
+                "Starting your first block is the highest-value move right now. One 25-minute block changes the whole day.",
                 .procrastination
             )
         }
