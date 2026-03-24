@@ -60,7 +60,7 @@ struct CoachInterventionWindowView: View {
                                     LiquidDesignTokens.Spectral.amber.opacity(0.25), lineWidth: 0.5))
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                     }
 
                     header
@@ -217,6 +217,17 @@ struct CoachInterventionWindowView: View {
                 }
             }
 
+            if allows(.blockForProject) {
+                LiquidActionButton(
+                    title: "Block for this project",
+                    icon: "shield.lefthalf.filled",
+                    role: .secondary
+                ) {
+                    timerVM.handleCoachAction(.blockForProject)
+                    dismiss()
+                }
+            }
+
             if timerVM.settings?.coachAllowSkipAction == true, allows(.skipCheck) {
                 Button {
                     withAnimation(FFMotion.section) {
@@ -230,6 +241,7 @@ struct CoachInterventionWindowView: View {
                 }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.capsule)
+                .accessibilityLabel("Skip this coach check")
             }
         }
     }

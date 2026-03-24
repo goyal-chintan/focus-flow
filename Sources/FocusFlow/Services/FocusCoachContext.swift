@@ -8,12 +8,15 @@ struct FocusCoachContext: Sendable {
     // MARK: - Idle & app state
     let idleSeconds: Int
     let frontmostAppName: String?
+    let frontmostBundleIdentifier: String?
     let frontmostAppCategory: AppUsageCategory?
+    let isInActiveSession: Bool
 
     // MARK: - Today's focus progress
     let todayFocusSeconds: TimeInterval
     let dailyGoalSeconds: TimeInterval
     let todaySessionCount: Int
+    let selectedProjectName: String?
 
     // MARK: - Time of day
     let hourOfDay: Int
@@ -25,6 +28,9 @@ struct FocusCoachContext: Sendable {
     // MARK: - Behavioural pattern signal
     /// Number of times the user selected "low priority work" as skip reason in the last 7 days.
     let recentLowPriorityWorkCount: Int
+    let suggestedBlockTarget: String?
+    let blockRecommendationReason: String?
+    let inReleaseWindow: Bool
 
     // MARK: - Derived helpers
 
@@ -37,6 +43,10 @@ struct FocusCoachContext: Sendable {
     /// True when the frontmost app is classified as distracting.
     var isInDistractingApp: Bool {
         frontmostAppCategory == .distracting && frontmostAppName != nil
+    }
+
+    var hasBlockRecommendation: Bool {
+        suggestedBlockTarget?.isEmpty == false
     }
 
     /// Formatted idle duration for display (e.g. "23m" or "1h 4m").

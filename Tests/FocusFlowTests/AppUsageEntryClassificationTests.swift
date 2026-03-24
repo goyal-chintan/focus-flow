@@ -18,4 +18,20 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         )
         XCTAssertEqual(category, .distracting)
     }
+
+    func testRecommendedBlockTargetMapsDistractingDomain() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "company.thebrowser",
+            appName: "YouTube - Watch"
+        )
+        XCTAssertEqual(target, "youtube.com")
+    }
+
+    func testRecommendedBlockTargetReturnsNilForUnknownApp() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "com.apple.finder",
+            appName: "Finder"
+        )
+        XCTAssertNil(target)
+    }
 }

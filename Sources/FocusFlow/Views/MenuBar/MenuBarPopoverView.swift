@@ -46,7 +46,7 @@ struct MenuBarPopoverView: View {
                     }
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.vertical, 6)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                     .onAppear {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                             withAnimation(FFMotion.control) {
@@ -577,6 +577,7 @@ private struct IdlePopoverContent: View {
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: 90)
+                .accessibilityLabel("Discard recovered session")
             }
         }
         .padding(12)
@@ -631,7 +632,7 @@ private struct FocusingPopoverContent: View {
             // Inline pause reason chips (shown after resuming from 2+ min pause)
             if showPauseReasonChips {
                 pauseReasonChipStrip
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
 
             // Pause / Stop buttons — native glass
@@ -662,10 +663,10 @@ private struct FocusingPopoverContent: View {
             // Switch project inline flow
             if showProjectSwitcher {
                 projectSwitcherInline
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             } else if showSwitchReasonChips {
                 switchReasonChipStrip
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             } else {
                 Button {
                     withAnimation(FFMotion.section) { showProjectSwitcher = true }
@@ -763,6 +764,7 @@ private struct FocusingPopoverContent: View {
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
+                    .accessibilityLabel(reason.displayName)
                 }
             }
         }
@@ -792,6 +794,7 @@ private struct FocusingPopoverContent: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close project switcher")
             }
 
             ProjectPickerView(selectedProject: $switchTarget)
@@ -844,6 +847,7 @@ private struct FocusingPopoverContent: View {
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.capsule)
+                    .accessibilityLabel(reason.displayName)
                 }
             }
         }
@@ -923,6 +927,7 @@ private struct FocusingPopoverContent: View {
             .buttonBorderShape(.capsule)
             .scaleEffect(discardAnimating ? 0.92 : 1.0)
             .opacity(discardAnimating ? 0.5 : 1.0)
+            .accessibilityLabel("Discard current focus session")
 
             Button {
                 withAnimation(FFMotion.control) { onCancelStop() }
@@ -932,6 +937,7 @@ private struct FocusingPopoverContent: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .accessibilityLabel("Cancel ending this session")
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
     }
@@ -988,6 +994,7 @@ private struct PausedPopoverContent: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("End paused session")
 
             if showStopConfirmation {
                 pausedStopConfirmation
@@ -1030,6 +1037,7 @@ private struct PausedPopoverContent: View {
             .buttonBorderShape(.capsule)
             .scaleEffect(discardAnimating ? 0.92 : 1.0)
             .opacity(discardAnimating ? 0.5 : 1.0)
+            .accessibilityLabel("Discard paused session")
 
             Button {
                 withAnimation(FFMotion.control) { onCancelStop() }
@@ -1039,6 +1047,7 @@ private struct PausedPopoverContent: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .accessibilityLabel("Cancel paused stop confirmation")
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
     }
@@ -1115,7 +1124,7 @@ private struct OvertimePopoverContent: View {
                                 HStack(spacing: 5) {
                                     Image(systemName: "forward.fill")
                                         .font(.system(size: 10))
-                                    Text("Skip Break")
+                                    Text("Start Next Block")
                                         .font(.system(size: 12, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
@@ -1128,7 +1137,7 @@ private struct OvertimePopoverContent: View {
                                 HStack(spacing: 5) {
                                     Image(systemName: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill")
                                         .font(.system(size: 10))
-                                    Text(cycleProgress >= 1.0 ? "Complete Block 🎉" : "Finish Session")
+                                    Text(cycleProgress >= 1.0 ? "Complete Block" : "End with Progress")
                                         .font(.system(size: 12, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
@@ -1200,7 +1209,7 @@ private struct BreakOvertimePopoverContent: View {
             GlassEffectContainer {
                 VStack(spacing: 8) {
                     GradientCTAButton(
-                        title: "Start Focusing",
+                        title: "Start Next Block",
                         icon: "play.fill",
                         gradient: LiquidDesignTokens.Gradient.focus,
                         action: onStartFocusing
@@ -1251,7 +1260,7 @@ private struct BreakPopoverContent: View {
             // Skip Break — native glass button
             Button(action: onSkipBreak) {
                 HStack(spacing: 6) {
-                    Text("Skip Break")
+                    Text("Start Next Block")
                         .font(.system(size: 13, weight: .medium))
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .medium))

@@ -28,7 +28,8 @@ struct FocusCoachOpportunityModel: Sendable {
         case .neutral:
             categoryFactor = 0.6
         case .productive:
-            categoryFactor = 0.3
+            // Productive-looking apps can still be avoidant outside active sessions.
+            categoryFactor = 0.5
         }
 
         return clamp((idleNorm * 0.5) + (escalationNorm * 0.2) + (categoryFactor * 0.3))
@@ -117,9 +118,9 @@ struct FocusCoachOpportunityModel: Sendable {
 
         let summary: String
         if let minutesUntilNextCalendarEvent {
-            summary = "You have about \(minutesUntilNextCalendarEvent)m before your next commitment. A \(duration)m focus sprint fits now."
+            summary = "You have about \(minutesUntilNextCalendarEvent)m before the next commitment. A \(duration)m rescue block fits now."
         } else {
-            summary = "This is a strong window for a \(duration)m focus sprint."
+            summary = "This is a strong window for a \(duration)m focused block."
         }
 
         return IdleStarterContext(

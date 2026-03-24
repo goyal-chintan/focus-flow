@@ -22,6 +22,7 @@ enum FocusCoachQuickAction: String, Codable, CaseIterable {
     case cleanRestart5m
     case snooze10m
     case skipCheck
+    case blockForProject
 
     var displayName: String {
         switch self {
@@ -30,6 +31,7 @@ enum FocusCoachQuickAction: String, Codable, CaseIterable {
         case .cleanRestart5m: "Clean Restart (5m)"
         case .snooze10m: "Snooze 10m"
         case .skipCheck: "Skip this check"
+        case .blockForProject: "Block for project"
         }
     }
 }
@@ -123,7 +125,7 @@ struct FocusCoachInterventionPolicy: Sendable {
             return FocusCoachDecision(
                 kind: .quickPrompt,
                 suggestedActions: [.returnNow, .snooze10m],
-                message: "Drift detected — quick recovery?"
+                message: "Context looks off-plan. Choose your next move."
             )
 
         case .highRisk:
@@ -131,13 +133,13 @@ struct FocusCoachInterventionPolicy: Sendable {
                 return FocusCoachDecision(
                     kind: .strongPrompt,
                     suggestedActions: [.returnNow, .cleanRestart5m, .snooze10m],
-                    message: "Sustained drift — consider a clean restart or return now."
+                    message: "Sustained mismatch detected. Recover now or take an intentional pause."
                 )
             }
             return FocusCoachDecision(
                 kind: .quickPrompt,
                 suggestedActions: [.returnNow, .cleanRestart5m, .snooze10m],
-                message: "High drift risk — take action?"
+                message: "Repeated mismatch detected. Recover now before momentum drops."
             )
         }
     }

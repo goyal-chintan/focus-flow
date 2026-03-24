@@ -17,7 +17,7 @@ struct SessionCompleteWindowView: View {
     private var settings: AppSettings? { allSettings.first }
 
     private var isBreakCompletion: Bool {
-        timerVM.lastCompletedSession?.type != .focus
+        timerVM.lastCompletionWasBreak
     }
 
     var body: some View {
@@ -49,7 +49,7 @@ struct SessionCompleteWindowView: View {
                 if timerVM.showCoachReasonSheet {
                     coachReasonSection
                         .transition(.asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
+                            insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
                             removal: .opacity.combined(with: .scale(scale: 0.97))
                         ))
                 } else if let reason = capturedReason {
@@ -369,6 +369,7 @@ struct SessionCompleteWindowView: View {
             ) {
                 saveAndDismiss(action: .takeBreak)
             }
+            .accessibilityLabel("Take a break")
 
             GlassEffectContainer {
                 VStack(spacing: 8) {
@@ -388,6 +389,7 @@ struct SessionCompleteWindowView: View {
                         }
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
+                        .accessibilityLabel(timerVM.isManualStop ? "Save and keep going" : "Skip break and continue focus")
                     }
 
                     // Continue in overtime (not shown for manual stop — session already ended)
@@ -406,6 +408,7 @@ struct SessionCompleteWindowView: View {
                         }
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
+                        .accessibilityLabel("Continue focusing in overtime")
                     }
 
                     // Finish / Save & Done
@@ -416,6 +419,7 @@ struct SessionCompleteWindowView: View {
                     ) {
                         saveAndDismiss(action: .endSession)
                     }
+                    .accessibilityLabel("Finish session")
 
                     // Discard — only for manual stops (no reason to discard a naturally-completed session)
                     if timerVM.isManualStop {
@@ -436,6 +440,7 @@ struct SessionCompleteWindowView: View {
                         .buttonStyle(.glass)
                         .buttonBorderShape(.capsule)
                         .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                        .accessibilityLabel("Discard this manual session")
                     }
                 }
             }
@@ -481,7 +486,7 @@ struct SessionCompleteWindowView: View {
             breakActionsSection
         }
         .padding(18)
-        .frame(width: timerVM.showCoachReasonSheet ? 420 : 340)
+        .frame(width: 420)
     }
 
     private var breakHeaderSection: some View {
@@ -503,6 +508,22 @@ struct SessionCompleteWindowView: View {
                 )
                 .frame(maxWidth: 180)
             }
+
+            if let focus = timerVM.lastCompletedFocusSession {
+                VStack(spacing: 3) {
+                    Text("Last earned block")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("\(Int(focus.actualDuration / 60))m • \(focus.label)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(LiquidDesignTokens.Spectral.electricBlue.opacity(0.1)))
+            }
         }
         .padding(.top, 8)
     }
@@ -511,7 +532,7 @@ struct SessionCompleteWindowView: View {
         GlassEffectContainer {
             VStack(spacing: 8) {
                 LiquidActionButton(
-                    title: "Start Focusing",
+                    title: "Start Next Block",
                     icon: "play.fill",
                     role: .primary,
                     tint: .blue
@@ -520,9 +541,10 @@ struct SessionCompleteWindowView: View {
                     timerVM.continueAfterCompletion(action: .continueFocusing)
                     dismissWindow(id: "session-complete")
                 }
+                .accessibilityLabel("Start next focus block")
 
                 LiquidActionButton(
-                    title: "End",
+                    title: "End with Progress",
                     icon: "stop.fill",
                     role: .secondary
                 ) {
@@ -530,6 +552,7 @@ struct SessionCompleteWindowView: View {
                     timerVM.continueAfterCompletion(action: .endSession)
                     dismissWindow(id: "session-complete")
                 }
+                .accessibilityLabel("End break and keep progress")
             }
         }
     }

@@ -109,4 +109,29 @@ final class AppUsageEntry {
 
         return .neutral
     }
+
+    /// Derives a likely block target from app metadata.
+    /// Returns website domains for browser/social contexts when confidence is high.
+    static func recommendedBlockTarget(bundleIdentifier: String, appName: String) -> String? {
+        let id = bundleIdentifier.lowercased()
+        let name = appName.lowercased()
+
+        let mapping: [(needle: String, target: String)] = [
+            ("youtube", "youtube.com"),
+            ("reddit", "reddit.com"),
+            ("x.com", "x.com"),
+            ("twitter", "x.com"),
+            ("instagram", "instagram.com"),
+            ("facebook", "facebook.com"),
+            ("tiktok", "tiktok.com"),
+            ("netflix", "netflix.com"),
+            ("twitch", "twitch.tv"),
+            ("spotify", "spotify.com")
+        ]
+
+        if let hit = mapping.first(where: { name.contains($0.needle) || id.contains($0.needle) }) {
+            return hit.target
+        }
+        return nil
+    }
 }

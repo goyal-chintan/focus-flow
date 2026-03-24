@@ -34,6 +34,12 @@ final class AppUsageTracker {
             .first?.localizedName
     }
 
+    var currentFrontmostBundleId: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return lastFrontmostBundleId
+    }
+
     /// The `AppUsageEntry.AppCategory` of the current foreground app (for TimerViewModel usage).
     var currentFrontmostCategory: AppUsageEntry.AppCategory { lastFrontmostCategory }
 
@@ -119,9 +125,9 @@ final class AppUsageTracker {
                     let presentedInAppPrompt = vm.showCoachInterventionWindow
                         || vm.activeCoachInterventionDecision != nil
                         || vm.currentIdleStarterDecision != nil
-                    if !presentedInAppPrompt {
-                        sendNudge(escalationLevel: nudgeCount)
-                    }
+                    // Notifications are intentionally de-prioritized for anti-procrastination
+                    // because users quickly habituate to them. The in-app guardian is primary.
+                    _ = presentedInAppPrompt
                     nudgeCount += 1
                 }
             }
@@ -253,47 +259,6 @@ final class AppUsageTracker {
         signals.inactivityBurstSeconds = Double(inactivitySeconds)
         signals.startDelaySeconds = startDelaySeconds
         vm.coachEngine.recordBehaviorSample(signals)
-    }
-
-    // MARK: - Nudge
-
-    private func sendNudge(escalationLevel: Int) {
-        guard NotificationService.shared.isAuthorized else {
-            log("Notifications not authorized — nudge suppressed")
-            return
-        }
-
-        let message: String
-        switch escalationLevel {
-        case 0:
-            let gentle = [
-                "You've been browsing for a while. Ready to start a focus session?",
-                "Time flies! How about a quick focus sprint?",
-                "Your best ideas happen during deep work. Start a session?",
-            ]
-            message = gentle.randomElement() ?? gentle[0]
-        case 1:
-            let moderate = [
-                "Still no focus session started. Even 15 minutes of deep work makes a difference.",
-                "Your focus streak is waiting — start a short session to keep momentum.",
-                "A quick focus sprint now could turn your day around.",
-            ]
-            message = moderate.randomElement() ?? moderate[0]
-        default:
-            let urgent = [
-                "You've been idle for a while now. Start a session — you'll thank yourself later.",
-                "Deep work doesn't happen by accident. Take the first step — start focusing.",
-                "Every productive day starts with one focus session. Ready?",
-            ]
-            message = urgent.randomElement() ?? urgent[0]
-        }
-
-        NotificationService.shared.sendGenericNotification(
-            title: escalationLevel == 0 ? "Focus Nudge 💡" : "Focus Reminder 🔔",
-            body: message,
-            sound: escalationLevel >= 2 ? "Bottle" : "Tink"
-        )
-        log("Sent nudge #\(escalationLevel + 1) after \(idleSeconds)s idle")
     }
 
     // MARK: - Logging

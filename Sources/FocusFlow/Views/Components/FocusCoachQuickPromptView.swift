@@ -119,6 +119,7 @@ struct FocusCoachQuickPromptView: View {
         case .cleanRestart5m: "arrow.clockwise"
         case .snooze10m: "moon.zzz"
         case .skipCheck: "forward.frame"
+        case .blockForProject: "shield.lefthalf.filled"
         }
     }
 }

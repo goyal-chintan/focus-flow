@@ -16,6 +16,19 @@ final class NotificationService: ObservableObject {
     @Published private(set) var authorizationState: AuthorizationState = .notDetermined
     var isAuthorized: Bool { authorizationState == .authorized }
 
+    private var canUseUserNotificationsAPI: Bool {
+        if NSClassFromString("XCTestCase") != nil {
+            return false
+        }
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return false
+        }
+        if Bundle.main.bundleURL.path.contains("/Xcode.app/Contents/Developer/usr/bin") {
+            return false
+        }
+        return Bundle.main.bundleIdentifier != nil
+    }
+
     nonisolated static func authorizationState(for status: UNAuthorizationStatus) -> AuthorizationState {
         switch status {
         case .authorized, .provisional:
@@ -29,31 +42,42 @@ final class NotificationService: ObservableObject {
         }
     }
 
-    func requestPermission() {
-        guard Bundle.main.bundleIdentifier != nil else {
+    @discardableResult
+    func requestPermission() async -> AuthorizationState {
+        guard canUseUserNotificationsAPI else {
             print("[NotificationService] No bundle identifier — notifications unavailable")
             authorizationState = .denied
-            return
+            return .denied
         }
         if authorizationState == .denied {
-            refreshAuthorizationStatus()
-            return
+            return .denied
         }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, error in
-            if let error {
-                print("[NotificationService] Auth request failed: \(error.localizedDescription)")
-            }
-            UNUserNotificationCenter.current().getNotificationSettings { settings in
-                let state = Self.authorizationState(for: settings.authorizationStatus)
-                DispatchQueue.main.async {
-                    self?.authorizationState = state
+
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, error in
+                if let error {
+                    print("[NotificationService] Auth request failed: \(error.localizedDescription)")
                 }
+                continuation.resume()
             }
         }
+
+        let state: AuthorizationState = await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                continuation.resume(returning: Self.authorizationState(for: settings.authorizationStatus))
+            }
+        }
+
+        authorizationState = state
+        return state
     }
 
     /// Refresh cached auth status — call from Settings on appear.
     func refreshAuthorizationStatus() {
+        guard canUseUserNotificationsAPI else {
+            authorizationState = .denied
+            return
+        }
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
             let state = Self.authorizationState(for: settings.authorizationStatus)
             DispatchQueue.main.async {
@@ -100,7 +124,7 @@ final class NotificationService: ObservableObject {
 
     func sendSessionCompletePrompt(duration: TimeInterval, label: String, sound: String) {
         NSSound(named: NSSound.Name(sound))?.play()
-        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
+        guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Focus Session Complete!"
         content.body = "\(Int(duration / 60)) min of \(label) — tap the timer to review and log."
@@ -115,7 +139,7 @@ final class NotificationService: ObservableObject {
 
     func sendPauseWarning(minutes: Int) {
         NSSound(named: NSSound.Name("Bottle"))?.play()
-        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
+        guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Pause getting long"
         content.body = "You've been paused for \(minutes) minutes. Ready to get back to it?"
@@ -130,7 +154,7 @@ final class NotificationService: ObservableObject {
 
     func sendPauseCritical(minutes: Int) {
         NSSound(named: NSSound.Name("Sosumi"))?.play()
-        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
+        guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Long pause!"
         content.body = "You've been paused for \(minutes) minutes. Consider resuming or ending the session."
@@ -145,7 +169,7 @@ final class NotificationService: ObservableObject {
 
     func sendBreakWarning(minutes: Int) {
         NSSound(named: NSSound.Name("Bottle"))?.play()
-        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
+        guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Break getting long"
         content.body = "You've been on break for \(minutes) minutes. Ready to get back to focusing?"
@@ -160,7 +184,7 @@ final class NotificationService: ObservableObject {
 
     func sendBreakCritical(minutes: Int) {
         NSSound(named: NSSound.Name("Sosumi"))?.play()
-        guard Bundle.main.bundleIdentifier != nil, authorizationState == .authorized else { return }
+        guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = "Break hit \(minutes) minutes"
         content.body = "Your \(minutes)-minute break is well past planned. Jump back in?"
@@ -175,7 +199,7 @@ final class NotificationService: ObservableObject {
 
     private func send(title: String, body: String, sound: String) {
         NSSound(named: NSSound.Name(sound))?.play()
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard canUseUserNotificationsAPI else { return }
         guard authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
         content.title = title
