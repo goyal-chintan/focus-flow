@@ -3,6 +3,10 @@ import SwiftData
 import ServiceManagement
 
 struct SettingsView: View {
+    enum ScrollTarget {
+        case integrations
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
     @Query private var allSettings: [AppSettings]
@@ -19,33 +23,47 @@ struct SettingsView: View {
     @State private var isEnablingReminders = false
     @State private var showBlockingSheet = false
     @StateObject private var notificationService = NotificationService.shared
+    private let initialScrollTarget: ScrollTarget?
+
+    init(initialScrollTarget: ScrollTarget? = nil) {
+        self.initialScrollTarget = initialScrollTarget
+    }
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: LiquidDesignTokens.Spacing.large) {
-                durationsSection
-                behaviorSection
-                soundSection
-                goalsSection
-                blockingSection
-                integrationsSection
-                focusCoachSection
-                aboutSection
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: LiquidDesignTokens.Spacing.large) {
+                    durationsSection
+                        .id("durations")
+                    behaviorSection
+                    soundSection
+                    goalsSection
+                    blockingSection
+                    integrationsSection
+                        .id("integrations")
+                    focusCoachSection
+                    aboutSection
+                }
+                .padding(24)
             }
-            .padding(24)
-        }
-        .background(.clear)
-        .saveErrorOverlay($saveError)
-        .onAppear {
-            if settings.calendarIntegrationEnabled {
-                loadCalendars()
-            }
-            if settings.remindersIntegrationEnabled {
-                loadReminderLists()
+            .background(.clear)
+            .saveErrorOverlay($saveError)
+            .onAppear {
+                if settings.calendarIntegrationEnabled {
+                    loadCalendars()
+                }
+                if settings.remindersIntegrationEnabled {
+                    loadReminderLists()
+                }
+                if initialScrollTarget == .integrations {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        proxy.scrollTo("integrations", anchor: .top)
+                    }
+                }
             }
         }
     }

@@ -14,8 +14,8 @@ enum LiquidDesignTokens {
         static let container = Color(hex: 0x252526)
         static let containerHigh = Color(hex: 0x2C2C2E)
         static let containerHighest = Color(hex: 0x353534)
-        static let onSurface = Color(hex: 0xE5E2E1)
-        static let onSurfaceMuted = Color(hex: 0xE5E2E1).opacity(0.55)
+        static let onSurface = Color.primary
+        static let onSurfaceMuted = Color.secondary
     }
 
     // MARK: - Spectral Colors (Light Sources)
