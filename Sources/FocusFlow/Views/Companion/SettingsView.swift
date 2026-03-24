@@ -125,29 +125,24 @@ struct SettingsView: View {
     private var behaviorSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Behavior", subtitle: "Automations and startup preferences")
+                LiquidSectionHeader("Behavior", subtitle: "Startup preferences and guardrails")
 
                 VStack(spacing: 10) {
-                    ToggleRow(
-                        label: "Auto-start breaks",
-                        icon: "play.circle.fill",
-                        color: .green,
-                        isOn: Binding(
-                            get: { settings.autoStartBreak },
-                            set: { settings.autoStartBreak = $0; save() }
-                        )
-                    )
-
-                    Divider()
-
-                    ToggleRow(
-                        label: "Auto-start next session",
-                        icon: "arrow.clockwise.circle.fill",
-                        color: .blue,
-                        isOn: Binding(
-                            get: { settings.autoStartNextSession },
-                            set: { settings.autoStartNextSession = $0; save() }
-                        )
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.bubble")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                        Text("Break/session auto-start controls are hidden until full lifecycle support is complete.")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(LiquidDesignTokens.Spectral.amber.opacity(0.10))
                     )
 
                     Divider()
@@ -285,9 +280,8 @@ struct SettingsView: View {
         case .notDetermined:
             guard !isRequestingNotificationPermission else { return }
             isRequestingNotificationPermission = true
-            notificationService.requestPermission()
             Task { @MainActor in
-                notificationService.refreshAuthorizationStatus()
+                _ = await notificationService.requestPermission()
                 isRequestingNotificationPermission = false
                 restoreCompanionWindow()
             }
@@ -1138,6 +1132,18 @@ struct SettingsView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .padding(.leading, 28)
+
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "checkmark.shield")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 1)
+                    Text("App activity monitoring does not require a macOS permission prompt. FocusFlow reads only the frontmost app metadata already exposed by NSWorkspace.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 28)
             }
             .padding(16)
             .animation(FFMotion.section, value: settings.antiProcrastinationEnabled)

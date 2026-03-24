@@ -177,7 +177,9 @@ private struct WindowLauncherBridge: View {
                     object: nil,
                     queue: .main
                 ) { _ in
-                    timerVM.saveSessionBeforeTermination()
+                    Task { @MainActor in
+                        timerVM.saveSessionBeforeTermination()
+                    }
                 }
             }
     }

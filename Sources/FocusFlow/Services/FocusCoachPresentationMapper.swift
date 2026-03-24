@@ -39,7 +39,7 @@ struct FocusCoachPresentationMapper {
             return StripModel(
                 tone: .amber,
                 title: "Drift Detected",
-                subtitle: "Switching apps frequently",
+                subtitle: "Context mismatch spotted",
                 color: LiquidDesignTokens.Spectral.amber,
                 iconName: "exclamationmark.triangle.fill"
             )
@@ -47,7 +47,7 @@ struct FocusCoachPresentationMapper {
             return StripModel(
                 tone: .red,
                 title: "Drift Alert",
-                subtitle: score > 0.85 ? "Sustained drift — take action" : "High app switching detected",
+                subtitle: score > 0.85 ? "Sustained mismatch — decide now" : "Repeated mismatch detected",
                 color: LiquidDesignTokens.Spectral.salmon,
                 iconName: "exclamationmark.octagon.fill"
             )
@@ -62,15 +62,15 @@ struct FocusCoachPresentationMapper {
             return nil
         case .quickPrompt:
             return PromptModel(
-                title: "Quick Recovery",
-                message: decision.message ?? "Drift detected — quick recovery?",
+                title: "Planned or Drift?",
+                message: decision.message ?? "Current context looks off-plan. Choose the next step.",
                 actions: decision.suggestedActions,
                 isStrong: false
             )
         case .strongPrompt:
             return PromptModel(
-                title: "Focus Check",
-                message: decision.message ?? "Sustained drift — consider a clean restart.",
+                title: "Guardrail Check",
+                message: decision.message ?? "Sustained off-plan behavior detected. Choose a corrective action.",
                 actions: decision.suggestedActions,
                 isStrong: true
             )

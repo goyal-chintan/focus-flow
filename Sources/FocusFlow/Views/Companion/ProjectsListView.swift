@@ -60,7 +60,7 @@ struct ProjectsListView: View {
                 .background(.ultraThinMaterial, in: Capsule())
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
                 .padding(.top, 12)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
         .confirmationDialog(

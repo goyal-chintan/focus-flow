@@ -5,11 +5,13 @@ import Foundation
 /// The one "most relevant situation" distilled from a `FocusCoachContext`.
 /// Both the banner pill AND the headline/body/quote must derive from this — never re-resolve independently.
 enum ResolvedCoachSignal: Sendable {
+    case releaseWindowActive
+    case blockRecommendation(target: String)
     case lowPriorityPattern(count: Int)
     case distractingAppActive(appName: String, formattedIdle: String)
     case longIdle(formattedDuration: String)
-    case noSessionsLateDay(formattedHour: String)
-    case lowGoalProgress(percent: Int, goalMinutes: Int)
+    case noSessionsLateDay(formattedHour: String, projectName: String?)
+    case lowGoalProgress(percent: Int, goalMinutes: Int, projectName: String?)
     case distractingAppPresent(appName: String)
     case `default`
 }
@@ -27,6 +29,8 @@ struct CoachMessage: Sendable {
     /// SF Symbol for the context pill. Non-nil means a pill should be shown.
     var bannerIcon: String? {
         switch signal {
+        case .releaseWindowActive:      return "pause.circle.fill"
+        case .blockRecommendation:      return "shield.lefthalf.filled"
         case .lowPriorityPattern:       return "arrow.triangle.2.circlepath"
         case .distractingAppActive:     return "exclamationmark.app.fill"
         case .longIdle:                 return "timer"
@@ -40,15 +44,19 @@ struct CoachMessage: Sendable {
     /// Short label for the context pill. Nil for `.default` (no pill shown).
     var bannerLabel: String? {
         switch signal {
+        case .releaseWindowActive:
+            return "Guardian paused after your explicit opt-out"
+        case .blockRecommendation(let target):
+            return "Recommend blocking \(target) for this project"
         case .lowPriorityPattern(let count):
             return "Low-priority pattern ×\(count) this week"
         case .distractingAppActive(let app, let idle):
             return "\(app) · \(idle) idle"
         case .longIdle(let dur):
             return "\(dur) since last work"
-        case .noSessionsLateDay(let t):
+        case .noSessionsLateDay(let t, _):
             return "No sessions yet · \(t)"
-        case .lowGoalProgress(let pct, _):
+        case .lowGoalProgress(let pct, _, _):
             return "\(pct)% of daily goal"
         case .distractingAppPresent(let app):
             return "\(app) in foreground"
@@ -73,6 +81,12 @@ enum FocusCoachMessageBuilder {
     // MARK: - Signal resolution (single pass — used by all downstream functions)
 
     static func resolveSignal(context: FocusCoachContext) -> ResolvedCoachSignal {
+        if context.inReleaseWindow {
+            return .releaseWindowActive
+        }
+        if let target = context.suggestedBlockTarget {
+            return .blockRecommendation(target: target)
+        }
         if context.recentLowPriorityWorkCount >= 2 {
             return .lowPriorityPattern(count: context.recentLowPriorityWorkCount)
         }
@@ -83,12 +97,16 @@ enum FocusCoachMessageBuilder {
             return .longIdle(formattedDuration: context.formattedIdle)
         }
         if context.todaySessionCount == 0, context.hourOfDay >= 14 {
-            return .noSessionsLateDay(formattedHour: formattedHour(context.hourOfDay))
+            return .noSessionsLateDay(
+                formattedHour: formattedHour(context.hourOfDay),
+                projectName: context.selectedProjectName
+            )
         }
         if context.goalProgress < 0.4, context.hourOfDay >= 17 {
             return .lowGoalProgress(
                 percent: Int(context.goalProgress * 100),
-                goalMinutes: Int(context.dailyGoalSeconds / 60)
+                goalMinutes: Int(context.dailyGoalSeconds / 60),
+                projectName: context.selectedProjectName
             )
         }
         if let app = context.frontmostAppName, context.frontmostAppCategory == .distracting {
@@ -101,20 +119,30 @@ enum FocusCoachMessageBuilder {
 
     private static func buildHeadline(signal: ResolvedCoachSignal) -> String {
         switch signal {
+        case .releaseWindowActive:
+            return "You marked yourself off-duty, so guardrails are paused for now"
+        case .blockRecommendation(let target):
+            return "\(target) is repeatedly pulling attention away from your planned work"
         case .lowPriorityPattern(let count):
-            return "You've shifted to low-priority work \(count)× this week instead of focusing"
+            return "Low-priority work replaced planned focus \(count) times this week"
         case .distractingAppActive(let app, let idle):
             return "You've been on \(app) for \(idle)"
         case .longIdle(let dur):
-            return "\(dur) since your last focused work — that's a long drift"
-        case .noSessionsLateDay(let t):
-            return "It's \(t) and you haven't started a single session today"
-        case .lowGoalProgress(let pct, let goalMin):
-            return "Only \(pct)% of your \(goalMin)m goal done — window is closing"
+            return "\(dur) since your last focused block"
+        case .noSessionsLateDay(let t, let projectName):
+            if let projectName, !projectName.isEmpty {
+                return "It's \(t) and \(projectName) still has no started block"
+            }
+            return "It's \(t) and no focus block has started yet"
+        case .lowGoalProgress(let pct, let goalMin, let projectName):
+            if let projectName, !projectName.isEmpty {
+                return "\(projectName) is at \(pct)% of the \(goalMin)m daily target"
+            }
+            return "You are at \(pct)% of your \(goalMin)m daily target"
         case .distractingAppPresent(let app):
-            return "Close \(app) and lock in"
+            return "\(app) is active while focus protection is on"
         case .default:
-            return "Your deep work window is open — close it strong"
+            return "Your next focused block is available now"
         }
     }
 
@@ -125,45 +153,55 @@ enum FocusCoachMessageBuilder {
         context: FocusCoachContext
     ) -> (body: String, quoteCategory: FocusCoachQuote.Category) {
         switch signal {
+        case .releaseWindowActive:
+            return (
+                "You made an explicit stop choice. FocusFlow will stay passive until your release window ends.",
+                .momentum
+            )
+        case .blockRecommendation:
+            return (
+                context.blockRecommendationReason ?? "This context has repeatedly correlated with avoidant drift. Add a project-specific block to reduce future slips.",
+                .priority
+            )
         case .lowPriorityPattern:
             return (
-                "Over-planning and shallow tasks feel productive — but they don't move your most important work. What's the one thing that actually matters right now?",
+                "Pattern detected from your own skips: low-priority activity is replacing the intended task. Start a 5-minute rescue block or mark off-duty honestly.",
                 .priority
             )
         case .distractingAppActive(let app, _):
             return (
-                "One distraction triggers another. Close \(app) and lock in — even 20 focused minutes changes the arc of your day.",
+                "\(app) has held foreground long enough to derail restart momentum. Decide now: rescue block, break, or off-duty.",
                 .distraction
             )
         case .longIdle:
             return (
-                "The longer the drift, the harder the restart. A single focused session right now reverses the momentum.",
+                "Restart friction increases with idle drift. A short rescue block is enough to recover trajectory.",
                 .timeUrgency
             )
         case .noSessionsLateDay:
             return (
-                "Afternoon slips are normal — but one started session reverses the trajectory. The bar is just to begin.",
+                "No shame signal here, only trajectory: one started block now is still meaningful.",
                 .timeUrgency
             )
         case .lowGoalProgress:
             return (
-                "There's still time. A focused push now is worth more than the whole scattered day behind you.",
+                "Use one deliberate block now instead of more reactive context-switching.",
                 .timeUrgency
             )
         case .distractingAppPresent(let app):
             return (
-                "One distraction triggers another. Close \(app) and lock in.",
+                "\(app) looks off-plan for the current focus context. Classify it as planned research or drift.",
                 .distraction
             )
         case .default:
             if context.todaySessionCount >= 2 {
                 return (
-                    "You've already proved you can focus today. One more session locks in the day.",
+                    "You already have momentum today. One more deliberate block compounds it.",
                     .momentum
                 )
             }
             return (
-                "Deep work done now compounds. Shallow tasks done now disappear.",
+                "Choose a single high-value block and begin. Decisions beat browsing loops.",
                 .procrastination
             )
         }
@@ -177,4 +215,3 @@ enum FocusCoachMessageBuilder {
         return "\(h)\(period)"
     }
 }
-

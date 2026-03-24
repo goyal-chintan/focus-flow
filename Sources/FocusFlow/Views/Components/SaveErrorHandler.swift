@@ -14,7 +14,7 @@ struct SaveErrorModifier: ViewModifier {
                             saveError = nil
                         }
                     }
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                     .zIndex(100)
                 }
             }

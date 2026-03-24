@@ -29,6 +29,7 @@ struct InsightsView: View {
                 focusScoreSection
                 behavioralInsightsSection
                 coachInsightsSection
+                guardianRecommendationsSection
                 analyticsGridSection
                 trendsAndBreaksSection
                 scienceTipsSection
@@ -182,6 +183,109 @@ struct InsightsView: View {
             return dayTotal >= goal
         }.count
         return Double(daysMetGoal) / 7.0
+    }
+
+    // MARK: - Guardian Recommendations
+
+    private var guardianRecommendationsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                LiquidSectionHeader(
+                    "Guardian Recommendations",
+                    subtitle: "Data-driven block candidates for your current patterns"
+                )
+
+                if guardianRecommendations.isEmpty {
+                    Text("No high-confidence block recommendations yet. Keep using FocusFlow and classify drift honestly to train guardian intelligence.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(guardianRecommendations.enumerated()), id: \.offset) { _, rec in
+                        HStack(spacing: 10) {
+                            Image(systemName: "shield.lefthalf.filled")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                                .frame(width: 18)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(rec.target)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                Text(rec.reason)
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+
+                            Spacer()
+
+                            Text("\(Int(rec.confidence * 100))%")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(LiquidDesignTokens.Spectral.electricBlue.opacity(0.12))
+                                )
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.white.opacity(0.04))
+                        )
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private struct GuardianRecommendation {
+        let target: String
+        let confidence: Double
+        let reason: String
+    }
+
+    private var guardianRecommendations: [GuardianRecommendation] {
+        let calendar = Calendar.current
+        guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) else { return [] }
+        let recent = appUsageEntries.filter { $0.date >= weekAgo }
+        guard !recent.isEmpty else { return [] }
+
+        var grouped = [String: (focus: Int, outside: Int)]()
+        for entry in recent {
+            guard entry.category == .distracting else { continue }
+            guard let target = AppUsageEntry.recommendedBlockTarget(
+                bundleIdentifier: entry.bundleIdentifier,
+                appName: entry.appName
+            ) else { continue }
+            var state = grouped[target, default: (focus: 0, outside: 0)]
+            state.focus += entry.duringFocusSeconds
+            state.outside += entry.outsideFocusSeconds
+            grouped[target] = state
+        }
+
+        let lowPriorityWeight = Double(
+            coachAttempts.filter { $0.skipReasonRaw == FocusCoachSkipReason.lowPriorityWork.rawValue }.count
+        )
+
+        return grouped.compactMap { target, totals in
+            let weightedSeconds = Double(totals.focus) * 1.6 + Double(totals.outside)
+            guard weightedSeconds >= 900 else { return nil }
+            let confidence = min(0.98, 0.62 + min(0.25, weightedSeconds / 7200.0) + min(0.08, lowPriorityWeight * 0.02))
+            let focusMinutes = totals.focus / 60
+            let outsideMinutes = totals.outside / 60
+            return GuardianRecommendation(
+                target: target,
+                confidence: confidence,
+                reason: "\(focusMinutes)m during focus, \(outsideMinutes)m outside focus in the last 7 days."
+            )
+        }
+        .sorted { $0.confidence > $1.confidence }
+        .prefix(5)
+        .map { $0 }
     }
 
     // MARK: - Behavioral Insights (NL)

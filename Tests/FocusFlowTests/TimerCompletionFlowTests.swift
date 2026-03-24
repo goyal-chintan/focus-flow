@@ -41,6 +41,53 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertEqual(unfinished.count, 0)
     }
 
+    func testContinueAfterCompletionTakeBreakKeepsLastCompletedFocusContext() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        let active = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
+        active.startedAt = Date().addingTimeInterval(-6 * 60)
+        try container.mainContext.save()
+        vm.stopForReflection()
+
+        XCTAssertNotNil(vm.lastCompletedSession)
+        XCTAssertEqual(vm.lastCompletedSession?.type, .focus)
+
+        vm.continueAfterCompletion(action: .takeBreak)
+
+        XCTAssertEqual(vm.state, .onBreak(.shortBreak))
+        XCTAssertNotNil(vm.lastCompletedSession)
+        XCTAssertEqual(vm.lastCompletedSession?.type, .focus)
+    }
+
+    func testSkipBreakStartsNextFocusBlockInsteadOfEndingCycle() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .onBreak(.shortBreak)
+        vm.skipBreak()
+
+        XCTAssertEqual(vm.state, .focusing)
+        XCTAssertFalse(vm.isOvertime)
+        XCTAssertGreaterThan(vm.remainingSeconds, 0)
+    }
+
+    func testExplicitSkipReasonCreatesGuardianReleaseWindow() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.handleCoachAction(.skipCheck, skipReason: .doneForToday)
+
+        XCTAssertTrue(vm.isGuardianInReleaseWindow)
+    }
+
     func testIdleEscalationShowsStrongCoachWindowAtThirdNudgeForProductiveApp() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
@@ -67,7 +114,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertEqual(vm.activeCoachInterventionDecision?.kind, .strongPrompt)
     }
 
-    func testStrongPromptWindowShowsEvenWhenPopoverAutoOpenIsDisabled() throws {
+    func testStrongPromptWindowDoesNotAutoOpenWhenSettingIsDisabled() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
         vm.configure(modelContext: container.mainContext)
@@ -83,15 +130,28 @@ final class TimerCompletionFlowTests: XCTestCase {
         settings.coachInterventionMode = .balanced
         try container.mainContext.save()
 
+        var coachWindowOpenRequests = 0
+        var appActivationRequests = 0
+        vm.openCoachInterventionWindow = {
+            coachWindowOpenRequests += 1
+        }
+        vm.requestAppActivation = {
+            appActivationRequests += 1
+        }
+
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
             escalationLevel: 2,
             frontmostCategory: .productive
         )
 
-        XCTAssertTrue(vm.showCoachInterventionWindow)
-        XCTAssertEqual(vm.activeCoachInterventionDecision?.kind, .strongPrompt)
-        XCTAssertNil(vm.currentIdleStarterDecision)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertFalse(vm.showCoachInterventionWindow)
+        XCTAssertNil(vm.activeCoachInterventionDecision)
+        XCTAssertEqual(vm.currentIdleStarterDecision?.kind, .strongPrompt)
+        XCTAssertEqual(coachWindowOpenRequests, 0)
+        XCTAssertEqual(appActivationRequests, 0)
     }
 
     func testStrongPromptSuppressesPopoverCardWhenEscalatingToWindow() throws {
@@ -168,6 +228,43 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertEqual(coachWindowOpenRequests, 1)
         XCTAssertEqual(appActivationRequests, 1)
         XCTAssertNil(vm.currentIdleStarterDecision)
+    }
+
+    func testStrongPromptDoesNotRequestActivationWhenBringToFrontSettingIsDisabled() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachAutoOpenPopoverOnStrongPrompt = true
+        settings.coachBringAppToFrontOnStrongPrompt = false
+        settings.coachAllowSkipAction = true
+        settings.coachInterventionMode = .balanced
+        try container.mainContext.save()
+
+        var coachWindowOpenRequests = 0
+        var appActivationRequests = 0
+        vm.openCoachInterventionWindow = {
+            coachWindowOpenRequests += 1
+        }
+        vm.requestAppActivation = {
+            appActivationRequests += 1
+        }
+
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertTrue(vm.showCoachInterventionWindow)
+        XCTAssertEqual(coachWindowOpenRequests, 1)
+        XCTAssertEqual(appActivationRequests, 0)
     }
 
     func testBreakOverrunReasonPromptActivatesDuringOvertime() throws {
