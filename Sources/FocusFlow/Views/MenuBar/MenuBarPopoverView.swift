@@ -5,6 +5,7 @@ struct MenuBarPopoverView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.openWindow) private var openWindow
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showStopConfirmation = false
 
     var body: some View {
@@ -189,15 +190,20 @@ struct MenuBarPopoverView: View {
                 Text("✦ \(ctx.durationMinutes)m earned")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Spectral.mint)
+                    .contentTransition(.numericText(countsDown: false))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.10))
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.12))
                     .overlay(Capsule().strokeBorder(LiquidDesignTokens.Spectral.mint.opacity(0.18), lineWidth: 0.5))
             )
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.85).combined(with: .opacity),
+                removal: .opacity
+            ))
+            .animation(FFMotion.reward, value: ctx.durationMinutes)
             .padding(.bottom, 2)
         }
     }
@@ -212,7 +218,8 @@ struct MenuBarPopoverView: View {
             state: timerVM.state,
             isOvertime: timerVM.isOvertime,
             pauseDuration: timerVM.pauseElapsed,
-            pauseTimeString: timerVM.pauseTimeString
+            pauseTimeString: timerVM.pauseTimeString,
+            labelColorOverride: stateLabelColor
         )
         .padding(.top, (timerVM.state == .idle && !timerVM.isOvertime) ? 20 : 10)
         .padding(.bottom, (timerVM.state == .idle && !timerVM.isOvertime) ? 8 : 4)
@@ -241,7 +248,8 @@ struct MenuBarPopoverView: View {
                 FocusCoachStripView(model: model)
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 4)
-                    .transition(.opacity)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .animation(FFMotion.warning, value: isActive)
             }
 
             // Quick prompt overlay when coach decides to intervene
@@ -396,16 +404,37 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Helpers
 
+    /// Behavioral ring subtitle per spec §11: Ready, Protecting, Check, Return.
+    /// Escalates to "Check" during active focus when guardian has surfaced a challenge.
     private var stateLabel: String {
         switch timerVM.state {
         case .idle:
             return "Ready"
         case .focusing:
-            return timerVM.isOvertime ? "Overtime" : "Protecting"
+            if timerVM.isOvertime { return "Overtime" }
+            if timerVM.activeCoachInterventionDecision != nil ||
+               timerVM.currentCoachQuickPromptDecision != nil {
+                return "Check"
+            }
+            return "Protecting"
         case .paused:
             return "Check"
         case .onBreak:
             return "Return"
+        }
+    }
+
+    private var stateLabelColor: Color {
+        switch timerVM.state {
+        case .idle: return LiquidDesignTokens.Surface.onSurfaceMuted
+        case .focusing:
+            if timerVM.isOvertime { return LiquidDesignTokens.Spectral.mint }
+            if timerVM.activeCoachInterventionDecision != nil || timerVM.currentCoachQuickPromptDecision != nil {
+                return LiquidDesignTokens.Spectral.amber
+            }
+            return LiquidDesignTokens.Spectral.electricBlue
+        case .paused: return LiquidDesignTokens.Spectral.amber
+        case .onBreak: return LiquidDesignTokens.Spectral.mint
         }
     }
 
@@ -442,6 +471,8 @@ private struct IdlePopoverContent: View {
     let onDiscardRecovery: () -> Void
 
     @State private var showCustomSlider: Bool = false
+    @State private var startCommitting: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let presetMinutes: [Int] = [5, 15, 25, 45]
 
@@ -548,8 +579,19 @@ private struct IdlePopoverContent: View {
             title: "Start Focus Session",
             icon: "play.fill",
             gradient: LiquidDesignTokens.Gradient.focus,
-            action: onStartFocus
+            action: {
+                if !reduceMotion {
+                    withAnimation(FFMotion.commit) { startCommitting = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        onStartFocus()
+                    }
+                } else {
+                    onStartFocus()
+                }
+            }
         )
+        .scaleEffect(startCommitting ? 0.95 : 1.0)
+        .animation(reduceMotion ? nil : FFMotion.commit, value: startCommitting)
     }
 
     private func recoveryBanner(_ recovery: CrashRecoveryState) -> some View {

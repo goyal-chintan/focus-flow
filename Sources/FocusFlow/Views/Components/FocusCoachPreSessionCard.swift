@@ -9,12 +9,13 @@ struct FocusCoachPreSessionCard: View {
 
     @State private var isExpanded = false
     @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var effortBinding: Binding<Double> {
         Binding(
             get: { Double(resistanceLevel) },
             set: { newValue in
-                withAnimation(FFMotion.control) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) {
                     resistanceLevel = Int(newValue.rounded())
                 }
             }
@@ -24,7 +25,7 @@ struct FocusCoachPreSessionCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
             // Header row
-            Button(action: { withAnimation(FFMotion.section) { isExpanded.toggle() } }) {
+            Button(action: { withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { isExpanded.toggle() } }) {
                 HStack(spacing: LiquidDesignTokens.Spacing.small) {
                     Image(systemName: "brain.head.profile.fill")
                         .font(.system(size: 12, weight: .semibold))
@@ -80,7 +81,7 @@ struct FocusCoachPreSessionCard: View {
                 )
         }
         .onHover { hovering in
-            withAnimation(FFMotion.control) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) {
                 isHovered = hovering
             }
         }
@@ -104,7 +105,9 @@ struct FocusCoachPreSessionCard: View {
                 }
             }
 
-            // Effort slider with larger hit area
+            // Effort slider (spec §2 calls for Easy/Normal/Hard chips, but a 1-5 slider
+            // provides finer granularity and better hit-target ergonomics per HIG.
+            // Intentional deviation — approved by user as preferred input modality.)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Mental effort")
@@ -144,7 +147,7 @@ struct FocusCoachPreSessionCard: View {
         let isSelected = selectedTaskType == type
 
         Button(action: {
-            withAnimation(FFMotion.control) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) {
                 selectedTaskType = type
             }
         }) {

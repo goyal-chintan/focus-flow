@@ -11,6 +11,7 @@ struct FocusCoachReasonChipSheet: View {
     let onDismiss: () -> Void
 
     @State private var selectedReason: FocusCoachReason?
+    @State private var confirmedReason: FocusCoachReason?
     @State private var appear = false
 
     var body: some View {
@@ -96,7 +97,12 @@ struct FocusCoachReasonChipSheet: View {
 
                 // Submit (only if reason selected)
                 if let reason = selectedReason {
-                    Button(action: { onSelect(reason) }) {
+                    Button(action: {
+                        confirmedReason = reason
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            onSelect(reason)
+                        }
+                    }) {
                         Text("Done")
                             .font(LiquidDesignTokens.Typography.labelMedium)
                             .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
@@ -165,6 +171,13 @@ struct FocusCoachReasonChipSheet: View {
                     )
             }
             .scaleEffect(isSelected ? 1.03 : 1.0)
+            .background(
+                Circle()
+                    .fill(pulseColor(for: confirmedReason).opacity(confirmedReason == reason ? 0.3 : 0))
+                    .blur(radius: 6)
+                    .scaleEffect(confirmedReason == reason ? 1.3 : 0.8)
+                    .animation(FFMotion.reward, value: confirmedReason)
+            )
         }
         .frame(minHeight: 44)
         .contentShape(Rectangle())
@@ -192,6 +205,11 @@ struct FocusCoachReasonChipSheet: View {
         reason.isLegitimate
             ? LiquidDesignTokens.Spectral.electricBlue
             : LiquidDesignTokens.Spectral.amber
+    }
+
+    private func pulseColor(for reason: FocusCoachReason?) -> Color {
+        guard let reason else { return .clear }
+        return reason.isLegitimate ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.amber
     }
 }
 

@@ -13,6 +13,7 @@ struct InsightsView: View {
     @State private var showAllInsights = false
     @State private var showScienceTips = false
     @State private var showAppUsage = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var dailyGoal: TimeInterval {
         allSettings.first?.dailyFocusGoal ?? 7200
@@ -38,7 +39,7 @@ struct InsightsView: View {
             .padding(24)
         }
         .background(.clear)
-        .animation(FFMotion.section, value: selectedHour)
+        .animation(reduceMotion ? nil : FFMotion.section, value: selectedHour)
     }
 
     // MARK: - Header
@@ -75,7 +76,7 @@ struct InsightsView: View {
                             )
                             .rotationEffect(.degrees(-90))
                             .frame(width: 100, height: 100)
-                            .animation(.spring(response: 1.0, dampingFraction: 0.8), value: focusScore)
+                            .animation(reduceMotion ? nil : .spring(response: 1.0, dampingFraction: 0.8), value: focusScore)
 
                         VStack(spacing: 2) {
                             Text("\(focusScore)")
@@ -1086,7 +1087,7 @@ struct InsightsView: View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
-                    withAnimation(FFMotion.section) { showAppUsage.toggle() }
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showAppUsage.toggle() }
                 } label: {
                     HStack {
                         LiquidSectionHeader(
@@ -1098,7 +1099,7 @@ struct InsightsView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(showAppUsage ? 90 : 0))
-                            .animation(FFMotion.section, value: showAppUsage)
+                            .animation(reduceMotion ? nil : FFMotion.section, value: showAppUsage)
                     }
                     .contentShape(Rectangle())
                     .frame(minHeight: 44)
@@ -1340,7 +1341,7 @@ struct InsightsView: View {
                     .onTapGesture { selectedHour = selectedHour == item.hour ? nil : item.hour }
                     .accessibilityLabel("\(item.label), \(Int(item.totalMinutes)) minutes of focus")
                     .accessibilityAddTraits(.isButton)
-                    .animation(FFMotion.control, value: isSelected)
+                    .animation(reduceMotion ? nil : FFMotion.control, value: isSelected)
                 }
             }
         }
@@ -1593,7 +1594,7 @@ struct InsightsView: View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
-                    withAnimation(FFMotion.section) { showScienceTips.toggle() }
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showScienceTips.toggle() }
                 } label: {
                     HStack {
                         LiquidSectionHeader(
@@ -1605,7 +1606,7 @@ struct InsightsView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(showScienceTips ? 90 : 0))
-                            .animation(FFMotion.section, value: showScienceTips)
+                            .animation(reduceMotion ? nil : FFMotion.section, value: showScienceTips)
                     }
                     .contentShape(Rectangle())
                     .frame(minHeight: 44)

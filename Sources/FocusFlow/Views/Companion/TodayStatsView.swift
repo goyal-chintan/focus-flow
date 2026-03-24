@@ -34,6 +34,7 @@ struct TodayStatsView: View {
     @State private var showManualEntry = false
     @State private var dueReminders: [RemindersService.ReminderItem] = []
     @State private var showLoggedToast = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -64,9 +65,9 @@ struct TodayStatsView: View {
         .background(.clear)
         .sheet(isPresented: $showManualEntry) {
             ManualSessionView(onSave: {
-                withAnimation(FFMotion.section) { showLoggedToast = true }
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showLoggedToast = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    withAnimation(FFMotion.section) { showLoggedToast = false }
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showLoggedToast = false }
                 }
             })
         }
@@ -227,8 +228,44 @@ struct TodayStatsView: View {
         let sessionIds = Set(todaySessions.map { $0.id })
         let todayInterruptions = allCoachInterruptions.filter { sessionIds.contains($0.sessionId) }
         guard !todayInterruptions.isEmpty else { return nil }
-        let count = todayInterruptions.count
-        return "Guardian tracked \(count) context event\(count == 1 ? "" : "s") today."
+
+        // Build specific behavioral insight from classified interruptions
+        let classified = todayInterruptions.filter { $0.reason != nil }
+        guard !classified.isEmpty else {
+            let count = todayInterruptions.count
+            return "Guardian tracked \(count) context event\(count == 1 ? "" : "s") today."
+        }
+
+        let avoidant = classified.filter { !$0.isLegitimate }
+        let legitimate = classified.filter { $0.isLegitimate }
+
+        // Find primary project name from sessions
+        let projectName = todaySessions.compactMap { $0.project?.name }.first
+
+        var parts: [String] = []
+
+        // Most common avoidant reason
+        if let topAvoidant = mostCommonReason(in: avoidant) {
+            if let projectName {
+                parts.append("\(topAvoidant) was off-plan for \(projectName)")
+            } else {
+                parts.append("\(topAvoidant) flagged as avoidant")
+            }
+        }
+
+        // Most common legitimate reason
+        if let topLegit = mostCommonReason(in: legitimate) {
+            parts.append("\(topLegit) confirmed as valid")
+        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: "; ") + "."
+    }
+
+    private func mostCommonReason(in interruptions: [CoachInterruption]) -> String? {
+        let reasons = interruptions.compactMap { $0.reason }
+        guard !reasons.isEmpty else { return nil }
+        let counts = Dictionary(grouping: reasons, by: \.rawValue)
+        return counts.max(by: { $0.value.count < $1.value.count })?.value.first?.displayName
     }
 
     // MARK: - New Rows
@@ -538,7 +575,7 @@ struct TodayStatsView: View {
                 print("[TodayStatsView] Failed to complete reminder: \(reminder.title)")
                 return
             }
-            withAnimation {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : .default) {
                 dueReminders.removeAll { $0.id == reminder.id }
             }
         }

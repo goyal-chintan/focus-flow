@@ -20,6 +20,7 @@ struct ManualSessionView: View {
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Computed end-time binding — duration preset/custom field moves the end time;
     /// editing the "Ended at" picker back-computes the duration.
@@ -198,7 +199,7 @@ struct ManualSessionView: View {
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3, dampingFraction: 0.8)) {
                     showSplits.toggle()
                     if showSplits && splits.isEmpty {
                         splits = [TimeSplitView.SplitEntry(
@@ -240,7 +241,7 @@ struct ManualSessionView: View {
                     Label(allocationLabel, systemImage: splitsOverAllocated ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(splitsOverAllocated ? Color.orange : Color.green)
-                        .animation(FFMotion.control, value: allocatedMin)
+                        .animation(reduceMotion ? nil : FFMotion.control, value: allocatedMin)
                 }
             }
         }

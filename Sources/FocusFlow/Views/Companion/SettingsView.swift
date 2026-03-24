@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var reminderLoadError: String?
     @State private var reminderAuthError: String?
     @State private var isRequestingNotificationPermission = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var saveError: String?
     @State private var isEnablingCalendar = false
     @State private var isEnablingReminders = false
@@ -494,7 +495,7 @@ struct SettingsView: View {
                 remindersIntegrationSection
             }
             .padding(16)
-            .animation(FFMotion.section, value: settings.calendarIntegrationEnabled)
+            .animation(reduceMotion ? nil : FFMotion.section, value: settings.calendarIntegrationEnabled)
         }
     }
 
@@ -1165,8 +1166,8 @@ struct SettingsView: View {
                 .padding(.leading, 28)
             }
             .padding(16)
-            .animation(FFMotion.section, value: settings.antiProcrastinationEnabled)
-            .animation(FFMotion.section, value: settings.coachRealtimeEnabled)
+            .animation(reduceMotion ? nil : FFMotion.section, value: settings.antiProcrastinationEnabled)
+            .animation(reduceMotion ? nil : FFMotion.section, value: settings.coachRealtimeEnabled)
         }
     }
 

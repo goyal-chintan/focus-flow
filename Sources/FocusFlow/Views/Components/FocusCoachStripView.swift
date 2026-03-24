@@ -8,6 +8,7 @@ struct FocusCoachStripView: View {
     let onTap: (() -> Void)?
 
     @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: FocusCoachPresentationMapper.StripModel, onTap: (() -> Void)? = nil) {
         self.model = model
@@ -20,11 +21,11 @@ struct FocusCoachStripView: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            withAnimation(FFMotion.control) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.warning) {
                 isHovered = hovering
             }
         }
-        .animation(FFMotion.section, value: model.tone)
+        .animation(reduceMotion ? nil : FFMotion.warning, value: model.tone)
         .accessibilityLabel("Focus status: \(model.title)")
         .accessibilityValue(model.subtitle ?? "")
     }

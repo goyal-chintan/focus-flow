@@ -3,6 +3,7 @@ import SwiftUI
 struct SessionDotsView: View {
     let completed: Int
     let total: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 6) {
@@ -14,6 +15,6 @@ struct SessionDotsView: View {
                     .frame(width: 6, height: 6)
             }
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: completed)
+        .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.85), value: completed)
     }
 }

@@ -19,6 +19,8 @@ struct DurationPresetRow: View {
         self._isCustomActive = isCustomActive
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: 6) {
             ForEach(presets, id: \.self) { mins in
@@ -34,8 +36,8 @@ struct DurationPresetRow: View {
     private func presetPill(_ mins: Int) -> some View {
         let isSelected = !isCustomActive && selectedMinutes == mins
         return Button {
-            withAnimation(FFMotion.control) { selectedMinutes = mins }
-            withAnimation(FFMotion.section) { isCustomActive = false }
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) { selectedMinutes = mins }
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { isCustomActive = false }
         } label: {
             Text("\(mins)")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -54,7 +56,7 @@ struct DurationPresetRow: View {
 
     private var customPill: some View {
         Button {
-            withAnimation(FFMotion.section) { isCustomActive = true }
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { isCustomActive = true }
         } label: {
             Text("Custom")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))

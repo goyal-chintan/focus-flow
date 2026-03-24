@@ -23,11 +23,12 @@ struct ProjectsListView: View {
     @State private var saveError: String?
     @State private var showArchivedSection = false
     @State private var toastMessage: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func showToast(_ message: String) {
-        withAnimation(FFMotion.section) { toastMessage = message }
+        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { toastMessage = message }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(FFMotion.section) { toastMessage = nil }
+            withAnimation(self.reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { toastMessage = nil }
         }
     }
 
@@ -77,7 +78,7 @@ struct ProjectsListView: View {
             Button("Archive", role: .destructive) {
                 if let project = projectToArchive {
                     let name = project.name
-                    withAnimation(FFMotion.section) {
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                         project.archived = true
                         if timerVM.selectedProject?.id == project.id {
                             timerVM.selectedProject = nil
@@ -163,7 +164,7 @@ struct ProjectsListView: View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
             if let selected = selectedProject {
                 heroCard(selected)
-                    .animation(FFMotion.section, value: selected.id)
+                    .animation(reduceMotion ? nil : FFMotion.section, value: selected.id)
             }
 
             rosterSection
@@ -322,7 +323,7 @@ struct ProjectsListView: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture {
-            withAnimation(FFMotion.section) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                 selectedProject = project
                 timerVM.selectedProject = project
                 timerVM.noteProjectSelected()
@@ -384,7 +385,7 @@ struct ProjectsListView: View {
     private var archivedSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(FFMotion.section) { showArchivedSection.toggle() }
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showArchivedSection.toggle() }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "archivebox")
@@ -436,7 +437,7 @@ struct ProjectsListView: View {
 
             Button {
                 let name = project.name
-                withAnimation(FFMotion.section) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                     project.archived = false
                     saveWithFeedback(modelContext, errorBinding: $saveError)
                     if selectedProject == nil {
