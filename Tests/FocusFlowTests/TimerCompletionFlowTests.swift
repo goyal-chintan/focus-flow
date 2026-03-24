@@ -77,7 +77,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertGreaterThan(vm.remainingSeconds, 0)
     }
 
-    func testExplicitSkipReasonCreatesGuardianReleaseWindow() throws {
+    func testExplicitSkipReasonCreatesSuppressionReleaseWindow() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
         vm.configure(modelContext: container.mainContext)
@@ -85,7 +85,60 @@ final class TimerCompletionFlowTests: XCTestCase {
 
         vm.handleCoachAction(.skipCheck, skipReason: .doneForToday)
 
-        XCTAssertTrue(vm.isGuardianInReleaseWindow)
+        XCTAssertTrue(vm.isInReleaseWindow)
+        XCTAssertEqual(vm.suppressionWindow?.reason, .offDuty)
+    }
+
+    func testMarkOffDutyEntersExplicitReleaseAndClearsPrompts() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.currentCoachQuickPromptDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.skipCheck],
+            message: "quick"
+        )
+        vm.currentIdleStarterDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.startFocusNow],
+            message: "idle"
+        )
+
+        vm.handleCoachAction(.markOffDuty)
+
+        XCTAssertTrue(vm.isInReleaseWindow)
+        XCTAssertEqual(vm.suppressionWindow?.reason, .offDuty)
+        XCTAssertNil(vm.currentCoachQuickPromptDecision)
+        XCTAssertNil(vm.currentIdleStarterDecision)
+    }
+
+    func testIdleStarterPromptSuppressedWhenScreenShareActiveAndEnabled() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel(
+            screenShareGuard: ScreenShareGuard(isScreenSharingProvider: { true })
+        )
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = true
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertFalse(vm.showCoachInterventionWindow)
+        XCTAssertNil(vm.activeCoachInterventionDecision)
+        XCTAssertNil(vm.currentIdleStarterDecision)
     }
 
     func testIdleEscalationShowsStrongCoachWindowAtThirdNudgeForProductiveApp() throws {
