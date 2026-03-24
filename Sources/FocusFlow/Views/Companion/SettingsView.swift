@@ -3,6 +3,10 @@ import SwiftData
 import ServiceManagement
 
 struct SettingsView: View {
+    enum ScrollTarget {
+        case integrations
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
     @Query private var allSettings: [AppSettings]
@@ -14,38 +18,54 @@ struct SettingsView: View {
     @State private var reminderLoadError: String?
     @State private var reminderAuthError: String?
     @State private var isRequestingNotificationPermission = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var saveError: String?
     @State private var isEnablingCalendar = false
     @State private var isEnablingReminders = false
     @State private var showBlockingSheet = false
     @StateObject private var notificationService = NotificationService.shared
+    private let initialScrollTarget: ScrollTarget?
+
+    init(initialScrollTarget: ScrollTarget? = nil) {
+        self.initialScrollTarget = initialScrollTarget
+    }
 
     private var settings: AppSettings {
         allSettings.first ?? AppSettings()
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: LiquidDesignTokens.Spacing.large) {
-                durationsSection
-                behaviorSection
-                soundSection
-                goalsSection
-                blockingSection
-                integrationsSection
-                focusCoachSection
-                aboutSection
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: LiquidDesignTokens.Spacing.large) {
+                    durationsSection
+                        .id("durations")
+                    behaviorSection
+                    soundSection
+                    goalsSection
+                    blockingSection
+                    integrationsSection
+                        .id("integrations")
+                    focusCoachSection
+                    aboutSection
+                }
+                .padding(24)
             }
-            .padding(24)
-        }
-        .background(.ultraThinMaterial)
-        .saveErrorOverlay($saveError)
-        .onAppear {
-            if settings.calendarIntegrationEnabled {
-                loadCalendars()
-            }
-            if settings.remindersIntegrationEnabled {
-                loadReminderLists()
+            .background(.clear)
+            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+            .saveErrorOverlay($saveError)
+            .onAppear {
+                if settings.calendarIntegrationEnabled {
+                    loadCalendars()
+                }
+                if settings.remindersIntegrationEnabled {
+                    loadReminderLists()
+                }
+                if initialScrollTarget == .integrations {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        proxy.scrollTo("integrations", anchor: .top)
+                    }
+                }
             }
         }
     }
@@ -125,29 +145,25 @@ struct SettingsView: View {
     private var behaviorSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Behavior", subtitle: "Automations and startup preferences")
+                LiquidSectionHeader("Behavior", subtitle: "Startup preferences and guardrails")
 
                 VStack(spacing: 10) {
-                    ToggleRow(
-                        label: "Auto-start breaks",
-                        icon: "play.circle.fill",
-                        color: .green,
-                        isOn: Binding(
-                            get: { settings.autoStartBreak },
-                            set: { settings.autoStartBreak = $0; save() }
-                        )
-                    )
-
-                    Divider()
-
-                    ToggleRow(
-                        label: "Auto-start next session",
-                        icon: "arrow.clockwise.circle.fill",
-                        color: .blue,
-                        isOn: Binding(
-                            get: { settings.autoStartNextSession },
-                            set: { settings.autoStartNextSession = $0; save() }
-                        )
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.bubble")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                            .accessibilityHidden(true)
+                        Text("Break/session auto-start controls are hidden until full lifecycle support is complete.")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(LiquidDesignTokens.Spectral.amber.opacity(0.10))
                     )
 
                     Divider()
@@ -206,6 +222,7 @@ struct SettingsView: View {
                         Image(systemName: "bell.slash.fill")
                             .font(.system(size: 13))
                             .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(notificationBannerTitle)
                                 .font(.system(size: 12, weight: .semibold))
@@ -285,9 +302,8 @@ struct SettingsView: View {
         case .notDetermined:
             guard !isRequestingNotificationPermission else { return }
             isRequestingNotificationPermission = true
-            notificationService.requestPermission()
             Task { @MainActor in
-                notificationService.refreshAuthorizationStatus()
+                _ = await notificationService.requestPermission()
                 isRequestingNotificationPermission = false
                 restoreCompanionWindow()
             }
@@ -346,6 +362,7 @@ struct SettingsView: View {
                             Image(systemName: "target")
                                 .foregroundStyle(.indigo)
                                 .font(.system(size: 13, weight: .semibold))
+                                .accessibilityHidden(true)
                             Text("Daily Focus Goal")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -398,12 +415,14 @@ struct SettingsView: View {
                         Image(systemName: "shield.checkered")
                             .font(.system(size: 14))
                             .foregroundStyle(.blue)
+                            .accessibilityHidden(true)
                         Text("Manage Blocking Profiles")
                             .font(.system(size: 13, weight: .medium))
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
                     .padding(.vertical, 6)
                     .contentShape(Rectangle())
@@ -435,6 +454,7 @@ struct SettingsView: View {
                         .foregroundStyle(.red)
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 20)
+                        .accessibilityHidden(true)
 
                     Text("Record to Calendar")
                         .font(.subheadline)
@@ -447,7 +467,7 @@ struct SettingsView: View {
                         get: { settings.calendarIntegrationEnabled },
                         set: { newValue in
                             if newValue {
-                                Task { await enableCalendarIntegration() }
+                                Task { @MainActor in await enableCalendarIntegration() }
                             } else {
                                 settings.calendarIntegrationEnabled = false
                                 settings.selectedCalendarId = ""
@@ -470,6 +490,7 @@ struct SettingsView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .padding(.top, 1)
+                            .accessibilityHidden(true)
                         Text("Calendar events are created when you complete or save a focus session. Sessions logged before enabling this integration are not retroactively synced.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -481,7 +502,7 @@ struct SettingsView: View {
                 remindersIntegrationSection
             }
             .padding(16)
-            .animation(FFMotion.section, value: settings.calendarIntegrationEnabled)
+            .animation(reduceMotion ? nil : FFMotion.section, value: settings.calendarIntegrationEnabled)
         }
     }
 
@@ -526,11 +547,22 @@ struct SettingsView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.orange)
 
-                    Button("Retry Calendar Sync") {
-                        loadCalendars()
+                    if calendarLoadError.contains("permission") || calendarLoadError.contains("access") {
+                        Button("Open System Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.blue)
+                    } else {
+                        Button("Retry Calendar Sync") {
+                            loadCalendars()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold))
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
                 }
             } else if availableCalendars.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -594,6 +626,7 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .padding(.top, 1)
+                    .accessibilityHidden(true)
                 Text("Sessions appear with a 🎯 prefix in your selected calendar. Open Apple Calendar and make sure your calendar is checked in the sidebar.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -601,7 +634,7 @@ struct SettingsView: View {
             }
             .padding(.top, 4)
         }
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        .transition(.opacity)
     }
 
     @ViewBuilder
@@ -636,6 +669,7 @@ struct SettingsView: View {
                     .foregroundStyle(.blue)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 20)
+                    .accessibilityHidden(true)
 
                 Text("Sync Reminders")
                     .font(.subheadline)
@@ -648,7 +682,7 @@ struct SettingsView: View {
                     get: { settings.remindersIntegrationEnabled },
                     set: { newValue in
                         if newValue {
-                            Task { await enableRemindersIntegration() }
+                            Task { @MainActor in await enableRemindersIntegration() }
                         } else {
                             settings.remindersIntegrationEnabled = false
                             settings.selectedReminderListId = ""
@@ -668,9 +702,20 @@ struct SettingsView: View {
             }
 
             if let reminderAuthError {
-                Label(reminderAuthError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(reminderAuthError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.orange)
+
+                    Button("Open System Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.blue)
+                }
             }
 
             if let reminderLoadError {
@@ -679,7 +724,7 @@ struct SettingsView: View {
                     .foregroundStyle(.orange)
             }
         }
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        .transition(.opacity)
     }
 
     private var reminderPickerSection: some View {
@@ -737,7 +782,7 @@ struct SettingsView: View {
         }
     }
 
-    private func enableCalendarIntegration() async {
+    @MainActor private func enableCalendarIntegration() async {
         guard !isEnablingCalendar else { return }
         isEnablingCalendar = true
         defer { isEnablingCalendar = false }
@@ -809,7 +854,7 @@ struct SettingsView: View {
         }
     }
 
-    private func enableRemindersIntegration() async {
+    @MainActor private func enableRemindersIntegration() async {
         guard !isEnablingReminders else { return }
         isEnablingReminders = true
         defer { isEnablingReminders = false }
@@ -850,7 +895,7 @@ struct SettingsView: View {
     private var focusCoachSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Focus Coach", subtitle: "Nudges and reminders to stay productive")
+                LiquidSectionHeader("Focus Coach", subtitle: "Personalized coaching and nudges to stay productive")
 
                 // What it does — clear explanation before controls
                 HStack(alignment: .top, spacing: 8) {
@@ -858,7 +903,8 @@ struct SettingsView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.indigo.opacity(0.8))
                         .padding(.top, 1)
-                    Text("When you've been idle at your Mac without starting a session, FocusFlow sends escalating notification nudges to get you back into deep work. View your Focus Score and personalized insights in the Insights tab.")
+                        .accessibilityHidden(true)
+                    Text("FocusFlow's coach monitors your focus patterns in real-time — detecting drift, app switching, and break overruns — then intervenes with evidence-based prompts to help you recover. All data stays on-device.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -881,6 +927,7 @@ struct SettingsView: View {
                             Image(systemName: "clock.badge.exclamationmark")
                                 .foregroundStyle(.indigo)
                                 .font(.system(size: 13, weight: .semibold))
+                                .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("First nudge after")
                                     .font(.subheadline)
@@ -904,11 +951,239 @@ struct SettingsView: View {
                         .frame(width: 145)
                         .font(.subheadline)
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
                 }
+
+                if settings.antiProcrastinationEnabled {
+                    Divider().opacity(0.2)
+
+                    ToggleRow(
+                        label: "Idle starter intervention card",
+                        icon: "sparkles.rectangle.stack.fill",
+                        color: LiquidDesignTokens.Spectral.electricBlue,
+                        isOn: Binding(
+                            get: { settings.coachIdleStarterEnabled },
+                            set: { settings.coachIdleStarterEnabled = $0; save() }
+                        )
+                    )
+                }
+
+                Divider().opacity(0.3)
+
+                // MARK: - Real-time Coach Controls
+
+                ToggleRow(
+                    label: "Real-time focus coaching",
+                    icon: "waveform.path.ecg",
+                    color: LiquidDesignTokens.Spectral.electricBlue,
+                    isOn: Binding(
+                        get: { settings.coachRealtimeEnabled },
+                        set: { settings.coachRealtimeEnabled = $0; save() }
+                    )
+                )
+
+                if settings.coachRealtimeEnabled {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "dial.high.fill")
+                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Intervention mode")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Text("Balanced is calmer, Adaptive Strict escalates faster, Session Rescue prioritizes re-entry")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            Spacer()
+                            Picker("", selection: Binding(
+                                get: { settings.coachInterventionMode },
+                                set: {
+                                    settings.coachInterventionMode = $0
+                                    save()
+                                }
+                            )) {
+                                ForEach(FocusCoachInterventionMode.allCases, id: \.rawValue) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
+                            }
+                            .frame(width: 170)
+                        }
+
+                        // Prompt budget
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
+                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Max prompts per session")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Text("Limits how often the coach interrupts you")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            Spacer()
+                            Stepper(
+                                "\(settings.coachPromptBudgetPerSession)",
+                                value: Binding(
+                                    get: { settings.coachPromptBudgetPerSession },
+                                    set: {
+                                        settings.coachPromptBudgetPerSession = $0
+                                        save()
+                                    }
+                                ),
+                                in: 1...8
+                            )
+                            .frame(width: 120)
+                            .font(.subheadline)
+                        }
+
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.bubble.fill")
+                                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Strong prompts per session")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Text("Caps front-and-center interventions to avoid fatigue")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            Spacer()
+                            Stepper(
+                                "\(settings.coachMaxStrongPromptsPerSession)",
+                                value: Binding(
+                                    get: { settings.coachMaxStrongPromptsPerSession },
+                                    set: {
+                                        settings.coachMaxStrongPromptsPerSession = $0
+                                        save()
+                                    }
+                                ),
+                                in: 1...6
+                            )
+                            .frame(width: 120)
+                            .font(.subheadline)
+                        }
+
+                        ToggleRow(
+                            label: "Bring app to front on strong prompt",
+                            icon: "macwindow.on.rectangle",
+                            color: LiquidDesignTokens.Spectral.salmon,
+                            isOn: Binding(
+                                get: { settings.coachBringAppToFrontOnStrongPrompt },
+                                set: { settings.coachBringAppToFrontOnStrongPrompt = $0; save() }
+                            )
+                        )
+
+                        ToggleRow(
+                            label: "Allow “Skip this check” action",
+                            icon: "forward.frame.fill",
+                            color: LiquidDesignTokens.Spectral.amber,
+                            isOn: Binding(
+                                get: { settings.coachAllowSkipAction },
+                                set: { settings.coachAllowSkipAction = $0; save() }
+                            )
+                        )
+
+                        ToggleRow(
+                            label: "Open popover with strong prompt",
+                            icon: "menubar.rectangle",
+                            color: LiquidDesignTokens.Spectral.electricBlue,
+                            isOn: Binding(
+                                get: { settings.coachAutoOpenPopoverOnStrongPrompt },
+                                set: { settings.coachAutoOpenPopoverOnStrongPrompt = $0; save() }
+                            )
+                        )
+
+                        // Reason prompts toggle
+                        ToggleRow(
+                            label: "Ask why I stopped / drifted",
+                            icon: "questionmark.bubble",
+                            color: LiquidDesignTokens.Spectral.amber,
+                            isOn: Binding(
+                                get: { settings.coachReasonPromptsEnabled },
+                                set: { settings.coachReasonPromptsEnabled = $0; save() }
+                            )
+                        )
+
+                        // Default snooze duration
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "moon.zzz")
+                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .accessibilityHidden(true)
+                                Text("Default snooze")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Stepper(
+                                "\(settings.coachDefaultSnoozeMinutes) min",
+                                value: Binding(
+                                    get: { settings.coachDefaultSnoozeMinutes },
+                                    set: {
+                                        settings.coachDefaultSnoozeMinutes = $0
+                                        save()
+                                    }
+                                ),
+                                in: 5...30,
+                                step: 5
+                            )
+                            .frame(width: 145)
+                            .font(.subheadline)
+                        }
+                    }
+                    .transition(.opacity)
+                }
+
+                Divider().opacity(0.3)
+
+                // MARK: - Privacy
+
+                ToggleRow(
+                    label: "Collect detailed app domains",
+                    icon: "lock.shield",
+                    color: .gray,
+                    isOn: Binding(
+                        get: { settings.coachCollectRawDomains },
+                        set: { settings.coachCollectRawDomains = $0; save() }
+                    )
+                )
+
+                Text("When off, only app categories (productive/neutral/distracting) are tracked. All data stays on this device.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 28)
+
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "checkmark.shield")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 1)
+                        .accessibilityHidden(true)
+                    Text("App activity monitoring does not require a macOS permission prompt. FocusFlow reads only the frontmost app metadata already exposed by NSWorkspace.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 28)
             }
             .padding(16)
-            .animation(FFMotion.section, value: settings.antiProcrastinationEnabled)
+            .animation(reduceMotion ? nil : FFMotion.section, value: settings.antiProcrastinationEnabled)
+            .animation(reduceMotion ? nil : FFMotion.section, value: settings.coachRealtimeEnabled)
         }
     }
 
@@ -944,6 +1219,7 @@ private struct DurationRow: View {
                 Image(systemName: icon)
                     .foregroundStyle(color)
                     .font(.system(size: 13, weight: .semibold))
+                    .accessibilityHidden(true)
                 Text(label)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -975,6 +1251,7 @@ private struct ToggleRow: View {
                 Image(systemName: icon)
                     .foregroundStyle(color)
                     .font(.system(size: 13, weight: .semibold))
+                    .accessibilityHidden(true)
                 Text(label)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

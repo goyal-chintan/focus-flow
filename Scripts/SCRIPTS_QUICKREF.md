@@ -14,7 +14,27 @@
 - Launches app immediately
 - Best for: Rapid iteration during development
 
-### 2. `install-and-register.sh` (New)
+### 2. `capture-ui-evidence.sh` (New)
+**Purpose:** Generate deterministic UI review evidence (screenshots + animation GIF + manifest)
+
+```bash
+./Scripts/capture-ui-evidence.sh
+```
+
+Uses Xcode CLI by default:
+- Runs `UIEvidenceCaptureTests`
+- Captures all required review contract flows in light + dark
+- Writes outputs to `Artifacts/review/<run-id>/`
+
+Optional environment variables:
+```bash
+RUN_ID=20260324-120000 ./Scripts/capture-ui-evidence.sh
+RUNNER=swift ./Scripts/capture-ui-evidence.sh
+FLOW_FILTER=menu_bar_idle,coach_strong_window ./Scripts/capture-ui-evidence.sh
+APPEARANCE_FILTER=dark ./Scripts/capture-ui-evidence.sh
+```
+
+### 3. `install-and-register.sh` (New)
 **Purpose:** Build, install to ~/Applications, and register with Spotlight
 
 ```bash
@@ -41,7 +61,7 @@ open -a FocusFlow              # Launch from command line
 # Or search Spotlight for "FocusFlow" and launch from there
 ```
 
-### 3. `uninstall.sh` (New)
+### 4. `uninstall.sh` (New)
 **Purpose:** Remove FocusFlow from system
 
 ```bash

@@ -59,6 +59,16 @@ A native macOS Pomodoro focus timer built with SwiftUI and Apple's Liquid Glass 
 - Break complete — sound + notification
 - Pause too long — warning at 2 min, critical at 5 min
 
+### Personal Focus Coach (On-Device AI)
+- **Real-time risk scoring** — detects drift, app switching, and procrastination patterns every 30 seconds
+- **Adaptive intervention policy** — 3-level escalation (soft nudge → quick prompt → strong prompt) with budget, cooldown, and snooze safeguards
+- **Pre-session intention card** — set task type, expected resistance, and success criteria (MCII-based)
+- **Live coach strip** — green/amber/red risk status bar during active sessions
+- **Anomaly reason chips** — 1-tap reason capture (meeting, fatigue, stress, avoidance) for false-positive control
+- **Personalized weekly insights** — completion rate, recovery rate, top distractions, science-backed coaching tips
+- **Privacy-first** — all data stays on-device, no cloud dependency
+- **Science-informed** — based on Steel 2007 (procrastination), Rozental 2018 (CBT), Albulescu 2022 (micro-breaks)
+
 ### Built with Apple's Liquid Glass
 - Native `.glassEffect()` materials with refraction and specular highlights
 - `.buttonStyle(.glass)` and `.glassProminent` controls
@@ -92,6 +102,36 @@ cp -R .build/debug/FocusFlow.app /Applications/
 ```
 
 Then launch from Spotlight (⌘+Space → "FocusFlow") or Launchpad.
+
+## Automated UI Evidence Capture
+
+Generate review-ready UI evidence (all required contract flows, light/dark screenshots, and animation GIFs):
+
+```bash
+./Scripts/capture-ui-evidence.sh
+```
+
+Artifacts are written to:
+
+```text
+Artifacts/review/<run-id>/
+├── light/*.png
+├── dark/*.png
+├── light/timer_ring_animation.gif
+├── dark/timer_ring_animation.gif
+├── manifest.json
+└── journey.md
+```
+
+Useful filters:
+
+```bash
+# Capture only selected flows
+FLOW_FILTER=menu_bar_idle,coach_strong_window ./Scripts/capture-ui-evidence.sh
+
+# Capture only one appearance
+APPEARANCE_FILTER=dark ./Scripts/capture-ui-evidence.sh
+```
 
 ## Architecture
 

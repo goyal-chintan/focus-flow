@@ -46,6 +46,8 @@ enum CompanionTab: String, CaseIterable, Identifiable {
 
 struct CompanionWindowView: View {
     @State private var selectedTab: CompanionTab = .today
+    @AppStorage("companionRequestedTab") private var requestedTabRaw: String = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
@@ -59,6 +61,19 @@ struct CompanionWindowView: View {
                 .background(windowBackground)
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            if let tab = CompanionTab(rawValue: requestedTabRaw), tab != .today {
+                selectedTab = tab
+            }
+            requestedTabRaw = ""
+        }
+        .onChange(of: requestedTabRaw) { _, newValue in
+            guard !newValue.isEmpty, let tab = CompanionTab(rawValue: newValue) else { return }
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
+                selectedTab = tab
+            }
+            requestedTabRaw = ""
+        }
     }
 
     private var sidebar: some View {
@@ -102,6 +117,7 @@ struct CompanionWindowView: View {
 private struct CompanionSidebarRow: View {
     let tab: CompanionTab
     let isSelected: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let pillRadius: CGFloat = LiquidDesignTokens.CornerRadius.picker
 
@@ -115,6 +131,7 @@ private struct CompanionSidebarRow: View {
                 Image(systemName: tab.icon)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(isSelected ? tab.tint : .secondary)
+                    .accessibilityHidden(true)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -140,6 +157,6 @@ private struct CompanionSidebarRow: View {
                 .shadow(color: isSelected ? tab.tint.opacity(0.15) : .clear, radius: 6, y: 2)
         }
         .contentShape(RoundedRectangle(cornerRadius: pillRadius))
-        .animation(FFMotion.control, value: isSelected)
+        .animation(reduceMotion ? nil : FFMotion.control, value: isSelected)
     }
 }

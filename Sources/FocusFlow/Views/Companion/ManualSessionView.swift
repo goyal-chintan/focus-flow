@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct ManualSessionView: View {
+    var onSave: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -19,6 +20,7 @@ struct ManualSessionView: View {
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var saveError: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Computed end-time binding — duration preset/custom field moves the end time;
     /// editing the "Ended at" picker back-computes the duration.
@@ -85,6 +87,7 @@ struct ManualSessionView: View {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -197,7 +200,7 @@ struct ManualSessionView: View {
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3, dampingFraction: 0.8)) {
                     showSplits.toggle()
                     if showSplits && splits.isEmpty {
                         splits = [TimeSplitView.SplitEntry(
@@ -210,13 +213,17 @@ struct ManualSessionView: View {
                 HStack {
                     Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
                         .font(.caption)
+                        .accessibilityHidden(true)
                     Text("Split time across projects")
                         .font(.caption)
                     Spacer()
                     Image(systemName: showSplits ? "chevron.up" : "chevron.down")
                         .font(.caption2)
+                        .accessibilityHidden(true)
                 }
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -225,7 +232,7 @@ struct ManualSessionView: View {
                     totalDuration: TimeInterval(max(5, duration) * 60),
                     splits: $splits
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity)
 
                 // Split total validation
                 if splits.count > 1 {
@@ -237,7 +244,7 @@ struct ManualSessionView: View {
                     Label(allocationLabel, systemImage: splitsOverAllocated ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(splitsOverAllocated ? Color.orange : Color.green)
-                        .animation(FFMotion.control, value: allocatedMin)
+                        .animation(reduceMotion ? nil : FFMotion.control, value: allocatedMin)
                 }
             }
         }
@@ -258,8 +265,10 @@ struct ManualSessionView: View {
                 icon: "checkmark",
                 role: .primary
             ) {
-                save()
-                dismiss()
+                if save() {
+                    onSave?()
+                    dismiss()
+                }
             }
             .disabled(!canSave)
         }
@@ -271,8 +280,13 @@ struct ManualSessionView: View {
             .foregroundStyle(.secondary)
     }
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         let clampedDuration = max(5, duration)
+        guard clampedDuration >= 11 else {
+            saveError = "Focus sessions shorter than 11 minutes are treated as test sessions and are not saved."
+            return false
+        }
         let computedEndTime = startTime.addingTimeInterval(TimeInterval(clampedDuration * 60))
         let session = FocusSession(
             type: .focus,
@@ -321,6 +335,6 @@ struct ManualSessionView: View {
                 saveWithFeedback(modelContext, errorBinding: $saveError)
             }
         }
+        return true
     }
 }
-

@@ -5,6 +5,7 @@ struct WeeklyStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @State private var selectedPeriod: Period = .week
     @State private var selectedDayIndex: Int? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Period: String, CaseIterable {
         case week = "7 Days"
@@ -23,8 +24,8 @@ struct WeeklyStatsView: View {
             .padding(24)
         }
         .background(.ultraThinMaterial)
-        .animation(FFMotion.section, value: selectedPeriod)
-        .animation(FFMotion.section, value: selectedDayIndex)
+        .animation(reduceMotion ? nil : FFMotion.section, value: selectedPeriod)
+        .animation(reduceMotion ? nil : FFMotion.section, value: selectedDayIndex)
         .onChange(of: selectedPeriod) { _, _ in selectedDayIndex = nil }
     }
 
@@ -45,6 +46,7 @@ struct WeeklyStatsView: View {
                                 .font(.system(size: 13, weight: selectedPeriod == period ? .semibold : .medium))
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
+                                .frame(minHeight: 44)
                         }
                         .if(selectedPeriod == period) { view in
                             view.buttonStyle(.glassProminent)
@@ -212,6 +214,7 @@ struct WeeklyStatsView: View {
                         Image(systemName: "flame.fill")
                             .foregroundStyle(.orange)
                             .font(.system(size: 16, weight: .semibold))
+                            .accessibilityHidden(true)
                         Text("\(currentStreak)")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                     }
@@ -227,6 +230,7 @@ struct WeeklyStatsView: View {
                         Image(systemName: "star.fill")
                             .foregroundStyle(.yellow)
                             .font(.system(size: 16, weight: .semibold))
+                            .accessibilityHidden(true)
                         Text("\(longestStreak)")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                     }

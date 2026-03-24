@@ -98,6 +98,7 @@ struct BlockProfileFormView: View {
                             Image(systemName: "globe")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
 
                             Text(site)
                                 .font(.subheadline)
@@ -110,6 +111,7 @@ struct BlockProfileFormView: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.tertiary)
+                                    .accessibilityLabel("Remove website")
                             }
                             .buttonStyle(.plain)
                         }
@@ -170,6 +172,7 @@ struct BlockProfileFormView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.tertiary)
+                                .accessibilityLabel("Remove app")
                         }
                         .buttonStyle(.plain)
                     }

@@ -16,15 +16,19 @@ struct ProjectsListView: View {
     @State private var formColor = "blue"
     @State private var formIcon = "folder.fill"
     @State private var formBlockProfile: BlockProfile?
+    @State private var formWorkMode: WorkMode = .deepWork
+    @State private var formGuardianSensitivity: GuardianSensitivity = .normal
+    @State private var formDifficultyBias: DifficultyBias = .moderate
     @State private var projectToArchive: Project?
     @State private var saveError: String?
     @State private var showArchivedSection = false
     @State private var toastMessage: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func showToast(_ message: String) {
-        withAnimation(FFMotion.section) { toastMessage = message }
+        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { toastMessage = message }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(FFMotion.section) { toastMessage = nil }
+            withAnimation(self.reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { toastMessage = nil }
         }
     }
 
@@ -52,6 +56,7 @@ struct ProjectsListView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     Text(toastMessage)
                         .font(.system(size: 13, weight: .semibold))
                 }
@@ -60,7 +65,7 @@ struct ProjectsListView: View {
                 .background(.ultraThinMaterial, in: Capsule())
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
                 .padding(.top, 12)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
         .confirmationDialog(
@@ -74,7 +79,7 @@ struct ProjectsListView: View {
             Button("Archive", role: .destructive) {
                 if let project = projectToArchive {
                     let name = project.name
-                    withAnimation(FFMotion.section) {
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                         project.archived = true
                         if timerVM.selectedProject?.id == project.id {
                             timerVM.selectedProject = nil
@@ -160,7 +165,7 @@ struct ProjectsListView: View {
         VStack(spacing: LiquidDesignTokens.Spacing.large) {
             if let selected = selectedProject {
                 heroCard(selected)
-                    .animation(FFMotion.section, value: selected.id)
+                    .animation(reduceMotion ? nil : FFMotion.section, value: selected.id)
             }
 
             rosterSection
@@ -197,6 +202,7 @@ struct ProjectsListView: View {
             Image(systemName: project.icon ?? "folder.fill")
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(colorFromName(project.color))
+                .accessibilityHidden(true)
         }
     }
 
@@ -232,6 +238,9 @@ struct ProjectsListView: View {
                 formColor = project.color
                 formIcon = project.icon ?? "folder.fill"
                 formBlockProfile = project.blockProfile
+                formWorkMode = project.workMode
+                formGuardianSensitivity = project.guardianSensitivity
+                formDifficultyBias = project.difficultyBias
                 editingProject = project
                 showingAddSheet = true
             } label: {
@@ -292,6 +301,7 @@ struct ProjectsListView: View {
             Image(systemName: project.icon ?? "folder.fill")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(colorFromName(project.color))
+                .accessibilityHidden(true)
 
             Text(project.name)
                 .font(.system(size: 12, weight: .medium))
@@ -316,9 +326,10 @@ struct ProjectsListView: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture {
-            withAnimation(FFMotion.section) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                 selectedProject = project
                 timerVM.selectedProject = project
+                timerVM.noteProjectSelected()
             }
         }
         .accessibilityLabel("\(project.name), \(sessionCount) sessions")
@@ -333,6 +344,9 @@ struct ProjectsListView: View {
             color: $formColor,
             icon: $formIcon,
             selectedBlockProfile: $formBlockProfile,
+            workMode: $formWorkMode,
+            guardianSensitivity: $formGuardianSensitivity,
+            difficultyBias: $formDifficultyBias,
             title: editingProject == nil ? "New Project" : "Edit Project"
         ) {
             var savedProject: Project?
@@ -342,6 +356,9 @@ struct ProjectsListView: View {
                 editing.color = formColor
                 editing.icon = formIcon
                 editing.blockProfile = formBlockProfile
+                editing.workMode = formWorkMode
+                editing.guardianSensitivity = formGuardianSensitivity
+                editing.difficultyBias = formDifficultyBias
                 savedProject = editing
             } else {
                 let project = Project(
@@ -350,12 +367,16 @@ struct ProjectsListView: View {
                     icon: formIcon
                 )
                 project.blockProfile = formBlockProfile
+                project.workMode = formWorkMode
+                project.guardianSensitivity = formGuardianSensitivity
+                project.difficultyBias = formDifficultyBias
                 modelContext.insert(project)
                 savedProject = project
             }
             saveWithFeedback(modelContext, errorBinding: $saveError)
             if let savedProject {
                 timerVM.selectedProject = savedProject
+                timerVM.noteProjectSelected()
                 selectedProject = savedProject
                 showToast(isNew ? "\(savedProject.name) created" : "\(savedProject.name) updated")
             }
@@ -367,7 +388,7 @@ struct ProjectsListView: View {
     private var archivedSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(FFMotion.section) { showArchivedSection.toggle() }
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showArchivedSection.toggle() }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "archivebox")
@@ -380,6 +401,8 @@ struct ProjectsListView: View {
                 }
                 .foregroundStyle(.secondary)
                 .padding(.leading, 4)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Toggle archived projects")
@@ -396,7 +419,7 @@ struct ProjectsListView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
     }
@@ -407,6 +430,7 @@ struct ProjectsListView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(colorFromName(project.color).opacity(0.7))
                 .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
 
             Text(project.name)
                 .font(.system(size: 13, weight: .medium))
@@ -417,7 +441,7 @@ struct ProjectsListView: View {
 
             Button {
                 let name = project.name
-                withAnimation(FFMotion.section) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                     project.archived = false
                     saveWithFeedback(modelContext, errorBinding: $saveError)
                     if selectedProject == nil {
@@ -467,6 +491,9 @@ struct ProjectsListView: View {
         formColor = "blue"
         formIcon = "folder.fill"
         formBlockProfile = nil
+        formWorkMode = .deepWork
+        formGuardianSensitivity = .normal
+        formDifficultyBias = .moderate
     }
 
     private func colorFromName(_ name: String) -> Color {

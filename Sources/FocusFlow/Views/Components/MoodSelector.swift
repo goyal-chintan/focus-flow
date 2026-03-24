@@ -3,6 +3,7 @@ import SwiftUI
 struct MoodSelector: View {
     @Binding var selectedMood: FocusMood?
     var style: Style = .compact
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     enum Style {
         /// For companion window views (ManualSession, SessionEdit)
@@ -64,26 +65,34 @@ struct MoodSelector: View {
     @ViewBuilder
     private func moodButton(for mood: FocusMood) -> some View {
         let isSelected = selectedMood == mood
-        let label = VStack(spacing: style.labelSpacing) {
-            Image(systemName: mood.icon)
-                .font(.system(size: style.iconSize))
-            Text(mood.rawValue)
-                .font(style.labelFont)
+        return Button { isSelected ? (selectedMood = nil) : (selectedMood = mood) } label: {
+            VStack(spacing: style.labelSpacing) {
+                Image(systemName: mood.icon)
+                    .font(.system(size: style.iconSize))
+                    .accessibilityHidden(true)
+                Text(mood.rawValue)
+                    .font(style.labelFont)
+            }
+            .foregroundStyle(isSelected ? mood.color : LiquidDesignTokens.Surface.onSurfaceMuted)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, style.verticalPadding)
+            .frame(minHeight: 44)
+            .background {
+                RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+                    .fill(isSelected ? mood.color.opacity(0.14) : Color.white.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+                            .strokeBorder(
+                                isSelected ? mood.color.opacity(0.35) : Color.white.opacity(0.08),
+                                lineWidth: 0.5
+                            )
+                    )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, style.verticalPadding)
-
-        if isSelected {
-            Button { selectedMood = nil } label: { label }
-                .buttonStyle(.glassProminent)
-                .tint(mood.color)
-                .buttonBorderShape(.roundedRectangle(radius: style.cornerRadius))
-                .accessibilityLabel("\(mood.rawValue), selected")
-        } else {
-            Button { selectedMood = mood } label: { label }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.roundedRectangle(radius: style.cornerRadius))
-                .accessibilityLabel(mood.rawValue)
-        }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : FFMotion.control, value: isSelected)
+        .accessibilityLabel(isSelected ? "\(mood.rawValue), selected" : mood.rawValue)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

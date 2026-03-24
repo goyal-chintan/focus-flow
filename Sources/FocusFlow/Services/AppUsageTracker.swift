@@ -15,13 +15,51 @@ final class AppUsageTracker {
     private var modelContext: ModelContext?
     private var tickCount: Int = 0
 
-    // Per-app tracking state
-    private var currentAppBundleId: String = ""
-    private var currentAppName: String = ""
+    // Coach signal tracking
+    private var appSwitchTimestamps: [Date] = []
+    private var lastFrontmostBundleId: String = ""
+    private var inactivitySeconds: Int = 0
+    private var hasEngagedProductively: Bool = false
+    private var startDelaySeconds: Double = 0
+    private var lastFrontmostCategory: AppUsageEntry.AppCategory = .neutral
+
+    // MARK: - SuspiciousContextObservation callback
+    /// Called whenever a new app comes to the foreground. Subscriber (coach engine) can route
+    /// the observation into drift classification / guardian logic.
+    var onSuspiciousObservation: ((SuspiciousContextObservation) -> Void)?
+
+    // MARK: - Public context accessors (used by FocusCoachContext builder)
+
+    /// The localized name of the current foreground app (nil when FocusFlow is front, or unknown).
+    var currentFrontmostAppName: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return NSRunningApplication
+            .runningApplications(withBundleIdentifier: lastFrontmostBundleId)
+            .first?.localizedName
+    }
+
+    var currentFrontmostBundleId: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return lastFrontmostBundleId
+    }
+
+    /// The `AppUsageEntry.AppCategory` of the current foreground app (for TimerViewModel usage).
+    var currentFrontmostCategory: AppUsageEntry.AppCategory { lastFrontmostCategory }
+
+    /// The AppUsageCategory of the current foreground app (for FocusCoachContext usage).
+    var currentFrontmostAppUsageCategory: AppUsageCategory {
+        switch lastFrontmostCategory {
+        case .productive:   return .productive
+        case .neutral:      return .neutral
+        case .distracting:  return .distracting
+        }
+    }
 
     private init() {}
 
-    // MARK: - Lifecycle
+        // MARK: - Lifecycle
 
     func start(timerVM: TimerViewModel, modelContext: ModelContext) {
         guard !isTracking else { return }
@@ -32,6 +70,12 @@ final class AppUsageTracker {
         idleSeconds = 0
         nudgeCount = 0
         tickCount = 0
+        appSwitchTimestamps = []
+        lastFrontmostBundleId = ""
+        inactivitySeconds = 0
+        hasEngagedProductively = false
+        startDelaySeconds = 0
+        lastFrontmostCategory = .neutral
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -59,7 +103,13 @@ final class AppUsageTracker {
         guard let vm = timerVM else { return }
 
         tickCount += 1
-        trackFrontmostApp(isFocusing: vm.state == .focusing)
+        let isFocusing = vm.state == .focusing
+        trackFrontmostApp(isFocusing: isFocusing)
+
+        // Feed coach signals every 30 seconds during focus
+        if isFocusing, vm.settings?.coachRealtimeEnabled == true, tickCount % 30 == 0 {
+            feedCoachSignals(vm: vm)
+        }
 
         // Only count idle time when not in a session
         let isIdle = vm.state == .idle && !vm.isOvertime
@@ -72,7 +122,17 @@ final class AppUsageTracker {
             if enabled {
                 let nextNudgeSeconds = nudgeInterval(for: nudgeCount, baseMinutes: threshold)
                 if idleSeconds >= nextNudgeSeconds {
-                    sendNudge(escalationLevel: nudgeCount)
+                    vm.evaluateIdleStarterIntervention(
+                        idleSeconds: idleSeconds,
+                        escalationLevel: nudgeCount,
+                        frontmostCategory: lastFrontmostCategory
+                    )
+                    let presentedInAppPrompt = vm.showCoachInterventionWindow
+                        || vm.activeCoachInterventionDecision != nil
+                        || vm.currentIdleStarterDecision != nil
+                    // Notifications are intentionally de-prioritized for anti-procrastination
+                    // because users quickly habituate to them. The in-app guardian is primary.
+                    _ = presentedInAppPrompt
                     nudgeCount += 1
                 }
             }
@@ -80,6 +140,7 @@ final class AppUsageTracker {
             if idleSeconds > 0 {
                 idleSeconds = 0
                 nudgeCount = 0
+                vm.currentIdleStarterDecision = nil
             }
         }
     }
@@ -103,9 +164,35 @@ final class AppUsageTracker {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
         let bundleId = frontApp.bundleIdentifier ?? "unknown"
         let appName = frontApp.localizedName ?? "Unknown"
+        lastFrontmostCategory = AppUsageEntry.classify(bundleIdentifier: bundleId, appName: appName)
 
         // Skip FocusFlow itself
         if bundleId == Bundle.main.bundleIdentifier { return }
+
+        // Track app switches for coach signals
+        if bundleId != lastFrontmostBundleId {
+            if !lastFrontmostBundleId.isEmpty {
+                appSwitchTimestamps.append(Date())
+                // Keep only last 2 minutes of timestamps
+                let cutoff = Date().addingTimeInterval(-120)
+                appSwitchTimestamps.removeAll { $0 < cutoff }
+            }
+            lastFrontmostBundleId = bundleId
+            inactivitySeconds = 0
+
+            // Emit SuspiciousContextObservation for coach / guardian layer
+            let obs = buildObservation(
+                bundleId: bundleId,
+                appName: appName,
+                isInSession: isFocusing,
+                selectedProjectId: timerVM?.selectedProject?.id,
+                selectedProjectName: timerVM?.selectedProject?.name,
+                selectedWorkMode: timerVM?.selectedProject?.workMode
+            )
+            onSuspiciousObservation?(obs)
+        } else {
+            inactivitySeconds += 1
+        }
 
         let today = Calendar.current.startOfDay(for: Date())
 
@@ -144,45 +231,211 @@ final class AppUsageTracker {
         }
     }
 
-    // MARK: - Nudge
+    // MARK: - Coach Signal Feed
 
-    private func sendNudge(escalationLevel: Int) {
-        guard NotificationService.shared.isAuthorized else {
-            log("Notifications not authorized — nudge suppressed")
-            return
-        }
-
-        let message: String
-        switch escalationLevel {
-        case 0:
-            let gentle = [
-                "You've been browsing for a while. Ready to start a focus session?",
-                "Time flies! How about a quick focus sprint?",
-                "Your best ideas happen during deep work. Start a session?",
-            ]
-            message = gentle.randomElement() ?? gentle[0]
-        case 1:
-            let moderate = [
-                "Still no focus session started. Even 15 minutes of deep work makes a difference.",
-                "Your focus streak is waiting — start a short session to keep momentum.",
-                "A quick focus sprint now could turn your day around.",
-            ]
-            message = moderate.randomElement() ?? moderate[0]
-        default:
-            let urgent = [
-                "You've been idle for a while now. Start a session — you'll thank yourself later.",
-                "Deep work doesn't happen by accident. Take the first step — start focusing.",
-                "Every productive day starts with one focus session. Ready?",
-            ]
-            message = urgent.randomElement() ?? urgent[0]
-        }
-
-        NotificationService.shared.sendGenericNotification(
-            title: escalationLevel == 0 ? "Focus Nudge 💡" : "Focus Reminder 🔔",
-            body: message,
-            sound: escalationLevel >= 2 ? "Bottle" : "Tink"
+    private func feedCoachSignals(vm: TimerViewModel) {
+        let switchRate = FocusCoachEngine.computeAppSwitchRate(
+            switchTimestamps: appSwitchTimestamps,
+            windowSeconds: 60
         )
-        log("Sent nudge #\(escalationLevel + 1) after \(idleSeconds)s idle")
+
+        // Compute non-work foreground ratio from today's during-focus entries
+        var totalFocusSeconds: Int = 0
+        var distractingFocusSeconds: Int = 0
+        if let ctx = modelContext {
+            let today = Calendar.current.startOfDay(for: Date())
+            let descriptor = FetchDescriptor<AppUsageEntry>(
+                predicate: #Predicate { $0.date == today }
+            )
+            if let entries = try? ctx.fetch(descriptor) {
+                for entry in entries {
+                    totalFocusSeconds += entry.duringFocusSeconds
+                    if entry.category == .distracting {
+                        distractingFocusSeconds += entry.duringFocusSeconds
+                    }
+                }
+            }
+        }
+        let nonWorkRatio = totalFocusSeconds > 0
+            ? Double(distractingFocusSeconds) / Double(totalFocusSeconds)
+            : 0
+
+        // Start delay: track time until user engages with a productive (non-distracting) app
+        if !hasEngagedProductively {
+            if nonWorkRatio < 0.5 && totalFocusSeconds > 5 {
+                hasEngagedProductively = true
+            } else if let sessionStart = vm.coachEngine.sessionStartedAt {
+                startDelaySeconds = Date().timeIntervalSince(sessionStart)
+            }
+        }
+
+        var signals = vm.coachEngine.currentSignals
+        signals.appSwitchesPerMinute = switchRate
+        signals.nonWorkForegroundRatio = nonWorkRatio
+        signals.inactivityBurstSeconds = Double(inactivitySeconds)
+        signals.startDelaySeconds = startDelaySeconds
+        vm.coachEngine.recordBehaviorSample(signals)
+    }
+
+    // MARK: - SuspiciousContextObservation Builder
+
+    private func buildObservation(
+        bundleId: String,
+        appName: String,
+        isInSession: Bool,
+        selectedProjectId: UUID?,
+        selectedProjectName: String?,
+        selectedWorkMode: WorkMode?
+    ) -> SuspiciousContextObservation {
+        var obs = SuspiciousContextObservation(
+            bundleIdentifier: bundleId,
+            localizedAppName: appName,
+            selectedProjectId: selectedProjectId,
+            selectedProjectName: selectedProjectName,
+            selectedWorkMode: selectedWorkMode,
+            isInSession: isInSession
+        )
+
+        if isBrowser(bundleId: bundleId) {
+            obs.browserHost = extractBrowserDomain(appName: appName, bundleId: bundleId)
+            obs.browserPageTitle = extractBrowserTitle(appName: appName)
+        }
+
+        if isTerminalOrEditor(bundleId: bundleId) {
+            obs.terminalWorkspace = detectGitRepoRoot()
+            obs.editorWorkspace = extractEditorWorkspace(bundleId: bundleId, appName: appName)
+        }
+
+        // Classify preliminary disposition during active focus sessions
+        if isInSession {
+            obs.suggestedDisposition = classifyDisposition(
+                bundleId: bundleId,
+                appName: appName,
+                browserHost: obs.browserHost
+            )
+        }
+
+        return obs
+    }
+
+    /// Infers a preliminary ContextDisposition for an observation made during a focus session.
+    private func classifyDisposition(
+        bundleId: String,
+        appName: String,
+        browserHost: String?
+    ) -> ContextDisposition {
+        // Docs / notes apps → least suspicious
+        let docsApps = ["com.apple.Notes", "com.notion.id", "md.obsidian",
+                        "com.evernote.Evernote", "com.microsoft.Word",
+                        "com.apple.iWork.Pages", "net.shinyfrog.bear"]
+        if docsApps.contains(bundleId) || bundleId.contains("notion") || bundleId.contains("obsidian") {
+            return .plannedResearch
+        }
+
+        // Terminals / editors → required context switch (working, just elsewhere)
+        if isTerminalOrEditor(bundleId: bundleId) {
+            return .requiredContextSwitch
+        }
+
+        // AI / chat tools → procrastinating by default (user can override)
+        if isAIChatTool(bundleId, appName) {
+            return .procrastinating
+        }
+
+        // Browsers: check the specific domain for stronger signal
+        if isBrowser(bundleId: bundleId) {
+            let socialEntertainment: [String] = [
+                "youtube.com", "twitter.com", "x.com", "reddit.com",
+                "instagram.com", "tiktok.com", "netflix.com", "twitch.tv",
+                "facebook.com", "9gag.com", "buzzfeed.com"
+            ]
+            let newsForums: [String] = [
+                "news.ycombinator.com", "medium.com", "substack.com",
+                "theverge.com", "techcrunch.com", "hackernews.com",
+                "bbc.com", "cnn.com", "nytimes.com"
+            ]
+            if let host = browserHost {
+                if socialEntertainment.contains(where: { host.contains($0) }) {
+                    return .procrastinating
+                }
+                if newsForums.contains(where: { host.contains($0) }) {
+                    return .lowPriorityWork
+                }
+            }
+            // Unknown browser context → procrastinating by default during focus
+            return .procrastinating
+        }
+
+        // Default for unrecognised apps during focus
+        return .procrastinating
+    }
+
+    /// Returns true for AI assistants, chat tools, and messaging apps
+    /// that are typically unrelated to focused work.
+    private func isAIChatTool(_ bundleId: String, _ appName: String) -> Bool {
+        let id = bundleId.lowercased()
+        let name = appName.lowercased()
+        let idMatches = id.contains("anthropic") || id.contains("openai") ||
+                        id.contains("slack") || id.contains("discord") ||
+                        id.contains("telegram") || id.contains("whatsapp") ||
+                        id.contains("copilot")
+        let nameMatches = name.contains("claude") || name.contains("chatgpt") ||
+                          name.contains("cursor ai") || name.contains("copilot") ||
+                          name.contains("slack") || name.contains("discord") ||
+                          name.contains("telegram") || name.contains("whatsapp")
+        return idMatches || nameMatches
+    }
+    private func isBrowser(bundleId: String) -> Bool {
+        let browsers = ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser",
+                        "org.mozilla.firefox", "com.microsoft.edgemac", "com.operasoftware.Opera"]
+        return browsers.contains(bundleId)
+    }
+
+    private func isTerminalOrEditor(bundleId: String) -> Bool {
+        let tools = ["com.apple.Terminal", "com.googlecode.iterm2", "com.github.warp.1",
+                     "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92",
+                     "com.jetbrains.intellij", "com.sublimetext.4", "com.panic.Nova"]
+        return tools.contains(bundleId)
+            || bundleId.contains("jetbrains")
+            || bundleId.contains("cursor")
+    }
+
+    private func extractBrowserDomain(appName: String, bundleId: String) -> String? {
+        // Fallback: derive domain from window-title keywords until AX API access is confirmed.
+        let name = appName.lowercased()
+        let knownDomains: [(needle: String, domain: String)] = [
+            ("youtube", "youtube.com"), ("reddit", "reddit.com"),
+            ("twitter", "twitter.com"), ("x.com", "x.com"),
+            ("instagram", "instagram.com"), ("facebook", "facebook.com"),
+            ("tiktok", "tiktok.com"), ("netflix", "netflix.com"),
+            ("github", "github.com"), ("stackoverflow", "stackoverflow.com"),
+            ("linkedin", "linkedin.com"), ("twitch", "twitch.tv")
+        ]
+        return knownDomains.first(where: { name.contains($0.needle) })?.domain
+    }
+
+    private func extractBrowserTitle(appName: String) -> String? {
+        return nil  // Placeholder — AX API enrichment in future iteration
+    }
+
+    private func detectGitRepoRoot() -> String? {
+        // Walk up from the frontmost terminal/editor bundle URL looking for a .git directory.
+        guard let bundleURL = NSWorkspace.shared.runningApplications
+            .first(where: { isTerminalOrEditor(bundleId: $0.bundleIdentifier ?? "") })?
+            .bundleURL else { return nil }
+        var url = bundleURL
+        for _ in 0..<3 {
+            let gitDir = url.appendingPathComponent(".git")
+            if FileManager.default.fileExists(atPath: gitDir.path) {
+                return url.lastPathComponent
+            }
+            url = url.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    private func extractEditorWorkspace(bundleId: String, appName: String) -> String? {
+        return nil  // Placeholder for workspace name extraction
     }
 
     // MARK: - Logging

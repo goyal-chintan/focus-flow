@@ -5,16 +5,18 @@ struct MenuBarPopoverView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.openWindow) private var openWindow
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showStopConfirmation = false
-    @State private var didConfigure = false
 
     var body: some View {
         popoverShell
-            .task(id: didConfigure) {
-                if !didConfigure {
-                    didConfigure = true
-                    timerVM.ensureConfigured(modelContext: modelContext)
+            .background(
+                PopoverWindowAccessor { window in
+                    timerVM.popoverWindow = window
                 }
+            )
+            .task {
+                timerVM.ensureConfigured(modelContext: modelContext)
             }
             .onChange(of: timerVM.state) { _, _ in
                 showStopConfirmation = false
@@ -28,7 +30,11 @@ struct MenuBarPopoverView: View {
 
                 activeContextSection
 
+                coachStripSection
+
                 timerHeroSection
+
+                earnedTokenBadge
 
                 stateSection
 
@@ -37,13 +43,14 @@ struct MenuBarPopoverView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
                         Text(error)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.orange)
                     }
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.vertical, 6)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                     .onAppear {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                             withAnimation(FFMotion.control) {
@@ -57,6 +64,7 @@ struct MenuBarPopoverView: View {
 
                 footerSection
             }
+            .frame(width: 310)
         }
         .frame(width: 310)
         .background(
@@ -70,7 +78,7 @@ struct MenuBarPopoverView: View {
                     LinearGradient(
                         colors: [
                             Color.black.opacity(0.16),
-                            Color(hex: 0x0C1322).opacity(0.1),
+                            Color.black.opacity(0.08),
                             Color.black.opacity(0.2)
                         ],
                         startPoint: .top,
@@ -85,7 +93,6 @@ struct MenuBarPopoverView: View {
                 .shadow(color: Color.black.opacity(0.28), radius: 12, y: 8)
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .animation(FFMotion.section, value: timerVM.state)
     }
 
     // MARK: - Header Bar (focusing, paused, break, overtime)
@@ -109,25 +116,24 @@ struct MenuBarPopoverView: View {
             Spacer()
             HStack(spacing: 12) {
                 Button {
-                    openWindow(id: "stats")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    openStatsWindow(requestedTab: nil)
                 } label: {
                     Image(systemName: "chart.bar.fill")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open statistics")
 
                 Button {
-                    NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+                    timerVM.closePopover()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -163,7 +169,7 @@ struct MenuBarPopoverView: View {
                 TrackedLabel(
                     text: timerVM.isFocusOvertime ? "Overtime" : "Break Over",
                     font: LiquidDesignTokens.Typography.labelSmall,
-                    color: timerVM.isFocusOvertime ? Color(hex: 0x3DA86A) : Color.orange,
+                    color: timerVM.isFocusOvertime ? LiquidDesignTokens.Spectral.mint : Color.orange,
                     tracking: 1.8
                 )
                 Text(timerVM.isFocusOvertime ? (timerVM.selectedProject?.name ?? "Focus") : "Break")
@@ -173,6 +179,33 @@ struct MenuBarPopoverView: View {
             }
             .padding(.top, 12)
             .padding(.bottom, 4)
+        }
+    }
+
+    // MARK: - Earned Token Badge (shown after block completes, until next session starts)
+
+    @ViewBuilder
+    private var earnedTokenBadge: some View {
+        if let ctx = timerVM.completedBlockContext, timerVM.state != .focusing {
+            HStack(spacing: 4) {
+                Text("✦ \(ctx.durationMinutes)m earned")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.mint)
+                    .contentTransition(.numericText(countsDown: false))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.12))
+                    .overlay(Capsule().strokeBorder(LiquidDesignTokens.Spectral.mint.opacity(0.18), lineWidth: 0.5))
+            )
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.85).combined(with: .opacity),
+                removal: .opacity
+            ))
+            .animation(FFMotion.reward, value: ctx.durationMinutes)
+            .padding(.bottom, 2)
         }
     }
 
@@ -186,32 +219,107 @@ struct MenuBarPopoverView: View {
             state: timerVM.state,
             isOvertime: timerVM.isOvertime,
             pauseDuration: timerVM.pauseElapsed,
-            pauseTimeString: timerVM.pauseTimeString
+            pauseTimeString: timerVM.pauseTimeString,
+            labelColorOverride: stateLabelColor
         )
         .padding(.top, (timerVM.state == .idle && !timerVM.isOvertime) ? 20 : 10)
         .padding(.bottom, (timerVM.state == .idle && !timerVM.isOvertime) ? 8 : 4)
+    }
+
+    // MARK: - Coach Strip (Live Risk Status)
+
+    @ViewBuilder
+    private var coachStripSection: some View {
+        if timerVM.settings?.coachRealtimeEnabled == true {
+            let isActive: Bool = {
+                switch timerVM.state {
+                case .focusing, .paused: return true
+                case .onBreak: return true
+                case .idle: return false
+                }
+            }()
+            let overlayActive = timerVM.activeCoachPopoverDecision != nil &&
+                FocusCoachPresentationMapper.mapDecision(timerVM.activeCoachPopoverDecision ?? .none) != nil
+
+            if isActive && !overlayActive {
+                let model = FocusCoachPresentationMapper.map(
+                    level: timerVM.coachEngine.riskLevel,
+                    score: timerVM.coachEngine.riskScore
+                )
+                FocusCoachStripView(model: model)
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 4)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .animation(FFMotion.warning, value: isActive)
+            }
+
+            // Quick prompt overlay when coach decides to intervene
+            if let promptModel = overlayActive ? FocusCoachPresentationMapper.mapDecision(timerVM.activeCoachPopoverDecision ?? .none) : nil {
+                FocusCoachQuickPromptView(
+                    model: promptModel,
+                    onAction: { action in
+                        timerVM.handleCoachAction(action)
+                    },
+                    onDismiss: {
+                        timerVM.dismissCoachPrompt()
+                    }
+                )
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 4)
+                .transition(.opacity)
+
+                if timerVM.state == .idle {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let summary = timerVM.idleStarterSummary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let recommended = timerVM.idleStarterRecommendedMinutes {
+                            Text("Recommended duration: \(recommended)m")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                .monospacedDigit()
+                        }
+                    }
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                }
+            }
+        }
     }
 
     // MARK: - State Section
 
     @ViewBuilder
     private var stateSection: some View {
-        if timerVM.isOvertime {
-            if timerVM.isFocusOvertime {
-                overtimeContent
+        Group {
+            if timerVM.isOvertime {
+                if timerVM.isFocusOvertime {
+                    overtimeContent
+                } else {
+                    breakOvertimeContent
+                }
             } else {
-                breakOvertimeContent
+                switch timerVM.state {
+                case .idle:
+                    idleContent
+                case .focusing:
+                    focusingContent
+                case .paused:
+                    pausedContent
+                case .onBreak:
+                    breakContent
+                }
             }
-        } else {
-            switch timerVM.state {
-            case .idle:
-                idleContent
-            case .focusing:
-                focusingContent
-            case .paused:
-                pausedContent
-            case .onBreak:
-                breakContent
+        }
+        .contentTransition(.opacity)
+        .transaction { t in
+            // Only animate discrete state transitions, not per-second observable updates.
+            // This prevents the blanket .animation() from re-triggering layout passes
+            // when overtime text or progress values change every tick.
+            if t.animation != nil {
+                t.animation = .easeInOut(duration: 0.2)
             }
         }
     }
@@ -231,8 +339,7 @@ struct MenuBarPopoverView: View {
                     .monospacedDigit()
 
                 Button {
-                    openWindow(id: "stats")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    openStatsWindow(requestedTab: .settings)
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 12))
@@ -241,7 +348,7 @@ struct MenuBarPopoverView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open settings")
+                .accessibilityLabel("Open Settings")
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             .padding(.vertical, 10)
@@ -278,6 +385,7 @@ struct MenuBarPopoverView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11))
                     .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                    .accessibilityHidden(true)
                 Text("TODAY'S TOTAL")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.8))
@@ -298,23 +406,55 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Helpers
 
+    /// Behavioral ring subtitle per spec §11: Ready, Protecting, Check, Return.
+    /// Escalates to "Check" during active focus when guardian has surfaced a challenge.
     private var stateLabel: String {
-        if timerVM.isOvertime { return timerVM.isFocusOvertime ? "Overtime" : "Break Over" }
         switch timerVM.state {
         case .idle:
-            return "Focus Session"
+            return "Ready"
         case .focusing:
-            return "Remaining"
+            if timerVM.isOvertime { return "Overtime" }
+            if timerVM.activeCoachInterventionDecision != nil ||
+               timerVM.currentCoachQuickPromptDecision != nil {
+                return "Check"
+            }
+            return "Protecting"
         case .paused:
-            return "Focus Paused"
-        case .onBreak(let type):
-            return type.displayName
+            return "Check"
+        case .onBreak:
+            return "Return"
+        }
+    }
+
+    private var stateLabelColor: Color {
+        switch timerVM.state {
+        case .idle: return LiquidDesignTokens.Surface.onSurfaceMuted
+        case .focusing:
+            if timerVM.isOvertime { return LiquidDesignTokens.Spectral.mint }
+            if timerVM.activeCoachInterventionDecision != nil || timerVM.currentCoachQuickPromptDecision != nil {
+                return LiquidDesignTokens.Spectral.amber
+            }
+            return LiquidDesignTokens.Spectral.electricBlue
+        case .paused: return LiquidDesignTokens.Spectral.amber
+        case .onBreak: return LiquidDesignTokens.Spectral.mint
         }
     }
 
     private var defaultTimeString: String {
         let mins = max(5, timerVM.selectedMinutes)
         return String(format: "%02d:00", mins)
+    }
+
+    private func openStatsWindow(requestedTab: CompanionTab?) {
+        if let requestedTab {
+            UserDefaults.standard.set(requestedTab.rawValue, forKey: "companionRequestedTab")
+        }
+        // Close popover first so performClose cannot target the newly opened companion window.
+        timerVM.closePopover()
+        DispatchQueue.main.async {
+            openWindow(id: "stats")
+            timerVM.requestAppActivation?()
+        }
     }
 }
 
@@ -323,14 +463,41 @@ struct MenuBarPopoverView: View {
 private struct IdlePopoverContent: View {
     @Binding var selectedProject: Project?
     @Binding var selectedMinutes: Int
+    let coachEnabled: Bool
+    @Binding var coachTaskType: FocusCoachTaskType
+    @Binding var coachResistance: Int
+    let recoveryState: CrashRecoveryState?
+    let recoveryProject: Project?
     let onStartFocus: () -> Void
+    let onResumeRecovery: () -> Void
+    let onDiscardRecovery: () -> Void
 
     @State private var showCustomSlider: Bool = false
+    @State private var startCommitting: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let presetMinutes: [Int] = [5, 15, 25, 45]
 
     var body: some View {
         VStack(spacing: 0) {
+            // Crash recovery banner — highest priority
+            if let recovery = recoveryState {
+                recoveryBanner(recovery)
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 12)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+            }
+
+            // Coach pre-session intention card
+            if coachEnabled && selectedProject == nil {
+                FocusCoachPreSessionCard(
+                    selectedTaskType: $coachTaskType,
+                    resistanceLevel: $coachResistance
+                )
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                .padding(.top, 12)
+            }
+
             // PROJECT label
             HStack {
                 TrackedLabel(
@@ -350,6 +517,13 @@ private struct IdlePopoverContent: View {
             durationPillSelector
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 14)
+
+            Text("Guardian watches for browsing, off-project coding, low-priority work, and long drift.")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(.secondary.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
 
             startButton
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
@@ -378,7 +552,7 @@ private struct IdlePopoverContent: View {
 
             if showCustomSlider {
                 customSlider
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
     }
@@ -407,8 +581,113 @@ private struct IdlePopoverContent: View {
             title: "Start Focus Session",
             icon: "play.fill",
             gradient: LiquidDesignTokens.Gradient.focus,
-            action: onStartFocus
+            action: {
+                if !reduceMotion {
+                    withAnimation(FFMotion.commit) { startCommitting = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        onStartFocus()
+                    }
+                } else {
+                    onStartFocus()
+                }
+            }
         )
+        .scaleEffect(startCommitting ? 0.95 : 1.0)
+        .animation(reduceMotion ? nil : FFMotion.commit, value: startCommitting)
+    }
+
+    private func recoveryBanner(_ recovery: CrashRecoveryState) -> some View {
+        let remaining = Int(recovery.remainingSeconds)
+        let mins = remaining / 60
+        let secs = remaining % 60
+        let timeString = String(format: "%d:%02d", mins, secs)
+        let minutesAgo = Int(Date().timeIntervalSince(recovery.checkpointDate) / 60)
+        let agoText = minutesAgo < 1 ? "just now" : "\(minutesAgo)m ago"
+        let projectName = recoveryProject?.name ?? recovery.customLabel ?? "Focus"
+        let totalMins = Int(recovery.totalSeconds / 60)
+
+        return VStack(spacing: 10) {
+            // Header
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text("Session Interrupted")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(agoText)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Details
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(projectName)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text("\(totalMins)-min session · \(timeString) remaining\(recovery.isPaused ? " · paused" : "")")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+    // Action buttons
+            HStack(spacing: 8) {
+                Button(action: onResumeRecovery) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .accessibilityHidden(true)
+                        Text("Resume Session")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(LiquidDesignTokens.Gradient.focus)
+                    }
+                    .clipShape(Capsule(style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Resume recovered session")
+
+                Button(action: onDiscardRecovery) {
+                    Text("Discard")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Discard recovered session")
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.orange.opacity(0.4), .orange.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        }
     }
 
 }
@@ -417,9 +696,12 @@ private struct IdlePopoverContent: View {
 
 private struct FocusingPopoverContent: View {
     @Binding var showStopConfirmation: Bool
+    @Binding var selectedProject: Project?
     let projectName: String?
     let canReduceTime: Bool
     let canExtendTime: Bool
+    let showPauseReasonChips: Bool
+    let cycleProgress: Double
     let onPause: () -> Void
     let onExtendTime: () -> Void
     let onReduceTime: () -> Void
@@ -427,38 +709,41 @@ private struct FocusingPopoverContent: View {
     let onSaveStop: () -> Void
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
+    let onPauseReasonSelected: (FocusCoachReason) -> Void
+    let onPauseReasonDismissed: () -> Void
+    let onSwitchProject: (Project?, FocusCoachReason) -> Void
 
     @State private var saveAnimating = false
     @State private var discardAnimating = false
+    @State private var showProjectSwitcher = false
+    @State private var switchTarget: Project?
+    @State private var showSwitchReasonChips = false
 
     var body: some View {
         VStack(spacing: 12) {
+            // Inline pause reason chips (shown after resuming from 2+ min pause)
+            if showPauseReasonChips {
+                pauseReasonChipStrip
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+            }
+
             // Pause / Stop buttons — native glass
             HStack(spacing: 12) {
-                Button(action: onPause) {
-                    Label("Pause", systemImage: "pause.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .frame(minHeight: 34)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
+                GradientCTAButton(
+                    title: "Pause",
+                    icon: "pause.fill",
+                    gradient: LiquidDesignTokens.Gradient.pause,
+                    foregroundColor: .white,
+                    action: onPause
+                )
                 .accessibilityLabel("Pause focus session")
 
-                Button {
-                    withAnimation(FFMotion.section) { onShowStopConfirmation() }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "stop.fill")
-                        Text("Stop")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                }
-                .frame(minHeight: 34)
-                .buttonStyle(.glassProminent)
-                .tint(Color.red)
-                .buttonBorderShape(.capsule)
+                GradientCTAButton(
+                    title: "Stop",
+                    icon: "stop.fill",
+                    gradient: LiquidDesignTokens.Gradient.stop,
+                    action: { withAnimation(FFMotion.section) { onShowStopConfirmation() } }
+                )
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)
@@ -466,6 +751,28 @@ private struct FocusingPopoverContent: View {
             // -5/+5 min Extension buttons
             extensionButtons
                 .padding(.top, 8)
+
+            // Switch project inline flow
+            if showProjectSwitcher {
+                projectSwitcherInline
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+            } else if showSwitchReasonChips {
+                switchReasonChipStrip
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+            } else {
+                Button {
+                    withAnimation(FFMotion.section) { showProjectSwitcher = true }
+                } label: {
+                    Label("Switch Project", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .frame(minHeight: 34)
+                .accessibilityLabel("Switch to a different project")
+            }
 
             if showStopConfirmation {
                 stopConfirmation
@@ -489,7 +796,7 @@ private struct FocusingPopoverContent: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
             }
-            .frame(minHeight: 34)
+            .frame(minHeight: 44)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canReduceTime)
@@ -507,7 +814,7 @@ private struct FocusingPopoverContent: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
             }
-            .frame(minHeight: 34)
+            .frame(minHeight: 44)
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .disabled(!canExtendTime)
@@ -517,11 +824,139 @@ private struct FocusingPopoverContent: View {
         }
     }
 
+    private var pauseReasonChipStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Long pause — what happened?")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                Spacer()
+                Button {
+                    withAnimation(FFMotion.section) { onPauseReasonDismissed() }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss pause reason")
+            }
+
+            FlowLayout(spacing: 6) {
+                ForEach(FocusCoachReason.allCases, id: \.self) { reason in
+                    Button {
+                        withAnimation(FFMotion.section) { onPauseReasonSelected(reason) }
+                    } label: {
+                        Text(reason.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityLabel(reason.displayName)
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.orange.opacity(0.08))
+                .strokeBorder(Color.orange.opacity(0.15), lineWidth: 0.5)
+        )
+        .padding(.top, 6)
+    }
+
+    private var projectSwitcherInline: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Switch to:")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                Spacer()
+                Button {
+                    withAnimation(FFMotion.section) { showProjectSwitcher = false }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close project switcher")
+            }
+
+            ProjectPickerView(selectedProject: $switchTarget)
+
+            GradientCTAButton(
+                title: "Continue",
+                icon: "arrow.right",
+                gradient: LiquidDesignTokens.Gradient.focus,
+                action: {
+                    guard switchTarget?.id != selectedProject?.id else {
+                        withAnimation(FFMotion.section) { showProjectSwitcher = false }
+                        return
+                    }
+                    withAnimation(FFMotion.section) {
+                        showProjectSwitcher = false
+                        showSwitchReasonChips = true
+                    }
+                }
+            )
+            .disabled(switchTarget == nil || switchTarget?.id == selectedProject?.id)
+            .opacity((switchTarget == nil || switchTarget?.id == selectedProject?.id) ? 0.5 : 1.0)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.blue.opacity(0.06))
+                .strokeBorder(Color.blue.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
+    private var switchReasonChipStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Why switching?")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+
+            let switchReasons: [FocusCoachReason] = [.requiredSwitch, .meeting, .familyPersonal, .procrastinating]
+            FlowLayout(spacing: 6) {
+                ForEach(switchReasons, id: \.self) { reason in
+                    Button {
+                        withAnimation(FFMotion.section) {
+                            showSwitchReasonChips = false
+                            onSwitchProject(switchTarget, reason)
+                        }
+                    } label: {
+                        Text(reason.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityLabel(reason.displayName)
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.blue.opacity(0.06))
+                .strokeBorder(Color.blue.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
     private var nextUpCard: some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.right.circle.fill")
                 .font(.system(size: 22))
                 .foregroundStyle(.purple.opacity(0.7))
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 TrackedLabel(
@@ -540,6 +975,7 @@ private struct FocusingPopoverContent: View {
             Image(systemName: "chevron.right")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(12)
         .background(
@@ -554,19 +990,18 @@ private struct FocusingPopoverContent: View {
                 .font(LiquidDesignTokens.Typography.labelLarge)
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
-            Button {
+            GradientCTAButton(
+                title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Save & End",
+                icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "square.and.arrow.down",
+                gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress)
+            ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                     saveAnimating = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     onSaveStop()
                 }
-            } label: {
-                Label("Save & End", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, minHeight: 34)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
             .scaleEffect(saveAnimating ? 0.92 : 1.0)
             .opacity(saveAnimating ? 0.7 : 1.0)
 
@@ -580,24 +1015,25 @@ private struct FocusingPopoverContent: View {
             } label: {
                 Label("Discard Session", systemImage: "trash")
                     .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .scaleEffect(discardAnimating ? 0.92 : 1.0)
             .opacity(discardAnimating ? 0.5 : 1.0)
+            .accessibilityLabel("Discard current focus session")
 
             Button {
                 withAnimation(FFMotion.control) { onCancelStop() }
             } label: {
                 Text("Cancel")
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .accessibilityLabel("Cancel ending this session")
         }
-        .padding(12)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
     }
 }
 
@@ -608,6 +1044,7 @@ private struct PausedPopoverContent: View {
     let pauseWarningColor: Color
     let pauseWarningMessage: String
     @Binding var showStopConfirmation: Bool
+    let cycleProgress: Double
     let onResume: () -> Void
     let onShowStopConfirmation: () -> Void
     let onSaveStop: () -> Void
@@ -632,11 +1069,11 @@ private struct PausedPopoverContent: View {
                 title: "Resume Focus",
                 icon: "play.fill",
                 gradient: LiquidDesignTokens.Gradient.resume,
-                foregroundColor: Color(hex: 0x332200),
+                foregroundColor: .white,
                 action: onResume
             )
 
-            // End Session — native glass button
+            // End Session — plain text link
             Button {
                 withAnimation(FFMotion.section) { onShowStopConfirmation() }
             } label: {
@@ -651,6 +1088,7 @@ private struct PausedPopoverContent: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("End paused session")
 
             if showStopConfirmation {
                 pausedStopConfirmation
@@ -662,19 +1100,18 @@ private struct PausedPopoverContent: View {
 
     private var pausedStopConfirmation: some View {
         VStack(spacing: 8) {
-            Button {
+            GradientCTAButton(
+                title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Save & End",
+                icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "square.and.arrow.down",
+                gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress)
+            ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                     saveAnimating = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     onSaveStop()
                 }
-            } label: {
-                Label("Save & End", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity, minHeight: 34)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
             .scaleEffect(saveAnimating ? 0.92 : 1.0)
             .opacity(saveAnimating ? 0.7 : 1.0)
 
@@ -688,23 +1125,25 @@ private struct PausedPopoverContent: View {
             } label: {
                 Label("Discard Session", systemImage: "trash")
                     .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
             .scaleEffect(discardAnimating ? 0.92 : 1.0)
             .opacity(discardAnimating ? 0.5 : 1.0)
+            .accessibilityLabel("Discard paused session")
 
             Button {
                 withAnimation(FFMotion.control) { onCancelStop() }
             } label: {
                 Text("Cancel")
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
+            .accessibilityLabel("Cancel paused stop confirmation")
         }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
     }
 }
 
@@ -714,6 +1153,7 @@ private struct OvertimePopoverContent: View {
     @Binding var selectedProject: Project?
     let overtimeString: String
     let showSessionComplete: Bool
+    let cycleProgress: Double
     let onBringWindowToFront: () -> Void
     let onTakeBreak: () -> Void
     let onSkipBreak: () -> Void
@@ -726,6 +1166,7 @@ private struct OvertimePopoverContent: View {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(Color(hex: 0x3DA86A))
+                    .accessibilityHidden(true)
                 Text(overtimeString)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -749,64 +1190,60 @@ private struct OvertimePopoverContent: View {
                         HStack(spacing: 6) {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                                .accessibilityHidden(true)
                             Text("Log & Continue →")
                                 .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                     }
                     .buttonStyle(.glassProminent)
-                    .tint(LiquidDesignTokens.Spectral.electricBlue)
                     .buttonBorderShape(.capsule)
                 }
             } else {
                 // Window not open — inline quick actions (e.g. if window was dismissed)
                 GlassEffectContainer {
                     VStack(spacing: 8) {
+                        // Primary CTA — coached path (full width, no truncation)
+                        GradientCTAButton(
+                            title: "Take a Break",
+                            icon: "cup.and.saucer.fill",
+                            gradient: LiquidDesignTokens.Gradient.breakStart,
+                            action: onTakeBreak
+                        )
+
+                        // Secondary actions row — lower visual weight
                         HStack(spacing: 8) {
-                            Button(action: onTakeBreak) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "cup.and.saucer.fill")
-                                        .font(.system(size: 11))
-                                    Text("Take a Break")
-                                        .font(.system(size: 13, weight: .medium))
+                            Button(action: onSkipBreak) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "forward.fill")
+                                        .font(.system(size: 10))
+                                        .accessibilityHidden(true)
+                                    Text("Start Next Block")
+                                        .font(.system(size: 12, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 10)
                             }
-                            .frame(minHeight: 34)
-                            .buttonStyle(.glassProminent)
-                            .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                            .buttonStyle(.glass)
                             .buttonBorderShape(.capsule)
 
-                            Button(action: onSkipBreak) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "forward.fill")
-                                        .font(.system(size: 11))
-                                    Text("Skip Break")
-                                        .font(.system(size: 13, weight: .medium))
+                            Button(action: onFinishSession) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill")
+                                        .font(.system(size: 10))
+                                        .accessibilityHidden(true)
+                                    Text(cycleProgress >= 1.0 ? "Complete Block" : "End with Progress")
+                                        .font(.system(size: 12, weight: .medium))
                                 }
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 10)
                             }
-                            .frame(minHeight: 34)
                             .buttonStyle(.glass)
                             .buttonBorderShape(.capsule)
                         }
-
-                        Button(action: onFinishSession) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 12, weight: .medium))
-                                Text("Finish Session")
-                                    .font(.system(size: 14, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                        }
-                        .frame(minHeight: 34)
-                        .buttonStyle(.glass)
-                        .buttonBorderShape(.capsule)
                     }
                 }
             }
@@ -831,7 +1268,6 @@ private struct OvertimePopoverContent: View {
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
-        .animation(FFMotion.section, value: showSessionComplete)
     }
 }
 
@@ -851,6 +1287,7 @@ private struct BreakOvertimePopoverContent: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
                 Text(overtimeString)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -858,8 +1295,8 @@ private struct BreakOvertimePopoverContent: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
-            .background(Capsule(style: .continuous).fill(Color.orange.opacity(0.12)))
-            .scaleEffect(pulse ? 1.04 : 1.0)
+            .background(Capsule(style: .continuous).fill(Color.orange.opacity(pulse ? 0.2 : 0.12)))
+            .opacity(pulse ? 1.0 : 0.7)
             .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: pulse)
             .onAppear { pulse = true }
 
@@ -871,7 +1308,7 @@ private struct BreakOvertimePopoverContent: View {
             GlassEffectContainer {
                 VStack(spacing: 8) {
                     GradientCTAButton(
-                        title: "Start Focusing",
+                        title: "Start Next Block",
                         icon: "play.fill",
                         gradient: LiquidDesignTokens.Gradient.focus,
                         action: onStartFocusing
@@ -922,10 +1359,11 @@ private struct BreakPopoverContent: View {
             // Skip Break — native glass button
             Button(action: onSkipBreak) {
                 HStack(spacing: 6) {
-                    Text("Skip Break")
+                    Text("Start Next Block")
                         .font(.system(size: 13, weight: .medium))
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .medium))
+                        .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity, minHeight: 36)
             }
@@ -945,20 +1383,43 @@ extension MenuBarPopoverView {
         return IdlePopoverContent(
             selectedProject: $vm.selectedProject,
             selectedMinutes: $vm.selectedMinutes,
+            coachEnabled: timerVM.settings?.coachRealtimeEnabled ?? false,
+            coachTaskType: Binding(
+                get: { timerVM.coachTaskType },
+                set: { timerVM.coachTaskType = $0 }
+            ),
+            coachResistance: Binding(
+                get: { timerVM.coachResistance },
+                set: { timerVM.coachResistance = $0 }
+            ),
+            recoveryState: timerVM.recoveryState,
+            recoveryProject: timerVM.recoveryProject,
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
+            },
+            onResumeRecovery: {
+                timerVM.resumeFromRecovery()
+            },
+            onDiscardRecovery: {
+                timerVM.discardRecovery()
             }
         )
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .onChange(of: timerVM.selectedProject) { _, newValue in
+            if newValue != nil { timerVM.noteProjectSelected() }
+        }
     }
 
     fileprivate var focusingContent: some View {
-        FocusingPopoverContent(
+        @Bindable var vm = timerVM
+        return FocusingPopoverContent(
             showStopConfirmation: $showStopConfirmation,
+            selectedProject: $vm.selectedProject,
             projectName: timerVM.selectedProject?.name,
             canReduceTime: timerVM.canReduceTime,
             canExtendTime: timerVM.canExtendTime,
+            showPauseReasonChips: timerVM.showPauseReasonChips,
+            cycleProgress: timerVM.cycleProgress,
             onPause: { timerVM.pause() },
             onExtendTime: {
                 timerVM.extendTimer()
@@ -971,9 +1432,11 @@ extension MenuBarPopoverView {
             },
             onSaveStop: { timerVM.stopForReflection() },
             onDiscardStop: { timerVM.abandonSession() },
-            onCancelStop: { showStopConfirmation = false }
+            onCancelStop: { showStopConfirmation = false },
+            onPauseReasonSelected: { reason in timerVM.recordPauseReason(reason) },
+            onPauseReasonDismissed: { timerVM.dismissPauseReasonChips() },
+            onSwitchProject: { project, reason in timerVM.switchProject(to: project, reason: reason) }
         )
-        .transition(.opacity)
     }
 
     fileprivate var pausedContent: some View {
@@ -982,6 +1445,7 @@ extension MenuBarPopoverView {
             pauseWarningColor: timerVM.pauseWarningLevel.color,
             pauseWarningMessage: timerVM.pauseWarningMessage,
             showStopConfirmation: $showStopConfirmation,
+            cycleProgress: timerVM.cycleProgress,
             onResume: { timerVM.resume() },
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
@@ -990,7 +1454,6 @@ extension MenuBarPopoverView {
             onDiscardStop: { timerVM.abandonSession() },
             onCancelStop: { showStopConfirmation = false }
         )
-        .transition(.opacity)
     }
 
     fileprivate var breakContent: some View {
@@ -999,7 +1462,6 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             onSkipBreak: { timerVM.skipBreak() }
         )
-        .transition(.opacity)
     }
 
     fileprivate var breakOvertimeContent: some View {
@@ -1012,7 +1474,6 @@ extension MenuBarPopoverView {
                 timerVM.continueAfterCompletion(action: .endSession)
             }
         )
-        .transition(.opacity)
     }
 
     fileprivate var overtimeContent: some View {
@@ -1021,12 +1482,13 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             overtimeString: timerVM.overtimeTimeString,
             showSessionComplete: timerVM.showSessionComplete,
+            cycleProgress: timerVM.cycleProgress,
             onBringWindowToFront: {
                 timerVM.openCompletionWindow?()
-                NSApplication.shared.activate(ignoringOtherApps: true)
+                timerVM.requestAppActivation?()
             },
             onTakeBreak: {
-                timerVM.continueAfterCompletion(action: .takeBreak)
+                timerVM.continueAfterCompletion(action: .takeBreak(duration: nil))
             },
             onSkipBreak: {
                 timerVM.continueAfterCompletion(action: .continueFocusing)
@@ -1035,6 +1497,5 @@ extension MenuBarPopoverView {
                 timerVM.continueAfterCompletion(action: .endSession)
             }
         )
-        .transition(.opacity)
     }
 }

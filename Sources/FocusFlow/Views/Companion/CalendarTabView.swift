@@ -26,7 +26,12 @@ struct CalendarTabView: View {
     @State private var showCreateReminder = false
     @State private var reminderLoadTask: Task<Void, Never>?
     @State private var completingReminderId: String? = nil
+    @State private var deletingReminderId: String? = nil
+    @State private var reminderToConfirmDelete: RemindersService.ReminderItem? = nil
     @State private var needsReminderRefresh = false
+    @State private var isRefreshingReminders = false
+    @State private var showDaySessions: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var calendar: Calendar { Calendar.current }
     private var settings: AppSettings? { allSettings.first }
@@ -37,8 +42,8 @@ struct CalendarTabView: View {
             VStack(spacing: 20) {
                 headerSection
                 monthGridSection
-                    .animation(FFMotion.section, value: selectedDate)
-                    .animation(FFMotion.section, value: displayedMonth)
+                    .animation(reduceMotion ? nil : FFMotion.section, value: selectedDate)
+                    .animation(reduceMotion ? nil : FFMotion.section, value: displayedMonth)
                 dayDetailSection
                 remindersSection
             }
@@ -95,7 +100,7 @@ struct CalendarTabView: View {
                 // Month navigation
                 HStack(spacing: 12) {
                     Button {
-                        withAnimation(FFMotion.section) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                             shiftDisplayedMonth(by: -1)
                         }
                     } label: {
@@ -113,7 +118,7 @@ struct CalendarTabView: View {
                         .frame(minWidth: 140)
 
                     Button {
-                        withAnimation(FFMotion.section) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                             shiftDisplayedMonth(by: 1)
                         }
                     } label: {
@@ -127,7 +132,7 @@ struct CalendarTabView: View {
                     .accessibilityLabel("Next month")
 
                     Button {
-                        withAnimation(FFMotion.section) {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
                             displayedMonth = Date()
                             selectedDate = calendar.startOfDay(for: Date())
                         }
@@ -148,6 +153,7 @@ struct CalendarTabView: View {
                     Image(systemName: "checkmark.icloud.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     Text("Syncing to \(calendarName)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -242,7 +248,7 @@ struct CalendarTabView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(FFMotion.control) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) {
                 selectedDate = date
             }
         }
@@ -340,11 +346,31 @@ struct CalendarTabView: View {
                 if sessions.isEmpty {
                     emptyDayView
                 } else {
-                    DisclosureGroup {
-                        SessionTimelineView(sessions: sessions)
-                            .padding(.top, 8)
-                    } label: {
-                        dayCompactSummary(sessions)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
+                                showDaySessions.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 0) {
+                                dayCompactSummary(sessions)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .rotationEffect(.degrees(showDaySessions ? 90 : 0))
+                                    .animation(reduceMotion ? nil : FFMotion.control, value: showDaySessions)
+                                    .accessibilityHidden(true)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(showDaySessions ? "Collapse sessions" : "Expand sessions")
+
+                        if showDaySessions {
+                            SessionTimelineView(sessions: sessions)
+                                .padding(.top, 8)
+                                .transition(.opacity)
+                        }
                     }
                 }
             }
@@ -372,6 +398,12 @@ struct CalendarTabView: View {
                         .buttonStyle(.glass)
                         .buttonBorderShape(.circle)
                         .disabled(!(settings?.remindersIntegrationEnabled ?? false) || isLoadingReminders)
+                        .overlay {
+                            if isRefreshingReminders {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
                         .accessibilityLabel("Refresh reminders")
                         .help("Refresh reminders")
 
@@ -411,6 +443,7 @@ struct CalendarTabView: View {
                         Image(systemName: "checklist")
                             .font(.system(size: 18, weight: .light))
                             .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
                         Text("No incomplete reminders")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
@@ -445,7 +478,7 @@ struct CalendarTabView: View {
 
     private func remindersInGroup(_ group: ReminderGroup) -> [RemindersService.ReminderItem] {
         let today = Calendar.current.startOfDay(for: Date())
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) else { return [] }
         switch group {
         case .pastAndToday:
             return reminders.filter {
@@ -495,26 +528,22 @@ struct CalendarTabView: View {
     private func reminderRow(_ reminder: RemindersService.ReminderItem) -> some View {
         HStack(spacing: 10) {
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                withAnimation(reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.3, dampingFraction: 0.6)) {
                     completingReminderId = reminder.id
                 }
-                Task {
+                Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(400))
                     let didComplete = RemindersService.shared.completeReminder(identifier: reminder.id)
                     guard didComplete else {
-                        await MainActor.run {
-                            completingReminderId = nil
-                            reminderSaveError = "Could not complete reminder."
-                        }
+                        completingReminderId = nil
+                        reminderSaveError = "Could not complete reminder."
                         return
                     }
-                    await MainActor.run {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            reminders.removeAll { $0.id == reminder.id }
-                        }
-                        needsReminderRefresh = true
-                        completingReminderId = nil
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.3)) {
+                        reminders.removeAll { $0.id == reminder.id }
                     }
+                    needsReminderRefresh = true
+                    completingReminderId = nil
                 }
             } label: {
                 Image(systemName: completingReminderId == reminder.id ? "checkmark.circle.fill" : "circle")
@@ -565,6 +594,41 @@ struct CalendarTabView: View {
         .background(Color.white.opacity(0.04))
         .cornerRadius(8)
         .transition(.asymmetric(insertion: .identity, removal: .slide.combined(with: .opacity)))
+        .contextMenu {
+            Button(role: .destructive) {
+                reminderToConfirmDelete = reminder
+            } label: {
+                Label("Delete Reminder", systemImage: "trash")
+            }
+        }
+        .confirmationDialog(
+            "Delete \"\(reminderToConfirmDelete?.title ?? "")\"?",
+            isPresented: Binding(
+                get: { reminderToConfirmDelete?.id == reminder.id },
+                set: { if !$0 { reminderToConfirmDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                guard let target = reminderToConfirmDelete else { return }
+                reminderToConfirmDelete = nil
+                Task { @MainActor in
+                    let didDelete = RemindersService.shared.deleteReminder(identifier: target.id)
+                    if didDelete {
+                        withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.3)) {
+                            reminders.removeAll { $0.id == target.id }
+                        }
+                    } else {
+                        reminderSaveError = "Could not delete reminder."
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                reminderToConfirmDelete = nil
+            }
+        } message: {
+            Text("This will permanently delete the reminder from Apple Reminders.")
+        }
     }
 
     @ViewBuilder
@@ -616,12 +680,23 @@ struct CalendarTabView: View {
                             .foregroundStyle(.secondary)
                             .kerning(1.5)
 
-                        TextField("Add details (optional)", text: $reminderDraftNotes, axis: .vertical)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 14))
-                            .lineLimit(3...5)
-                            .padding(12)
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
+                        ZStack(alignment: .topLeading) {
+                            if reminderDraftNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("Add details (optional)")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .allowsHitTesting(false)
+                            }
+                            TextEditor(text: $reminderDraftNotes)
+                                .scrollContentBackground(.hidden)
+                                .font(.system(size: 14))
+                                .frame(minHeight: 72, maxHeight: 120)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                        }
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
                     }
 
                     // Due date
@@ -652,6 +727,7 @@ struct CalendarTabView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.system(size: 12))
+                        .accessibilityHidden(true)
                     Text(reminderSaveError)
                         .font(.system(size: 12))
                         .foregroundStyle(.orange)
@@ -672,7 +748,7 @@ struct CalendarTabView: View {
                 .buttonBorderShape(.capsule)
 
                 Button(isCreating ? "Add Reminder" : "Save Changes") {
-                    Task {
+                    Task { @MainActor in
                         if isCreating {
                             let id = RemindersService.shared.createReminder(
                                 title: reminderDraftTitle,
@@ -729,6 +805,7 @@ struct CalendarTabView: View {
             Image(systemName: "moon.zzz.fill")
                 .font(.system(size: 24, weight: .light))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text("No sessions recorded")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.tertiary)
@@ -743,6 +820,7 @@ struct CalendarTabView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.green)
+                    .accessibilityHidden(true)
                 Text("\(sessions.count) session\(sessions.count == 1 ? "" : "s")")
                     .font(.system(size: 13, weight: .medium))
             }
@@ -751,6 +829,7 @@ struct CalendarTabView: View {
                 Image(systemName: "clock.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
                 Text(formatFocusDuration(focusMinutesForDay(selectedDate)))
                     .font(.system(size: 13, weight: .medium))
             }
@@ -840,6 +919,8 @@ struct CalendarTabView: View {
 
 
     private func refreshRemindersGracefully() async {
+        isRefreshingReminders = true
+        defer { isRefreshingReminders = false }
         let fetched = await RemindersService.shared.fetchIncompleteReminders(
             listId: settings?.selectedReminderListId
         )
@@ -850,7 +931,7 @@ struct CalendarTabView: View {
 
         // Only animate if there are actual changes
         if oldIds != newIds {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.3)) {
                 reminders = fetched
             }
         } else {
@@ -867,7 +948,7 @@ struct CalendarTabView: View {
         await reminderLoadTask?.value
     }
 
-    private func loadRemindersInternal() async {
+    @MainActor private func loadRemindersInternal() async {
         guard settings?.remindersIntegrationEnabled == true else {
             reminders = []
             remindersError = nil
