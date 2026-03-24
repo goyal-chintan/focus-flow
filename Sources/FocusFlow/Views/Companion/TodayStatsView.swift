@@ -76,6 +76,7 @@ struct TodayStatsView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     Text("Session logged")
                         .font(.system(size: 13, weight: .semibold))
                 }
@@ -276,6 +277,7 @@ struct TodayStatsView: View {
             HStack(spacing: 10) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Next best block")
                         .font(.system(size: 11, weight: .semibold))
@@ -303,6 +305,7 @@ struct TodayStatsView: View {
                 Image(systemName: "brain")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Text(text)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -319,6 +322,7 @@ struct TodayStatsView: View {
             Image(systemName: "flame.fill")
                 .foregroundStyle(.orange)
                 .font(.system(size: 14))
+                .accessibilityHidden(true)
             Text("Streak")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -388,6 +392,7 @@ struct TodayStatsView: View {
                                 Image(systemName: entry.key.icon)
                                     .font(.caption)
                                     .foregroundStyle(entry.key.color)
+                                    .accessibilityHidden(true)
 
                                 Text("\(entry.value)")
                                     .font(.subheadline.weight(.semibold))
@@ -418,6 +423,7 @@ struct TodayStatsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.green)
                                     .padding(.top, 2)
+                                    .accessibilityHidden(true)
 
                                 Text(item)
                                     .font(.subheadline)
@@ -511,6 +517,7 @@ struct TodayStatsView: View {
                             Image(systemName: "circle")
                                 .font(.system(size: 16))
                                 .foregroundStyle(.secondary)
+                                .accessibilityLabel("Complete reminder")
                         }
                         .buttonStyle(.plain)
 

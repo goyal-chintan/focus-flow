@@ -131,6 +131,7 @@ private struct CompanionSidebarRow: View {
                 Image(systemName: tab.icon)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(isSelected ? tab.tint : .secondary)
+                    .accessibilityHidden(true)
             }
 
             VStack(alignment: .leading, spacing: 2) {

@@ -29,6 +29,7 @@ struct CalendarTabView: View {
     @State private var deletingReminderId: String? = nil
     @State private var reminderToConfirmDelete: RemindersService.ReminderItem? = nil
     @State private var needsReminderRefresh = false
+    @State private var isRefreshingReminders = false
     @State private var showDaySessions: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -395,6 +396,12 @@ struct CalendarTabView: View {
                         .buttonStyle(.glass)
                         .buttonBorderShape(.circle)
                         .disabled(!(settings?.remindersIntegrationEnabled ?? false) || isLoadingReminders)
+                        .overlay {
+                            if isRefreshingReminders {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
                         .accessibilityLabel("Refresh reminders")
                         .help("Refresh reminders")
 
@@ -905,6 +912,8 @@ struct CalendarTabView: View {
 
 
     private func refreshRemindersGracefully() async {
+        isRefreshingReminders = true
+        defer { isRefreshingReminders = false }
         let fetched = await RemindersService.shared.fetchIncompleteReminders(
             listId: settings?.selectedReminderListId
         )

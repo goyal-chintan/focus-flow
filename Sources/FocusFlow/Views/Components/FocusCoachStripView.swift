@@ -36,6 +36,7 @@ struct FocusCoachStripView: View {
             Image(systemName: model.iconName)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(model.color)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(model.title)
@@ -55,6 +56,7 @@ struct FocusCoachStripView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.horizontal, LiquidDesignTokens.Spacing.medium)

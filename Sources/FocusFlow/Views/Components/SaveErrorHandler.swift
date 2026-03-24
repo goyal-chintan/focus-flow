@@ -30,6 +30,7 @@ struct SaveErrorBanner: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
             Text(message)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.primary)
@@ -37,6 +38,7 @@ struct SaveErrorBanner: View {
             Button(action: dismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Dismiss")
             }
             .buttonStyle(.plain)
         }

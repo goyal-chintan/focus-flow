@@ -58,6 +58,7 @@ struct CoachInterventionWindowView: View {
                         HStack(spacing: 5) {
                             Image(systemName: banner.icon)
                                 .font(.system(size: 10, weight: .semibold))
+                                .accessibilityHidden(true)
                             Text(banner.label)
                                 .font(.system(size: 11, weight: .semibold))
                                 .lineLimit(1)
@@ -146,6 +147,7 @@ struct CoachInterventionWindowView: View {
                     ? LiquidDesignTokens.Spectral.amber
                     : LiquidDesignTokens.Spectral.salmon)
                 .contentTransition(.symbolEffect(.replace))
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Focus Coach")
@@ -165,6 +167,7 @@ struct CoachInterventionWindowView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .accessibilityHidden(true)
             }
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
@@ -237,6 +240,7 @@ struct CoachInterventionWindowView: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .accessibilityHidden(true)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }

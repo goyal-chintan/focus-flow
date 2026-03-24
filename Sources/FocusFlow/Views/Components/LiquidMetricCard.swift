@@ -12,6 +12,7 @@ struct LiquidMetricCard: View {
                 Image(systemName: icon)
                     .font(.title3)
                     .foregroundStyle(color)
+                    .accessibilityHidden(true)
 
                 Text(value)
                     .font(.system(.title2, weight: .semibold))

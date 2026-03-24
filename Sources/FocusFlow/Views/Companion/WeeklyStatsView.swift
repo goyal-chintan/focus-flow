@@ -214,6 +214,7 @@ struct WeeklyStatsView: View {
                         Image(systemName: "flame.fill")
                             .foregroundStyle(.orange)
                             .font(.system(size: 16, weight: .semibold))
+                            .accessibilityHidden(true)
                         Text("\(currentStreak)")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                     }
@@ -229,6 +230,7 @@ struct WeeklyStatsView: View {
                         Image(systemName: "star.fill")
                             .foregroundStyle(.yellow)
                             .font(.system(size: 16, weight: .semibold))
+                            .accessibilityHidden(true)
                         Text("\(longestStreak)")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                     }

@@ -25,6 +25,7 @@ struct ProjectPickerView: View {
                         Text("No Project")
                         if selectedProject == nil {
                             Image(systemName: "checkmark")
+                                .accessibilityHidden(true)
                         }
                     }
                 }
@@ -39,6 +40,7 @@ struct ProjectPickerView: View {
                                 Label(project.name, systemImage: project.icon ?? "folder.fill")
                                 if selectedProject?.id == project.id {
                                     Image(systemName: "checkmark")
+                                        .accessibilityHidden(true)
                                 }
                             }
                         }

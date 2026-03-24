@@ -30,6 +30,7 @@ struct FocusCoachPreSessionCard: View {
                     Image(systemName: "brain.head.profile.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                        .accessibilityHidden(true)
 
                     Text("Quick Check-in")
                         .font(LiquidDesignTokens.Typography.labelMedium)
@@ -58,6 +59,7 @@ struct FocusCoachPreSessionCard: View {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

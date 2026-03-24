@@ -24,6 +24,7 @@ struct FocusCoachQuickPromptView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(accentColor)
                     .symbolEffect(.pulse, options: model.isStrong ? .repeating : .nonRepeating, value: appear)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.title)
@@ -84,6 +85,7 @@ struct FocusCoachQuickPromptView: View {
             HStack(spacing: 4) {
                 Image(systemName: iconName(for: action))
                     .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
                 Text(action.displayName)
                     .font(LiquidDesignTokens.Typography.labelSmall)
             }

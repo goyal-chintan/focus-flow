@@ -87,6 +87,7 @@ struct ManualSessionView: View {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -212,11 +213,13 @@ struct ManualSessionView: View {
                 HStack {
                     Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
                         .font(.caption)
+                        .accessibilityHidden(true)
                     Text("Split time across projects")
                         .font(.caption)
                     Spacer()
                     Image(systemName: showSplits ? "chevron.up" : "chevron.down")
                         .font(.caption2)
+                        .accessibilityHidden(true)
                 }
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

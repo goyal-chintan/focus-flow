@@ -201,6 +201,7 @@ struct ProjectsListView: View {
             Image(systemName: project.icon ?? "folder.fill")
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(colorFromName(project.color))
+                .accessibilityHidden(true)
         }
     }
 
@@ -299,6 +300,7 @@ struct ProjectsListView: View {
             Image(systemName: project.icon ?? "folder.fill")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(colorFromName(project.color))
+                .accessibilityHidden(true)
 
             Text(project.name)
                 .font(.system(size: 12, weight: .medium))
@@ -427,6 +429,7 @@ struct ProjectsListView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(colorFromName(project.color).opacity(0.7))
                 .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
 
             Text(project.name)
                 .font(.system(size: 13, weight: .medium))

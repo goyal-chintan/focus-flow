@@ -170,6 +170,7 @@ struct SessionCompleteWindowView: View {
                     Image(systemName: "calendar.badge.checkmark")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     Text("Saved to Calendar")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -233,6 +234,7 @@ struct SessionCompleteWindowView: View {
                     .font(.system(size: 15, weight: .semibold))
                 Image(systemName: "arrow.right")
                     .font(.system(size: 13, weight: .semibold))
+                    .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
@@ -326,6 +328,7 @@ struct SessionCompleteWindowView: View {
                             HStack(spacing: 6) {
                                 Image(systemName: "trash")
                                     .font(.system(size: 11, weight: .medium))
+                                    .accessibilityHidden(true)
                                 Text("Discard Session")
                                     .font(.system(size: 12, weight: .medium))
                             }
@@ -378,6 +381,7 @@ struct SessionCompleteWindowView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.green)
+                .accessibilityHidden(true)
             Text("Reason captured: **\(reason.displayName)**")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -432,11 +436,13 @@ struct SessionCompleteWindowView: View {
                 HStack {
                     Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
                         .font(.system(size: 13))
+                        .accessibilityHidden(true)
                     Text("Split across projects")
                         .font(.system(size: 13, weight: .medium))
                     Spacer()
                     Image(systemName: showSplits ? "chevron.up" : "chevron.down")
                         .font(.caption2)
+                        .accessibilityHidden(true)
                 }
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)
@@ -497,6 +503,7 @@ struct SessionCompleteWindowView: View {
                             Image(systemName: "checklist")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.blue)
+                                .accessibilityHidden(true)
                             Text(item.title)
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
@@ -507,6 +514,7 @@ struct SessionCompleteWindowView: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 12))
+                                    .accessibilityHidden(true)
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.tertiary)
@@ -516,6 +524,10 @@ struct SessionCompleteWindowView: View {
                 }
             }
         }
+        // TODO: Focus restoration on sheet dismiss for standalone windows (SessionComplete,
+        // CoachIntervention) is a known limitation. macOS SwiftUI handles focus restoration
+        // automatically for sheets, but window-level focus return after closing standalone
+        // windows is not reliably supported. Avoid NSApplication.shared.activate() here.
         .sheet(isPresented: $showReminderPicker) {
             ReminderSelectionSheet(
                 selectedListId: settings?.selectedReminderListId,

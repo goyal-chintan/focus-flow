@@ -59,10 +59,15 @@ struct FocusCoachReasonChipSheet: View {
 
                 // SECTION: Avoidant
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Avoidant")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.orange.opacity(0.8))
-                        .padding(.horizontal, 4)
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                            .accessibilityHidden(true)
+                        Text("Avoidant")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.orange.opacity(0.8))
+                    .padding(.horizontal, 4)
 
                     FlowLayout(spacing: LiquidDesignTokens.Spacing.small) {
                         ForEach(FocusCoachReason.avoidantChips, id: \.rawValue) { reason in
@@ -79,6 +84,7 @@ struct FocusCoachReasonChipSheet: View {
                     HStack(spacing: 4) {
                         Image(systemName: "moon.zzz")
                             .font(.system(size: 10, weight: .semibold))
+                            .accessibilityHidden(true)
                         Text("Snooze Coach")
                             .font(LiquidDesignTokens.Typography.labelSmall)
                     }
@@ -152,6 +158,7 @@ struct FocusCoachReasonChipSheet: View {
             HStack(spacing: 4) {
                 Image(systemName: iconName(for: reason))
                     .font(.system(size: 10))
+                    .accessibilityHidden(true)
                 Text(reason.displayName)
                     .font(LiquidDesignTokens.Typography.labelSmall)
             }

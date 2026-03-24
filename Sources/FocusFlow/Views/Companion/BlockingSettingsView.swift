@@ -76,6 +76,7 @@ struct BlockingSettingsView: View {
             Image(systemName: "shield.checkered")
                 .font(.system(size: 52, weight: .ultraLight))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
 
             VStack(spacing: 8) {
                 Text("No blocking profiles")
@@ -114,6 +115,7 @@ struct BlockingSettingsView: View {
                     Image(systemName: profile.isDefault ? "shield.checkered" : "shield")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(profile.isDefault ? .green : .secondary)
+                        .accessibilityHidden(true)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {

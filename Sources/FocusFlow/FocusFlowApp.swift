@@ -42,11 +42,13 @@ struct FocusFlowApp: App {
             HStack(spacing: 5) {
                 Image(systemName: menuBarIconName)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .accessibilityHidden(true)
 
                 if timerVM.isBlockingActive {
                     Image(systemName: "shield.checkered")
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                 }
 
                 if let liveStatusText {

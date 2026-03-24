@@ -46,6 +46,7 @@ struct SessionTimelineView: View {
             Image(systemName: "timer")
                 .font(.title2)
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text("No sessions yet today")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -67,6 +68,7 @@ struct SessionTimelineView: View {
                     Image(systemName: session.project?.icon ?? "timer")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(sessionColor(session))
+                        .accessibilityHidden(true)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -109,6 +111,7 @@ struct SessionTimelineView: View {
                         Image(systemName: mood.icon)
                             .font(.system(size: 11))
                             .foregroundStyle(mood.color)
+                            .accessibilityHidden(true)
                     }
                 }
             }
