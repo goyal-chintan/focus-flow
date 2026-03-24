@@ -35,9 +35,16 @@ final class AppSettings {
     var coachIdleStarterEnabled: Bool = true
     var coachAutoOpenPopoverOnStrongPrompt: Bool = true
     var coachBringAppToFrontOnStrongPrompt: Bool = true
+    var coachSuppressPopupsDuringScreenShare: Bool = true
     var coachAllowSkipAction: Bool = true
     var coachMaxStrongPromptsPerSession: Int = 2
     var coachInterventionModeRawValue: String = FocusCoachInterventionMode.balanced.rawValue
+    var coachPassivePromptSeconds: Int = 120
+    var coachPassiveEscalationSeconds: Int = 240
+    var coachAdaptivePromptSeconds: Int = 90
+    var coachAdaptiveEscalationSeconds: Int = 180
+    var coachStrictPromptSeconds: Int = 60
+    var coachStrictEscalationSeconds: Int = 120
 
     var coachInterventionMode: FocusCoachInterventionMode {
         get { FocusCoachInterventionMode(rawValue: coachInterventionModeRawValue) ?? .balanced }
@@ -72,8 +79,15 @@ final class AppSettings {
         self.coachIdleStarterEnabled = true
         self.coachAutoOpenPopoverOnStrongPrompt = true
         self.coachBringAppToFrontOnStrongPrompt = true
+        self.coachSuppressPopupsDuringScreenShare = true
         self.coachAllowSkipAction = true
         self.coachMaxStrongPromptsPerSession = 2
         self.coachInterventionModeRawValue = FocusCoachInterventionMode.balanced.rawValue
+        self.coachPassivePromptSeconds = 120
+        self.coachPassiveEscalationSeconds = 240
+        self.coachAdaptivePromptSeconds = 90
+        self.coachAdaptiveEscalationSeconds = 180
+        self.coachStrictPromptSeconds = 60
+        self.coachStrictEscalationSeconds = 120
     }
 }

@@ -200,6 +200,11 @@ final class TimerViewModel {
     /// Tracks the current or most-recent break episode, linked to the earned block.
     private(set) var breakEpisodeContext: BreakEpisodeContext? = nil
     /// Active suppression window when user has explicitly opted out of guardian prompts.
+    ///
+    /// Lifecycle semantics (intentional and non-ambiguous):
+    /// - Entered only via explicit release actions (e.g. mark-off-duty, done-for-now).
+    /// - Cleared when the user recommits by starting a new focus session.
+    /// - `markOffDuty` additionally clears any pending guardian prompt/window UI.
     private(set) var suppressionWindow: InterventionSuppressionWindow? = nil
 
     // MARK: - Overtime
@@ -254,12 +259,12 @@ final class TimerViewModel {
     private let coachPlanner = FocusCoachInterventionPlanner()
     private let coachOpportunityModel = FocusCoachOpportunityModel()
     private let guardianAdvisor = FocusCoachGuardianAdvisor()
+    private let screenShareGuard: ScreenShareGuard
     private let workIntentDetector = WorkIntentWindowDetector()
     private var coachTickCounter: Int = 0
     private var pauseCountThisSession: Int = 0
     private var strongPromptsShownThisSession: Int = 0
     private var lastIdleInterventionAt: Date?
-    private var guardianReleaseUntil: Date?
 
     // MARK: - Work Intent Timestamps
     /// Time the app was launched — used as a proxy for "opened app recently".
@@ -283,11 +288,6 @@ final class TimerViewModel {
 
     var activeCoachPopoverDecision: FocusCoachDecision? {
         currentCoachQuickPromptDecision ?? currentIdleStarterDecision
-    }
-
-    var isGuardianInReleaseWindow: Bool {
-        guard let guardianReleaseUntil else { return false }
-        return Date() < guardianReleaseUntil
     }
 
     /// Pre-session intention data (set from IdlePopoverContent, persisted on startFocus)
@@ -343,6 +343,10 @@ final class TimerViewModel {
 
     // MARK: - Setup
     private var isConfigured = false
+
+    init(screenShareGuard: ScreenShareGuard = ScreenShareGuard()) {
+        self.screenShareGuard = screenShareGuard
+    }
 
     func configure(modelContext: ModelContext) {
         guard !isConfigured else { return }
@@ -698,7 +702,9 @@ final class TimerViewModel {
         currentIdleStarterDecision = nil
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
-        guardianReleaseUntil = nil
+        // Starting a new focus block is an explicit recommit signal.
+        // Clear any prior release window so guardian protections resume immediately.
+        suppressionWindow = nil
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
         coachEngine.currentTaskResistance = coachResistance
         coachEngine.startSession(id: session.id)
@@ -1117,7 +1123,7 @@ final class TimerViewModel {
         lastIdleInterventionAt = nil
         coachEngine.endSession()
         clearCrashRecoveryState()
-        guardianReleaseUntil = nil
+        suppressionWindow = nil
         if let session = currentSession {
             modelContext?.delete(session)
             saveContext()
@@ -1168,6 +1174,7 @@ final class TimerViewModel {
     // MARK: - Guardian Release Window
 
     /// Enters an explicit opt-out suppression window so guardian interventions are paused.
+    /// This is only for explicit release actions; it is cleared on next `startFocus()`.
     func enterRelease(reason: ExplicitOptOutReason) {
         suppressionWindow = InterventionSuppressionWindow(
             reason: reason,
@@ -1585,7 +1592,6 @@ final class TimerViewModel {
 
     /// Handles a coach quick action selection.
     func handleCoachAction(_ action: FocusCoachQuickAction, skipReason: FocusCoachSkipReason? = nil) {
-        applyGuardianRelease(reason: skipReason, action: action)
         switch action {
         case .returnNow:
             coachEngine.recordInterventionOutcome(.improved)
@@ -1602,6 +1608,7 @@ final class TimerViewModel {
             startFocus()
             closePopover()
         case .snooze10m:
+            applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
@@ -1622,13 +1629,17 @@ final class TimerViewModel {
             currentIdleStarterDecision = nil
             closePopover()
         case .skipCheck:
+            applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
             closePopover()
         case .markOffDuty:
-            // Placeholder: wire to enterRelease(reason: .offDuty) when p1-timer-spine lands.
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
+            // Off-duty is an explicit release intent: enter release + clear all pending prompt surfaces.
+            enterRelease(reason: .offDuty)
+            showCoachInterventionWindow = false
+            activeCoachInterventionDecision = nil
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
             closePopover()
@@ -1696,10 +1707,32 @@ final class TimerViewModel {
         return "Current context looks off-plan. Choose the next best action."
     }
 
-    private func applyGuardianRelease(reason: FocusCoachSkipReason?, action: FocusCoachQuickAction) {
+    private func applyGuardianReleaseIfNeeded(for action: FocusCoachQuickAction, reason: FocusCoachSkipReason?) {
         guard action == .snooze10m || action == .skipCheck else { return }
-        guard let duration = guardianAdvisor.releaseDuration(for: reason) else { return }
-        guardianReleaseUntil = Date().addingTimeInterval(duration)
+        guard let mappedReason = explicitOptOutReason(for: reason) else { return }
+        enterRelease(reason: mappedReason)
+    }
+
+    private func explicitOptOutReason(for reason: FocusCoachSkipReason?) -> ExplicitOptOutReason? {
+        guard let reason else { return nil }
+        switch reason {
+        case .doneForToday:
+            return .offDuty
+        case .notWell, .justTired:
+            return .tooTired
+        case .takingBreak:
+            return .realBreak
+        case .urgentTask, .inMeeting:
+            return .meeting
+        case .lowPriorityWork, .procrastinating, .cantFocus:
+            return .doneForNow
+        }
+    }
+
+    private func shouldSuppressGuardianPopups(using settings: AppSettings) -> Bool {
+        screenShareGuard.shouldSuppressGuardianPopups(
+            enabled: settings.coachSuppressPopupsDuringScreenShare
+        )
     }
 
     private func applyProjectBlockRecommendation() {
@@ -1740,7 +1773,7 @@ final class TimerViewModel {
 
     private func routeCoachDecision(_ decision: FocusCoachDecision) {
         guard let settings else { return }
-        if isGuardianInReleaseWindow {
+        if isInReleaseWindow || shouldSuppressGuardianPopups(using: settings) {
             currentCoachQuickPromptDecision = nil
             activeCoachInterventionDecision = nil
             showCoachInterventionWindow = false
@@ -1837,8 +1870,10 @@ final class TimerViewModel {
         frontmostCategory: AppUsageEntry.AppCategory
     ) {
         guard state == .idle, !isOvertime, let settings else { return }
-        if isGuardianInReleaseWindow {
+        if isInReleaseWindow || shouldSuppressGuardianPopups(using: settings) {
             currentIdleStarterDecision = nil
+            activeCoachInterventionDecision = nil
+            showCoachInterventionWindow = false
             return
         }
         guard settings.antiProcrastinationEnabled, settings.coachIdleStarterEnabled else {
@@ -2028,7 +2063,7 @@ final class TimerViewModel {
             recentLowPriorityWorkCount: coachEngine.recentLowPrioritySkipCount(),
             suggestedBlockTarget: recommendation?.target,
             blockRecommendationReason: recommendation?.reason,
-            inReleaseWindow: isGuardianInReleaseWindow
+            inReleaseWindow: isInReleaseWindow
         )
     }
 }

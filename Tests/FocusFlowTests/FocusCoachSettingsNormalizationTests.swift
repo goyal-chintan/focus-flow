@@ -64,4 +64,60 @@ final class FocusCoachSettingsNormalizationTests: XCTestCase {
         FocusCoachSettingsNormalizer.normalize(&settings)
         XCTAssertEqual(settings.coachInterventionMode, .balanced)
     }
+
+    func testGuardianCadenceDefaultsAreSet() {
+        let settings = AppSettings()
+        XCTAssertTrue(settings.coachSuppressPopupsDuringScreenShare)
+        XCTAssertEqual(settings.coachPassivePromptSeconds, 120)
+        XCTAssertEqual(settings.coachPassiveEscalationSeconds, 240)
+        XCTAssertEqual(settings.coachAdaptivePromptSeconds, 90)
+        XCTAssertEqual(settings.coachAdaptiveEscalationSeconds, 180)
+        XCTAssertEqual(settings.coachStrictPromptSeconds, 60)
+        XCTAssertEqual(settings.coachStrictEscalationSeconds, 120)
+    }
+
+    func testCadencePromptsAreClampedToRange() {
+        var settings = AppSettings()
+        settings.coachPassivePromptSeconds = 5
+        settings.coachAdaptivePromptSeconds = 500
+        settings.coachStrictPromptSeconds = 14
+
+        FocusCoachSettingsNormalizer.normalize(&settings)
+
+        XCTAssertEqual(settings.coachPassivePromptSeconds, 15)
+        XCTAssertEqual(settings.coachAdaptivePromptSeconds, 300)
+        XCTAssertEqual(settings.coachStrictPromptSeconds, 15)
+    }
+
+    func testCadenceEscalationsAreClampedToRange() {
+        var settings = AppSettings()
+        settings.coachPassivePromptSeconds = 15
+        settings.coachAdaptivePromptSeconds = 15
+        settings.coachStrictPromptSeconds = 15
+        settings.coachPassiveEscalationSeconds = 5
+        settings.coachAdaptiveEscalationSeconds = 900
+        settings.coachStrictEscalationSeconds = 29
+
+        FocusCoachSettingsNormalizer.normalize(&settings)
+
+        XCTAssertEqual(settings.coachPassiveEscalationSeconds, 30)
+        XCTAssertEqual(settings.coachAdaptiveEscalationSeconds, 600)
+        XCTAssertEqual(settings.coachStrictEscalationSeconds, 30)
+    }
+
+    func testCadenceEscalationIsNeverBelowPrompt() {
+        var settings = AppSettings()
+        settings.coachPassivePromptSeconds = 180
+        settings.coachPassiveEscalationSeconds = 120
+        settings.coachAdaptivePromptSeconds = 240
+        settings.coachAdaptiveEscalationSeconds = 90
+        settings.coachStrictPromptSeconds = 120
+        settings.coachStrictEscalationSeconds = 60
+
+        FocusCoachSettingsNormalizer.normalize(&settings)
+
+        XCTAssertEqual(settings.coachPassiveEscalationSeconds, settings.coachPassivePromptSeconds)
+        XCTAssertEqual(settings.coachAdaptiveEscalationSeconds, settings.coachAdaptivePromptSeconds)
+        XCTAssertEqual(settings.coachStrictEscalationSeconds, settings.coachStrictPromptSeconds)
+    }
 }
