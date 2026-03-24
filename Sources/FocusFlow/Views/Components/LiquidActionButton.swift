@@ -19,7 +19,6 @@ enum LiquidActionRole {
 }
 
 struct LiquidActionButton: View {
-    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let icon: String
     let role: LiquidActionRole
@@ -46,7 +45,7 @@ struct LiquidActionButton: View {
                 Label(title, systemImage: icon)
                     .font(LiquidDesignTokens.Typography.controlLabel)
                     .labelStyle(.titleAndIcon)
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(LiquidDesignTokens.Surface.onProminent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, LiquidDesignTokens.Padding.controlVertical)
             }
@@ -58,7 +57,7 @@ struct LiquidActionButton: View {
                 Label(title, systemImage: icon)
                     .font(LiquidDesignTokens.Typography.controlLabel)
                     .labelStyle(.titleAndIcon)
-                    .foregroundStyle(role == .destructive ? LiquidDesignTokens.Spectral.destructive : (colorScheme == .dark ? Color.white : Color.black))
+                    .foregroundStyle(role == .destructive ? LiquidDesignTokens.Spectral.destructive : LiquidDesignTokens.Surface.onSurface)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, LiquidDesignTokens.Padding.controlVertical)
             }

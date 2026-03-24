@@ -4,6 +4,7 @@ import SwiftUI
 /// Shows 1–3 recovery actions as tappable capsule buttons.
 /// Two visual intensities: normal (amber tint) and strong (salmon/red tint).
 struct FocusCoachQuickPromptView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let model: FocusCoachPresentationMapper.PromptModel
     let onAction: (FocusCoachQuickAction) -> Void
     let onDismiss: () -> Void
@@ -64,9 +65,9 @@ struct FocusCoachQuickPromptView: View {
                 )
         }
         .opacity(appear ? 1 : 0)
-        .offset(y: appear ? 0 : 8)
+        .offset(y: reduceMotion ? 0 : (appear ? 0 : 8))
         .onAppear {
-            withAnimation(FFMotion.popover) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.popover) {
                 appear = true
             }
         }
@@ -105,7 +106,7 @@ struct FocusCoachQuickPromptView: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering in
-            withAnimation(FFMotion.control) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) {
                 hoveredAction = hovering ? action : nil
             }
         }

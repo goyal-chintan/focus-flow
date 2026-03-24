@@ -223,9 +223,12 @@ final class TimerViewModel {
     /// `NSApp.sendAction(NSPopover.performClose)` that silently fails
     /// when another window is key.
     weak var popoverWindow: NSWindow?
+    /// Test hook for asserting commit-action popover closure without real AppKit window lifecycle.
+    var onPopoverCloseRequested: (() -> Void)?
 
     /// Reliably closes the menu bar popover using direct window reference.
     func closePopover() {
+        onPopoverCloseRequested?()
         popoverWindow?.close()
     }
 

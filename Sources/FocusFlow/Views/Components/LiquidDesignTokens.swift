@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 // MARK: - Obsidian Lens Design System
 // Based on the "Liquid Refraction" DESIGN.md specifications.
@@ -9,13 +12,16 @@ enum LiquidDesignTokens {
 
     // MARK: - Surface Palette (Obsidian Layering)
     enum Surface {
-        static let background = Color(hex: 0x131315)
-        static let containerLow = Color(hex: 0x1C1C1E)
-        static let container = Color(hex: 0x252526)
-        static let containerHigh = Color(hex: 0x2C2C2E)
-        static let containerHighest = Color(hex: 0x353534)
+        static let background = Color.adaptive(light: 0xF4F4F6, dark: 0x131315)
+        static let containerLow = Color.adaptive(light: 0xEBEBEF, dark: 0x1C1C1E)
+        static let container = Color.adaptive(light: 0xE4E4E8, dark: 0x252526)
+        static let containerHigh = Color.adaptive(light: 0xDDDDE2, dark: 0x2C2C2E)
+        static let containerHighest = Color.adaptive(light: 0xD6D6DC, dark: 0x353534)
         static let onSurface = Color.primary
         static let onSurfaceMuted = Color.secondary
+        static let onProminent = Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF)
+        static let glassStroke = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.08, darkAlpha: 0.08)
+        static let materialOverlay = Color.adaptive(light: 0xFFFFFF, dark: 0x000000, lightAlpha: 0.08, darkAlpha: 0.20)
     }
 
     // MARK: - Spectral Colors (Light Sources)
@@ -176,7 +182,31 @@ extension Color {
             opacity: alpha
         )
     }
+
+    static func adaptive(light: UInt, dark: UInt, lightAlpha: Double = 1.0, darkAlpha: Double = 1.0) -> Color {
+#if os(macOS)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(hex: isDark ? dark : light, alpha: isDark ? darkAlpha : lightAlpha)
+        })
+#else
+        Color(hex: dark, alpha: darkAlpha)
+#endif
+    }
 }
+
+#if os(macOS)
+private extension NSColor {
+    convenience init(hex: UInt, alpha: Double = 1.0) {
+        self.init(
+            srgbRed: CGFloat(Double((hex >> 16) & 0xFF) / 255),
+            green: CGFloat(Double((hex >> 8) & 0xFF) / 255),
+            blue: CGFloat(Double(hex & 0xFF) / 255),
+            alpha: CGFloat(alpha)
+        )
+    }
+}
+#endif
 
 // MARK: - Gradient Helpers
 
@@ -208,8 +238,8 @@ enum ObsidianGradients {
     static func glassPanel() -> LinearGradient {
         LinearGradient(
             colors: [
-                Color.white.opacity(0.05),
-                Color.white.opacity(0.02)
+                Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.45, darkAlpha: 0.05),
+                Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.20, darkAlpha: 0.02)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -229,7 +259,7 @@ struct ObsidianGlassContainer: ViewModifier {
                     .fill(ObsidianGradients.glassPanel())
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                            .stroke(LiquidDesignTokens.Surface.glassStroke, lineWidth: 0.5)
                     )
             )
     }

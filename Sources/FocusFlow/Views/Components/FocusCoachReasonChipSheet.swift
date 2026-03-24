@@ -4,6 +4,7 @@ import SwiftUI
 /// Presents 7 reason options as tappable chips (1–2 taps to complete).
 /// Includes optional snooze action in the same surface.
 struct FocusCoachReasonChipSheet: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let anomalyKind: FocusCoachInterruptionKind
     let onSelect: (FocusCoachReason) -> Void
     let onSnooze: () -> Void
@@ -32,6 +33,8 @@ struct FocusCoachReasonChipSheet: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Skip reason")
@@ -98,13 +101,13 @@ struct FocusCoachReasonChipSheet: View {
                 )
         }
         .opacity(appear ? 1 : 0)
-        .offset(y: appear ? 0 : 12)
+        .offset(y: reduceMotion ? 0 : (appear ? 0 : 12))
         .onAppear {
-            withAnimation(FFMotion.popover) {
+            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.popover) {
                 appear = true
             }
         }
-        .animation(FFMotion.control, value: selectedReason)
+        .animation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control, value: selectedReason)
     }
 
     @ViewBuilder

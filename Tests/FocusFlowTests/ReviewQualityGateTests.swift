@@ -44,6 +44,20 @@ final class ReviewQualityGateTests: XCTestCase {
         }
     }
 
+    func testMenuBarAndCoachDismissControlsMeetMinimumTapTarget() throws {
+        let menuBarSource = try loadSource("Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift")
+        XCTAssertTrue(
+            menuBarSource.contains(".frame(width: 44, height: 44)"),
+            "Menu bar header and dismiss controls must use a 44x44 tap target."
+        )
+
+        let reasonSheetSource = try loadSource("Sources/FocusFlow/Views/Components/FocusCoachReasonChipSheet.swift")
+        XCTAssertTrue(
+            reasonSheetSource.contains(".frame(minWidth: 44, minHeight: 44)"),
+            "Reason sheet dismiss control must use a minimum 44x44 tap target."
+        )
+    }
+
     // MARK: - Helpers
 
     private func loadSource(_ path: String) throws -> String {
