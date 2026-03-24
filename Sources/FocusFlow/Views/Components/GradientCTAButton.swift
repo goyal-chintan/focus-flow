@@ -16,6 +16,7 @@ struct GradientCTAButton: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .bold))
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
             }

@@ -111,6 +111,7 @@ struct TimeSplitView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Decrease minutes")
 
                 Text("\(splits[index].minutes)m")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -129,6 +130,7 @@ struct TimeSplitView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Increase minutes")
             }
 
             if splits.count > 1 {
@@ -142,6 +144,7 @@ struct TimeSplitView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Remove split")
             }
         }
         .padding(.horizontal, 12)

@@ -43,6 +43,7 @@ struct MenuBarPopoverView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
                         Text(error)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.orange)
@@ -384,6 +385,7 @@ struct MenuBarPopoverView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 11))
                     .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                    .accessibilityHidden(true)
                 Text("TODAY'S TOTAL")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.8))
@@ -610,6 +612,7 @@ private struct IdlePopoverContent: View {
                 Image(systemName: "arrow.counterclockwise.circle.fill")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
                 Text("Session Interrupted")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
@@ -952,6 +955,7 @@ private struct FocusingPopoverContent: View {
             Image(systemName: "arrow.right.circle.fill")
                 .font(.system(size: 22))
                 .foregroundStyle(.purple.opacity(0.7))
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 TrackedLabel(
@@ -970,6 +974,7 @@ private struct FocusingPopoverContent: View {
             Image(systemName: "chevron.right")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(12)
         .background(
@@ -1160,6 +1165,7 @@ private struct OvertimePopoverContent: View {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(Color(hex: 0x3DA86A))
+                    .accessibilityHidden(true)
                 Text(overtimeString)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -1184,6 +1190,7 @@ private struct OvertimePopoverContent: View {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                                .accessibilityHidden(true)
                             Text("Log & Continue →")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
@@ -1212,6 +1219,7 @@ private struct OvertimePopoverContent: View {
                                 HStack(spacing: 5) {
                                     Image(systemName: "forward.fill")
                                         .font(.system(size: 10))
+                                        .accessibilityHidden(true)
                                     Text("Start Next Block")
                                         .font(.system(size: 12, weight: .medium))
                                 }
@@ -1225,6 +1233,7 @@ private struct OvertimePopoverContent: View {
                                 HStack(spacing: 5) {
                                     Image(systemName: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill")
                                         .font(.system(size: 10))
+                                        .accessibilityHidden(true)
                                     Text(cycleProgress >= 1.0 ? "Complete Block" : "End with Progress")
                                         .font(.system(size: 12, weight: .medium))
                                 }
@@ -1277,6 +1286,7 @@ private struct BreakOvertimePopoverContent: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
                 Text(overtimeString)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -1352,6 +1362,7 @@ private struct BreakPopoverContent: View {
                         .font(.system(size: 13, weight: .medium))
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .medium))
+                        .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity, minHeight: 36)
             }

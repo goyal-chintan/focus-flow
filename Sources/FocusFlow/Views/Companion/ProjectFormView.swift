@@ -145,6 +145,7 @@ struct ProjectFormView: View {
                     Image(systemName: "shield.checkered")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
 
                     Text(selectedBlockProfile?.name ?? "None (no blocking)")
                         .font(.subheadline)
@@ -154,6 +155,7 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
+                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -185,6 +187,7 @@ struct ProjectFormView: View {
                     Image(systemName: workMode.icon)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
 
                     Text(workMode.displayName)
                         .font(.subheadline)
@@ -193,6 +196,7 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
+                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -221,6 +225,7 @@ struct ProjectFormView: View {
                     Image(systemName: "sensor.tag.radiowaves.forward")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
 
                     Text(guardianSensitivity.displayName)
                         .font(.subheadline)
@@ -229,6 +234,7 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
+                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -257,6 +263,7 @@ struct ProjectFormView: View {
                     Image(systemName: "dial.medium")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
 
                     Text(difficultyBias.displayName)
                         .font(.subheadline)
@@ -265,6 +272,7 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
+                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -322,12 +330,14 @@ private struct IconCell: View {
                 )
                 .foregroundStyle(.tint)
                 .scaleEffect(1.08)
+                .accessibilityLabel("\(sfSymbol) icon, selected")
         } else {
             Image(systemName: sfSymbol)
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 34, height: 34)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("\(sfSymbol) icon")
         }
     }
 }

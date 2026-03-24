@@ -1100,6 +1100,7 @@ struct InsightsView: View {
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(showAppUsage ? 90 : 0))
                             .animation(reduceMotion ? nil : FFMotion.section, value: showAppUsage)
+                            .accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
                     .frame(minHeight: 44)
@@ -1327,7 +1328,7 @@ struct InsightsView: View {
                                 if isSelected && item.totalMinutes > 0 {
                                     Text("\(Int(item.totalMinutes))m")
                                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(LiquidDesignTokens.Surface.onProminent)
                                 }
                             }
 
@@ -1607,6 +1608,7 @@ struct InsightsView: View {
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(showScienceTips ? 90 : 0))
                             .animation(reduceMotion ? nil : FFMotion.section, value: showScienceTips)
+                            .accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
                     .frame(minHeight: 44)

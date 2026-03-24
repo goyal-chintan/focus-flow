@@ -69,6 +69,7 @@ struct MoodSelector: View {
             VStack(spacing: style.labelSpacing) {
                 Image(systemName: mood.icon)
                     .font(.system(size: style.iconSize))
+                    .accessibilityHidden(true)
                 Text(mood.rawValue)
                     .font(style.labelFont)
             }
