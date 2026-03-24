@@ -215,15 +215,47 @@ final class UIEvidenceCaptureTests: XCTestCase {
             let fixture = try fixtures.settingsRemindersFixture()
             return try renderSettings(fixture, appearance: appearance)
 
-        case "first_run_initial_render":
+        case "break_complete_reason_sheet_hidden":
+            // Replaces old "first_run_initial_render" — captures break-complete window without reason sheet.
             let fixture = try fixtures.breakCompletionFixture()
             fixture.vm.showCoachReasonSheet = false
             return try renderSessionComplete(fixture, appearance: appearance)
 
-        case "first_run_first_toggle":
+        case "break_complete_reason_sheet_visible":
+            // Replaces old "first_run_first_toggle" — captures break-complete window with reason sheet expanded.
             let fixture = try fixtures.breakCompletionFixture()
             fixture.vm.showCoachReasonSheet = true
             return try renderSessionComplete(fixture, appearance: appearance)
+
+        case "session_complete_earned_stage":
+            // The Earned stage is the default initial stage when session completes — no extra state needed.
+            let fixture = try fixtures.focusCompletionFixture()
+            return try renderSessionComplete(fixture, appearance: appearance)
+
+        case "session_complete_recovery_chips":
+            // Recovery chips appear when breakEpisodeContext.overrunSeconds > 60. The breakCompletion
+            // fixture already seeds overtimeSeconds = 190, which maps to overrunSeconds via the break episode.
+            let fixture = try fixtures.breakCompletionFixture()
+            fixture.vm.showCoachReasonSheet = false
+            return try renderSessionComplete(fixture, appearance: appearance)
+
+        case "coach_window_dismiss":
+            // Captures the coach intervention window with the X dismiss button visible.
+            let fixture = try fixtures.baseFixture()
+            fixture.vm.state = .focusing
+            fixture.vm.selectedProject = try seedProject(name: "DSA Prep", in: fixture.context)
+            fixture.vm.activeCoachInterventionDecision = FocusCoachDecision(
+                kind: .strongPrompt,
+                suggestedActions: [.returnNow, .markOffDuty],
+                message: "YouTube is off-plan for DSA Prep. Return to focus or mark yourself off-duty."
+            )
+            fixture.vm.showCoachInterventionWindow = true
+            return try renderCoachWindow(fixture, appearance: appearance)
+
+        case "today_stats_view":
+            // Captures the Today companion window behavioral metrics row.
+            let fixture = try fixtures.todayStatsFixture()
+            return try renderTodayStats(fixture, appearance: appearance)
 
         default:
             throw CaptureError.flowFixtureFailed("Unhandled flowID: \(flowID)")
@@ -270,6 +302,17 @@ final class UIEvidenceCaptureTests: XCTestCase {
             .padding(16)
             .background(backgroundColor(for: appearance))
         return try render(view, appearance: appearance, size: CGSize(width: 760, height: 560))
+    }
+
+    private func renderTodayStats(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let view = TodayStatsView()
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: 720)
+            .padding(16)
+            .background(backgroundColor(for: appearance))
+        return try render(view, appearance: appearance, size: CGSize(width: 760, height: 600))
     }
 
     private func render<V: View>(
@@ -340,6 +383,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         private var breakCompleted: Fixture?
         private var settingsCalendar: Fixture?
         private var settingsReminders: Fixture?
+        private var todayStats: Fixture?
 
         init(owner: UIEvidenceCaptureTests) {
             self.owner = owner
@@ -396,6 +440,15 @@ final class UIEvidenceCaptureTests: XCTestCase {
             return created
         }
 
+        func todayStatsFixture() throws -> Fixture {
+            if let todayStats {
+                return todayStats
+            }
+            let created = try owner.makeTodayStatsFixture()
+            self.todayStats = created
+            return created
+        }
+
         func cleanup() {
             if let base {
                 owner.cleanup(base)
@@ -407,6 +460,30 @@ final class UIEvidenceCaptureTests: XCTestCase {
                 owner.cleanup(breakCompleted)
             }
         }
+    }
+
+    private func makeTodayStatsFixture() throws -> Fixture {
+        // TodayStatsView reads earnedBlocks/importantWork from SwiftData sessions — seed real sessions.
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let settings = AppSettings()
+        context.insert(settings)
+        let project = Project(name: "Interview Prep", color: "blue", icon: "scope")
+        context.insert(project)
+        // Seed 3 completed focus sessions totalling 1h 45m
+        for minutes in [25, 25, 50] {
+            let session = FocusSession(type: .focus, duration: TimeInterval(minutes * 60), project: project)
+            session.completed = true
+            session.startedAt = Date().addingTimeInterval(-Double(minutes * 60 + 300))
+            session.endedAt = Date().addingTimeInterval(-300)
+            context.insert(session)
+        }
+        try context.save()
+        let vm = TimerViewModel()
+        vm.configureForEvidence(modelContext: context, settings: settings)
+        vm.todayFocusTime = (1 * 60 + 40) * 60
+        vm.todaySessionCount = 3
+        return Fixture(container: container, context: context, vm: vm)
     }
 
     private func makeFixture(configureSettings: ((AppSettings) -> Void)? = nil) throws -> Fixture {
@@ -717,7 +794,62 @@ final class UIEvidenceCaptureTests: XCTestCase {
             notes: "Deterministic fixture proof. OS-side manual confirmation is still required for release gate."
         )
 
-        return [focusFlow, completionFlow, idleFlow, calendarFlow, reminderFlow]
+        // --- Proof: deferBreakAndStartNextBlock transitions onBreak → focusing ---
+        let vm2 = TimerViewModel()
+        vm2.configureForEvidence(modelContext: context, settings: settings)
+        vm2.startFocus()
+        vm2.stopForReflection()
+        let earnedID = vm2.completedBlockContext?.sessionId
+        vm2.continueAfterCompletion(action: .takeBreak(duration: nil))
+        let deferBefore = [
+            "state": "\(vm2.state)",
+            "completedBlockContextID": earnedID?.uuidString ?? "nil"
+        ]
+        vm2.deferBreakAndStartNextBlock()
+        let deferBreakFlow = CanonicalFlowProof(
+            id: "defer_break_next_block_focusing",
+            beforeState: deferBefore,
+            afterState: [
+                "state": "\(vm2.state)",
+                "completedBlockContextPreserved": "\(vm2.completedBlockContext?.sessionId == earnedID)"
+            ],
+            status: vm2.state == .focusing && vm2.completedBlockContext?.sessionId == earnedID ? "passed" : "failed",
+            notes: "spec: deferBreakAndStartNextBlock must transition .onBreak→.focusing and preserve completedBlockContext"
+        )
+
+        // --- Proof: takeBreak(duration:300) uses 5m override vs takeBreak(nil) uses configured duration ---
+        let vm3 = TimerViewModel()
+        vm3.configureForEvidence(modelContext: context, settings: settings)
+        vm3.startFocus()
+        vm3.stopForReflection()
+        vm3.continueAfterCompletion(action: .takeBreak(duration: 300))
+        let shortBreakFlow = CanonicalFlowProof(
+            id: "take_break_5m_override",
+            beforeState: ["configuredShortBreak": "\(Int(settings.shortBreakDuration))s"],
+            afterState: [
+                "state": "\(vm3.state)",
+                "totalSeconds": "\(Int(vm3.totalSeconds))"
+            ],
+            status: vm3.totalSeconds == 300 ? "passed" : "failed",
+            notes: "takeBreak(duration: 300) must always use 300s regardless of configured short break duration"
+        )
+
+        // --- Proof: enterRelease via markOffDuty suppresses strong interventions ---
+        let vm4 = TimerViewModel()
+        vm4.configureForEvidence(modelContext: context, settings: settings)
+        let suppressBefore = ["isInReleaseWindow": "\(vm4.isInReleaseWindow)"]
+        vm4.enterRelease(reason: .doneForNow)
+        let releaseFlow = CanonicalFlowProof(
+            id: "enter_release_suppresses_interventions",
+            beforeState: suppressBefore,
+            afterState: [
+                "isInReleaseWindow": "\(vm4.isInReleaseWindow)"
+            ],
+            status: vm4.isInReleaseWindow ? "passed" : "failed",
+            notes: "spec: explicit opt-out must activate release window, suppressing strong prompts for 45-90 minutes"
+        )
+
+        return [focusFlow, completionFlow, idleFlow, deferBreakFlow, shortBreakFlow, releaseFlow, calendarFlow, reminderFlow]
     }
 
     private func assertContractCoverage(
@@ -750,12 +882,16 @@ final class UIEvidenceCaptureTests: XCTestCase {
         case "session_complete_focus_complete": return "Focus completion post-session UI"
         case "session_complete_manual_stop": return "Manual stop reflection pathway"
         case "session_complete_break_complete": return "Break completion continuation pathway"
+        case "session_complete_earned_stage": return "Two-stage Earned celebration view"
+        case "session_complete_recovery_chips": return "Break overrun classification chips"
         case "coach_quick_prompt": return "In-popover quick coach intervention"
         case "coach_strong_window": return "Strong intervention standalone window"
+        case "coach_window_dismiss": return "Coach window X dismiss button evidence"
         case "settings_calendar_permissions": return "Calendar integration permission surface"
         case "settings_reminders_permissions": return "Reminders integration permission surface"
-        case "first_run_initial_render": return "Geometry baseline before first interaction"
-        case "first_run_first_toggle": return "Geometry after first disclosure toggle"
+        case "today_stats_view": return "Today companion behavioral metrics (Earned Blocks, Guardian Learned)"
+        case "break_complete_reason_sheet_hidden": return "Break-complete window with reason sheet collapsed"
+        case "break_complete_reason_sheet_visible": return "Break-complete window with reason sheet expanded"
         default: return "Review evidence capture"
         }
     }

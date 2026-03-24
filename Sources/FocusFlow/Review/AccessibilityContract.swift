@@ -20,14 +20,24 @@ enum AccessibilityContract {
             sourceFile: "Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift"
         ),
         AccessibilityControlRequirement(
-            id: "sessionComplete.primary.takeBreak",
-            label: "Take a break",
+            id: "sessionComplete.primary.takeShortBreak",
+            label: "Take a 5 minute reset break",
+            sourceFile: "Sources/FocusFlow/Views/SessionCompleteWindow.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "sessionComplete.primary.takeFullBreak",
+            label: "Take a full break",
             sourceFile: "Sources/FocusFlow/Views/SessionCompleteWindow.swift"
         ),
         AccessibilityControlRequirement(
             id: "sessionComplete.secondary.skipBreak",
             label: "Skip break and continue focus",
             sourceFile: "Sources/FocusFlow/Views/SessionCompleteWindow.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "coachWindow.dismiss",
+            label: "Dismiss",
+            sourceFile: "Sources/FocusFlow/Views/CoachInterventionWindowView.swift"
         ),
         AccessibilityControlRequirement(
             id: "coachWindow.skipCheck",
