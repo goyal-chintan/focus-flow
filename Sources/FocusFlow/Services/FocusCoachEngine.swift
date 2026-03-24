@@ -109,13 +109,13 @@ final class FocusCoachEngine {
               let disposition = observation.suggestedDisposition,
               disposition.isAvoidant else { return }
 
-        let appOrDomain = observation.browserHost ?? observation.localizedAppName
+        let contextKey = observation.normalizedContextKey
         let projectId   = observation.selectedProjectId
         let workMode    = observation.selectedWorkMode
 
         // Skip challenge if user has previously confirmed this context as planned work
         if let store = driftMemoryStore,
-           store.projectScopedAllowance(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain) {
+           store.projectScopedAllowance(projectId: projectId, workMode: workMode, appOrDomain: contextKey) {
             return
         }
 
@@ -248,15 +248,13 @@ final class FocusCoachEngine {
 
         // Record into drift classification memory for learning
         if let reason, let store = driftMemoryStore {
-            let appOrDomain = latestObservation?.browserHost
-                ?? latestObservation?.localizedAppName
-                ?? "unknown"
+            let contextKey = latestObservation?.normalizedContextKey ?? "unknown"
             let projectId = latestObservation?.selectedProjectId
             let workMode = latestObservation?.selectedWorkMode
             if reason.isLegitimate {
-                store.recordPlanned(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain)
+                store.recordPlanned(projectId: projectId, workMode: workMode, appOrDomain: contextKey)
             } else {
-                store.recordAvoidant(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain)
+                store.recordAvoidant(projectId: projectId, workMode: workMode, appOrDomain: contextKey)
             }
         }
 
@@ -264,12 +262,8 @@ final class FocusCoachEngine {
         if let reason,
            let projectId = latestObservation?.selectedProjectId,
            let workMode = latestObservation?.selectedWorkMode {
-            let contextKey = latestObservation?.browserHost
-                ?? latestObservation?.localizedAppName
-                ?? "unknown"
-            let displayName = latestObservation?.browserHost
-                ?? latestObservation?.localizedAppName
-                ?? "unknown"
+            let contextKey = latestObservation?.normalizedContextKey ?? "unknown"
+            let displayName = latestObservation?.normalizedContextDisplayName ?? "unknown"
             if reason.isLegitimate {
                 blockingRecommendationEngine.recordPlanned(
                     projectId: projectId, workMode: workMode,

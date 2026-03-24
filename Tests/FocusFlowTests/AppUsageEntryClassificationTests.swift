@@ -19,6 +19,23 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         XCTAssertEqual(category, .distracting)
     }
 
+    func testClassifiesGhosttyAsProductive() {
+        let category = AppUsageEntry.classify(
+            bundleIdentifier: "com.mitchellh.ghostty",
+            appName: "Ghostty"
+        )
+        XCTAssertEqual(category, .productive)
+    }
+
+    func testClassifyForContextTreatsGhosttyAsNeutralDuringFocus() {
+        let entry = AppUsageEntry(
+            appName: "Ghostty",
+            bundleIdentifier: "com.mitchellh.ghostty"
+        )
+        let category = entry.classifyForContext(isInFocusSession: true, projectWorkMode: .deepWork)
+        XCTAssertEqual(category, .neutral)
+    }
+
     func testRecommendedBlockTargetMapsDistractingDomain() {
         let target = AppUsageEntry.recommendedBlockTarget(
             bundleIdentifier: "company.thebrowser",
@@ -31,6 +48,22 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         let target = AppUsageEntry.recommendedBlockTarget(
             bundleIdentifier: "com.apple.finder",
             appName: "Finder"
+        )
+        XCTAssertNil(target)
+    }
+
+    func testRecommendedBlockTargetFallsBackToBundleForDerailerCandidate() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "com.openai.chatgpt",
+            appName: "ChatGPT"
+        )
+        XCTAssertEqual(target, "app:com.openai.chatgpt")
+    }
+
+    func testRecommendedBlockTargetDoesNotFallbackToBrowserAppTarget() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "com.apple.Safari",
+            appName: "ChatGPT"
         )
         XCTAssertNil(target)
     }
