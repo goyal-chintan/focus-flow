@@ -97,6 +97,70 @@ final class FocusCoachEngine {
         self.driftMemoryStore = store
     }
 
+    // MARK: - Outside-session pattern signals
+
+    /// True when current latest observation matches deterministic repeated risk evidence for the
+    /// current (project, workMode, normalizedContextKey) tuple.
+    func hasRepeatedProjectPatternForLatestObservation() -> Bool {
+        guard let observation = latestObservation else { return false }
+        return hasRepeatedProjectPattern(for: observation)
+    }
+
+    /// True when latest observation has historical missed-start evidence for this project tuple.
+    func hasHistoricalMissedStartPatternForLatestObservation() -> Bool {
+        guard let observation = latestObservation else { return false }
+        return blockingRecommendationEngine.hasMissedStartPattern(
+            projectId: observation.selectedProjectId,
+            workMode: observation.selectedWorkMode,
+            contextKey: observation.normalizedContextKey
+        )
+    }
+
+    /// Exposed for unit tests and deterministic planner wiring.
+    func hasRepeatedProjectPattern(for observation: SuspiciousContextObservation) -> Bool {
+        let key = observation.normalizedContextKey
+        let projectId = observation.selectedProjectId
+        let workMode = observation.selectedWorkMode
+        let repeatedFromMemory = driftMemoryStore?.projectScopedRisk(
+            projectId: projectId,
+            workMode: workMode,
+            appOrDomain: key
+        ) ?? false
+        let repeatedFromRisk = blockingRecommendationEngine.hasRepeatedPatternEvidence(
+            projectId: projectId,
+            workMode: workMode,
+            contextKey: key
+        )
+        return repeatedFromMemory || repeatedFromRisk
+    }
+
+    /// Records an explicit outside-session classification (e.g. skip reason chips / "This is planned")
+    /// into project-scoped learning memory and risk evidence for the latest observed context.
+    func recordOutsideSessionClassification(_ disposition: ContextDisposition) {
+        guard !isActive else { return } // outside-session only
+        guard let observation = latestObservation else { return }
+        recordClassification(disposition, for: observation)
+    }
+
+    /// Convenience mapping for skip reason chips selected during outside-session prompts.
+    func recordOutsideSessionClassification(skipReason: FocusCoachSkipReason) {
+        guard let mapped = mapOutsideSessionDisposition(from: skipReason) else { return }
+        recordOutsideSessionClassification(mapped)
+    }
+
+    /// Records an outside-session missed-start signal for the latest observed context.
+    func recordOutsideSessionMissedStart() {
+        guard !isActive, let observation = latestObservation,
+              let projectId = observation.selectedProjectId,
+              let workMode = observation.selectedWorkMode else { return }
+        blockingRecommendationEngine.recordMissedStart(
+            projectId: projectId,
+            workMode: workMode,
+            contextKey: observation.normalizedContextKey,
+            displayName: observation.normalizedContextDisplayName
+        )
+    }
+
     // MARK: - Observation Routing
 
     /// Processes a new suspicious context observation from AppUsageTracker.
@@ -246,44 +310,9 @@ final class FocusCoachEngine {
             currentSignals.recentLegitimateReason = true
         }
 
-        // Record into drift classification memory for learning
-        if let reason, let store = driftMemoryStore {
-            let contextKey = latestObservation?.normalizedContextKey ?? "unknown"
-            let projectId = latestObservation?.selectedProjectId
-            let workMode = latestObservation?.selectedWorkMode
-            if reason.isLegitimate {
-                store.recordPlanned(projectId: projectId, workMode: workMode, appOrDomain: contextKey)
-            } else {
-                store.recordAvoidant(projectId: projectId, workMode: workMode, appOrDomain: contextKey)
-            }
-        }
-
-        // Record into blocking recommendation engine (project-scoped, evidence-gated)
         if let reason,
-           let projectId = latestObservation?.selectedProjectId,
-           let workMode = latestObservation?.selectedWorkMode {
-            let contextKey = latestObservation?.normalizedContextKey ?? "unknown"
-            let displayName = latestObservation?.normalizedContextDisplayName ?? "unknown"
-            if reason.isLegitimate {
-                blockingRecommendationEngine.recordPlanned(
-                    projectId: projectId, workMode: workMode,
-                    contextKey: contextKey, displayName: displayName
-                )
-            } else {
-                blockingRecommendationEngine.recordAvoidant(
-                    projectId: projectId, workMode: workMode,
-                    contextKey: contextKey, displayName: displayName
-                )
-            }
-
-            // Surface block recommendation if evidence threshold is now met
-            if let rec = blockingRecommendationEngine.blockRecommendation(
-                for: contextKey,
-                projectName: latestObservation?.selectedProjectName
-            ) {
-                pendingBlockingRecommendation = rec
-                blockingRecommendationEngine.markRecommendationSurfaced(contextKey: contextKey)
-            }
+           let observation = latestObservation {
+            recordClassification(mapDisposition(from: reason), for: observation)
         }
     }
 
@@ -303,6 +332,10 @@ final class FocusCoachEngine {
                 let snoozeMinutes: TimeInterval = skipReason?.isLegitimate == true ? 20 : 10
                 promptState.snoozedUntil = Date().addingTimeInterval(snoozeMinutes * 60)
             }
+        }
+
+        if outcome == .snoozed, let skipReason {
+            recordOutsideSessionClassification(skipReason: skipReason)
         }
     }
 
@@ -350,5 +383,85 @@ final class FocusCoachEngine {
             from: recentAttempts,
             currentResistance: currentTaskResistance
         )
+    }
+
+    // MARK: - Learning helpers
+
+    private func recordClassification(_ disposition: ContextDisposition, for observation: SuspiciousContextObservation) {
+        let contextKey = observation.normalizedContextKey
+        let projectId = observation.selectedProjectId
+        let workMode = observation.selectedWorkMode
+        let projectName = observation.selectedProjectName
+        let displayName = observation.normalizedContextDisplayName
+
+        if let store = driftMemoryStore {
+            if disposition.isAvoidant {
+                store.recordAvoidant(projectId: projectId, workMode: workMode, appOrDomain: contextKey)
+            } else if disposition.isLegitimate {
+                store.recordPlanned(projectId: projectId, workMode: workMode, appOrDomain: contextKey)
+            }
+        }
+
+        guard let projectId, let workMode else { return }
+
+        if disposition.isAvoidant {
+            blockingRecommendationEngine.recordAvoidant(
+                projectId: projectId,
+                workMode: workMode,
+                contextKey: contextKey,
+                displayName: displayName
+            )
+
+            if let rec = blockingRecommendationEngine.blockRecommendation(
+                for: contextKey,
+                projectId: projectId,
+                workMode: workMode,
+                projectName: projectName
+            ) {
+                pendingBlockingRecommendation = rec
+                blockingRecommendationEngine.markRecommendationSurfaced(
+                    projectId: projectId,
+                    workMode: workMode,
+                    contextKey: contextKey
+                )
+            }
+        } else if disposition.isLegitimate {
+            blockingRecommendationEngine.recordPlanned(
+                projectId: projectId,
+                workMode: workMode,
+                contextKey: contextKey,
+                displayName: displayName
+            )
+        }
+    }
+
+    private func mapDisposition(from reason: FocusCoachReason) -> ContextDisposition {
+        switch reason {
+        case .meeting, .familyPersonal:
+            return .legitimateInterruption
+        case .plannedResearch:
+            return .plannedResearch
+        case .requiredSwitch:
+            return .requiredContextSwitch
+        case .realBreak:
+            return .realBreak
+        case .fatigue:
+            return .fatigued
+        case .lowPriorityWork:
+            return .lowPriorityWork
+        case .procrastinating, .vibeCodingDrift, .overPlanning, .scrollingBrowsing, .avoidingHardPart:
+            return .procrastinating
+        }
+    }
+
+    private func mapOutsideSessionDisposition(from reason: FocusCoachSkipReason) -> ContextDisposition? {
+        switch reason {
+        case .lowPriorityWork:
+            return .lowPriorityWork
+        case .procrastinating, .cantFocus:
+            return .procrastinating
+        case .urgentTask, .inMeeting, .takingBreak, .notWell, .justTired, .doneForToday:
+            return nil
+        }
     }
 }

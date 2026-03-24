@@ -36,6 +36,7 @@ struct WorkIntentWindowDetector: Sendable {
         appLastOpenedAt: Date?,
         projectLastSelectedAt: Date?,
         lastAbandonedStartAt: Date?,
+        matchesHistoricalMissedStart: Bool,
         currentHour: Int = Calendar.current.component(.hour, from: Date()),
         historicalWorkHours: ClosedRange<Int> = 9...18
     ) -> WorkIntentSignal {
@@ -52,7 +53,7 @@ struct WorkIntentWindowDetector: Sendable {
             selectedProjectRecently: selectedRecently,
             recentlyAbandonedStart: abandonedRecently,
             withinTypicalWorkHours: withinWorkHours,
-            matchesHistoricalMissedStart: false  // requires DriftClassificationMemory — wired in Phase 3 integration
+            matchesHistoricalMissedStart: matchesHistoricalMissedStart
         )
     }
 }
@@ -195,11 +196,14 @@ struct FocusCoachInterventionPlanner: Sendable {
         guardianState: FocusCoachGuardianState,
         isInReleaseWindow: Bool,
         workIntentSignal: WorkIntentSignal,
+        hasHighConfidenceDrift: Bool,
+        repeatedProjectPattern: Bool,
         engagementMode: GuardianEngagementMode
     ) -> Bool {
         guard !isInReleaseWindow else { return false }
         guard engagementMode != .passive else { return false }
         guard guardianState == .challenge else { return false }
+        guard hasHighConfidenceDrift || repeatedProjectPattern else { return false }
         guard workIntentSignal.isWorkIntentWindow else { return false }
         return true
     }
@@ -212,7 +216,8 @@ struct FocusCoachInterventionPlanner: Sendable {
         engagementMode: GuardianEngagementMode = .adaptive,
         guardianState: FocusCoachGuardianState = .observe,
         isInReleaseWindow: Bool = false,
-        workIntentSignal: WorkIntentSignal? = nil
+        workIntentSignal: WorkIntentSignal? = nil,
+        repeatedProjectPattern: Bool = false
     ) -> IdleStarterRoute {
         // Passive mode: suppress idle starter — ambient ring only
         if engagementMode == .passive {
@@ -233,11 +238,13 @@ struct FocusCoachInterventionPlanner: Sendable {
         if let signal = workIntentSignal,
            guardianState == .challenge,
            !shouldTriggerOutsideSessionChallenge(
-               guardianState: guardianState,
-               isInReleaseWindow: isInReleaseWindow,
-               workIntentSignal: signal,
-               engagementMode: engagementMode
-           ) {
+                guardianState: guardianState,
+                isInReleaseWindow: isInReleaseWindow,
+                workIntentSignal: signal,
+                hasHighConfidenceDrift: driftConfidence >= engagementMode.outsideSessionChallengeThreshold,
+                repeatedProjectPattern: repeatedProjectPattern,
+                engagementMode: engagementMode
+            ) {
             return IdleStarterRoute(shouldPresent: false, decision: nil)
         }
 

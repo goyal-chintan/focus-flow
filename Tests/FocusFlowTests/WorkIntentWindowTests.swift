@@ -13,6 +13,7 @@ struct WorkIntentWindowTests {
             appLastOpenedAt: nil,
             projectLastSelectedAt: nil,
             lastAbandonedStartAt: nil,
+            matchesHistoricalMissedStart: false,
             currentHour: 22,
             historicalWorkHours: 9...18
         )
@@ -26,6 +27,7 @@ struct WorkIntentWindowTests {
             appLastOpenedAt: recentTime,
             projectLastSelectedAt: nil,
             lastAbandonedStartAt: nil,
+            matchesHistoricalMissedStart: false,
             currentHour: 22,
             historicalWorkHours: 9...18
         )
@@ -39,6 +41,7 @@ struct WorkIntentWindowTests {
             appLastOpenedAt: recentTime,
             projectLastSelectedAt: nil,
             lastAbandonedStartAt: nil,
+            matchesHistoricalMissedStart: false,
             currentHour: 14,
             historicalWorkHours: 9...18
         )
@@ -54,6 +57,7 @@ struct WorkIntentWindowTests {
             appLastOpenedAt: nil,
             projectLastSelectedAt: recentTime,
             lastAbandonedStartAt: recentTime,
+            matchesHistoricalMissedStart: false,
             currentHour: 22,
             historicalWorkHours: 9...18
         )
@@ -77,6 +81,8 @@ struct WorkIntentWindowTests {
             guardianState: .challenge,
             isInReleaseWindow: false,
             workIntentSignal: noWorkIntent,
+            hasHighConfidenceDrift: true,
+            repeatedProjectPattern: false,
             engagementMode: .adaptive
         )
         #expect(shouldChallenge == false)
@@ -97,6 +103,8 @@ struct WorkIntentWindowTests {
             guardianState: .challenge,
             isInReleaseWindow: false,
             workIntentSignal: workIntent,
+            hasHighConfidenceDrift: true,
+            repeatedProjectPattern: false,
             engagementMode: .adaptive
         )
         #expect(shouldChallenge == true)
@@ -117,6 +125,8 @@ struct WorkIntentWindowTests {
             guardianState: .challenge,
             isInReleaseWindow: true,
             workIntentSignal: strongWorkIntent,
+            hasHighConfidenceDrift: true,
+            repeatedProjectPattern: true,
             engagementMode: .adaptive
         )
         #expect(shouldChallenge == false)
@@ -137,7 +147,45 @@ struct WorkIntentWindowTests {
             guardianState: .challenge,
             isInReleaseWindow: false,
             workIntentSignal: workIntent,
+            hasHighConfidenceDrift: true,
+            repeatedProjectPattern: false,
             engagementMode: .passive
+        )
+        #expect(shouldChallenge == false)
+    }
+
+    @Test("Historical missed-start input is wired through evaluate")
+    func historicalMissedStartSignalIsWired() {
+        let signal = detector.evaluate(
+            appLastOpenedAt: nil,
+            projectLastSelectedAt: nil,
+            lastAbandonedStartAt: nil,
+            matchesHistoricalMissedStart: true,
+            currentHour: 22,
+            historicalWorkHours: 9...18
+        )
+        #expect(signal.matchesHistoricalMissedStart == true)
+        #expect(signal.isWorkIntentWindow == false, "A lone historical signal should not pass 2-signal gate")
+    }
+
+    @Test("Outside-session challenge requires high drift OR repeated project pattern")
+    func challengeRequiresConfidenceOrRepeatedPattern() {
+        let planner = FocusCoachInterventionPlanner()
+        let workIntent = WorkIntentSignal(
+            openedAppRecently: true,
+            selectedProjectRecently: true,
+            recentlyAbandonedStart: false,
+            withinTypicalWorkHours: false,
+            matchesHistoricalMissedStart: false
+        )
+
+        let shouldChallenge = planner.shouldTriggerOutsideSessionChallenge(
+            guardianState: .challenge,
+            isInReleaseWindow: false,
+            workIntentSignal: workIntent,
+            hasHighConfidenceDrift: false,
+            repeatedProjectPattern: false,
+            engagementMode: .adaptive
         )
         #expect(shouldChallenge == false)
     }

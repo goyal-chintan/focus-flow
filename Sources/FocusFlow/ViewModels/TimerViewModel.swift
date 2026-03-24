@@ -1644,6 +1644,7 @@ final class TimerViewModel {
             currentIdleStarterDecision = nil
             closePopover()
         case .isPlanned:
+            coachEngine.recordOutsideSessionClassification(.plannedWork)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: nil)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
@@ -1660,6 +1661,7 @@ final class TimerViewModel {
         coachEngine.recordInterventionOutcome(.dismissed)
         if currentIdleStarterDecision != nil {
             lastAbandonedStartAt = Date()
+            coachEngine.recordOutsideSessionMissedStart()
         }
         currentCoachQuickPromptDecision = nil
         currentIdleStarterDecision = nil
@@ -1892,10 +1894,12 @@ final class TimerViewModel {
             defaultMinutes: max(5, selectedMinutes)
         )
         let engagementMode = selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
+        let repeatedProjectPattern = coachEngine.hasRepeatedProjectPatternForLatestObservation()
         let workIntentSignal = workIntentDetector.evaluate(
             appLastOpenedAt: appLaunchTime,
             projectLastSelectedAt: lastProjectSelectedAt,
             lastAbandonedStartAt: lastAbandonedStartAt,
+            matchesHistoricalMissedStart: coachEngine.hasHistoricalMissedStartPatternForLatestObservation(),
             currentHour: hour
         )
         let currentGuardianState = guardianAdvisor.guardianState(
@@ -1903,6 +1907,7 @@ final class TimerViewModel {
             inReleaseWindow: isInReleaseWindow,
             driftConfidence: opportunityContext.driftConfidence,
             hasRecommendation: false,
+            hasRepeatedProjectPattern: repeatedProjectPattern,
             engagementMode: engagementMode
         )
         let route = coachPlanner.routeIdleStarter(
@@ -1913,7 +1918,8 @@ final class TimerViewModel {
             engagementMode: engagementMode,
             guardianState: currentGuardianState,
             isInReleaseWindow: isInReleaseWindow,
-            workIntentSignal: workIntentSignal
+            workIntentSignal: workIntentSignal,
+            repeatedProjectPattern: repeatedProjectPattern
         )
 
         if route.shouldPresent, var decision = route.decision {

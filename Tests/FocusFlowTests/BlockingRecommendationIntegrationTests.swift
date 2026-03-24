@@ -83,4 +83,45 @@ struct BlockingRecommendationIntegrationTests {
         let contextKey2 = "\(project2.uuidString)|deep_work|youtube.com"
         #expect(engine.blockRecommendation(for: contextKey2) == nil)
     }
+
+    @Test("markRecommendationSurfaced uses exact project/workMode tuple when context overlaps")
+    func markRecommendationSurfacedIsDeterministicForSharedContext() {
+        let engine = makeEngine()
+        let project1 = UUID()
+        let project2 = UUID()
+        let contextKey = "youtube.com"
+
+        engine.recordAvoidant(projectId: project1, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+        engine.recordAvoidant(projectId: project1, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+        engine.recordAvoidant(projectId: project2, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+        engine.recordAvoidant(projectId: project2, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+
+        #expect(engine.blockRecommendation(for: contextKey, projectId: project1, workMode: .deepWork) != nil)
+        #expect(engine.blockRecommendation(for: contextKey, projectId: project2, workMode: .deepWork) != nil)
+
+        engine.markRecommendationSurfaced(projectId: project1, workMode: .deepWork, contextKey: contextKey)
+
+        #expect(engine.blockRecommendation(for: contextKey, projectId: project1, workMode: .deepWork) == nil)
+        #expect(engine.blockRecommendation(for: contextKey, projectId: project2, workMode: .deepWork) != nil)
+    }
+
+    @Test("fallback surfacing is safe no-op when context is ambiguous across projects")
+    func fallbackSurfacingNoOpsForAmbiguousContext() {
+        let engine = makeEngine()
+        let project1 = UUID()
+        let project2 = UUID()
+        let contextKey = "youtube.com"
+
+        engine.recordAvoidant(projectId: project1, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+        engine.recordAvoidant(projectId: project1, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+        engine.recordAvoidant(projectId: project2, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+        engine.recordAvoidant(projectId: project2, workMode: .deepWork, contextKey: contextKey, displayName: "YouTube")
+
+        #expect(engine.blockRecommendation(for: contextKey) == nil)
+
+        engine.markRecommendationSurfaced(contextKey: contextKey)
+
+        #expect(engine.blockRecommendation(for: contextKey, projectId: project1, workMode: .deepWork) != nil)
+        #expect(engine.blockRecommendation(for: contextKey, projectId: project2, workMode: .deepWork) != nil)
+    }
 }

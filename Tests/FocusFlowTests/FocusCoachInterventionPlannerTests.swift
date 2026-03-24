@@ -106,6 +106,52 @@ final class FocusCoachInterventionPlannerTests: XCTestCase {
         XCTAssertTrue(route.decision?.suggestedActions.contains(.skipCheck) == true)
     }
 
+    func testRouteIdleStarterChallengeSuppressesWithoutConfidenceOrPattern() {
+        let route = planner.routeIdleStarter(
+            driftConfidence: 0.72,
+            focusOpportunity: 0.78,
+            mode: .balanced,
+            allowSkipAction: true,
+            engagementMode: .adaptive,
+            guardianState: .challenge,
+            isInReleaseWindow: false,
+            workIntentSignal: WorkIntentSignal(
+                openedAppRecently: true,
+                selectedProjectRecently: true,
+                recentlyAbandonedStart: false,
+                withinTypicalWorkHours: false,
+                matchesHistoricalMissedStart: false
+            ),
+            repeatedProjectPattern: false
+        )
+
+        XCTAssertFalse(route.shouldPresent)
+        XCTAssertNil(route.decision)
+    }
+
+    func testRouteIdleStarterChallengeAllowsRepeatedPatternEvenWithoutHighDrift() {
+        let route = planner.routeIdleStarter(
+            driftConfidence: 0.72,
+            focusOpportunity: 0.78,
+            mode: .balanced,
+            allowSkipAction: true,
+            engagementMode: .adaptive,
+            guardianState: .challenge,
+            isInReleaseWindow: false,
+            workIntentSignal: WorkIntentSignal(
+                openedAppRecently: true,
+                selectedProjectRecently: true,
+                recentlyAbandonedStart: false,
+                withinTypicalWorkHours: false,
+                matchesHistoricalMissedStart: false
+            ),
+            repeatedProjectPattern: true
+        )
+
+        XCTAssertTrue(route.shouldPresent)
+        XCTAssertEqual(route.decision?.kind, .quickPrompt)
+    }
+
     func testRouteActiveDecisionAddsSkipActionWhenEnabled() {
         let route = planner.routeActiveDecision(
             FocusCoachDecision(
