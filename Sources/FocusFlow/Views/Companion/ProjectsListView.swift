@@ -56,6 +56,7 @@ struct ProjectsListView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     Text(toastMessage)
                         .font(.system(size: 13, weight: .semibold))
                 }
