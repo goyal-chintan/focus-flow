@@ -9,6 +9,20 @@ enum StoreMigrator {
         let defaultSQLValue: String
     }
 
+    /// Backfills NULL values on existing rows that were inserted before a column was added.
+    /// Each entry runs `UPDATE table SET column = value WHERE column IS NULL`.
+    private struct NullBackfillMigration {
+        let table: String
+        let column: String
+        let defaultSQLValue: String
+    }
+
+    private static let requiredNullBackfills: [NullBackfillMigration] = [
+        NullBackfillMigration(table: "ZPROJECT", column: "ZWORKMODE",           defaultSQLValue: "'deep_work'"),
+        NullBackfillMigration(table: "ZPROJECT", column: "ZGUARDIANSENSITIVITY", defaultSQLValue: "'normal'"),
+        NullBackfillMigration(table: "ZPROJECT", column: "ZDIFFICULTYBIAS",      defaultSQLValue: "'moderate'"),
+    ]
+
     private static let requiredColumnMigrations: [ColumnMigration] = [
         ColumnMigration(
             table: "ZAPPSETTINGS",
@@ -161,6 +175,19 @@ enum StoreMigrator {
             let sql = """
             ALTER TABLE \(migration.table)
             ADD COLUMN \(migration.column) \(migration.sqlType) NOT NULL DEFAULT \(migration.defaultSQLValue);
+            """
+            try execute(sql: sql, in: db)
+        }
+
+        // Backfill NULL values for rows that existed before a column was added.
+        // Runs every launch but is idempotent (WHERE column IS NULL only touches rows that need it).
+        for backfill in requiredNullBackfills {
+            let columns = try loadColumns(for: backfill.table, in: db)
+            guard columns.contains(backfill.column) else { continue }
+            let sql = """
+            UPDATE \(backfill.table)
+            SET \(backfill.column) = \(backfill.defaultSQLValue)
+            WHERE \(backfill.column) IS NULL;
             """
             try execute(sql: sql, in: db)
         }
