@@ -71,18 +71,23 @@ struct FocusCoachGuardianAdvisor: Sendable {
         isInActiveSession: Bool,
         inReleaseWindow: Bool,
         driftConfidence: Double,
-        hasRecommendation: Bool
+        hasRecommendation: Bool,
+        engagementMode: GuardianEngagementMode = .adaptive
     ) -> FocusCoachGuardianState {
         if inReleaseWindow { return .release }
+
+        // Passive mode: ambient ring signal only, never escalate to challenge
+        if engagementMode == .passive { return .observe }
+
         if isInActiveSession {
-            return driftConfidence >= 0.7 ? .challenge : .watchful
+            return driftConfidence >= engagementMode.inSessionChallengeThreshold ? .challenge : .watchful
         }
-        if driftConfidence >= 0.8 || (driftConfidence >= 0.65 && hasRecommendation) {
+
+        if driftConfidence >= engagementMode.outsideSessionChallengeThreshold ||
+           (driftConfidence >= 0.65 && hasRecommendation && engagementMode != .passive) {
             return .challenge
         }
-        if driftConfidence >= 0.5 {
-            return .watchful
-        }
+        if driftConfidence >= 0.5 { return .watchful }
         return .observe
     }
 

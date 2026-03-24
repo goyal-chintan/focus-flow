@@ -54,7 +54,7 @@ final class RemindersService {
         let notes: String
     }
 
-    struct ReminderItem: Identifiable, Sendable {
+    struct ReminderItem: Identifiable, Sendable, Equatable, Hashable {
         let id: String
         let title: String
         let list: String
@@ -62,6 +62,26 @@ final class RemindersService {
         let dueDate: Date?
         let isCompleted: Bool
         let notes: String
+        
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.id == rhs.id &&
+            lhs.title == rhs.title &&
+            lhs.list == rhs.list &&
+            lhs.listId == rhs.listId &&
+            lhs.dueDate == rhs.dueDate &&
+            lhs.isCompleted == rhs.isCompleted &&
+            lhs.notes == rhs.notes
+        }
+        
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(id)
+            hasher.combine(title)
+            hasher.combine(list)
+            hasher.combine(listId)
+            hasher.combine(dueDate)
+            hasher.combine(isCompleted)
+            hasher.combine(notes)
+        }
     }
 
     // MARK: - Fetch

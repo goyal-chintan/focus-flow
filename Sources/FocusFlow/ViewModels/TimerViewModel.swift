@@ -192,6 +192,15 @@ final class TimerViewModel {
     private(set) var lastCompletedFocusSession: FocusSession? = nil
     private(set) var lastCompletionWasBreak: Bool = false
 
+    // MARK: - Guardian Session Spine
+    /// Durable earned-block record. Outlives lastCompletedSession across break/defer cycles.
+    /// Cleared ONLY on: newer focus block completes, day-close summary dismissed, day rollover.
+    @Published private(set) var completedBlockContext: CompletedBlockContext? = nil
+    /// Tracks the current or most-recent break episode, linked to the earned block.
+    @Published private(set) var breakEpisodeContext: BreakEpisodeContext? = nil
+    /// Active suppression window when user has explicitly opted out of guardian prompts.
+    private(set) var suppressionWindow: InterventionSuppressionWindow? = nil
+
     // MARK: - Overtime
     var isOvertime: Bool = false
     var overtimeSeconds: Int = 0
@@ -823,6 +832,16 @@ final class TimerViewModel {
         modelContext?.insert(session)
         currentSession = session
         clearCrashRecoveryState() // Focus session ended, break doesn't need recovery
+
+        // Track break episode linked to the earned focus block
+        if let ctx = completedBlockContext {
+            breakEpisodeContext = BreakEpisodeContext(
+                earnedBlock: ctx,
+                breakStarted: Date(),
+                plannedDurationSeconds: Int(duration)
+            )
+        }
+
         startTimer()
         closePopover()
     }
@@ -958,6 +977,14 @@ final class TimerViewModel {
         lastCompletedSession = session
         lastCompletedFocusSession = session
         lastCompletionWasBreak = false
+        completedBlockContext = CompletedBlockContext(
+            sessionId: session.id,
+            projectName: session.project?.name ?? selectedProject?.name ?? "Focus",
+            projectId: session.project?.id ?? selectedProject?.id,
+            durationMinutes: Int(session.actualDuration / 60),
+            workMode: selectedProject?.workMode ?? .deepWork,
+            earnedAt: Date()
+        )
         currentSession = nil
 
         isManualStop = true
@@ -1074,7 +1101,10 @@ final class TimerViewModel {
         closePopover()
     }
 
-    func skipBreak() {
+    /// Transitions onBreak → focusing without touching .idle.
+    /// Preserves completedBlockContext across the break-skip so earned progress is retained.
+    func deferBreakAndStartNextBlock() {
+        guard case .onBreak = state else { return }
         timer?.invalidate()
         timer = nil
         isOvertime = false
@@ -1090,7 +1120,8 @@ final class TimerViewModel {
         saveContext()
         clearCrashRecoveryState()
         currentSession = nil
-        // "Skip break" means continue momentum into the next focus block.
+        breakEpisodeContext = nil  // Break episode is discarded on skip; completedBlockContext preserved
+        // Pass through .idle only as implementation detail of startFocus()'s guard
         state = .idle
         remainingSeconds = 0
         totalSeconds = 0
@@ -1098,8 +1129,44 @@ final class TimerViewModel {
         startFocus()
     }
 
+    func skipBreak() {
+        deferBreakAndStartNextBlock()
+    }
+
     // MARK: - Blocking
     var blockUntilGoalMet: Bool = false
+
+    // MARK: - Guardian Release Window
+
+    /// Enters an explicit opt-out suppression window so guardian interventions are paused.
+    func enterRelease(reason: ExplicitOptOutReason) {
+        suppressionWindow = InterventionSuppressionWindow(
+            reason: reason,
+            suppressedAt: Date()
+        )
+    }
+
+    /// Whether an active suppression window is currently in effect.
+    var isInReleaseWindow: Bool {
+        suppressionWindow?.isActive ?? false
+    }
+
+    /// Records the user's self-reported break recovery quality.
+    /// If `.doneForNow`, enters a release window. Never clears earned completedBlockContext.
+    func classifyBreakRecovery(_ quality: BreakRecoveryQuality) {
+        breakEpisodeContext?.recoveryQuality = quality
+        if quality == .doneForNow {
+            enterRelease(reason: .doneForNow)
+        }
+    }
+
+    /// Clears completedBlockContext after the day-close summary is archived/dismissed.
+    /// This is one of the three permitted clear sites.
+    func clearCompletedBlockContextAfterDayClose() {
+        completedBlockContext = nil
+        breakEpisodeContext = nil
+        suppressionWindow = nil
+    }
 
     private func activateBlocking() {
         log("activateBlocking called")
@@ -1259,6 +1326,20 @@ final class TimerViewModel {
             lastCompletedDuration = currentSession?.duration
             lastCompletedLabel = currentSession?.label
             lastCompletedFocusSession = currentSession
+            // Build durable earned-block context (replaces prior context for this session)
+            if let session = currentSession {
+                completedBlockContext = CompletedBlockContext(
+                    sessionId: session.id,
+                    projectName: session.project?.name ?? selectedProject?.name ?? "Focus",
+                    projectId: session.project?.id ?? selectedProject?.id,
+                    durationMinutes: Int(session.actualDuration / 60),
+                    workMode: selectedProject?.workMode ?? .deepWork,
+                    earnedAt: Date()
+                )
+            }
+        } else {
+            // Break completed naturally — mark episode end
+            breakEpisodeContext?.breakEnded = Date()
         }
 
         if wasType == .focus {
@@ -1511,6 +1592,15 @@ final class TimerViewModel {
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+        case .markOffDuty:
+            // Placeholder: wire to enterRelease(reason: .offDuty) when p1-timer-spine lands.
+            coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
+            currentCoachQuickPromptDecision = nil
+            currentIdleStarterDecision = nil
+        case .isPlanned:
+            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: nil)
+            currentCoachQuickPromptDecision = nil
+            currentIdleStarterDecision = nil
         }
         // NOTE: Do NOT call dismissCoachInterventionWindow() here.
         // The view's dismiss() is the single owner of window lifecycle.
@@ -1610,13 +1700,15 @@ final class TimerViewModel {
             return
         }
         let mode = settings.coachInterventionMode
+        let engagementMode = selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
         let route = coachPlanner.routeActiveDecision(
             decision,
             mode: mode,
             riskScore: coachEngine.riskScore,
             strongShownCount: strongPromptsShownThisSession,
             maxStrongPrompts: settings.coachMaxStrongPromptsPerSession,
-            allowSkipAction: settings.coachAllowSkipAction
+            allowSkipAction: settings.coachAllowSkipAction,
+            engagementMode: engagementMode
         )
 
         if let quick = route.quickPromptDecision {

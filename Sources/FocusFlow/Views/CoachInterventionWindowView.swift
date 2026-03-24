@@ -20,7 +20,16 @@ struct CoachInterventionWindowView: View {
         if timerVM.state == .idle {
             return "Let's start focus now"
         }
-        return "Return to focus now"
+        return interventionTitle
+    }
+
+    private var interventionTitle: String {
+        switch decision?.kind {
+        case .strongPrompt:
+            return "Off-plan right now?"
+        default:
+            return "Planned or drift?"
+        }
     }
 
     private var displayTitle: String {
@@ -87,11 +96,8 @@ struct CoachInterventionWindowView: View {
                                 .transition(.opacity)
                         }
 
-                        // Quote block
-                        if let quote = coachMessage?.quote {
-                            quoteBlock(quote)
-                                .transition(.opacity)
-                        }
+                        // Quote block intentionally omitted from intervention critical path (spec §8)
+
                     }
 
                     if let action = pendingAction {
@@ -184,64 +190,49 @@ struct CoachInterventionWindowView: View {
 
     private var actionStack: some View {
         VStack(spacing: 8) {
+            // Primary: Start 5m rescue block
             LiquidActionButton(
-                title: timerVM.state == .idle ? "Start Focus Now" : "Return to Focus",
-                icon: timerVM.state == .idle ? "play.fill" : "arrow.uturn.backward",
+                title: timerVM.state == .idle ? "Start Focus Now" : "Start 5m rescue block",
+                icon: timerVM.state == .idle ? "play.fill" : "arrow.clockwise",
                 role: .primary,
                 tint: LiquidDesignTokens.Spectral.primaryContainer
             ) {
-                timerVM.handleCoachAction(timerVM.state == .idle ? .startFocusNow : .returnNow)
+                timerVM.handleCoachAction(timerVM.state == .idle ? .startFocusNow : .cleanRestart5m)
                 dismiss()
             }
 
-            if allows(.cleanRestart5m) {
+            // Secondary: Mark off-duty for now
+            LiquidActionButton(
+                title: "Mark off-duty for now",
+                icon: "moon.fill",
+                role: .secondary
+            ) {
+                timerVM.handleCoachAction(.markOffDuty)
+                dismiss()
+            }
+
+            // Conditional tertiary: "This is planned" — hidden for high-confidence confirmed patterns
+            if decision?.kind != .strongPrompt {
                 LiquidActionButton(
-                    title: "Restart with 5m",
-                    icon: "arrow.clockwise",
+                    title: "This is planned",
+                    icon: "checkmark.circle",
                     role: .secondary
                 ) {
-                    timerVM.handleCoachAction(.cleanRestart5m)
+                    timerVM.handleCoachAction(.isPlanned)
                     dismiss()
                 }
             }
 
-            if allows(.snooze10m) {
-                LiquidActionButton(
-                    title: "Snooze",
-                    icon: "moon.zzz.fill",
-                    role: .secondary
-                ) {
-                    withAnimation(FFMotion.section) {
-                        pendingAction = .snooze10m
-                    }
-                }
-            }
-
+            // Conditional: block recommendation when threshold met
             if allows(.blockForProject) {
                 LiquidActionButton(
-                    title: "Block for this project",
+                    title: "Block these for this project",
                     icon: "shield.lefthalf.filled",
                     role: .secondary
                 ) {
                     timerVM.handleCoachAction(.blockForProject)
                     dismiss()
                 }
-            }
-
-            if timerVM.settings?.coachAllowSkipAction == true, allows(.skipCheck) {
-                Button {
-                    withAnimation(FFMotion.section) {
-                        pendingAction = .skipCheck
-                    }
-                } label: {
-                    Text("Skip this check")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-                .accessibilityLabel("Skip this coach check")
             }
         }
     }

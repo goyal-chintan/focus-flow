@@ -23,6 +23,11 @@ final class AppUsageTracker {
     private var startDelaySeconds: Double = 0
     private var lastFrontmostCategory: AppUsageEntry.AppCategory = .neutral
 
+    // MARK: - SuspiciousContextObservation callback
+    /// Called whenever a new app comes to the foreground. Subscriber (coach engine) can route
+    /// the observation into drift classification / guardian logic.
+    var onSuspiciousObservation: ((SuspiciousContextObservation) -> Void)?
+
     // MARK: - Public context accessors (used by FocusCoachContext builder)
 
     /// The localized name of the current foreground app (nil when FocusFlow is front, or unknown).
@@ -174,6 +179,16 @@ final class AppUsageTracker {
             }
             lastFrontmostBundleId = bundleId
             inactivitySeconds = 0
+
+            // Emit SuspiciousContextObservation for coach / guardian layer
+            let obs = buildObservation(
+                bundleId: bundleId,
+                appName: appName,
+                isInSession: isFocusing,
+                selectedProjectId: timerVM?.selectedProject?.id,
+                selectedWorkMode: timerVM?.selectedProject?.workMode
+            )
+            onSuspiciousObservation?(obs)
         } else {
             inactivitySeconds += 1
         }
@@ -259,6 +274,89 @@ final class AppUsageTracker {
         signals.inactivityBurstSeconds = Double(inactivitySeconds)
         signals.startDelaySeconds = startDelaySeconds
         vm.coachEngine.recordBehaviorSample(signals)
+    }
+
+    // MARK: - SuspiciousContextObservation Builder
+
+    private func buildObservation(
+        bundleId: String,
+        appName: String,
+        isInSession: Bool,
+        selectedProjectId: UUID?,
+        selectedWorkMode: WorkMode?
+    ) -> SuspiciousContextObservation {
+        var obs = SuspiciousContextObservation(
+            bundleIdentifier: bundleId,
+            localizedAppName: appName,
+            selectedProjectId: selectedProjectId,
+            selectedWorkMode: selectedWorkMode,
+            isInSession: isInSession
+        )
+
+        if isBrowser(bundleId: bundleId) {
+            obs.browserHost = extractBrowserDomain(appName: appName, bundleId: bundleId)
+            obs.browserPageTitle = extractBrowserTitle(appName: appName)
+        }
+
+        if isTerminalOrEditor(bundleId: bundleId) {
+            obs.terminalWorkspace = detectGitRepoRoot()
+            obs.editorWorkspace = extractEditorWorkspace(bundleId: bundleId, appName: appName)
+        }
+
+        return obs
+    }
+
+    private func isBrowser(bundleId: String) -> Bool {
+        let browsers = ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser",
+                        "org.mozilla.firefox", "com.microsoft.edgemac", "com.operasoftware.Opera"]
+        return browsers.contains(bundleId)
+    }
+
+    private func isTerminalOrEditor(bundleId: String) -> Bool {
+        let tools = ["com.apple.Terminal", "com.googlecode.iterm2", "com.github.warp.1",
+                     "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92",
+                     "com.jetbrains.intellij", "com.sublimetext.4", "com.panic.Nova"]
+        return tools.contains(bundleId)
+            || bundleId.contains("jetbrains")
+            || bundleId.contains("cursor")
+    }
+
+    private func extractBrowserDomain(appName: String, bundleId: String) -> String? {
+        // Fallback: derive domain from window-title keywords until AX API access is confirmed.
+        let name = appName.lowercased()
+        let knownDomains: [(needle: String, domain: String)] = [
+            ("youtube", "youtube.com"), ("reddit", "reddit.com"),
+            ("twitter", "twitter.com"), ("x.com", "x.com"),
+            ("instagram", "instagram.com"), ("facebook", "facebook.com"),
+            ("tiktok", "tiktok.com"), ("netflix", "netflix.com"),
+            ("github", "github.com"), ("stackoverflow", "stackoverflow.com"),
+            ("linkedin", "linkedin.com"), ("twitch", "twitch.tv")
+        ]
+        return knownDomains.first(where: { name.contains($0.needle) })?.domain
+    }
+
+    private func extractBrowserTitle(appName: String) -> String? {
+        return nil  // Placeholder — AX API enrichment in future iteration
+    }
+
+    private func detectGitRepoRoot() -> String? {
+        // Walk up from the frontmost terminal/editor bundle URL looking for a .git directory.
+        guard let bundleURL = NSWorkspace.shared.runningApplications
+            .first(where: { isTerminalOrEditor(bundleId: $0.bundleIdentifier ?? "") })?
+            .bundleURL else { return nil }
+        var url = bundleURL
+        for _ in 0..<3 {
+            let gitDir = url.appendingPathComponent(".git")
+            if FileManager.default.fileExists(atPath: gitDir.path) {
+                return url.lastPathComponent
+            }
+            url = url.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    private func extractEditorWorkspace(bundleId: String, appName: String) -> String? {
+        return nil  // Placeholder for workspace name extraction
     }
 
     // MARK: - Logging
