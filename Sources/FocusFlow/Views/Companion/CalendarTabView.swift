@@ -153,6 +153,7 @@ struct CalendarTabView: View {
                     Image(systemName: "checkmark.icloud.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     Text("Syncing to \(calendarName)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -358,6 +359,7 @@ struct CalendarTabView: View {
                                     .foregroundStyle(.tertiary)
                                     .rotationEffect(.degrees(showDaySessions ? 90 : 0))
                                     .animation(reduceMotion ? nil : FFMotion.control, value: showDaySessions)
+                                    .accessibilityHidden(true)
                             }
                             .contentShape(Rectangle())
                         }
@@ -441,6 +443,7 @@ struct CalendarTabView: View {
                         Image(systemName: "checklist")
                             .font(.system(size: 18, weight: .light))
                             .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
                         Text("No incomplete reminders")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
@@ -724,6 +727,7 @@ struct CalendarTabView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.system(size: 12))
+                        .accessibilityHidden(true)
                     Text(reminderSaveError)
                         .font(.system(size: 12))
                         .foregroundStyle(.orange)
@@ -801,6 +805,7 @@ struct CalendarTabView: View {
             Image(systemName: "moon.zzz.fill")
                 .font(.system(size: 24, weight: .light))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text("No sessions recorded")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.tertiary)
@@ -815,6 +820,7 @@ struct CalendarTabView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.green)
+                    .accessibilityHidden(true)
                 Text("\(sessions.count) session\(sessions.count == 1 ? "" : "s")")
                     .font(.system(size: 13, weight: .medium))
             }
@@ -823,6 +829,7 @@ struct CalendarTabView: View {
                 Image(systemName: "clock.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
                 Text(formatFocusDuration(focusMinutesForDay(selectedDate)))
                     .font(.system(size: 13, weight: .medium))
             }

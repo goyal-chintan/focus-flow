@@ -155,9 +155,9 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
-                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -178,6 +178,7 @@ struct ProjectFormView: View {
                     } label: {
                         HStack {
                             Image(systemName: mode.icon)
+                                .accessibilityHidden(true)
                             Text(mode.displayName)
                         }
                     }
@@ -196,9 +197,9 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
-                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -234,9 +235,9 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
-                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -272,9 +273,9 @@ struct ProjectFormView: View {
                     Spacer()
 
                     Image(systemName: "chevron.down")
-                        .accessibilityHidden(true)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)

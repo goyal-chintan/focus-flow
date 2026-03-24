@@ -99,6 +99,7 @@ struct InsightsView: View {
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .font(.system(size: 32, weight: .light))
                             .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
                         Text("Focus Score")
                             .font(.system(size: 16, weight: .semibold))
                         Text("Complete a few more sessions to unlock your personalized Focus Score. We need at least 3 sessions to calculate meaningful patterns.")
@@ -207,6 +208,7 @@ struct InsightsView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                                 .frame(width: 18)
+                                .accessibilityHidden(true)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(rec.target)
@@ -307,6 +309,7 @@ struct InsightsView: View {
                                 Image(systemName: "lightbulb.fill")
                                     .font(.system(size: 18, weight: .light))
                                     .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
                                 Text("Complete a few more sessions to unlock personalized insights")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(.tertiary)
@@ -366,6 +369,7 @@ struct InsightsView: View {
                 Image(systemName: "brain.head.profile.fill")
                     .font(.system(size: 18, weight: .light))
                     .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
                 Text("Complete 3+ sessions to unlock personalized coaching insights")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.tertiary)
@@ -417,6 +421,7 @@ struct InsightsView: View {
                 Image(systemName: trend >= 0 ? "arrow.up.right" : "arrow.down.right")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(trend >= 0 ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.salmon)
+                    .accessibilityHidden(true)
                 Text(trend >= 0
                     ? "Completion up \(Int(trend * 100))% vs last week"
                     : "Completion down \(Int(abs(trend) * 100))% vs last week"
@@ -442,6 +447,7 @@ struct InsightsView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
                     .frame(width: 16)
+                    .accessibilityHidden(true)
                 Text("Avg recovery time:")
                     .font(LiquidDesignTokens.Typography.bodySmall)
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
@@ -541,6 +547,7 @@ struct InsightsView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Spectral.amber)
                         .padding(.top, 1)
+                        .accessibilityHidden(true)
                     Text(experiment)
                         .font(.system(size: 11, weight: .regular, design: .rounded))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
@@ -576,6 +583,7 @@ struct InsightsView: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
                                 .frame(width: 16)
+                                .accessibilityHidden(true)
                             Text(taskType.displayName)
                                 .font(LiquidDesignTokens.Typography.bodySmall)
                                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
@@ -617,6 +625,7 @@ struct InsightsView: View {
                             .font(.system(size: 10))
                             .foregroundStyle(item.winRate > 0.5 ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.amber)
                             .frame(width: 16)
+                            .accessibilityHidden(true)
                         Text(item.kind == .quickPrompt ? "Quick Prompts" : item.kind == .strongPrompt ? "Strong Prompts" : "Nudges")
                             .font(LiquidDesignTokens.Typography.bodySmall)
                             .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
@@ -649,6 +658,7 @@ struct InsightsView: View {
                             .font(.system(size: 10))
                             .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                             .frame(width: 16)
+                            .accessibilityHidden(true)
                         Text(trigger.label)
                             .font(LiquidDesignTokens.Typography.bodySmall)
                             .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
@@ -681,6 +691,7 @@ struct InsightsView: View {
                                 ? LiquidDesignTokens.Spectral.mint
                                 : LiquidDesignTokens.Spectral.amber)
                             .frame(width: 16)
+                            .accessibilityHidden(true)
                         Text(item.reason.displayName)
                             .font(LiquidDesignTokens.Typography.bodySmall)
                             .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
@@ -711,6 +722,7 @@ struct InsightsView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(LiquidDesignTokens.Spectral.amber)
                             .padding(.top, 2)
+                            .accessibilityHidden(true)
                         Text(tip)
                             .font(.system(size: 11, weight: .regular, design: .rounded))
                             .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
@@ -1062,6 +1074,7 @@ struct InsightsView: View {
                 Image(systemName: insight.icon)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(insight.color)
+                    .accessibilityHidden(true)
             }
 
             Text(insight.text)
@@ -1101,6 +1114,7 @@ struct InsightsView: View {
                             .rotationEffect(.degrees(showAppUsage ? 90 : 0))
                             .animation(reduceMotion ? nil : FFMotion.section, value: showAppUsage)
                             .accessibilityHidden(true)
+                            .accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
                     .frame(minHeight: 44)
@@ -1126,6 +1140,7 @@ struct InsightsView: View {
                         Image(systemName: "app.dashed")
                             .font(.system(size: 20, weight: .light))
                             .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
                         Text("App tracking will appear as you use your Mac")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
@@ -1609,6 +1624,7 @@ struct InsightsView: View {
                             .rotationEffect(.degrees(showScienceTips ? 90 : 0))
                             .animation(reduceMotion ? nil : FFMotion.section, value: showScienceTips)
                             .accessibilityHidden(true)
+                            .accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
                     .frame(minHeight: 44)
@@ -1733,6 +1749,7 @@ struct InsightsView: View {
                 .foregroundStyle(tip.color)
                 .frame(width: 28, height: 28)
                 .background(tip.color.opacity(0.15), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(tip.title)
