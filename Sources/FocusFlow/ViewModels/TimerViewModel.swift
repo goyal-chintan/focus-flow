@@ -9,6 +9,28 @@ enum TimerState: Equatable {
     case onBreak(SessionType)
 }
 
+enum IdleStarterSuppressionReason: Equatable {
+    case releaseWindowActive
+    case screenShareSuppressed
+    case antiProcrastinationDisabled
+    case idleStarterDisabled
+    case cooldownActive
+    case workIntentWindowClosed
+    case plannerThresholdsNotMet
+
+    var debugLabel: String {
+        switch self {
+        case .releaseWindowActive: return "Release window active"
+        case .screenShareSuppressed: return "Suppressed by screen-share guard"
+        case .antiProcrastinationDisabled: return "Anti-procrastination disabled"
+        case .idleStarterDisabled: return "Idle starter disabled"
+        case .cooldownActive: return "Cooldown active (<120s since last prompt)"
+        case .workIntentWindowClosed: return "Work-intent window closed"
+        case .plannerThresholdsNotMet: return "Planner thresholds not met"
+        }
+    }
+}
+
 #if DEBUG
 extension TimerViewModel {
     /// Lightweight setup used by UI evidence/snapshot tests to avoid side effects
@@ -277,6 +299,7 @@ final class TimerViewModel {
     private(set) var latestDriftScore: Double = 0
     private(set) var latestWorkIntentActiveSignals: [String] = []
     private(set) var latestDriftActiveSignals: [String] = []
+    private(set) var lastIdleStarterSuppressionReason: IdleStarterSuppressionReason?
 
     // MARK: - Work Intent Timestamps
     /// Time the app was launched — used as a proxy for "opened app recently".
@@ -2049,13 +2072,22 @@ final class TimerViewModel {
         frontmostCategory: AppUsageEntry.AppCategory
     ) {
         guard state == .idle, !isOvertime, let settings else { return }
-        if isInReleaseWindow || shouldSuppressGuardianPopups(using: settings) {
+        if isInReleaseWindow {
+            lastIdleStarterSuppressionReason = .releaseWindowActive
+            currentIdleStarterDecision = nil
+            activeCoachInterventionDecision = nil
+            showCoachInterventionWindow = false
+            return
+        }
+        if shouldSuppressGuardianPopups(using: settings) {
+            lastIdleStarterSuppressionReason = .screenShareSuppressed
             currentIdleStarterDecision = nil
             activeCoachInterventionDecision = nil
             showCoachInterventionWindow = false
             return
         }
         guard settings.antiProcrastinationEnabled, settings.coachIdleStarterEnabled else {
+            lastIdleStarterSuppressionReason = settings.antiProcrastinationEnabled ? .idleStarterDisabled : .antiProcrastinationDisabled
             currentIdleStarterDecision = nil
             return
         }
@@ -2139,8 +2171,10 @@ final class TimerViewModel {
 
         if route.shouldPresent, var decision = route.decision {
             if let last = lastIdleInterventionAt, Date().timeIntervalSince(last) < 120 {
+                lastIdleStarterSuppressionReason = .cooldownActive
                 return
             }
+            lastIdleStarterSuppressionReason = nil
             idleStarterSummary = opportunityContext.summary
             idleStarterRecommendedMinutes = opportunityContext.recommendedDurationMinutes
 
@@ -2206,6 +2240,11 @@ final class TimerViewModel {
             }
             lastIdleInterventionAt = Date()
         } else {
+            if currentGuardianState == .challenge && !workIntentSignal.isWorkIntentWindow {
+                lastIdleStarterSuppressionReason = .workIntentWindowClosed
+            } else {
+                lastIdleStarterSuppressionReason = .plannerThresholdsNotMet
+            }
             currentIdleStarterDecision = nil
         }
     }

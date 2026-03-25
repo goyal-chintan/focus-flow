@@ -1138,6 +1138,16 @@ struct SettingsView: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(2)
+                            if let suppression = timerVM.lastIdleStarterSuppressionReason {
+                                Text("Last suppression: \(suppression.debugLabel)")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.orange)
+                                    .lineLimit(2)
+                            } else {
+                                Text("Last suppression: none")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
 
                         // Default snooze duration
