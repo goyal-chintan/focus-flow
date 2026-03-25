@@ -199,6 +199,8 @@ final class TimerViewModel {
     private(set) var completedBlockContext: CompletedBlockContext? = nil
     /// Tracks the current or most-recent break episode, linked to the earned block.
     private(set) var breakEpisodeContext: BreakEpisodeContext? = nil
+    var suggestedEarnedBreakMinutes: Int = 5
+    var suggestedEarnedBreakSeconds: TimeInterval { TimeInterval(suggestedEarnedBreakMinutes * 60) }
     /// Active suppression window when user has explicitly opted out of guardian prompts.
     ///
     /// Lifecycle semantics (intentional and non-ambiguous):
@@ -259,8 +261,10 @@ final class TimerViewModel {
     private let coachPlanner = FocusCoachInterventionPlanner()
     private let coachOpportunityModel = FocusCoachOpportunityModel()
     private let guardianAdvisor = FocusCoachGuardianAdvisor()
+    private let earnedBreakSuggestionEngine = EarnedBreakSuggestionEngine()
     private let screenShareGuard: ScreenShareGuard
     private let workIntentDetector = WorkIntentWindowDetector()
+    private var choseSuggestedBreakCurrentEpisode: Bool = false
     private var coachTickCounter: Int = 0
     private var pauseCountThisSession: Int = 0
     private var strongPromptsShownThisSession: Int = 0
@@ -1021,6 +1025,7 @@ final class TimerViewModel {
             workMode: selectedProject?.workMode ?? .deepWork,
             earnedAt: Date()
         )
+        refreshEarnedBreakSuggestion()
         currentSession = nil
 
         isManualStop = true
@@ -1204,6 +1209,85 @@ final class TimerViewModel {
         suppressionWindow = nil
     }
 
+    private var breakLearningStore: BreakLearningStore? {
+        guard let modelContext else { return nil }
+        return BreakLearningStore(modelContext: modelContext)
+    }
+
+    private func refreshEarnedBreakSuggestion() {
+        let effortSeconds: Int
+        if let session = lastCompletedFocusSession {
+            effortSeconds = max(0, Int(session.actualDuration))
+        } else if let duration = lastCompletedDuration {
+            effortSeconds = max(0, Int(duration))
+        } else {
+            effortSeconds = 0
+        }
+
+        let projectId = completedBlockContext?.projectId ?? selectedProject?.id
+        let workMode = completedBlockContext?.workMode ?? selectedProject?.workMode ?? .deepWork
+        let recent = breakLearningStore?.recentEvents(projectId: projectId, workMode: workMode, limit: 8) ?? []
+
+        var adaptationScore = 0
+        for event in recent {
+            if event.returnedToFocus { adaptationScore += 1 }
+            if event.endedEarly { adaptationScore -= 1 }
+            if event.overrunSeconds > 120 { adaptationScore -= 1 }
+        }
+        let adaptationMinutes = min(3, max(-3, adaptationScore / 2))
+
+        let suggestion = earnedBreakSuggestionEngine.suggest(
+            EarnedBreakSuggestionInput(
+                effectiveEffortSeconds: effortSeconds,
+                overtimeSeconds: overtimeSeconds,
+                runCreditSeconds: effortSeconds,
+                adaptationMinutes: adaptationMinutes
+            )
+        )
+        suggestedEarnedBreakMinutes = suggestion.suggestedMinutes
+    }
+
+    private func recordBreakLearningIfNeeded(returnedToFocus: Bool) {
+        guard let store = breakLearningStore else { return }
+
+        let breakSession: FocusSession?
+        if let currentSession, currentSession.type != .focus {
+            breakSession = currentSession
+        } else if let lastCompletedSession, lastCompletedSession.type != .focus {
+            breakSession = lastCompletedSession
+        } else {
+            breakSession = nil
+        }
+        guard let breakSession else { return }
+
+        let actualSeconds: Int
+        if breakSession.endedAt == nil {
+            actualSeconds = max(0, Int(Date().timeIntervalSince(breakSession.startedAt)))
+        } else {
+            actualSeconds = max(0, Int(breakSession.actualDuration))
+        }
+
+        let plannedSeconds = breakEpisodeContext?.plannedDurationSeconds ?? max(0, Int(breakSession.duration))
+        let overrunSeconds = max(0, actualSeconds - plannedSeconds)
+        let endedEarly = actualSeconds < plannedSeconds
+
+        let projectId = breakEpisodeContext?.earnedBlock.projectId ?? completedBlockContext?.projectId
+        let workMode = breakEpisodeContext?.earnedBlock.workMode ?? completedBlockContext?.workMode ?? selectedProject?.workMode ?? .deepWork
+
+        store.record(
+            projectId: projectId,
+            workMode: workMode,
+            suggestedMinutes: suggestedEarnedBreakMinutes,
+            choseSuggested: choseSuggestedBreakCurrentEpisode,
+            actualBreakSeconds: actualSeconds,
+            returnedToFocus: returnedToFocus,
+            endedEarly: endedEarly,
+            overrunSeconds: overrunSeconds
+        )
+
+        choseSuggestedBreakCurrentEpisode = false
+    }
+
     private func activateBlocking() {
         log("activateBlocking called")
         if let profile = selectedProject?.blockProfile {
@@ -1372,6 +1456,7 @@ final class TimerViewModel {
                     workMode: selectedProject?.workMode ?? .deepWork,
                     earnedAt: Date()
                 )
+                refreshEarnedBreakSuggestion()
             }
         } else {
             // Break completed naturally — mark episode end
@@ -1529,6 +1614,12 @@ final class TimerViewModel {
             return
         }
 
+        if case .continueFocusing = action {
+            recordBreakLearningIfNeeded(returnedToFocus: true)
+        } else if case .endSession = action {
+            recordBreakLearningIfNeeded(returnedToFocus: false)
+        }
+
         closePopover()
 
         // Resolve completion and leave overtime mode.
@@ -1553,6 +1644,11 @@ final class TimerViewModel {
         case .continueFocusing:
             startFocus()
         case .takeBreak(let duration):
+            if let duration {
+                choseSuggestedBreakCurrentEpisode = Int(duration) == Int(suggestedEarnedBreakSeconds) && suggestedEarnedBreakMinutes > 5
+            } else {
+                choseSuggestedBreakCurrentEpisode = false
+            }
             startBreak(overrideDuration: duration)
         case .endSession:
             deactivateBlocking()
