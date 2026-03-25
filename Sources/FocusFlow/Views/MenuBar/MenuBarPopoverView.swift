@@ -1336,6 +1336,7 @@ private struct BreakOvertimePopoverContent: View {
 private struct BreakPopoverContent: View {
     @Binding var selectedProject: Project?
     let onSkipBreak: () -> Void
+    let onEndBreak: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
@@ -1356,19 +1357,36 @@ private struct BreakPopoverContent: View {
             }
             .padding(.top, 8)
 
-            // Skip Break — native glass button
-            Button(action: onSkipBreak) {
-                HStack(spacing: 6) {
-                    Text("Start Next Block")
-                        .font(.system(size: 13, weight: .medium))
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .accessibilityHidden(true)
+            GlassEffectContainer {
+                VStack(spacing: 8) {
+                    // Primary CTA — start next focus block
+                    Button(action: onSkipBreak) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .accessibilityHidden(true)
+                            Text("Start Next Block")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityLabel("Skip break and start next focus block")
+
+                    // Secondary — end break and go idle
+                    Button(action: onEndBreak) {
+                        TrackedLabel(
+                            text: "End Break",
+                            font: LiquidDesignTokens.Typography.labelMedium,
+                            color: LiquidDesignTokens.Surface.onSurfaceMuted,
+                            tracking: 2.0
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("End break and return to idle")
                 }
-                .frame(maxWidth: .infinity, minHeight: 36)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         }
         .padding(.bottom, 12)
@@ -1460,7 +1478,8 @@ extension MenuBarPopoverView {
         @Bindable var vm = timerVM
         return BreakPopoverContent(
             selectedProject: $vm.selectedProject,
-            onSkipBreak: { timerVM.skipBreak() }
+            onSkipBreak: { timerVM.skipBreak() },
+            onEndBreak: { timerVM.stop() }
         )
     }
 
