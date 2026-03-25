@@ -50,6 +50,32 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
         XCTAssertNil(recommendation)
     }
 
+    func testRecommendationSkipsTargetBlockedInAnyAssignedProfile() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "YouTube",
+                bundleIdentifier: "com.apple.Safari",
+                duringFocusSeconds: 120,
+                outsideFocusSeconds: 600
+            )
+        ]
+        let project = Project(name: "Interview Prep")
+        project.blockProfiles = [
+            BlockProfile(name: "Social", websites: ["reddit.com"]),
+            BlockProfile(name: "Video", websites: ["youtube.com"])
+        ]
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: "com.apple.Safari",
+            frontmostAppName: "YouTube",
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertNil(recommendation)
+    }
+
     func testReleaseDurationDoneForTodayIsLonger() {
         let duration = advisor.releaseDuration(for: .doneForToday)
         XCTAssertEqual(duration, 90 * 60)

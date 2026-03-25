@@ -24,8 +24,8 @@ struct WorkIntentSignal: Sendable {
             withinTypicalWorkHours,
             matchesHistoricalMissedStart
         ].filter { $0 }.count
-        // Require at least 2 signals for outside-session challenge gate
-        return score >= 2
+        // Require at least 1 signal so outside-session prompts don't stay silent for hours.
+        return score >= 1
     }
 }
 

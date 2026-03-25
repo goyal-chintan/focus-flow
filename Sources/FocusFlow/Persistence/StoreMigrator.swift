@@ -167,6 +167,9 @@ enum StoreMigrator {
         defer { sqlite3_close(db) }
 
         for migration in requiredColumnMigrations {
+            guard try tableExists(migration.table, in: db) else {
+                continue
+            }
             let columns = try loadColumns(for: migration.table, in: db)
             guard columns.contains(migration.column) == false else {
                 continue
@@ -182,6 +185,9 @@ enum StoreMigrator {
         // Backfill NULL values for rows that existed before a column was added.
         // Runs every launch but is idempotent (WHERE column IS NULL only touches rows that need it).
         for backfill in requiredNullBackfills {
+            guard try tableExists(backfill.table, in: db) else {
+                continue
+            }
             let columns = try loadColumns(for: backfill.table, in: db)
             guard columns.contains(backfill.column) else { continue }
             let sql = """
@@ -221,6 +227,19 @@ enum StoreMigrator {
             }
         }
         return columns
+    }
+
+    private static func tableExists(_ table: String, in db: OpaquePointer) throws -> Bool {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let query = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='\(escapedTable)' LIMIT 1;"
+        guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
+            throw sqliteError(in: db, code: 4)
+        }
+
+        return sqlite3_step(statement) == SQLITE_ROW
     }
 
     private static func execute(sql: String, in db: OpaquePointer) throws {

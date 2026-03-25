@@ -10,6 +10,8 @@ final class Project {
     var archived: Bool
     var createdAt: Date
     var blockProfile: BlockProfile?
+    @Relationship(deleteRule: .nullify)
+    var blockProfiles: [BlockProfile]
     var workMode: WorkMode = WorkMode.deepWork
     var guardianSensitivity: GuardianSensitivity = GuardianSensitivity.normal
     var difficultyBias: DifficultyBias = DifficultyBias.moderate
@@ -24,6 +26,38 @@ final class Project {
         self.icon = icon
         self.archived = false
         self.createdAt = Date()
+        self.blockProfiles = []
         self.sessions = []
+    }
+
+    var effectiveBlockProfiles: [BlockProfile] {
+        var seen = Set<UUID>()
+        var merged: [BlockProfile] = []
+
+        for profile in blockProfiles {
+            if seen.insert(profile.id).inserted {
+                merged.append(profile)
+            }
+        }
+
+        if let blockProfile, seen.insert(blockProfile.id).inserted {
+            merged.append(blockProfile)
+        }
+
+        return merged
+    }
+
+    var mergedBlockedWebsites: Set<String> {
+        Set(effectiveBlockProfiles
+            .flatMap(\.blockedWebsites)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty })
+    }
+
+    var mergedBlockedApps: Set<String> {
+        Set(effectiveBlockProfiles
+            .flatMap(\.blockedApps)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty })
     }
 }

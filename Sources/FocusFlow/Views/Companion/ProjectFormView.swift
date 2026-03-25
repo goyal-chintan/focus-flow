@@ -7,7 +7,7 @@ struct ProjectFormView: View {
     @Binding var name: String
     @Binding var color: String
     @Binding var icon: String
-    @Binding var selectedBlockProfile: BlockProfile?
+    @Binding var selectedBlockProfiles: [BlockProfile]
     @Binding var workMode: WorkMode
     @Binding var guardianSensitivity: GuardianSensitivity
     @Binding var difficultyBias: DifficultyBias
@@ -125,16 +125,25 @@ struct ProjectFormView: View {
 
     private var blockProfileSection: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Block Profile")
+            sectionLabel("Block Profiles")
 
             Menu {
-                Button("None") { selectedBlockProfile = nil }
+                Button("Clear all") { selectedBlockProfiles = [] }
                 Divider()
                 ForEach(blockProfiles) { profile in
                     Button {
-                        selectedBlockProfile = profile
+                        toggleBlockProfile(profile)
                     } label: {
                         HStack {
+                            if isProfileSelected(profile) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.tint)
+                                    .accessibilityHidden(true)
+                            } else {
+                                Image(systemName: "circle")
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
+                            }
                             Text(profile.name)
                             if profile.isDefault { Text("(Default)") }
                         }
@@ -147,7 +156,7 @@ struct ProjectFormView: View {
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
 
-                    Text(selectedBlockProfile?.name ?? "None (no blocking)")
+                    Text(selectedBlockProfilesLabel)
                         .font(.subheadline)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -159,12 +168,21 @@ struct ProjectFormView: View {
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private var selectedBlockProfilesLabel: String {
+        let names = selectedBlockProfiles.map(\.name)
+        if names.isEmpty { return "None (no blocking)" }
+        if names.count == 1 { return names[0] }
+        return "\(names.count) profiles selected"
     }
 
     private var workModeSection: some View {
@@ -201,6 +219,8 @@ struct ProjectFormView: View {
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
@@ -239,6 +259,8 @@ struct ProjectFormView: View {
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
@@ -277,6 +299,8 @@ struct ProjectFormView: View {
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
@@ -312,6 +336,18 @@ struct ProjectFormView: View {
         Text(text)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
+    }
+
+    private func isProfileSelected(_ profile: BlockProfile) -> Bool {
+        selectedBlockProfiles.contains(where: { $0.id == profile.id })
+    }
+
+    private func toggleBlockProfile(_ profile: BlockProfile) {
+        if let index = selectedBlockProfiles.firstIndex(where: { $0.id == profile.id }) {
+            selectedBlockProfiles.remove(at: index)
+        } else {
+            selectedBlockProfiles.append(profile)
+        }
     }
 }
 

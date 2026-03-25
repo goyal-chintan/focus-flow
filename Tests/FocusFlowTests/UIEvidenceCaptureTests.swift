@@ -296,6 +296,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
 
     private func renderSettings(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
         let view = SettingsView(initialScrollTarget: .integrations)
+            .environment(fixture.vm)
             .modelContainer(fixture.container)
             .environment(\.modelContext, fixture.context)
             .frame(width: 720, height: 520)
