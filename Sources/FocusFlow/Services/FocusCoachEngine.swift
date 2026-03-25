@@ -81,6 +81,8 @@ final class FocusCoachEngine {
     /// Whether the reason chip sheet should be shown (set by anomaly detection)
     var shouldShowReasonSheet = false
     var pendingAnomalyKind: FocusCoachInterruptionKind?
+    /// Prevents repeated drift reason prompts while the same high-risk streak is still active.
+    private var hasPromptedDriftReasonInCurrentStreak = false
 
     init(store: FocusCoachPersisting = InMemoryCoachStore()) {
         self.store = store
@@ -135,6 +137,7 @@ final class FocusCoachEngine {
         lastDecision = .none
         shouldShowReasonSheet = false
         pendingAnomalyKind = nil
+        hasPromptedDriftReasonInCurrentStreak = false
 
         // Calibrate personal profile from 14-day rolling window
         calibrateProfile()
@@ -148,6 +151,7 @@ final class FocusCoachEngine {
         currentTaskIntentId = nil
         shouldShowReasonSheet = false
         pendingAnomalyKind = nil
+        hasPromptedDriftReasonInCurrentStreak = false
     }
 
     // MARK: - Signal Ingestion
@@ -184,6 +188,7 @@ final class FocusCoachEngine {
             promptState.consecutiveHighRiskWindows += 1
         } else {
             promptState.consecutiveHighRiskWindows = 0
+            hasPromptedDriftReasonInCurrentStreak = false
         }
 
         // Use adaptive prompt budget from personal profile if calibrated
@@ -203,9 +208,11 @@ final class FocusCoachEngine {
 
         // Trigger reason chip sheet for repeated drift (≥3 consecutive high-risk windows)
         let classifier = FocusCoachAnomalyClassifier()
-        if classifier.shouldPromptReason(event: .repeatedDrift(consecutiveHighRiskWindows: promptState.consecutiveHighRiskWindows)) {
+        if classifier.shouldPromptReason(event: .repeatedDrift(consecutiveHighRiskWindows: promptState.consecutiveHighRiskWindows)),
+           !hasPromptedDriftReasonInCurrentStreak {
             shouldShowReasonSheet = true
             pendingAnomalyKind = .drift
+            hasPromptedDriftReasonInCurrentStreak = true
         }
 
         return decision.kind == .none ? nil : decision

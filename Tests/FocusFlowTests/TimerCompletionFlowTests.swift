@@ -309,6 +309,30 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertEqual(vm.pendingReasonKind, .breakOverrun)
     }
 
+    func testBreakOverrunReasonPromptDoesNotLoopAfterReasonSubmitted() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.coachReasonPromptsEnabled = true
+        try container.mainContext.save()
+
+        vm.overtimeSeconds = 120
+        vm.showCoachReasonSheet = false
+
+        vm.updateBreakOverrunReasonPromptIfNeeded(completedSessionType: .shortBreak)
+        XCTAssertTrue(vm.showCoachReasonSheet)
+        XCTAssertEqual(vm.pendingReasonKind, .breakOverrun)
+
+        vm.recordCoachReason(kind: .breakOverrun, reason: .meeting)
+        vm.showCoachReasonSheet = false
+
+        vm.updateBreakOverrunReasonPromptIfNeeded(completedSessionType: .shortBreak)
+        XCTAssertFalse(vm.showCoachReasonSheet, "Reason prompt should not reopen repeatedly in the same overrun episode")
+    }
+
     func testConfigurePurgesExistingFocusSessionsUnderMinimumRetained() throws {
         let container = try makeInMemoryContainer()
         let now = Date()

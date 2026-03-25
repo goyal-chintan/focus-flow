@@ -272,6 +272,8 @@ final class TimerViewModel {
     /// Whether the reason chip sheet should be shown (driven by coach engine anomaly detection)
     var showCoachReasonSheet: Bool = false
     var pendingReasonKind: FocusCoachInterruptionKind = .drift
+    /// Prevents break-overrun reason prompts from reopening repeatedly in the same break episode.
+    private var hasPromptedBreakOverrunReasonInCurrentEpisode: Bool = false
     /// Non-blocking inline reason chips shown when resuming from an extended pause (≥2 min).
     var showPauseReasonChips: Bool = false
     var showCoachInterventionWindow: Bool = false
@@ -696,6 +698,7 @@ final class TimerViewModel {
         activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
         currentIdleStarterDecision = nil
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
         guardianReleaseUntil = nil
@@ -857,6 +860,7 @@ final class TimerViewModel {
         totalSeconds = duration
         remainingSeconds = duration
         state = .onBreak(type)
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
 
         let session = FocusSession(type: type, duration: duration)
         modelContext?.insert(session)
@@ -946,6 +950,7 @@ final class TimerViewModel {
         showCoachReasonSheet = false
         showPauseReasonChips = false
         pendingReasonKind = .drift
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
@@ -1062,6 +1067,7 @@ final class TimerViewModel {
         showCoachReasonSheet = false
         showPauseReasonChips = false
         pendingReasonKind = .drift
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
@@ -1081,6 +1087,7 @@ final class TimerViewModel {
         showCoachReasonSheet = false
         showPauseReasonChips = false
         pendingReasonKind = .drift
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
@@ -1107,6 +1114,7 @@ final class TimerViewModel {
         showCoachReasonSheet = false
         showPauseReasonChips = false
         pendingReasonKind = .drift
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
@@ -1151,6 +1159,7 @@ final class TimerViewModel {
         clearCrashRecoveryState()
         currentSession = nil
         breakEpisodeContext = nil  // Break episode is discarded on skip; completedBlockContext preserved
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         remainingSeconds = 0
         totalSeconds = 0
         loadTodayStats()
@@ -1195,6 +1204,7 @@ final class TimerViewModel {
         completedBlockContext = nil
         breakEpisodeContext = nil
         suppressionWindow = nil
+        hasPromptedBreakOverrunReasonInCurrentEpisode = false
     }
 
     private func activateBlocking() {
@@ -1516,6 +1526,11 @@ final class TimerViewModel {
         showCoachReasonSheet = false
         showPauseReasonChips = false
         pendingReasonKind = .drift
+        if case .continueOvertime = action {
+            // keep existing flag while staying in the same episode
+        } else {
+            hasPromptedBreakOverrunReasonInCurrentEpisode = false
+        }
 
         if case .continueOvertime = action {
             // Keep overtime state and timer running.
@@ -1560,9 +1575,11 @@ final class TimerViewModel {
         guard settings?.coachReasonPromptsEnabled == true,
               sessionType != .focus,
               overtimeSeconds >= 120,
-              !showCoachReasonSheet else { return }
+              !showCoachReasonSheet,
+              !hasPromptedBreakOverrunReasonInCurrentEpisode else { return }
         showCoachReasonSheet = true
         pendingReasonKind = .breakOverrun
+        hasPromptedBreakOverrunReasonInCurrentEpisode = true
     }
 
     /// Records the pause extension reason and dismisses the inline chips.
@@ -1581,6 +1598,9 @@ final class TimerViewModel {
     /// Records an anomaly reason (user-selected chip) via the coach engine.
     func recordCoachReason(kind: FocusCoachInterruptionKind, reason: FocusCoachReason?) {
         coachEngine.recordAnomaly(kind: kind, reason: reason, sessionId: currentSession?.id)
+        if kind == .breakOverrun {
+            hasPromptedBreakOverrunReasonInCurrentEpisode = true
+        }
     }
 
     /// Handles a coach quick action selection.

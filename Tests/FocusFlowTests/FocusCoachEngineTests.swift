@@ -83,6 +83,36 @@ final class FocusCoachEngineTests: XCTestCase {
         XCTAssertTrue(engine.currentSignals.recentLegitimateReason)
     }
 
+    func testDriftReasonPromptDoesNotLoopWithinSameHighRiskStreak() {
+        let store = InMemoryCoachStore()
+        let engine = FocusCoachEngine(store: store)
+        engine.startSession(id: UUID())
+        engine.recordBehaviorSample(
+            FocusCoachSignals(
+                startDelaySeconds: 480,
+                appSwitchesPerMinute: 15,
+                nonWorkForegroundRatio: 1.0,
+                inactivityBurstSeconds: 180,
+                blockedAppAttempts: 5,
+                pauseCount: 5,
+                breakOverrunSeconds: 300,
+                recentLegitimateReason: false
+            )
+        )
+
+        _ = engine.tick()
+        _ = engine.tick()
+        _ = engine.tick()
+        XCTAssertTrue(engine.shouldShowReasonSheet)
+        XCTAssertEqual(engine.pendingAnomalyKind, .drift)
+
+        engine.shouldShowReasonSheet = false
+        engine.recordAnomaly(kind: .drift, reason: .procrastinating, sessionId: nil)
+
+        _ = engine.tick()
+        XCTAssertFalse(engine.shouldShowReasonSheet, "Drift reason prompt should not reopen repeatedly within the same unresolved streak")
+    }
+
     // MARK: - Session Lifecycle
 
     func testStartSessionResetsState() {
