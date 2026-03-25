@@ -47,7 +47,8 @@ struct CoachMessage: Sendable {
         case .releaseWindowActive:
             return "Guardian paused after your explicit opt-out"
         case .blockRecommendation(let target):
-            return "Recommend blocking \(target) for this project"
+            let displayTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
+            return "Recommend blocking \(displayTarget) for this project"
         case .lowPriorityPattern(let count):
             return "Low-priority pattern ×\(count) this week"
         case .distractingAppActive(let app, _, let workMode, let projectName):
@@ -122,7 +123,8 @@ enum FocusCoachMessageBuilder {
         case .releaseWindowActive:
             return "You marked yourself off-duty, so guardrails are paused for now"
         case .blockRecommendation(let target):
-            return "\(target) is repeatedly pulling attention away from your planned work"
+            let displayTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
+            return "\(displayTarget) is repeatedly pulling attention away from your planned work"
         case .lowPriorityPattern(let count):
             return "Low-priority work replaced planned focus \(count) times this week"
         case .distractingAppActive(let app, let idle, _, _):

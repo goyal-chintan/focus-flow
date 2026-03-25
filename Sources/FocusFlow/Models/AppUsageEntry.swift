@@ -76,9 +76,9 @@ final class AppUsageEntry {
 
         // Terminals/editors → neutral during focus (working, just in a different tool)
         if id.contains("terminal") || id.contains("iterm") || id.contains("warp") ||
-           id.contains("xcode") || id.contains("vscode") || id.contains("cursor") ||
+           id.contains("ghostty") || id.contains("xcode") || id.contains("vscode") || id.contains("cursor") ||
            id.contains("jetbrains") || id.contains("sublime") ||
-           name.contains("terminal") || name.contains("code") {
+            name.contains("terminal") || name.contains("code") {
             return .neutral
         }
 
@@ -100,6 +100,7 @@ final class AppUsageEntry {
         if id.contains("xcode") || id.contains("vscode") || id.contains("visual-studio") ||
            id.contains("jetbrains") || id.contains("sublime") || id.contains("atom") ||
            id.contains("terminal") || id.contains("iterm") || id.contains("warp") ||
+           id.contains("ghostty") ||
            id.contains("cursor") || id.contains("nova") || id.contains("bbedit") ||
            name.contains("terminal") || name.contains("code") || name.contains("editor") {
             return .productive
@@ -167,6 +168,32 @@ final class AppUsageEntry {
         if let hit = mapping.first(where: { name.contains($0.needle) || id.contains($0.needle) }) {
             return hit.target
         }
+
+        // Non-web derailer fallback for repeat candidates.
+        let derailerNeedles = [
+            "anthropic", "claude",
+            "openai", "chatgpt",
+            "slack", "discord",
+            "telegram", "whatsapp"
+        ]
+        let browserNeedles = [
+            "safari", "chrome", "firefox",
+            "brave", "arc", "edge",
+            "opera", "orion"
+        ]
+        if !bundleIdentifier.isEmpty,
+           !browserNeedles.contains(where: { id.contains($0) }),
+           derailerNeedles.contains(where: { id.contains($0) || name.contains($0) }) {
+            return "app:\(id)"
+        }
         return nil
+    }
+
+    /// Converts a persisted recommendation target/context key into user-facing text.
+    /// Example: `app:com.openai.chatgpt` -> `com.openai.chatgpt`.
+    static func recommendationDisplayLabel(for targetOrContextKey: String) -> String {
+        let trimmed = targetOrContextKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("app:") else { return trimmed }
+        return String(trimmed.dropFirst(4))
     }
 }
