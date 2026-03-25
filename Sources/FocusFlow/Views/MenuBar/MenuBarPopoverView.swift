@@ -1374,17 +1374,17 @@ private struct BreakPopoverContent: View {
                     .buttonBorderShape(.capsule)
                     .accessibilityLabel("Skip break and start next focus block")
 
-                    // Secondary — end break and go idle
+                    // Secondary — end session and go idle
                     Button(action: onEndBreak) {
                         TrackedLabel(
-                            text: "End Break",
+                            text: "End Session",
                             font: LiquidDesignTokens.Typography.labelMedium,
                             color: LiquidDesignTokens.Surface.onSurfaceMuted,
                             tracking: 2.0
                         )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("End break and return to idle")
+                    .accessibilityLabel("End session and return to idle")
                 }
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
