@@ -187,6 +187,151 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .releaseWindowActive)
     }
 
+    func testStartFocusClearsOutsideSessionEscalationState() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.outsideSessionAwaitingStartFocus = true
+        vm.outsideSessionNudgeAttemptCount = 3
+        vm.pendingNotificationNudgeAt = Date()
+        vm.outsideSessionEscalationCooldownUntil = Date().addingTimeInterval(600)
+
+        vm.startFocus()
+
+        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus)
+        XCTAssertEqual(vm.outsideSessionNudgeAttemptCount, 0)
+        XCTAssertNil(vm.pendingNotificationNudgeAt)
+        XCTAssertNil(vm.outsideSessionEscalationCooldownUntil)
+    }
+
+    func testNonStartActionsDoNotClearOutsideSessionEscalationState() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.outsideSessionAwaitingStartFocus = true
+        vm.outsideSessionNudgeAttemptCount = 2
+        vm.pendingNotificationNudgeAt = Date()
+        vm.outsideSessionEscalationCooldownUntil = Date().addingTimeInterval(300)
+
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 0,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertTrue(vm.outsideSessionAwaitingStartFocus)
+        XCTAssertEqual(vm.outsideSessionNudgeAttemptCount, 2)
+        XCTAssertNotNil(vm.pendingNotificationNudgeAt)
+    }
+
+    func testIdleInterventionSendsNotificationFirstWhenEligible() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = false
+        settings.coachInterventionMode = .balanced
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .distracting
+        )
+
+        XCTAssertTrue(vm.outsideSessionAwaitingStartFocus)
+        XCTAssertEqual(vm.outsideSessionNudgeAttemptCount, 1)
+        XCTAssertNotNil(vm.pendingNotificationNudgeAt)
+    }
+
+    func testMissedNotificationEscalatesToStrongPrompt() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = false
+        settings.coachInterventionMode = .balanced
+        settings.coachAutoOpenPopoverOnStrongPrompt = true
+        settings.coachBringAppToFrontOnStrongPrompt = false
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+        vm.pendingNotificationNudgeAt = Date().addingTimeInterval(-2000)
+        vm.outsideSessionAwaitingStartFocus = true
+        vm.outsideSessionNudgeAttemptCount = 1
+
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .distracting
+        )
+
+        XCTAssertTrue(vm.showCoachInterventionWindow || vm.currentIdleStarterDecision?.kind == .strongPrompt || vm.activeCoachInterventionDecision?.kind == .strongPrompt)
+    }
+
+    func testScreenShareHardPassSuppressesNotificationAndPrompt() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel(screenShareGuard: ScreenShareGuard(isScreenSharingProvider: { true }))
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = true
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 1,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus)
+        XCTAssertFalse(vm.showCoachInterventionWindow)
+        XCTAssertNil(vm.currentIdleStarterDecision)
+        XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .screenShareSuppressed)
+    }
+
+    func testOutsideSessionCooldownIncreasesAtNight() throws {
+        let vm = TimerViewModel()
+        let calendar = Calendar.current
+        let baseDate = Date()
+        let day = try XCTUnwrap(calendar.date(bySettingHour: 13, minute: 0, second: 0, of: baseDate))
+        let night = try XCTUnwrap(calendar.date(bySettingHour: 23, minute: 0, second: 0, of: baseDate))
+        let dayDelay = vm.outsideSessionEscalationDelaySeconds(now: day, nonResponseStreak: 0, skipStreak: 0)
+        let nightDelay = vm.outsideSessionEscalationDelaySeconds(now: night, nonResponseStreak: 0, skipStreak: 0)
+        XCTAssertGreaterThan(nightDelay, dayDelay)
+    }
+
+    func testOutsideSessionCooldownIncreasesWithRepeatedNonResponse() throws {
+        let vm = TimerViewModel()
+        let base = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 0, skipStreak: 0)
+        let increased = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 3, skipStreak: 0)
+        XCTAssertGreaterThan(increased, base)
+    }
+
+    func testOutsideSessionCooldownIncreasesWithRepeatedSkipOrSnooze() throws {
+        let vm = TimerViewModel()
+        let base = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 0, skipStreak: 0)
+        let increased = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 0, skipStreak: 3)
+        XCTAssertGreaterThan(increased, base)
+    }
+
     func testIdleEscalationShowsStrongCoachWindowAtThirdNudgeForProductiveApp() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()

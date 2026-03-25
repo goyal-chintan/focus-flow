@@ -300,6 +300,12 @@ final class TimerViewModel {
     private(set) var latestWorkIntentActiveSignals: [String] = []
     private(set) var latestDriftActiveSignals: [String] = []
     private(set) var lastIdleStarterSuppressionReason: IdleStarterSuppressionReason?
+    var pendingNotificationNudgeAt: Date?
+    var outsideSessionNudgeAttemptCount: Int = 0
+    var outsideSessionAwaitingStartFocus: Bool = false
+    var outsideSessionEscalationCooldownUntil: Date?
+    private var outsideSessionNonResponseStreak: Int = 0
+    private var outsideSessionSkipStreak: Int = 0
 
     // MARK: - Work Intent Timestamps
     /// Time the app was launched — used as a proxy for "opened app recently".
@@ -743,6 +749,7 @@ final class TimerViewModel {
         // Starting a new focus block is an explicit recommit signal.
         // Clear any prior release window so guardian protections resume immediately.
         suppressionWindow = nil
+        clearOutsideSessionEscalationState(resetStreaks: true)
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
         coachEngine.currentTaskResistance = coachResistance
         coachEngine.startSession(id: session.id)
@@ -1783,6 +1790,7 @@ final class TimerViewModel {
         case .snooze10m:
             applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
+            registerOutsideSessionDeferral()
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
             closePopover()
@@ -1804,6 +1812,7 @@ final class TimerViewModel {
         case .skipCheck:
             applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
+            registerOutsideSessionDeferral()
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
             closePopover()
@@ -1811,6 +1820,7 @@ final class TimerViewModel {
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
             // Off-duty is an explicit release intent: enter release + clear all pending prompt surfaces.
             enterRelease(reason: .offDuty)
+            registerOutsideSessionDeferral()
             showCoachInterventionWindow = false
             activeCoachInterventionDecision = nil
             currentCoachQuickPromptDecision = nil
@@ -1819,6 +1829,7 @@ final class TimerViewModel {
         case .isPlanned:
             coachEngine.recordOutsideSessionClassification(.plannedWork)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: nil)
+            registerOutsideSessionDeferral()
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
             closePopover()
@@ -1835,6 +1846,7 @@ final class TimerViewModel {
         if currentIdleStarterDecision != nil {
             lastAbandonedStartAt = Date()
             coachEngine.recordOutsideSessionMissedStart()
+            registerOutsideSessionDeferral()
         }
         currentCoachQuickPromptDecision = nil
         currentIdleStarterDecision = nil
@@ -1852,6 +1864,46 @@ final class TimerViewModel {
         if let prompt = currentCoachQuickPromptDecision, prompt.kind == .quickPrompt {
             currentCoachQuickPromptDecision = nil
         }
+    }
+
+    func outsideSessionEscalationDelaySeconds(
+        now: Date = Date(),
+        nonResponseStreak: Int,
+        skipStreak: Int
+    ) -> TimeInterval {
+        let hour = Calendar.current.component(.hour, from: now)
+        let isNight = hour >= 22 || hour < 7
+        var delay: TimeInterval = 5 * 60
+        if isNight {
+            delay += 7 * 60
+        }
+        delay += TimeInterval(min(nonResponseStreak, 4) * 90)
+        delay += TimeInterval(min(skipStreak, 4) * 90)
+        return delay
+    }
+
+    private func clearOutsideSessionEscalationState(resetStreaks: Bool) {
+        pendingNotificationNudgeAt = nil
+        outsideSessionNudgeAttemptCount = 0
+        outsideSessionAwaitingStartFocus = false
+        outsideSessionEscalationCooldownUntil = nil
+        if resetStreaks {
+            outsideSessionNonResponseStreak = 0
+            outsideSessionSkipStreak = 0
+        }
+    }
+
+    private func registerOutsideSessionDeferral() {
+        guard state == .idle else { return }
+        outsideSessionAwaitingStartFocus = false
+        pendingNotificationNudgeAt = nil
+        outsideSessionSkipStreak = min(outsideSessionSkipStreak + 1, 8)
+        let delay = outsideSessionEscalationDelaySeconds(
+            now: Date(),
+            nonResponseStreak: outsideSessionNonResponseStreak,
+            skipStreak: outsideSessionSkipStreak
+        )
+        outsideSessionEscalationCooldownUntil = Date().addingTimeInterval(delay)
     }
 
     private func appendBlockActionIfRecommended(
@@ -2072,6 +2124,7 @@ final class TimerViewModel {
         frontmostCategory: AppUsageEntry.AppCategory
     ) {
         guard state == .idle, !isOvertime, let settings else { return }
+        let now = Date()
         if isInReleaseWindow {
             lastIdleStarterSuppressionReason = .releaseWindowActive
             currentIdleStarterDecision = nil
@@ -2081,6 +2134,8 @@ final class TimerViewModel {
         }
         if shouldSuppressGuardianPopups(using: settings) {
             lastIdleStarterSuppressionReason = .screenShareSuppressed
+            outsideSessionAwaitingStartFocus = false
+            pendingNotificationNudgeAt = nil
             currentIdleStarterDecision = nil
             activeCoachInterventionDecision = nil
             showCoachInterventionWindow = false
@@ -2091,8 +2146,15 @@ final class TimerViewModel {
             currentIdleStarterDecision = nil
             return
         }
-
-        let now = Date()
+        if let cooldownUntil = outsideSessionEscalationCooldownUntil,
+           now < cooldownUntil,
+           !outsideSessionAwaitingStartFocus {
+            lastIdleStarterSuppressionReason = .cooldownActive
+            currentIdleStarterDecision = nil
+            activeCoachInterventionDecision = nil
+            showCoachInterventionWindow = false
+            return
+        }
         let hour = Calendar.current.component(.hour, from: now)
         let weekday = Calendar.current.component(.weekday, from: now)
         let isWeekday = (2...6).contains(weekday)
@@ -2202,8 +2264,30 @@ final class TimerViewModel {
                 message: contextualMessage(base: decision.message, context: coachCtx),
                 context: coachCtx
             )
-            let shouldEscalateToWindow = escalationLevel >= 1 || settings.coachInterventionMode == .sessionRescue
-            if shouldEscalateToWindow {
+            if outsideSessionAwaitingStartFocus {
+                let elapsed = now.timeIntervalSince(pendingNotificationNudgeAt ?? now)
+                let escalationDelay = outsideSessionEscalationDelaySeconds(
+                    now: now,
+                    nonResponseStreak: outsideSessionNonResponseStreak,
+                    skipStreak: outsideSessionSkipStreak
+                )
+                if elapsed < escalationDelay {
+                    lastIdleStarterSuppressionReason = .cooldownActive
+                    currentIdleStarterDecision = nil
+                    activeCoachInterventionDecision = nil
+                    showCoachInterventionWindow = false
+                    return
+                }
+                outsideSessionAwaitingStartFocus = false
+                pendingNotificationNudgeAt = nil
+                outsideSessionNonResponseStreak = min(outsideSessionNonResponseStreak + 1, 8)
+                outsideSessionEscalationCooldownUntil = now.addingTimeInterval(
+                    outsideSessionEscalationDelaySeconds(
+                        now: now,
+                        nonResponseStreak: outsideSessionNonResponseStreak,
+                        skipStreak: outsideSessionSkipStreak
+                    )
+                )
                 let strongDecision = FocusCoachDecision(
                     kind: .strongPrompt,
                     suggestedActions: decision.suggestedActions,
@@ -2235,10 +2319,23 @@ final class TimerViewModel {
                         }
                     }
                 }
+                lastIdleInterventionAt = now
             } else {
-                currentIdleStarterDecision = decision
+                NotificationService.shared.sendGenericNotification(
+                    title: "Focus check-in",
+                    body: opportunityContext.summary,
+                    sound: settings.completionSound
+                )
+                pendingNotificationNudgeAt = now
+                outsideSessionAwaitingStartFocus = true
+                outsideSessionNudgeAttemptCount += 1
+                outsideSessionEscalationCooldownUntil = nil
+                currentIdleStarterDecision = nil
+                activeCoachInterventionDecision = nil
+                showCoachInterventionWindow = false
+                lastIdleInterventionAt = now
+                return
             }
-            lastIdleInterventionAt = Date()
         } else {
             if currentGuardianState == .challenge && !workIntentSignal.isWorkIntentWindow {
                 lastIdleStarterSuppressionReason = .workIntentWindowClosed

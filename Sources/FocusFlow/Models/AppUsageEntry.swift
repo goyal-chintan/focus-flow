@@ -190,10 +190,40 @@ final class AppUsageEntry {
     }
 
     /// Converts a persisted recommendation target/context key into user-facing text.
-    /// Example: `app:com.openai.chatgpt` -> `com.openai.chatgpt`.
+    /// Example: `app:com.openai.chatgpt` -> `ChatGPT`.
     static func recommendationDisplayLabel(for targetOrContextKey: String) -> String {
         let trimmed = targetOrContextKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.lowercased().hasPrefix("app:") else { return trimmed }
-        return String(trimmed.dropFirst(4))
+        let bundleId = String(trimmed.dropFirst(4)).lowercased()
+
+        let knownNames: [String: String] = [
+            "com.anthropic.claudefordesktop": "Claude",
+            "com.tinyspeck.slackmacgap": "Slack",
+            "com.openai.chatgpt": "ChatGPT",
+            "com.openai.codex": "Codex",
+            "com.mitchellh.ghostty": "Ghostty",
+            "com.apple.safari": "Safari",
+            "com.google.chrome": "Chrome"
+        ]
+        if let known = knownNames[bundleId] {
+            return known
+        }
+
+        if bundleId.contains("claude") { return "Claude" }
+        if bundleId.contains("slack") { return "Slack" }
+        if bundleId.contains("chatgpt") { return "ChatGPT" }
+        if bundleId.contains("codex") { return "Codex" }
+        if bundleId.contains("ghostty") { return "Ghostty" }
+
+        let lastToken = bundleId.split(separator: ".").last.map(String.init) ?? bundleId
+        let cleaned = lastToken
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return bundleId }
+        return cleaned
+            .split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
     }
 }

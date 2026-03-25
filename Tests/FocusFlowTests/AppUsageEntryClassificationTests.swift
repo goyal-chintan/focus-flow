@@ -70,7 +70,27 @@ final class AppUsageEntryClassificationTests: XCTestCase {
 
     func testRecommendationDisplayLabelStripsAppPrefix() {
         let label = AppUsageEntry.recommendationDisplayLabel(for: "app:com.mitchellh.ghostty")
-        XCTAssertEqual(label, "com.mitchellh.ghostty")
+        XCTAssertEqual(label, "Ghostty")
+    }
+
+    func testRecommendationDisplayLabelMapsKnownBundleIdsToFriendlyNames() {
+        XCTAssertEqual(
+            AppUsageEntry.recommendationDisplayLabel(for: "app:com.anthropic.claudefordesktop"),
+            "Claude"
+        )
+        XCTAssertEqual(
+            AppUsageEntry.recommendationDisplayLabel(for: "app:com.tinyspeck.slackmacgap"),
+            "Slack"
+        )
+        XCTAssertEqual(
+            AppUsageEntry.recommendationDisplayLabel(for: "app:com.openai.codex"),
+            "Codex"
+        )
+    }
+
+    func testRecommendationDisplayLabelFallsBackToReadableToken() {
+        let label = AppUsageEntry.recommendationDisplayLabel(for: "app:com.example.super-cool_app")
+        XCTAssertEqual(label, "Super Cool App")
     }
 
     func testRecommendationDisplayLabelKeepsDomainUntouched() {
