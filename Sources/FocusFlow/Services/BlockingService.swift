@@ -7,21 +7,32 @@ final class BlockingService {
 
     let appBlocker = AppBlocker()
     private(set) var isActive = false
-    private var activeProfile: BlockProfile?
+    private var activeProfiles: [BlockProfile] = []
+    private var activeBlockedWebsites: [String] = []
 
     func activate(profile: BlockProfile) {
-        guard !isActive else {
-            print("[BlockingService] Already active, skipping")
+        activate(profiles: [profile])
+    }
+
+    func activate(profiles: [BlockProfile]) {
+        let uniqueProfiles = deduplicatedProfiles(profiles)
+        guard !uniqueProfiles.isEmpty else {
+            print("[BlockingService] No profiles provided; skipping activation")
             return
         }
-        activeProfile = profile
-        isActive = true
-        print("[BlockingService] Activating profile: \(profile.name)")
 
-        // Website blocking — log to file for diagnosis
-        let rawValue = profile.blockedWebsitesRaw
-        let websites = profile.blockedWebsites
-        let logMsg = "[BlockingService] profile=\(profile.name) raw='\(rawValue)' parsed=\(websites)\n"
+        if isActive {
+            deactivate()
+        }
+
+        activeProfiles = uniqueProfiles
+        isActive = true
+        let profileNames = uniqueProfiles.map(\.name).joined(separator: ", ")
+        print("[BlockingService] Activating profiles: \(profileNames)")
+
+        let websites = Array(Set(uniqueProfiles.flatMap(\.blockedWebsites))).sorted()
+        activeBlockedWebsites = websites
+        let logMsg = "[BlockingService] profiles=\(profileNames) parsedWebsites=\(websites)\n"
         let logPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/blocking.log"
         try? logMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
         if !websites.isEmpty {
@@ -31,8 +42,7 @@ final class BlockingService {
             print("[BlockingService] WARNING: No websites to block!")
         }
 
-        // App blocking
-        let apps = profile.blockedApps
+        let apps = Array(Set(uniqueProfiles.flatMap(\.blockedApps))).sorted()
         print("[BlockingService] Blocking \(apps.count) apps: \(apps)")
         if !apps.isEmpty {
             appBlocker.activate(bundleIDs: apps)
@@ -42,11 +52,12 @@ final class BlockingService {
     func deactivate() {
         guard isActive else { return }
         print("[BlockingService] Deactivating blocking")
-        if !(activeProfile?.blockedWebsites.isEmpty ?? true) {
+        if !activeBlockedWebsites.isEmpty {
             BlockingHelper.unblockWebsites()
         }
         appBlocker.deactivate()
-        activeProfile = nil
+        activeProfiles = []
+        activeBlockedWebsites = []
         isActive = false
     }
 
@@ -59,5 +70,16 @@ final class BlockingService {
         } else {
             print("[BlockingService] No stale blocking — skipping cleanup")
         }
+    }
+
+    private func deduplicatedProfiles(_ profiles: [BlockProfile]) -> [BlockProfile] {
+        var seen = Set<UUID>()
+        var unique: [BlockProfile] = []
+        for profile in profiles {
+            if seen.insert(profile.id).inserted {
+                unique.append(profile)
+            }
+        }
+        return unique
     }
 }

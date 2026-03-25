@@ -20,8 +20,8 @@ struct WorkIntentWindowTests {
         #expect(signal.isWorkIntentWindow == false)
     }
 
-    @Test("Only 1 signal → not a work intent window (requires 2+)")
-    func oneSignalNotSufficient() {
+    @Test("Any 1 signal qualifies as a likely work-intent window")
+    func oneSignalIsSufficient() {
         let recentTime = Date().addingTimeInterval(-5 * 60)  // 5 min ago
         let signal = detector.evaluate(
             appLastOpenedAt: recentTime,
@@ -31,7 +31,7 @@ struct WorkIntentWindowTests {
             currentHour: 22,
             historicalWorkHours: 9...18
         )
-        #expect(signal.isWorkIntentWindow == false)
+        #expect(signal.isWorkIntentWindow == true)
     }
 
     @Test("App opened recently + within work hours = work intent window")
@@ -165,7 +165,7 @@ struct WorkIntentWindowTests {
             historicalWorkHours: 9...18
         )
         #expect(signal.matchesHistoricalMissedStart == true)
-        #expect(signal.isWorkIntentWindow == false, "A lone historical signal should not pass 2-signal gate")
+        #expect(signal.isWorkIntentWindow == true, "Any lone work-intent signal should pass 1-signal gate")
     }
 
     @Test("Outside-session challenge requires high drift OR repeated project pattern")
@@ -188,5 +188,17 @@ struct WorkIntentWindowTests {
             engagementMode: .adaptive
         )
         #expect(shouldChallenge == false)
+    }
+
+    @Test("Single work-intent signal is enough for work-intent window")
+    func singleSignalPassesWindow() {
+        let signal = WorkIntentSignal(
+            openedAppRecently: false,
+            selectedProjectRecently: true,
+            recentlyAbandonedStart: false,
+            withinTypicalWorkHours: false,
+            matchesHistoricalMissedStart: false
+        )
+        #expect(signal.isWorkIntentWindow == true)
     }
 }

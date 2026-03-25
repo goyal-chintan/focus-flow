@@ -261,6 +261,7 @@ final class TimerViewModel {
     private let coachPlanner = FocusCoachInterventionPlanner()
     private let coachOpportunityModel = FocusCoachOpportunityModel()
     private let guardianAdvisor = FocusCoachGuardianAdvisor()
+    private let outsideSessionSignalScorer = OutsideSessionSignalScorer()
     private let earnedBreakSuggestionEngine = EarnedBreakSuggestionEngine()
     private let screenShareGuard: ScreenShareGuard
     private let workIntentDetector = WorkIntentWindowDetector()
@@ -269,6 +270,10 @@ final class TimerViewModel {
     private var pauseCountThisSession: Int = 0
     private var strongPromptsShownThisSession: Int = 0
     private var lastIdleInterventionAt: Date?
+    private(set) var latestWorkIntentScore: Double = 0
+    private(set) var latestDriftScore: Double = 0
+    private(set) var latestWorkIntentActiveSignals: [String] = []
+    private(set) var latestDriftActiveSignals: [String] = []
 
     // MARK: - Work Intent Timestamps
     /// Time the app was launched — used as a proxy for "opened app recently".
@@ -1300,8 +1305,18 @@ final class TimerViewModel {
 
     private func activateBlocking() {
         log("activateBlocking called")
+        if let project = selectedProject {
+            let profiles = project.effectiveBlockProfiles
+            if !profiles.isEmpty {
+                let names = profiles.map(\.name).joined(separator: ", ")
+                log("Using project-specific profiles: \(names)")
+                BlockingService.shared.activate(profiles: profiles)
+                return
+            }
+        }
         if let profile = selectedProject?.blockProfile {
-            log("Using project-specific profile: \(profile.name)")
+            // Legacy fallback for stores that have not yet materialized blockProfiles.
+            log("Using legacy project-specific profile: \(profile.name)")
             BlockingService.shared.activate(profile: profile)
             return
         }
@@ -1862,7 +1877,8 @@ final class TimerViewModel {
         let normalizedAppTarget = isAppTarget
             ? AppUsageEntry.recommendationDisplayLabel(for: target)
             : nil
-        if project.blockProfile == nil {
+
+        if project.effectiveBlockProfiles.isEmpty {
             let profile = BlockProfile(
                 name: "\(project.name) Guard",
                 websites: isAppTarget ? [] : [target],
@@ -1870,6 +1886,7 @@ final class TimerViewModel {
             )
             modelContext?.insert(profile)
             project.blockProfile = profile
+            project.blockProfiles = [profile]
             saveContext()
             if state == .focusing || state == .paused {
                 deactivateBlocking()
@@ -1877,7 +1894,17 @@ final class TimerViewModel {
             }
             return
         }
-        guard let profile = project.blockProfile else { return }
+
+        let profile: BlockProfile
+        if let existing = project.effectiveBlockProfiles.first {
+            profile = existing
+            if project.blockProfile == nil {
+                project.blockProfile = existing
+            }
+        } else {
+            return
+        }
+
         if isAppTarget, let appTarget = normalizedAppTarget {
             var apps = profile.blockedApps
             if apps.contains(appTarget) { return }
@@ -2016,6 +2043,8 @@ final class TimerViewModel {
 
         let now = Date()
         let hour = Calendar.current.component(.hour, from: now)
+        let weekday = Calendar.current.component(.weekday, from: now)
+        let isWeekday = (2...6).contains(weekday)
         let opportunityContext = coachOpportunityModel.idleStarterContext(
             idleSeconds: idleSeconds,
             escalationLevel: escalationLevel,
@@ -2033,17 +2062,53 @@ final class TimerViewModel {
             matchesHistoricalMissedStart: coachEngine.hasHistoricalMissedStartPatternForLatestObservation(),
             currentHour: hour
         )
+        let workIntentScoreResult = outsideSessionSignalScorer.scoreWorkIntent(
+            OutsideSessionWorkIntentSignals(
+                openedAppRecently: workIntentSignal.openedAppRecently,
+                selectedProjectRecently: workIntentSignal.selectedProjectRecently,
+                recentlyAbandonedStart: workIntentSignal.recentlyAbandonedStart,
+                withinTypicalWorkHours: workIntentSignal.withinTypicalWorkHours,
+                isWeekday: isWeekday,
+                preMeetingRunwayMinutes: nil,
+                matchesHistoricalMissedStart: workIntentSignal.matchesHistoricalMissedStart,
+                productiveContinuity: frontmostCategory == .productive
+            )
+        )
+        let appSwitchRate = FocusCoachEngine.computeAppSwitchRate(
+            switchTimestamps: AppUsageTracker.shared.recentAppSwitchTimestamps
+        )
+        let driftScoreResult = outsideSessionSignalScorer.scoreDrift(
+            OutsideSessionDriftSignals(
+                frontmostCategory: frontmostCategory,
+                appSwitchesPerMinute: appSwitchRate,
+                contextMismatch: coachEngine.hasRepeatedProjectPatternForLatestObservation(),
+                overPlanningLoopDetected: AppUsageTracker.shared.currentFrontmostBundleId?
+                    .lowercased()
+                    .contains("openai") == true
+                    || AppUsageTracker.shared.currentFrontmostBundleId?
+                    .lowercased()
+                    .contains("anthropic") == true,
+                breakOverrunRisk: false,
+                startFrictionRepeats: workIntentSignal.recentlyAbandonedStart ? 2 : 0,
+                fatigueRisk: idleSeconds >= 45 * 60
+            )
+        )
+        latestWorkIntentScore = workIntentScoreResult.score
+        latestDriftScore = driftScoreResult.score
+        latestWorkIntentActiveSignals = workIntentScoreResult.activeSignals
+        latestDriftActiveSignals = driftScoreResult.activeSignals
+
         let currentGuardianState = guardianAdvisor.guardianState(
             isInActiveSession: false,
             inReleaseWindow: isInReleaseWindow,
-            driftConfidence: opportunityContext.driftConfidence,
+            driftConfidence: max(opportunityContext.driftConfidence, driftScoreResult.score),
             hasRecommendation: false,
             hasRepeatedProjectPattern: repeatedProjectPattern,
             engagementMode: engagementMode
         )
         let route = coachPlanner.routeIdleStarter(
-            driftConfidence: opportunityContext.driftConfidence,
-            focusOpportunity: opportunityContext.focusOpportunity,
+            driftConfidence: max(opportunityContext.driftConfidence, driftScoreResult.score),
+            focusOpportunity: max(opportunityContext.focusOpportunity, workIntentScoreResult.score),
             mode: settings.coachInterventionMode,
             allowSkipAction: settings.coachAllowSkipAction,
             engagementMode: engagementMode,
