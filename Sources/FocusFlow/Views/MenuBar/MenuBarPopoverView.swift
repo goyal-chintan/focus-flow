@@ -1335,7 +1335,11 @@ private struct BreakOvertimePopoverContent: View {
 
 private struct BreakPopoverContent: View {
     @Binding var selectedProject: Project?
+    let isBreakPaused: Bool
     let onSkipBreak: () -> Void
+    let onEndSession: () -> Void
+    let onPauseBreak: () -> Void
+    let onResumeBreak: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
@@ -1356,19 +1360,73 @@ private struct BreakPopoverContent: View {
             }
             .padding(.top, 8)
 
-            // Skip Break — native glass button
-            Button(action: onSkipBreak) {
-                HStack(spacing: 6) {
-                    Text("Start Next Block")
-                        .font(.system(size: 13, weight: .medium))
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .medium))
-                        .accessibilityHidden(true)
+            GlassEffectContainer {
+                VStack(spacing: 8) {
+                    // Primary CTA — start next focus block (spec: "Start focusing")
+                    Button(action: onSkipBreak) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .accessibilityHidden(true)
+                            Text("Start Focusing")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityLabel("Skip break and start next focus block")
+
+                    // Secondary actions row
+                    HStack(spacing: 8) {
+                        // Pause / Resume break toggle (spec: "Pause break")
+                        if isBreakPaused {
+                            Button(action: onResumeBreak) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "play.circle")
+                                        .font(.system(size: 11))
+                                        .accessibilityHidden(true)
+                                    Text("Resume Break")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 32)
+                            }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.capsule)
+                            .accessibilityLabel("Resume break countdown")
+                        } else {
+                            Button(action: onPauseBreak) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "pause.circle")
+                                        .font(.system(size: 11))
+                                        .accessibilityHidden(true)
+                                    Text("Pause Break")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 32)
+                            }
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.capsule)
+                            .accessibilityLabel("Pause break countdown")
+                        }
+
+                        // End session (spec: "End session")
+                        Button(action: onEndSession) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "xmark.circle")
+                                    .font(.system(size: 11))
+                                    .accessibilityHidden(true)
+                                Text("End Session")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                        .accessibilityLabel("End session and return to idle")
+                    }
                 }
-                .frame(maxWidth: .infinity, minHeight: 36)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         }
         .padding(.bottom, 12)
@@ -1460,7 +1518,11 @@ extension MenuBarPopoverView {
         @Bindable var vm = timerVM
         return BreakPopoverContent(
             selectedProject: $vm.selectedProject,
-            onSkipBreak: { timerVM.skipBreak() }
+            isBreakPaused: timerVM.isBreakPaused,
+            onSkipBreak: { timerVM.skipBreak() },
+            onEndSession: { timerVM.stop() },
+            onPauseBreak: { timerVM.pauseBreak() },
+            onResumeBreak: { timerVM.resumeBreak() }
         )
     }
 
