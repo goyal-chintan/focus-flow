@@ -152,8 +152,8 @@ struct BlockingRecommendationIntegrationTests {
         )
 
         #expect(rec != nil)
-        #expect(rec?.displayName == "com.mitchellh.ghostty")
+        #expect(rec?.displayName == "Ghostty")
         #expect(rec?.copyText.contains("app:") == false)
-        #expect(rec?.copyText.contains("com.mitchellh.ghostty") == true)
+        #expect(rec?.copyText.contains("Ghostty") == true)
     }
 }
