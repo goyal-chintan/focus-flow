@@ -45,6 +45,10 @@ final class AppUsageTracker {
         return lastFrontmostBundleId
     }
 
+    var recentAppSwitchTimestamps: [Date] {
+        appSwitchTimestamps
+    }
+
     /// The `AppUsageEntry.AppCategory` of the current foreground app (for TimerViewModel usage).
     var currentFrontmostCategory: AppUsageEntry.AppCategory { lastFrontmostCategory }
 

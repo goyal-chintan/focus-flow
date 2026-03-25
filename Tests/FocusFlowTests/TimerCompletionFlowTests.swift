@@ -563,6 +563,53 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertTrue(project.blockProfile?.blockedWebsites.contains("youtube.com") ?? false)
     }
 
+    func testBlockForProjectDoesNotDuplicateTargetAcrossMultipleProfiles() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let project = Project(name: "Research")
+        let profileA = BlockProfile(name: "A", websites: ["youtube.com"])
+        let profileB = BlockProfile(name: "B", websites: ["reddit.com"])
+        container.mainContext.insert(project)
+        container.mainContext.insert(profileA)
+        container.mainContext.insert(profileB)
+        project.blockProfiles = [profileA, profileB]
+        project.blockProfile = profileA
+        vm.selectedProject = project
+
+        vm.currentCoachQuickPromptDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.blockForProject],
+            message: "Block domain target",
+            context: FocusCoachContext(
+                idleSeconds: 0,
+                frontmostAppName: "Safari",
+                frontmostBundleIdentifier: "com.apple.Safari",
+                frontmostAppCategory: .distracting,
+                isInActiveSession: false,
+                todayFocusSeconds: 0,
+                dailyGoalSeconds: 3600,
+                todaySessionCount: 0,
+                selectedProjectName: project.name,
+                selectedWorkMode: .deepWork,
+                hourOfDay: 10,
+                topDistractingAppName: nil,
+                topDistractingAppMinutes: 0,
+                recentLowPriorityWorkCount: 0,
+                suggestedBlockTarget: "youtube.com",
+                blockRecommendationReason: "youtube drift",
+                inReleaseWindow: false
+            )
+        )
+
+        vm.handleCoachAction(.blockForProject)
+
+        XCTAssertEqual(project.effectiveBlockProfiles.count, 2)
+        XCTAssertEqual(project.mergedBlockedWebsites.filter { $0 == "youtube.com" }.count, 1)
+    }
+
     func testSuggestedEarnedBreakIsCalculatedAfterMeaningfulFocusCompletion() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
