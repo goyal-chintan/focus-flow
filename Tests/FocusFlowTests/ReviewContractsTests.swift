@@ -2,6 +2,58 @@ import XCTest
 @testable import FocusFlow
 
 final class ReviewContractsTests: XCTestCase {
+    func testSessionCompleteNextStageShowsPlannedAndSuggestedBreakActions() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("SessionCompleteWindow.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("title: \"Planned 5m Break\""),
+            "SessionCompleteWindow must expose a planned break action in stage 2."
+        )
+        XCTAssertTrue(
+            source.contains("title: \"Suggested Earned Break\""),
+            "SessionCompleteWindow must expose a suggested earned break action in stage 2."
+        )
+        XCTAssertTrue(
+            source.contains("gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: timerVM.cycleProgress)"),
+            "SessionCompleteWindow should prioritize reflection/progress completion as the primary CTA."
+        )
+        XCTAssertTrue(
+            source.contains("GradientCTAButton(\n                        title: \"Suggested Earned Break\""),
+            "Suggested earned break should be visually prioritized over skip-break actions."
+        )
+        XCTAssertTrue(
+            source.contains("LiquidActionButton(\n                        title: \"Start Next Block\""),
+            "Start Next Block should remain a secondary action to avoid skip-break bias."
+        )
+    }
+
+    func testSessionCompleteResetsToEarnedStageOnAppear() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("SessionCompleteWindow.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("stage = .earned"),
+            "SessionCompleteWindow should reset to earned stage on each appearance."
+        )
+        XCTAssertTrue(
+            source.contains("hasHandledAction = false"),
+            "SessionCompleteWindow should clear hasHandledAction on each appearance."
+        )
+    }
+
     func testProjectFormDropdownRowsHaveFullWidthHitTargets() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()

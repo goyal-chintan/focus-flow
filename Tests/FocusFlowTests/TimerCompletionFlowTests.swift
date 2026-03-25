@@ -141,6 +141,52 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertNil(vm.currentIdleStarterDecision)
     }
 
+    func testIdleStarterSuppressionRecordsReasonWhenBlockedByScreenShare() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel(
+            screenShareGuard: ScreenShareGuard(isScreenSharingProvider: { true })
+        )
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = true
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .screenShareSuppressed)
+    }
+
+    func testIdleStarterSuppressionRecordsReasonWhenReleaseWindowIsActive() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        try container.mainContext.save()
+
+        vm.enterRelease(reason: .offDuty)
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .releaseWindowActive)
+    }
+
     func testIdleEscalationShowsStrongCoachWindowAtThirdNudgeForProductiveApp() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
@@ -664,6 +710,69 @@ final class TimerCompletionFlowTests: XCTestCase {
         let events = try container.mainContext.fetch(FetchDescriptor<BreakLearningEvent>())
         XCTAssertEqual(events.count, 1)
         XCTAssertTrue(events[0].returnedToFocus)
+    }
+
+    // MARK: - Pause Break (spec: break state controls must include Pause break)
+
+    func testPauseBreakSetsPausedFlagAndDoesNotChangeState() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .onBreak(.shortBreak)
+        vm.remainingSeconds = 240
+
+        vm.pauseBreak()
+
+        XCTAssertTrue(vm.isBreakPaused, "pauseBreak should set isBreakPaused = true")
+        XCTAssertEqual(vm.state, .onBreak(.shortBreak), "state should remain onBreak")
+        XCTAssertEqual(vm.remainingSeconds, 240, "remaining seconds should be frozen at pause point")
+    }
+
+    func testResumeBreakClearsPausedFlagAndRestoresState() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .onBreak(.shortBreak)
+        vm.remainingSeconds = 180
+        vm.pauseBreak()
+        XCTAssertTrue(vm.isBreakPaused)
+
+        vm.resumeBreak()
+
+        XCTAssertFalse(vm.isBreakPaused, "resumeBreak should clear isBreakPaused")
+        XCTAssertEqual(vm.state, .onBreak(.shortBreak), "state should remain onBreak after resume")
+        XCTAssertEqual(vm.remainingSeconds, 180, "remaining seconds should resume from frozen value")
+    }
+
+    func testPauseBreakOutsideBreakStateIsNoOp() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .idle
+        vm.pauseBreak()
+
+        XCTAssertFalse(vm.isBreakPaused, "pauseBreak should be no-op when not in break state")
+    }
+
+    func testStopClearsBreakPausedFlag() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .onBreak(.shortBreak)
+        vm.pauseBreak()
+        XCTAssertTrue(vm.isBreakPaused)
+
+        vm.stop()
+
+        XCTAssertFalse(vm.isBreakPaused, "stop() should clear isBreakPaused")
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {
