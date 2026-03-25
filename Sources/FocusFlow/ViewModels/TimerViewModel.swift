@@ -218,6 +218,9 @@ final class TimerViewModel {
     /// True when the completed session was a break (break ran past its duration).
     var isBreakOvertime: Bool { isOvertime && lastCompletedSession?.type != .focus }
 
+    /// True when the user has paused a running break (countdown frozen).
+    var isBreakPaused: Bool = false
+
     // MARK: - Today Stats
     var todayFocusTime: TimeInterval = 0
     var todaySessionCount: Int = 0
@@ -961,6 +964,7 @@ final class TimerViewModel {
         isOvertime = false
         overtimeSeconds = 0
         isManualStop = false
+        isBreakPaused = false
         showSessionComplete = false
         showCoachReasonSheet = false
         showPauseReasonChips = false
@@ -1185,6 +1189,21 @@ final class TimerViewModel {
 
     func skipBreak() {
         deferBreakAndStartNextBlock()
+    }
+
+    /// Freezes the break countdown without ending the break session.
+    func pauseBreak() {
+        guard case .onBreak = state else { return }
+        timer?.invalidate()
+        timer = nil
+        isBreakPaused = true
+    }
+
+    /// Resumes a paused break countdown from the frozen remaining-seconds value.
+    func resumeBreak() {
+        guard isBreakPaused, case .onBreak = state else { return }
+        isBreakPaused = false
+        startTimer()
     }
 
     // MARK: - Blocking
