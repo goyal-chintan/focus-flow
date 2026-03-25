@@ -199,7 +199,14 @@ final class TimerViewModel {
     private(set) var completedBlockContext: CompletedBlockContext? = nil
     /// Tracks the current or most-recent break episode, linked to the earned block.
     private(set) var breakEpisodeContext: BreakEpisodeContext? = nil
+    var suggestedEarnedBreakMinutes: Int = 5
+    var suggestedEarnedBreakSeconds: TimeInterval { TimeInterval(suggestedEarnedBreakMinutes * 60) }
     /// Active suppression window when user has explicitly opted out of guardian prompts.
+    ///
+    /// Lifecycle semantics (intentional and non-ambiguous):
+    /// - Entered only via explicit release actions (e.g. mark-off-duty, done-for-now).
+    /// - Cleared when the user recommits by starting a new focus session.
+    /// - `markOffDuty` additionally clears any pending guardian prompt/window UI.
     private(set) var suppressionWindow: InterventionSuppressionWindow? = nil
 
     // MARK: - Overtime
@@ -254,12 +261,14 @@ final class TimerViewModel {
     private let coachPlanner = FocusCoachInterventionPlanner()
     private let coachOpportunityModel = FocusCoachOpportunityModel()
     private let guardianAdvisor = FocusCoachGuardianAdvisor()
+    private let earnedBreakSuggestionEngine = EarnedBreakSuggestionEngine()
+    private let screenShareGuard: ScreenShareGuard
     private let workIntentDetector = WorkIntentWindowDetector()
+    private var choseSuggestedBreakCurrentEpisode: Bool = false
     private var coachTickCounter: Int = 0
     private var pauseCountThisSession: Int = 0
     private var strongPromptsShownThisSession: Int = 0
     private var lastIdleInterventionAt: Date?
-    private var guardianReleaseUntil: Date?
 
     // MARK: - Work Intent Timestamps
     /// Time the app was launched — used as a proxy for "opened app recently".
@@ -283,11 +292,6 @@ final class TimerViewModel {
 
     var activeCoachPopoverDecision: FocusCoachDecision? {
         currentCoachQuickPromptDecision ?? currentIdleStarterDecision
-    }
-
-    var isGuardianInReleaseWindow: Bool {
-        guard let guardianReleaseUntil else { return false }
-        return Date() < guardianReleaseUntil
     }
 
     /// Pre-session intention data (set from IdlePopoverContent, persisted on startFocus)
@@ -343,6 +347,10 @@ final class TimerViewModel {
 
     // MARK: - Setup
     private var isConfigured = false
+
+    init(screenShareGuard: ScreenShareGuard = ScreenShareGuard()) {
+        self.screenShareGuard = screenShareGuard
+    }
 
     func configure(modelContext: ModelContext) {
         guard !isConfigured else { return }
@@ -698,7 +706,9 @@ final class TimerViewModel {
         currentIdleStarterDecision = nil
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
-        guardianReleaseUntil = nil
+        // Starting a new focus block is an explicit recommit signal.
+        // Clear any prior release window so guardian protections resume immediately.
+        suppressionWindow = nil
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
         coachEngine.currentTaskResistance = coachResistance
         coachEngine.startSession(id: session.id)
@@ -1015,6 +1025,7 @@ final class TimerViewModel {
             workMode: selectedProject?.workMode ?? .deepWork,
             earnedAt: Date()
         )
+        refreshEarnedBreakSuggestion()
         currentSession = nil
 
         isManualStop = true
@@ -1117,7 +1128,7 @@ final class TimerViewModel {
         lastIdleInterventionAt = nil
         coachEngine.endSession()
         clearCrashRecoveryState()
-        guardianReleaseUntil = nil
+        suppressionWindow = nil
         if let session = currentSession {
             modelContext?.delete(session)
             saveContext()
@@ -1168,6 +1179,7 @@ final class TimerViewModel {
     // MARK: - Guardian Release Window
 
     /// Enters an explicit opt-out suppression window so guardian interventions are paused.
+    /// This is only for explicit release actions; it is cleared on next `startFocus()`.
     func enterRelease(reason: ExplicitOptOutReason) {
         suppressionWindow = InterventionSuppressionWindow(
             reason: reason,
@@ -1195,6 +1207,85 @@ final class TimerViewModel {
         completedBlockContext = nil
         breakEpisodeContext = nil
         suppressionWindow = nil
+    }
+
+    private var breakLearningStore: BreakLearningStore? {
+        guard let modelContext else { return nil }
+        return BreakLearningStore(modelContext: modelContext)
+    }
+
+    private func refreshEarnedBreakSuggestion() {
+        let effortSeconds: Int
+        if let session = lastCompletedFocusSession {
+            effortSeconds = max(0, Int(session.actualDuration))
+        } else if let duration = lastCompletedDuration {
+            effortSeconds = max(0, Int(duration))
+        } else {
+            effortSeconds = 0
+        }
+
+        let projectId = completedBlockContext?.projectId ?? selectedProject?.id
+        let workMode = completedBlockContext?.workMode ?? selectedProject?.workMode ?? .deepWork
+        let recent = breakLearningStore?.recentEvents(projectId: projectId, workMode: workMode, limit: 8) ?? []
+
+        var adaptationScore = 0
+        for event in recent {
+            if event.returnedToFocus { adaptationScore += 1 }
+            if event.endedEarly { adaptationScore -= 1 }
+            if event.overrunSeconds > 120 { adaptationScore -= 1 }
+        }
+        let adaptationMinutes = min(3, max(-3, adaptationScore / 2))
+
+        let suggestion = earnedBreakSuggestionEngine.suggest(
+            EarnedBreakSuggestionInput(
+                effectiveEffortSeconds: effortSeconds,
+                overtimeSeconds: overtimeSeconds,
+                runCreditSeconds: effortSeconds,
+                adaptationMinutes: adaptationMinutes
+            )
+        )
+        suggestedEarnedBreakMinutes = suggestion.suggestedMinutes
+    }
+
+    private func recordBreakLearningIfNeeded(returnedToFocus: Bool) {
+        guard let store = breakLearningStore else { return }
+
+        let breakSession: FocusSession?
+        if let currentSession, currentSession.type != .focus {
+            breakSession = currentSession
+        } else if let lastCompletedSession, lastCompletedSession.type != .focus {
+            breakSession = lastCompletedSession
+        } else {
+            breakSession = nil
+        }
+        guard let breakSession else { return }
+
+        let actualSeconds: Int
+        if breakSession.endedAt == nil {
+            actualSeconds = max(0, Int(Date().timeIntervalSince(breakSession.startedAt)))
+        } else {
+            actualSeconds = max(0, Int(breakSession.actualDuration))
+        }
+
+        let plannedSeconds = breakEpisodeContext?.plannedDurationSeconds ?? max(0, Int(breakSession.duration))
+        let overrunSeconds = max(0, actualSeconds - plannedSeconds)
+        let endedEarly = actualSeconds < plannedSeconds
+
+        let projectId = breakEpisodeContext?.earnedBlock.projectId ?? completedBlockContext?.projectId
+        let workMode = breakEpisodeContext?.earnedBlock.workMode ?? completedBlockContext?.workMode ?? selectedProject?.workMode ?? .deepWork
+
+        store.record(
+            projectId: projectId,
+            workMode: workMode,
+            suggestedMinutes: suggestedEarnedBreakMinutes,
+            choseSuggested: choseSuggestedBreakCurrentEpisode,
+            actualBreakSeconds: actualSeconds,
+            returnedToFocus: returnedToFocus,
+            endedEarly: endedEarly,
+            overrunSeconds: overrunSeconds
+        )
+
+        choseSuggestedBreakCurrentEpisode = false
     }
 
     private func activateBlocking() {
@@ -1365,6 +1456,7 @@ final class TimerViewModel {
                     workMode: selectedProject?.workMode ?? .deepWork,
                     earnedAt: Date()
                 )
+                refreshEarnedBreakSuggestion()
             }
         } else {
             // Break completed naturally — mark episode end
@@ -1522,6 +1614,12 @@ final class TimerViewModel {
             return
         }
 
+        if case .continueFocusing = action {
+            recordBreakLearningIfNeeded(returnedToFocus: true)
+        } else if case .endSession = action {
+            recordBreakLearningIfNeeded(returnedToFocus: false)
+        }
+
         closePopover()
 
         // Resolve completion and leave overtime mode.
@@ -1546,6 +1644,11 @@ final class TimerViewModel {
         case .continueFocusing:
             startFocus()
         case .takeBreak(let duration):
+            if let duration {
+                choseSuggestedBreakCurrentEpisode = Int(duration) == Int(suggestedEarnedBreakSeconds) && suggestedEarnedBreakMinutes > 5
+            } else {
+                choseSuggestedBreakCurrentEpisode = false
+            }
             startBreak(overrideDuration: duration)
         case .endSession:
             deactivateBlocking()
@@ -1585,7 +1688,6 @@ final class TimerViewModel {
 
     /// Handles a coach quick action selection.
     func handleCoachAction(_ action: FocusCoachQuickAction, skipReason: FocusCoachSkipReason? = nil) {
-        applyGuardianRelease(reason: skipReason, action: action)
         switch action {
         case .returnNow:
             coachEngine.recordInterventionOutcome(.improved)
@@ -1602,6 +1704,7 @@ final class TimerViewModel {
             startFocus()
             closePopover()
         case .snooze10m:
+            applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
@@ -1622,17 +1725,22 @@ final class TimerViewModel {
             currentIdleStarterDecision = nil
             closePopover()
         case .skipCheck:
+            applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
             closePopover()
         case .markOffDuty:
-            // Placeholder: wire to enterRelease(reason: .offDuty) when p1-timer-spine lands.
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
+            // Off-duty is an explicit release intent: enter release + clear all pending prompt surfaces.
+            enterRelease(reason: .offDuty)
+            showCoachInterventionWindow = false
+            activeCoachInterventionDecision = nil
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
             closePopover()
         case .isPlanned:
+            coachEngine.recordOutsideSessionClassification(.plannedWork)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: nil)
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
@@ -1649,6 +1757,7 @@ final class TimerViewModel {
         coachEngine.recordInterventionOutcome(.dismissed)
         if currentIdleStarterDecision != nil {
             lastAbandonedStartAt = Date()
+            coachEngine.recordOutsideSessionMissedStart()
         }
         currentCoachQuickPromptDecision = nil
         currentIdleStarterDecision = nil
@@ -1696,10 +1805,32 @@ final class TimerViewModel {
         return "Current context looks off-plan. Choose the next best action."
     }
 
-    private func applyGuardianRelease(reason: FocusCoachSkipReason?, action: FocusCoachQuickAction) {
+    private func applyGuardianReleaseIfNeeded(for action: FocusCoachQuickAction, reason: FocusCoachSkipReason?) {
         guard action == .snooze10m || action == .skipCheck else { return }
-        guard let duration = guardianAdvisor.releaseDuration(for: reason) else { return }
-        guardianReleaseUntil = Date().addingTimeInterval(duration)
+        guard let mappedReason = explicitOptOutReason(for: reason) else { return }
+        enterRelease(reason: mappedReason)
+    }
+
+    private func explicitOptOutReason(for reason: FocusCoachSkipReason?) -> ExplicitOptOutReason? {
+        guard let reason else { return nil }
+        switch reason {
+        case .doneForToday:
+            return .offDuty
+        case .notWell, .justTired:
+            return .tooTired
+        case .takingBreak:
+            return .realBreak
+        case .urgentTask, .inMeeting:
+            return .meeting
+        case .lowPriorityWork, .procrastinating, .cantFocus:
+            return .doneForNow
+        }
+    }
+
+    private func shouldSuppressGuardianPopups(using settings: AppSettings) -> Bool {
+        screenShareGuard.shouldSuppressGuardianPopups(
+            enabled: settings.coachSuppressPopupsDuringScreenShare
+        )
     }
 
     private func applyProjectBlockRecommendation() {
@@ -1707,8 +1838,16 @@ final class TimerViewModel {
             ?? currentCoachQuickPromptDecision?.context?.suggestedBlockTarget
             ?? currentIdleStarterDecision?.context?.suggestedBlockTarget else { return }
         guard let project = selectedProject else { return }
+        let isAppTarget = target.lowercased().hasPrefix("app:")
+        let normalizedAppTarget = isAppTarget
+            ? AppUsageEntry.recommendationDisplayLabel(for: target)
+            : nil
         if project.blockProfile == nil {
-            let profile = BlockProfile(name: "\(project.name) Guard", websites: [target])
+            let profile = BlockProfile(
+                name: "\(project.name) Guard",
+                websites: isAppTarget ? [] : [target],
+                apps: normalizedAppTarget.map { [$0] } ?? []
+            )
             modelContext?.insert(profile)
             project.blockProfile = profile
             saveContext()
@@ -1719,10 +1858,17 @@ final class TimerViewModel {
             return
         }
         guard let profile = project.blockProfile else { return }
-        var websites = profile.blockedWebsites
-        if websites.contains(target) { return }
-        websites.append(target)
-        profile.blockedWebsites = websites
+        if isAppTarget, let appTarget = normalizedAppTarget {
+            var apps = profile.blockedApps
+            if apps.contains(appTarget) { return }
+            apps.append(appTarget)
+            profile.blockedApps = apps
+        } else {
+            var websites = profile.blockedWebsites
+            if websites.contains(target) { return }
+            websites.append(target)
+            profile.blockedWebsites = websites
+        }
         saveContext()
         if state == .focusing || state == .paused {
             deactivateBlocking()
@@ -1740,7 +1886,7 @@ final class TimerViewModel {
 
     private func routeCoachDecision(_ decision: FocusCoachDecision) {
         guard let settings else { return }
-        if isGuardianInReleaseWindow {
+        if isInReleaseWindow || shouldSuppressGuardianPopups(using: settings) {
             currentCoachQuickPromptDecision = nil
             activeCoachInterventionDecision = nil
             showCoachInterventionWindow = false
@@ -1837,8 +1983,10 @@ final class TimerViewModel {
         frontmostCategory: AppUsageEntry.AppCategory
     ) {
         guard state == .idle, !isOvertime, let settings else { return }
-        if isGuardianInReleaseWindow {
+        if isInReleaseWindow || shouldSuppressGuardianPopups(using: settings) {
             currentIdleStarterDecision = nil
+            activeCoachInterventionDecision = nil
+            showCoachInterventionWindow = false
             return
         }
         guard settings.antiProcrastinationEnabled, settings.coachIdleStarterEnabled else {
@@ -1857,10 +2005,12 @@ final class TimerViewModel {
             defaultMinutes: max(5, selectedMinutes)
         )
         let engagementMode = selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
+        let repeatedProjectPattern = coachEngine.hasRepeatedProjectPatternForLatestObservation()
         let workIntentSignal = workIntentDetector.evaluate(
             appLastOpenedAt: appLaunchTime,
             projectLastSelectedAt: lastProjectSelectedAt,
             lastAbandonedStartAt: lastAbandonedStartAt,
+            matchesHistoricalMissedStart: coachEngine.hasHistoricalMissedStartPatternForLatestObservation(),
             currentHour: hour
         )
         let currentGuardianState = guardianAdvisor.guardianState(
@@ -1868,6 +2018,7 @@ final class TimerViewModel {
             inReleaseWindow: isInReleaseWindow,
             driftConfidence: opportunityContext.driftConfidence,
             hasRecommendation: false,
+            hasRepeatedProjectPattern: repeatedProjectPattern,
             engagementMode: engagementMode
         )
         let route = coachPlanner.routeIdleStarter(
@@ -1878,7 +2029,8 @@ final class TimerViewModel {
             engagementMode: engagementMode,
             guardianState: currentGuardianState,
             isInReleaseWindow: isInReleaseWindow,
-            workIntentSignal: workIntentSignal
+            workIntentSignal: workIntentSignal,
+            repeatedProjectPattern: repeatedProjectPattern
         )
 
         if route.shouldPresent, var decision = route.decision {
@@ -2028,7 +2180,7 @@ final class TimerViewModel {
             recentLowPriorityWorkCount: coachEngine.recentLowPrioritySkipCount(),
             suggestedBlockTarget: recommendation?.target,
             blockRecommendationReason: recommendation?.reason,
-            inReleaseWindow: isGuardianInReleaseWindow
+            inReleaseWindow: isInReleaseWindow
         )
     }
 }

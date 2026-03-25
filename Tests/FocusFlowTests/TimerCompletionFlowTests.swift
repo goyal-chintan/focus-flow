@@ -77,7 +77,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertGreaterThan(vm.remainingSeconds, 0)
     }
 
-    func testExplicitSkipReasonCreatesGuardianReleaseWindow() throws {
+    func testExplicitSkipReasonCreatesSuppressionReleaseWindow() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
         vm.configure(modelContext: container.mainContext)
@@ -85,7 +85,60 @@ final class TimerCompletionFlowTests: XCTestCase {
 
         vm.handleCoachAction(.skipCheck, skipReason: .doneForToday)
 
-        XCTAssertTrue(vm.isGuardianInReleaseWindow)
+        XCTAssertTrue(vm.isInReleaseWindow)
+        XCTAssertEqual(vm.suppressionWindow?.reason, .offDuty)
+    }
+
+    func testMarkOffDutyEntersExplicitReleaseAndClearsPrompts() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.currentCoachQuickPromptDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.skipCheck],
+            message: "quick"
+        )
+        vm.currentIdleStarterDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.startFocusNow],
+            message: "idle"
+        )
+
+        vm.handleCoachAction(.markOffDuty)
+
+        XCTAssertTrue(vm.isInReleaseWindow)
+        XCTAssertEqual(vm.suppressionWindow?.reason, .offDuty)
+        XCTAssertNil(vm.currentCoachQuickPromptDecision)
+        XCTAssertNil(vm.currentIdleStarterDecision)
+    }
+
+    func testIdleStarterPromptSuppressedWhenScreenShareActiveAndEnabled() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel(
+            screenShareGuard: ScreenShareGuard(isScreenSharingProvider: { true })
+        )
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = true
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertFalse(vm.showCoachInterventionWindow)
+        XCTAssertNil(vm.activeCoachInterventionDecision)
+        XCTAssertNil(vm.currentIdleStarterDecision)
     }
 
     func testIdleEscalationShowsStrongCoachWindowAtThirdNudgeForProductiveApp() throws {
@@ -405,6 +458,143 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertTrue(vm.isInReleaseWindow, "classifyBreakRecovery(.doneForNow) must activate the suppression window")
     }
 
+    func testBlockForProjectStoresAppContextTargetInBlockedApps() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let project = Project(name: "Core Architecture")
+        container.mainContext.insert(project)
+        vm.selectedProject = project
+
+        vm.currentCoachQuickPromptDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.blockForProject],
+            message: "Block app target",
+            context: FocusCoachContext(
+                idleSeconds: 0,
+                frontmostAppName: "Ghostty",
+                frontmostBundleIdentifier: "com.mitchellh.ghostty",
+                frontmostAppCategory: .neutral,
+                isInActiveSession: false,
+                todayFocusSeconds: 0,
+                dailyGoalSeconds: 3600,
+                todaySessionCount: 0,
+                selectedProjectName: project.name,
+                selectedWorkMode: .deepWork,
+                hourOfDay: 10,
+                topDistractingAppName: nil,
+                topDistractingAppMinutes: 0,
+                recentLowPriorityWorkCount: 0,
+                suggestedBlockTarget: "app:com.mitchellh.ghostty",
+                blockRecommendationReason: "ghostty drift",
+                inReleaseWindow: false
+            )
+        )
+
+        vm.handleCoachAction(.blockForProject)
+
+        XCTAssertTrue(project.blockProfile?.blockedApps.contains("com.mitchellh.ghostty") ?? false)
+        XCTAssertFalse(project.blockProfile?.blockedWebsites.contains("app:com.mitchellh.ghostty") ?? true)
+    }
+
+    func testBlockForProjectKeepsDomainBehaviorInBlockedWebsites() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let project = Project(name: "Research")
+        container.mainContext.insert(project)
+        vm.selectedProject = project
+
+        vm.currentCoachQuickPromptDecision = FocusCoachDecision(
+            kind: .quickPrompt,
+            suggestedActions: [.blockForProject],
+            message: "Block domain target",
+            context: FocusCoachContext(
+                idleSeconds: 0,
+                frontmostAppName: "Safari",
+                frontmostBundleIdentifier: "com.apple.Safari",
+                frontmostAppCategory: .distracting,
+                isInActiveSession: false,
+                todayFocusSeconds: 0,
+                dailyGoalSeconds: 3600,
+                todaySessionCount: 0,
+                selectedProjectName: project.name,
+                selectedWorkMode: .deepWork,
+                hourOfDay: 10,
+                topDistractingAppName: nil,
+                topDistractingAppMinutes: 0,
+                recentLowPriorityWorkCount: 0,
+                suggestedBlockTarget: "youtube.com",
+                blockRecommendationReason: "youtube drift",
+                inReleaseWindow: false
+            )
+        )
+
+        vm.handleCoachAction(.blockForProject)
+
+        XCTAssertTrue(project.blockProfile?.blockedWebsites.contains("youtube.com") ?? false)
+    }
+
+    func testSuggestedEarnedBreakIsCalculatedAfterMeaningfulFocusCompletion() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.selectedMinutes = 55
+        vm.startFocus()
+        let active = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
+        active.startedAt = Date().addingTimeInterval(-55 * 60)
+        try container.mainContext.save()
+
+        vm.stopForReflection()
+
+        XCTAssertEqual(vm.suggestedEarnedBreakMinutes, 15)
+    }
+
+    func testChoosingSuggestedBreakStartsBreakWithSuggestedDuration() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.suggestedEarnedBreakMinutes = 12
+        vm.state = .idle
+        vm.isOvertime = true
+        vm.showSessionComplete = true
+
+        vm.continueAfterCompletion(action: .takeBreak(duration: vm.suggestedEarnedBreakSeconds))
+
+        XCTAssertEqual(vm.state, .onBreak(.shortBreak))
+        XCTAssertEqual(vm.totalSeconds, 12 * 60)
+        XCTAssertEqual(vm.remainingSeconds, 12 * 60)
+    }
+
+    func testBreakOutcomeRecordedWhenReturningToFocus() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        let focus = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first(where: { $0.type == .focus }))
+        focus.startedAt = Date().addingTimeInterval(-25 * 60)
+        try container.mainContext.save()
+        vm.stopForReflection()
+
+        vm.suggestedEarnedBreakMinutes = 8
+        vm.continueAfterCompletion(action: .takeBreak(duration: vm.suggestedEarnedBreakSeconds))
+        vm.continueAfterCompletion(action: .continueFocusing)
+
+        let events = try container.mainContext.fetch(FetchDescriptor<BreakLearningEvent>())
+        XCTAssertEqual(events.count, 1)
+        XCTAssertTrue(events[0].returnedToFocus)
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,
@@ -416,7 +606,8 @@ final class TimerCompletionFlowTests: XCTestCase {
             AppUsageEntry.self,
             TaskIntent.self,
             CoachInterruption.self,
-            InterventionAttempt.self
+            InterventionAttempt.self,
+            BreakLearningEvent.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: config)

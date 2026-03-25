@@ -40,7 +40,12 @@ struct FocusCoachGuardianAdvisor: Sendable {
         )
 
         let topRiskEntry = entries
-            .filter { $0.category == .distracting }
+            .filter { entry in
+                AppUsageEntry.recommendedBlockTarget(
+                    bundleIdentifier: entry.bundleIdentifier,
+                    appName: entry.appName
+                ) != nil
+            }
             .max { riskScore(for: $0) < riskScore(for: $1) }
 
         let fallbackTarget = topRiskEntry.flatMap {
@@ -52,16 +57,24 @@ struct FocusCoachGuardianAdvisor: Sendable {
 
         guard let target = likelyTarget ?? fallbackTarget else { return nil }
 
-        if let profile = selectedProject?.blockProfile, profile.blockedWebsites.contains(target) {
-            return nil
+        if let profile = selectedProject?.blockProfile {
+            if target.lowercased().hasPrefix("app:") {
+                let bundleTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
+                if profile.blockedApps.contains(bundleTarget) {
+                    return nil
+                }
+            } else if profile.blockedWebsites.contains(target) {
+                return nil
+            }
         }
 
+        let displayTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
         let minutes = max(1, Int((topRiskEntry?.outsideFocusSeconds ?? 0) / 60))
         let reason: String
         if let projectName = selectedProject?.name, !projectName.isEmpty {
-            reason = "\(target) keeps pulling time away from \(projectName) (\(minutes)m today)."
+            reason = "\(displayTarget) keeps pulling time away from \(projectName) (\(minutes)m today)."
         } else {
-            reason = "\(target) has been a repeated distraction (\(minutes)m today)."
+            reason = "\(displayTarget) has been a repeated distraction (\(minutes)m today)."
         }
         let confidence = confidenceFor(target: target, source: topRiskEntry)
         return FocusCoachGuardianRecommendation(target: target, reason: reason, confidence: confidence)
@@ -72,6 +85,7 @@ struct FocusCoachGuardianAdvisor: Sendable {
         inReleaseWindow: Bool,
         driftConfidence: Double,
         hasRecommendation: Bool,
+        hasRepeatedProjectPattern: Bool = false,
         engagementMode: GuardianEngagementMode = .adaptive
     ) -> FocusCoachGuardianState {
         if inReleaseWindow { return .release }
@@ -84,6 +98,7 @@ struct FocusCoachGuardianAdvisor: Sendable {
         }
 
         if driftConfidence >= engagementMode.outsideSessionChallengeThreshold ||
+            hasRepeatedProjectPattern ||
            (driftConfidence >= 0.65 && hasRecommendation && engagementMode != .passive) {
             return .challenge
         }

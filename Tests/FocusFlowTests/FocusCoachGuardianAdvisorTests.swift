@@ -54,4 +54,74 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
         let duration = advisor.releaseDuration(for: .doneForToday)
         XCTAssertEqual(duration, 90 * 60)
     }
+
+    func testOutsideSessionChallengeStateRequiresConfidenceOrRepeatedPattern() {
+        let state = advisor.guardianState(
+            isInActiveSession: false,
+            inReleaseWindow: false,
+            driftConfidence: 0.72,
+            hasRecommendation: false,
+            hasRepeatedProjectPattern: false,
+            engagementMode: .adaptive
+        )
+        XCTAssertEqual(state, .watchful)
+    }
+
+    func testOutsideSessionRepeatedPatternPromotesChallenge() {
+        let state = advisor.guardianState(
+            isInActiveSession: false,
+            inReleaseWindow: false,
+            driftConfidence: 0.72,
+            hasRecommendation: false,
+            hasRepeatedProjectPattern: true,
+            engagementMode: .adaptive
+        )
+        XCTAssertEqual(state, .challenge)
+    }
+
+    func testRecommendationReasonUsesFriendlyLabelForAppContextTarget() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "ChatGPT",
+                bundleIdentifier: "com.openai.chatgpt",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 600
+            )
+        ]
+        let project = Project(name: "Write RFC")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: "com.openai.chatgpt",
+            frontmostAppName: "ChatGPT",
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
+        XCTAssertFalse(recommendation?.reason.contains("app:") ?? true)
+        XCTAssertTrue(recommendation?.reason.contains("com.openai.chatgpt") ?? false)
+    }
+
+    func testRecommendationFallsBackToNonWebAppContextFromEntries() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "ChatGPT",
+                bundleIdentifier: "com.openai.chatgpt",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 1800
+            )
+        ]
+        let project = Project(name: "Deep Work")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: nil,
+            frontmostAppName: nil,
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
+    }
 }

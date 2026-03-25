@@ -393,7 +393,7 @@ final class AppUsageTracker {
 
     private func isTerminalOrEditor(bundleId: String) -> Bool {
         let tools = ["com.apple.Terminal", "com.googlecode.iterm2", "com.github.warp.1",
-                     "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92",
+                     "com.mitchellh.ghostty", "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92",
                      "com.jetbrains.intellij", "com.sublimetext.4", "com.panic.Nova"]
         return tools.contains(bundleId)
             || bundleId.contains("jetbrains")

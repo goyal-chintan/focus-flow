@@ -73,4 +73,19 @@ struct DriftMemoryIntegrationTests {
         // Since recordPlanned happened before beginSession(), it's outside new session window
         #expect(store.sessionScopedAllowance(projectId: projectId, workMode: .deepWork, appOrDomain: "youtube.com") == false)
     }
+
+    @Test("Repeated pattern stays project-scoped and does not leak globally")
+    func repeatedPatternIsProjectScopedOnly() {
+        let store = makeStore()
+        let project1 = UUID()
+        let project2 = UUID()
+        let context = "youtube.com"
+
+        store.recordAvoidant(projectId: project1, workMode: .deepWork, appOrDomain: context)
+        store.recordAvoidant(projectId: project1, workMode: .deepWork, appOrDomain: context)
+
+        #expect(store.projectScopedRisk(projectId: project1, workMode: .deepWork, appOrDomain: context) == true)
+        #expect(store.projectScopedRisk(projectId: project2, workMode: .deepWork, appOrDomain: context) == false)
+        #expect(store.projectScopedRisk(projectId: nil, workMode: nil, appOrDomain: context) == false)
+    }
 }

@@ -31,6 +31,59 @@ struct SuspiciousContextObservation {
         self.selectedWorkMode = selectedWorkMode
         self.isInSession = isInSession
     }
+
+    /// Deterministic key for context learning/recommendation.
+    /// Priority: browser host -> terminal/editor workspace -> bundle identifier -> app name.
+    /// Always lowercased and trimmed.
+    var normalizedContextKey: String {
+        normalizedContextKey(
+            browserHost: browserHost,
+            terminalWorkspace: terminalWorkspace,
+            editorWorkspace: editorWorkspace,
+            bundleIdentifier: bundleIdentifier,
+            appName: localizedAppName
+        )
+    }
+
+    func normalizedContextKey(
+        browserHost: String?,
+        terminalWorkspace: String?,
+        editorWorkspace: String?,
+        bundleIdentifier: String,
+        appName: String
+    ) -> String {
+        let candidate = firstNonEmpty(
+            browserHost,
+            terminalWorkspace,
+            editorWorkspace,
+            bundleIdentifier,
+            appName
+        ) ?? "unknown"
+        return normalizeContextComponent(candidate)
+    }
+
+    var normalizedContextDisplayName: String {
+        firstNonEmpty(
+            browserHost,
+            terminalWorkspace,
+            editorWorkspace,
+            localizedAppName,
+            bundleIdentifier
+        ) ?? "Unknown"
+    }
+
+    private func firstNonEmpty(_ values: String?...) -> String? {
+        values.first {
+            guard let value = $0 else { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } ?? nil
+    }
+
+    private func normalizeContextComponent(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
 }
 
 // MARK: - Context Disposition
@@ -121,7 +174,10 @@ struct DriftClassificationMemory: Codable {
     static func key(projectId: UUID?, workMode: WorkMode?, appOrDomain: String) -> String {
         let p = projectId?.uuidString ?? "none"
         let w = workMode?.rawValue ?? "none"
-        return "\(p)|\(w)|\(appOrDomain)"
+        let a = appOrDomain
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return "\(p)|\(w)|\(a)"
     }
 }
 
