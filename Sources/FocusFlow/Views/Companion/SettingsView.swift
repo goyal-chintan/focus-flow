@@ -9,6 +9,7 @@ struct SettingsView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
+    @Environment(TimerViewModel.self) private var timerVM
     @Query private var allSettings: [AppSettings]
     @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
     @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
@@ -1118,6 +1119,27 @@ struct SettingsView: View {
                             )
                         )
 
+                        VStack(alignment: .leading, spacing: 6) {
+                            Divider().opacity(0.2)
+                            Text("Outside-session signal debug")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text("Work-intent score: \(Int(timerVM.latestWorkIntentScore * 100))%")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text("Drift score: \(Int(timerVM.latestDriftScore * 100))%")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text("Work-intent signals: \(joinedSignals(timerVM.latestWorkIntentActiveSignals))")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(2)
+                            Text("Drift signals: \(joinedSignals(timerVM.latestDriftActiveSignals))")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(2)
+                        }
+
                         // Default snooze duration
                         HStack {
                             HStack(spacing: 8) {
@@ -1189,6 +1211,10 @@ struct SettingsView: View {
 
     private func save() {
         saveWithFeedback(modelContext, errorBinding: $saveError)
+    }
+
+    private func joinedSignals(_ signals: [String]) -> String {
+        signals.isEmpty ? "none" : signals.joined(separator: ", ")
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

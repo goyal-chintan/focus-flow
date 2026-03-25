@@ -15,7 +15,7 @@ struct ProjectsListView: View {
     @State private var formName = ""
     @State private var formColor = "blue"
     @State private var formIcon = "folder.fill"
-    @State private var formBlockProfile: BlockProfile?
+    @State private var formBlockProfiles: [BlockProfile] = []
     @State private var formWorkMode: WorkMode = .deepWork
     @State private var formGuardianSensitivity: GuardianSensitivity = .normal
     @State private var formDifficultyBias: DifficultyBias = .moderate
@@ -217,8 +217,8 @@ struct ProjectsListView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            if let profile = project.blockProfile {
-                Text("🛡️ \(profile.name)")
+            if project.effectiveBlockProfiles.isEmpty == false {
+                Text(blockProfileSummary(for: project))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
@@ -237,7 +237,7 @@ struct ProjectsListView: View {
                 formName = project.name
                 formColor = project.color
                 formIcon = project.icon ?? "folder.fill"
-                formBlockProfile = project.blockProfile
+                formBlockProfiles = project.effectiveBlockProfiles
                 formWorkMode = project.workMode
                 formGuardianSensitivity = project.guardianSensitivity
                 formDifficultyBias = project.difficultyBias
@@ -343,7 +343,7 @@ struct ProjectsListView: View {
             name: $formName,
             color: $formColor,
             icon: $formIcon,
-            selectedBlockProfile: $formBlockProfile,
+            selectedBlockProfiles: $formBlockProfiles,
             workMode: $formWorkMode,
             guardianSensitivity: $formGuardianSensitivity,
             difficultyBias: $formDifficultyBias,
@@ -355,7 +355,8 @@ struct ProjectsListView: View {
                 editing.name = formName.trimmingCharacters(in: .whitespaces)
                 editing.color = formColor
                 editing.icon = formIcon
-                editing.blockProfile = formBlockProfile
+                editing.blockProfiles = deduplicatedProfiles(formBlockProfiles)
+                editing.blockProfile = editing.blockProfiles.first
                 editing.workMode = formWorkMode
                 editing.guardianSensitivity = formGuardianSensitivity
                 editing.difficultyBias = formDifficultyBias
@@ -366,7 +367,8 @@ struct ProjectsListView: View {
                     color: formColor,
                     icon: formIcon
                 )
-                project.blockProfile = formBlockProfile
+                project.blockProfiles = deduplicatedProfiles(formBlockProfiles)
+                project.blockProfile = project.blockProfiles.first
                 project.workMode = formWorkMode
                 project.guardianSensitivity = formGuardianSensitivity
                 project.difficultyBias = formDifficultyBias
@@ -490,10 +492,29 @@ struct ProjectsListView: View {
         formName = ""
         formColor = "blue"
         formIcon = "folder.fill"
-        formBlockProfile = nil
+        formBlockProfiles = []
         formWorkMode = .deepWork
         formGuardianSensitivity = .normal
         formDifficultyBias = .moderate
+    }
+
+    private func blockProfileSummary(for project: Project) -> String {
+        let names = project.effectiveBlockProfiles.map(\.name)
+        if names.count == 1 {
+            return "🛡️ \(names[0])"
+        }
+        return "🛡️ \(names.count) profiles"
+    }
+
+    private func deduplicatedProfiles(_ profiles: [BlockProfile]) -> [BlockProfile] {
+        var seen = Set<UUID>()
+        var unique: [BlockProfile] = []
+        for profile in profiles {
+            if seen.insert(profile.id).inserted {
+                unique.append(profile)
+            }
+        }
+        return unique
     }
 
     private func colorFromName(_ name: String) -> Color {

@@ -57,13 +57,13 @@ struct FocusCoachGuardianAdvisor: Sendable {
 
         guard let target = likelyTarget ?? fallbackTarget else { return nil }
 
-        if let profile = selectedProject?.blockProfile {
+        if let selectedProject {
             if target.lowercased().hasPrefix("app:") {
-                let bundleTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
-                if profile.blockedApps.contains(bundleTarget) {
+                let bundleTarget = AppUsageEntry.recommendationDisplayLabel(for: target).lowercased()
+                if selectedProject.mergedBlockedApps.contains(bundleTarget) {
                     return nil
                 }
-            } else if profile.blockedWebsites.contains(target) {
+            } else if selectedProject.mergedBlockedWebsites.contains(target.lowercased()) {
                 return nil
             }
         }

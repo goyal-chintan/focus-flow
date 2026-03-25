@@ -2,6 +2,33 @@ import XCTest
 @testable import FocusFlow
 
 final class ReviewContractsTests: XCTestCase {
+    func testProjectFormDropdownRowsHaveFullWidthHitTargets() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("ProjectFormView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("private var blockProfileSection"))
+        XCTAssertTrue(source.contains("private var workModeSection"))
+        XCTAssertTrue(source.contains("private var guardianSensitivitySection"))
+        XCTAssertTrue(source.contains("private var difficultyBiasSection"))
+
+        // Each dropdown row should provide a full-row hit target, not only text/chevron.
+        let hitTargetPattern = try NSRegularExpression(
+            pattern: #"\.frame\(maxWidth:\s*\.infinity,\s*alignment:\s*\.leading\)\s*[\r\n\s]*\.contentShape\(Rectangle\(\)\)"#
+        )
+        let matches = hitTargetPattern.numberOfMatches(
+            in: source,
+            range: NSRange(source.startIndex..<source.endIndex, in: source)
+        )
+        XCTAssertGreaterThanOrEqual(matches, 4, "Expected full-row hit target pattern on all project-form dropdown rows")
+    }
+
     func testReviewArtifactContractCoversAllCriticalFlows() {
         let expectedFlowIDs: Set<String> = [
             "menu_bar_idle",
@@ -12,12 +39,16 @@ final class ReviewContractsTests: XCTestCase {
             "session_complete_focus_complete",
             "session_complete_manual_stop",
             "session_complete_break_complete",
+            "session_complete_earned_stage",
+            "session_complete_recovery_chips",
             "coach_quick_prompt",
             "coach_strong_window",
+            "coach_window_dismiss",
             "settings_calendar_permissions",
             "settings_reminders_permissions",
-            "first_run_initial_render",
-            "first_run_first_toggle"
+            "today_stats_view",
+            "break_complete_reason_sheet_hidden",
+            "break_complete_reason_sheet_visible"
         ]
 
         let actualFlowIDs = Set(ReviewArtifactContract.requiredFlowIDs)
