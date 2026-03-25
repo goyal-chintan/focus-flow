@@ -539,6 +539,62 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertTrue(project.blockProfile?.blockedWebsites.contains("youtube.com") ?? false)
     }
 
+    func testSuggestedEarnedBreakIsCalculatedAfterMeaningfulFocusCompletion() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.selectedMinutes = 55
+        vm.startFocus()
+        let active = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
+        active.startedAt = Date().addingTimeInterval(-55 * 60)
+        try container.mainContext.save()
+
+        vm.stopForReflection()
+
+        XCTAssertEqual(vm.suggestedEarnedBreakMinutes, 15)
+    }
+
+    func testChoosingSuggestedBreakStartsBreakWithSuggestedDuration() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.suggestedEarnedBreakMinutes = 12
+        vm.state = .idle
+        vm.isOvertime = true
+        vm.showSessionComplete = true
+
+        vm.continueAfterCompletion(action: .takeBreak(duration: vm.suggestedEarnedBreakSeconds))
+
+        XCTAssertEqual(vm.state, .onBreak(.shortBreak))
+        XCTAssertEqual(vm.totalSeconds, 12 * 60)
+        XCTAssertEqual(vm.remainingSeconds, 12 * 60)
+    }
+
+    func testBreakOutcomeRecordedWhenReturningToFocus() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        let focus = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first(where: { $0.type == .focus }))
+        focus.startedAt = Date().addingTimeInterval(-25 * 60)
+        try container.mainContext.save()
+        vm.stopForReflection()
+
+        vm.suggestedEarnedBreakMinutes = 8
+        vm.continueAfterCompletion(action: .takeBreak(duration: vm.suggestedEarnedBreakSeconds))
+        vm.continueAfterCompletion(action: .continueFocusing)
+
+        let events = try container.mainContext.fetch(FetchDescriptor<BreakLearningEvent>())
+        XCTAssertEqual(events.count, 1)
+        XCTAssertTrue(events[0].returnedToFocus)
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,
@@ -550,7 +606,8 @@ final class TimerCompletionFlowTests: XCTestCase {
             AppUsageEntry.self,
             TaskIntent.self,
             CoachInterruption.self,
-            InterventionAttempt.self
+            InterventionAttempt.self,
+            BreakLearningEvent.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: config)
