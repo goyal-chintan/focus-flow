@@ -141,6 +141,52 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertNil(vm.currentIdleStarterDecision)
     }
 
+    func testIdleStarterSuppressionRecordsReasonWhenBlockedByScreenShare() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel(
+            screenShareGuard: ScreenShareGuard(isScreenSharingProvider: { true })
+        )
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = true
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .screenShareSuppressed)
+    }
+
+    func testIdleStarterSuppressionRecordsReasonWhenReleaseWindowIsActive() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        try container.mainContext.save()
+
+        vm.enterRelease(reason: .offDuty)
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .releaseWindowActive)
+    }
+
     func testIdleEscalationShowsStrongCoachWindowAtThirdNudgeForProductiveApp() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()

@@ -55,6 +55,10 @@ struct SessionCompleteWindowView: View {
         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
         .interactiveDismissDisabled()
         .onAppear {
+            stage = .earned
+            hasHandledAction = false
+            appeared = false
+            depositPulse = false
             bringWindowToFront()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { appeared = true }
         }
@@ -264,35 +268,35 @@ struct SessionCompleteWindowView: View {
 
             GlassEffectContainer {
                 VStack(spacing: 8) {
-                    // Primary: Start next block
-                    GradientCTAButton(
-                        title: "Start Next Block",
-                        icon: "play.fill",
-                        gradient: LiquidDesignTokens.Gradient.breakStart
-                    ) {
-                        saveAndDismiss(action: .continueFocusing)
-                    }
-                    .accessibilityLabel("Start next focus block")
-
                     // Take 5m reset (short break via standard break action)
                     LiquidActionButton(
-                        title: "Take 5m Reset",
+                        title: "Planned 5m Break",
                         icon: "timer",
                         role: .secondary
                     ) {
                         saveAndDismiss(action: .takeBreak(duration: 300))
                     }
-                    .accessibilityLabel("Take a 5 minute reset break")
+                    .accessibilityLabel("Take planned 5 minute break")
 
-                    // Take full break
-                    LiquidActionButton(
-                        title: "Take Full Break",
+                    // Primary: Suggested earned break
+                    GradientCTAButton(
+                        title: "Suggested Earned Break",
                         icon: "cup.and.saucer.fill",
+                        gradient: LiquidDesignTokens.Gradient.breakStart
+                    ) {
+                        saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))
+                    }
+                    .accessibilityLabel("Take suggested earned break")
+
+                    // Secondary: Start next block (explicit skip)
+                    LiquidActionButton(
+                        title: "Start Next Block",
+                        icon: "play.fill",
                         role: .secondary
                     ) {
-                        saveAndDismiss(action: .takeBreak(duration: nil))
+                        saveAndDismiss(action: .continueFocusing)
                     }
-                    .accessibilityLabel("Take a full break")
+                    .accessibilityLabel("Start next focus block")
 
                     // End with today's progress
                     GradientCTAButton(
