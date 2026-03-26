@@ -282,6 +282,51 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertTrue(vm.showCoachInterventionWindow || vm.currentIdleStarterDecision?.kind == .strongPrompt || vm.activeCoachInterventionDecision?.kind == .strongPrompt)
     }
 
+    /// Regression test: strong prompt must fire when a notification was sent and ignored,
+    /// even when all work-intent recency signals are stale AND it's outside typical work hours.
+    /// Root cause: `shouldEscalateToStrongPrompt` was inside `if route.shouldPresent`, and
+    /// routeIdleStarter's work-intent gate (guardian=.challenge) blocked shouldPresent=true
+    /// when isWorkIntentWindow=false (hour=22, no recent project/app interaction).
+    func testIdleEscalationFiringOutsideWorkHoursWhenNotificationWasIgnored() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = false
+        settings.coachInterventionMode = .balanced
+        settings.coachAutoOpenPopoverOnStrongPrompt = true
+        settings.coachBringAppToFrontOnStrongPrompt = false
+        try container.mainContext.save()
+
+        // Notification was sent 10 minutes ago; no response (escalation delay = 5 min default)
+        vm.pendingNotificationNudgeAt = Date().addingTimeInterval(-600)
+        vm.outsideSessionAwaitingStartFocus = true
+        vm.outsideSessionNudgeAttemptCount = 1
+        // App opened and project selected a LONG time ago — no recency signals
+        vm.appLaunchTime = Date().addingTimeInterval(-3600)
+        vm.lastProjectSelectedAt = Date().addingTimeInterval(-3600)
+
+        // Force hour=22 (10pm) — withinTypicalWorkHours=false → isWorkIntentWindow=false without fix
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 20 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .distracting,
+            currentHourOverride: 22
+        )
+
+        XCTAssertTrue(
+            vm.showCoachInterventionWindow
+                || vm.currentIdleStarterDecision?.kind == .strongPrompt
+                || vm.activeCoachInterventionDecision?.kind == .strongPrompt,
+            "Strong prompt must fire when notification was ignored, regardless of work hours"
+        )
+        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus, "Flag must clear after escalation")
+    }
+
     func testScreenShareHardPassSuppressesNotificationAndPrompt() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel(screenShareGuard: ScreenShareGuard(isScreenSharingProvider: { true }))
