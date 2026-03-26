@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Foundation
 import SwiftData
 
@@ -24,6 +25,12 @@ final class AppUsageTracker {
     // Coach signal tracking
     private var appSwitchTimestamps: [Date] = []
     private var lastFrontmostBundleId: String = ""
+    private var lastFrontmostWindowTitle: String = ""
+    private var lastFrontmostBrowserHost: String?
+    private var lastFrontmostDisplayLabel: String?
+    private var lastFrontmostDomainLabel: String?
+    private var lastBrowserContextRefreshAt: Date = .distantPast
+    private let browserContextRefreshInterval: TimeInterval = 12
     private var inactivitySeconds: Int = 0
     private var hasEngagedProductively: Bool = false
     private var startDelaySeconds: Double = 0
@@ -49,6 +56,18 @@ final class AppUsageTracker {
         guard !lastFrontmostBundleId.isEmpty,
               lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
         return lastFrontmostBundleId
+    }
+
+    var currentFrontmostDisplayLabel: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return lastFrontmostDisplayLabel
+    }
+
+    var currentFrontmostDomainLabel: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return lastFrontmostDomainLabel
     }
 
     var recentAppSwitchTimestamps: [Date] {
@@ -82,6 +101,11 @@ final class AppUsageTracker {
         tickCount = 0
         appSwitchTimestamps = []
         lastFrontmostBundleId = ""
+        lastFrontmostWindowTitle = ""
+        lastFrontmostBrowserHost = nil
+        lastFrontmostDisplayLabel = nil
+        lastFrontmostDomainLabel = nil
+        lastBrowserContextRefreshAt = .distantPast
         inactivitySeconds = 0
         hasEngagedProductively = false
         startDelaySeconds = 0
@@ -182,7 +206,46 @@ final class AppUsageTracker {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
         let bundleId = frontApp.bundleIdentifier ?? "unknown"
         let appName = frontApp.localizedName ?? "Unknown"
-        lastFrontmostCategory = AppUsageEntry.classify(bundleIdentifier: bundleId, appName: appName)
+        let now = Date()
+        let windowTitle: String
+        let browserHost: String?
+        if isBrowser(bundleId: bundleId) {
+            let shouldRefreshBrowserContext =
+                bundleId != lastFrontmostBundleId
+                || now.timeIntervalSince(lastBrowserContextRefreshAt) >= browserContextRefreshInterval
+            if shouldRefreshBrowserContext {
+                let resolvedTitle = currentWindowTitle(processID: frontApp.processIdentifier) ?? appName
+                let resolvedHost = extractBrowserDomain(
+                    windowTitle: resolvedTitle,
+                    appName: appName,
+                    bundleId: bundleId
+                )
+                lastFrontmostWindowTitle = resolvedTitle
+                lastFrontmostBrowserHost = resolvedHost
+                lastBrowserContextRefreshAt = now
+                windowTitle = resolvedTitle
+                browserHost = resolvedHost
+            } else {
+                windowTitle = lastFrontmostWindowTitle.isEmpty ? appName : lastFrontmostWindowTitle
+                browserHost = lastFrontmostBrowserHost
+            }
+        } else {
+            windowTitle = appName
+            browserHost = nil
+            lastFrontmostWindowTitle = windowTitle
+            lastFrontmostBrowserHost = nil
+            lastBrowserContextRefreshAt = .distantPast
+        }
+        let domainLabel = browserHost.map { AppUsageEntry.recommendationDisplayLabel(for: $0) }
+        let appLabel = AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
+        lastFrontmostDomainLabel = domainLabel
+        lastFrontmostDisplayLabel = domainLabel ?? appLabel
+        lastFrontmostCategory = AppUsageEntry.classify(
+            bundleIdentifier: bundleId,
+            appName: appName,
+            windowTitle: windowTitle,
+            browserHost: browserHost
+        )
 
         // Skip FocusFlow itself
         if bundleId == Bundle.main.bundleIdentifier { return }
@@ -202,6 +265,8 @@ final class AppUsageTracker {
             let obs = buildObservation(
                 bundleId: bundleId,
                 appName: appName,
+                windowTitle: windowTitle,
+                browserHost: browserHost,
                 isInSession: isFocusing,
                 selectedProjectId: timerVM?.selectedProject?.id,
                 selectedProjectName: timerVM?.selectedProject?.name,
@@ -346,6 +411,8 @@ final class AppUsageTracker {
     private func buildObservation(
         bundleId: String,
         appName: String,
+        windowTitle: String?,
+        browserHost: String?,
         isInSession: Bool,
         selectedProjectId: UUID?,
         selectedProjectName: String?,
@@ -361,8 +428,8 @@ final class AppUsageTracker {
         )
 
         if isBrowser(bundleId: bundleId) {
-            obs.browserHost = extractBrowserDomain(appName: appName, bundleId: bundleId)
-            obs.browserPageTitle = extractBrowserTitle(appName: appName)
+            obs.browserHost = browserHost
+            obs.browserPageTitle = windowTitle ?? extractBrowserTitle(appName: appName)
         }
 
         if isTerminalOrEditor(bundleId: bundleId) {
@@ -464,9 +531,35 @@ final class AppUsageTracker {
             || bundleId.contains("cursor")
     }
 
-    private func extractBrowserDomain(appName: String, bundleId: String) -> String? {
-        // Fallback: derive domain from window-title keywords until AX API access is confirmed.
-        let name = appName.lowercased()
+    private func currentWindowTitle(processID: pid_t) -> String? {
+        guard let windows = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return nil
+        }
+        for window in windows {
+            guard let ownerPid = window[kCGWindowOwnerPID as String] as? pid_t,
+                  ownerPid == processID else { continue }
+            guard let layer = window[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
+            guard let title = window[kCGWindowName as String] as? String else { continue }
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return nil
+    }
+
+    private func extractBrowserDomain(windowTitle: String, appName: String, bundleId: String) -> String? {
+        let text = "\(windowTitle) \(appName) \(bundleId)".lowercased()
+        if let range = text.range(of: #"([a-z0-9-]+\.)+[a-z]{2,}"#, options: .regularExpression) {
+            let host = String(text[range])
+                .replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+            if !host.isEmpty {
+                return host
+            }
+        }
         let knownDomains: [(needle: String, domain: String)] = [
             ("youtube", "youtube.com"), ("reddit", "reddit.com"),
             ("twitter", "twitter.com"), ("x.com", "x.com"),
@@ -475,7 +568,7 @@ final class AppUsageTracker {
             ("github", "github.com"), ("stackoverflow", "stackoverflow.com"),
             ("linkedin", "linkedin.com"), ("twitch", "twitch.tv")
         ]
-        return knownDomains.first(where: { name.contains($0.needle) })?.domain
+        return knownDomains.first(where: { text.contains($0.needle) })?.domain
     }
 
     private func extractBrowserTitle(appName: String) -> String? {

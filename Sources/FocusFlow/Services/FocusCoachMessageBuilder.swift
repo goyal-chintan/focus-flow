@@ -170,12 +170,20 @@ enum FocusCoachMessageBuilder {
                 "Pattern detected from your own skips: low-priority activity is replacing the intended task. Start a 5-minute rescue block or mark off-duty honestly.",
                 .priority
             )
-        case .distractingAppActive(let app, _, _, _):
+        case .distractingAppActive(let app, _, let workMode, let projectName):
+            let modeFragment = workMode.map { " during \($0.displayName)" } ?? ""
+            let projectFragment = projectName.map { !$0.isEmpty ? " for \($0)" : "" } ?? ""
             return (
-                "\(app) has held foreground long enough to derail restart momentum. Decide now: rescue block, break, or off-duty.",
+                "\(app) has held foreground long enough to derail restart momentum\(modeFragment)\(projectFragment). Decide now: rescue block, break, or off-duty.",
                 .distraction
             )
         case .longIdle:
+            if let top = context.topDistractingAppName, context.topDistractingAppMinutes > 0 {
+                return (
+                    "Restart friction increases with idle drift. \(top) already took \(context.topDistractingAppMinutes)m today — a short rescue block can recover trajectory.",
+                    .timeUrgency
+                )
+            }
             return (
                 "Restart friction increases with idle drift. A short rescue block is enough to recover trajectory.",
                 .timeUrgency
@@ -244,7 +252,7 @@ enum FocusCoachMessageBuilder {
 
         // Browser with distracting domain
         if let domain {
-            let domainLabel = domain.hasPrefix("www.") ? String(domain.dropFirst(4)) : domain
+            let domainLabel = AppUsageEntry.recommendationDisplayLabel(for: domain)
             return "\(appName) on \(domainLabel) during \(workModeLabel)"
         }
 

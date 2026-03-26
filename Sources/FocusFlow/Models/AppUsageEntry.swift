@@ -85,14 +85,33 @@ final class AppUsageEntry {
         return Self.classify(bundleIdentifier: bundleIdentifier, appName: appName)
     }
 
-    static func classify(bundleIdentifier: String, appName: String) -> AppCategory {
+    static func classify(
+        bundleIdentifier: String,
+        appName: String,
+        windowTitle: String? = nil,
+        browserHost: String? = nil
+    ) -> AppCategory {
         let id = bundleIdentifier.lowercased()
         let name = appName.lowercased()
+        let title = (windowTitle ?? "").lowercased()
+        let host = browserHost?.lowercased()
+        let textSignals = [name, title].joined(separator: " ")
+
+        if let host {
+            let distractingDomains = [
+                "youtube.com", "twitter.com", "x.com", "reddit.com",
+                "instagram.com", "tiktok.com", "facebook.com",
+                "netflix.com", "twitch.tv", "spotify.com"
+            ]
+            if distractingDomains.contains(where: { host.contains($0) }) {
+                return .distracting
+            }
+        }
 
         // High-confidence distracting aliases from app title first (browser tabs/window titles).
-        if name.contains("youtube") || name.contains("twitter") || name.contains("x.com") ||
-           name.contains("reddit") || name.contains("instagram") || name.contains("tiktok") ||
-           name.contains("facebook") || name.contains("netflix") || name.contains("spotify") {
+        if textSignals.contains("youtube") || textSignals.contains("twitter") || textSignals.contains("x.com") ||
+           textSignals.contains("reddit") || textSignals.contains("instagram") || textSignals.contains("tiktok") ||
+           textSignals.contains("facebook") || textSignals.contains("netflix") || textSignals.contains("spotify") {
             return .distracting
         }
 
@@ -189,13 +208,46 @@ final class AppUsageEntry {
         return nil
     }
 
-    /// Converts a persisted recommendation target/context key into user-facing text.
-    /// Example: `app:com.openai.chatgpt` -> `ChatGPT`.
+    /// Converts persisted context keys into display-safe labels for prompts and insights.
+    /// Never returns raw URLs, paths, or package identifiers.
     static func recommendationDisplayLabel(for targetOrContextKey: String) -> String {
         let trimmed = targetOrContextKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.lowercased().hasPrefix("app:") else { return trimmed }
-        let bundleId = String(trimmed.dropFirst(4)).lowercased()
+        guard !trimmed.isEmpty else { return "This context" }
 
+        let lowered = trimmed.lowercased()
+        if lowered.hasPrefix("app:") {
+            return appDisplayName(forBundleId: String(lowered.dropFirst(4)))
+        }
+
+        if let host = hostFromURLOrDomain(trimmed) {
+            return domainDisplayName(for: host)
+        }
+
+        if looksLikeBundleIdentifier(trimmed) {
+            return appDisplayName(forBundleId: lowered)
+        }
+
+        if trimmed.contains("/") {
+            let tail = trimmed
+                .split(separator: "/")
+                .last
+                .map(String.init) ?? trimmed
+            let safeTail = prettifyToken(tail)
+            return safeTail.isEmpty ? "This context" : safeTail
+        }
+
+        let pretty = prettifyToken(trimmed)
+        return pretty.isEmpty ? "This context" : pretty
+    }
+
+    static func appBundleID(fromRecommendationTarget target: String) -> String? {
+        let trimmed = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("app:") else { return nil }
+        let bundleId = String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return bundleId.isEmpty ? nil : bundleId
+    }
+
+    private static func appDisplayName(forBundleId bundleId: String) -> String {
         let knownNames: [String: String] = [
             "com.anthropic.claudefordesktop": "Claude",
             "com.tinyspeck.slackmacgap": "Slack",
@@ -203,25 +255,78 @@ final class AppUsageEntry {
             "com.openai.codex": "Codex",
             "com.mitchellh.ghostty": "Ghostty",
             "com.apple.safari": "Safari",
-            "com.google.chrome": "Chrome"
+            "com.google.chrome": "Chrome",
+            "com.brave.browser": "Brave",
+            "company.thebrowser.browser": "Arc",
+            "org.mozilla.firefox": "Firefox",
+            "com.microsoft.edgemac": "Edge"
         ]
-        if let known = knownNames[bundleId] {
-            return known
-        }
+        if let known = knownNames[bundleId] { return known }
 
         if bundleId.contains("claude") { return "Claude" }
         if bundleId.contains("slack") { return "Slack" }
         if bundleId.contains("chatgpt") { return "ChatGPT" }
         if bundleId.contains("codex") { return "Codex" }
         if bundleId.contains("ghostty") { return "Ghostty" }
+        if bundleId.contains("safari") { return "Safari" }
+        if bundleId.contains("chrome") { return "Chrome" }
+        if bundleId.contains("brave") { return "Brave" }
+        if bundleId.contains("firefox") { return "Firefox" }
+        if bundleId.contains("edge") { return "Edge" }
 
         let lastToken = bundleId.split(separator: ".").last.map(String.init) ?? bundleId
-        let cleaned = lastToken
+        let cleaned = prettifyToken(lastToken)
+        return cleaned.isEmpty ? "This app" : cleaned
+    }
+
+    private static func hostFromURLOrDomain(_ input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmed), let host = url.host {
+            return host.lowercased().replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+        }
+        if trimmed.contains("://"), let components = URLComponents(string: trimmed), let host = components.host {
+            return host.lowercased().replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+        }
+        let lower = trimmed.lowercased()
+        if !lower.contains(" "), lower.contains("."), !lower.contains("/") {
+            return lower.replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+        }
+        return nil
+    }
+
+    private static func domainDisplayName(for host: String) -> String {
+        let knownDomains: [String: String] = [
+            "youtube.com": "YouTube",
+            "reddit.com": "Reddit",
+            "x.com": "X",
+            "twitter.com": "X",
+            "instagram.com": "Instagram",
+            "facebook.com": "Facebook",
+            "tiktok.com": "TikTok",
+            "netflix.com": "Netflix",
+            "twitch.tv": "Twitch",
+            "spotify.com": "Spotify",
+            "github.com": "GitHub",
+            "stackoverflow.com": "Stack Overflow",
+            "linkedin.com": "LinkedIn"
+        ]
+        if let known = knownDomains.first(where: { host.hasSuffix($0.key) })?.value {
+            return known
+        }
+        return host
+    }
+
+    private static func looksLikeBundleIdentifier(_ value: String) -> Bool {
+        let lowered = value.lowercased()
+        guard !lowered.contains(" "), lowered.contains("."), !lowered.contains("/") else { return false }
+        return lowered.split(separator: ".").count >= 3
+    }
+
+    private static func prettifyToken(_ value: String) -> String {
+        value
             .replacingOccurrences(of: "-", with: " ")
             .replacingOccurrences(of: "_", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return bundleId }
-        return cleaned
             .split(separator: " ")
             .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
             .joined(separator: " ")
