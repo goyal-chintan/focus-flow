@@ -288,6 +288,19 @@ final class AppUsageTracker {
             entry.outsideFocusSeconds += 1
         }
 
+        // For browser tab contexts, also persist a domain-keyed entry so Guardian Recommendations
+        // can aggregate time per website rather than per browser app.
+        if let host = browserHost, !host.isEmpty {
+            let domainKey = "domain:\(host)"
+            let domainName = AppUsageEntry.recommendationDisplayLabel(for: host)
+            let domainEntry = entryForCurrentDay(bundleId: domainKey, appName: domainName, context: ctx)
+            if isFocusing {
+                domainEntry.duringFocusSeconds += 1
+            } else {
+                domainEntry.outsideFocusSeconds += 1
+            }
+        }
+
         persistIfNeeded()
     }
 
