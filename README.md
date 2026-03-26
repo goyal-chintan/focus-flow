@@ -65,9 +65,16 @@ A native macOS Pomodoro focus timer built with SwiftUI and Apple's Liquid Glass 
 - **Pre-session intention card** — set task type, expected resistance, and success criteria (MCII-based)
 - **Live coach strip** — green/amber/red risk status bar during active sessions
 - **Anomaly reason chips** — 1-tap reason capture (meeting, fatigue, stress, avoidance) for false-positive control
+- **Idle-time hard prompt** — when a notification is ignored and drift escalates, a full-screen strong coach window fires to surface a re-engagement decision
 - **Personalized weekly insights** — completion rate, recovery rate, top distractions, science-backed coaching tips
 - **Privacy-first** — all data stays on-device, no cloud dependency
 - **Science-informed** — based on Steel 2007 (procrastination), Rozental 2018 (CBT), Albulescu 2022 (micro-breaks)
+
+### App & Website Tracking (Guardian Recommendations)
+- **Per-second app tracking** — `AppUsageTracker` records the frontmost app every second; persisted to SwiftData every 30 s
+- **Browser domain tracking** — when Arc, Safari, Chrome, Firefox, Edge, or Opera is frontmost, the active website domain is extracted from the window title and stored as a parallel `domain:<host>` entry (e.g. `domain:youtube.com`)
+- **Guardian Recommendations** — Insights tab surfaces the top distraction apps and websites with a calibrated confidence score, weighted focus-session exposure, and a direct block/allow action
+- **Adaptive coach signals** — real-time `currentFrontmostDomainLabel` feeds coach message personalisation and drift scoring; domain entries also improve idle-prompt specificity
 
 ### Built with Apple's Liquid Glass
 - Native `.glassEffect()` materials with refraction and specular highlights
