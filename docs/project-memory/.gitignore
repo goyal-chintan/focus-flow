@@ -1,0 +1,4 @@
+# Project memory database
+# This is generated from session history analysis
+# Committed separately after each major analysis pass
+DECISION_LOG.db
