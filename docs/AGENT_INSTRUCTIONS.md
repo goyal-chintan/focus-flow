@@ -36,6 +36,13 @@
   - The change affects a user-visible flow or data model
   - The request involves deleting data or making a destructive change
 
+### For any UI or UX change (screens, components, flows, interactions, visual language)
+- Invoke **`apple-grade-ui-system`** immediately — before any implementation.
+- Run **Design Mode** to establish visual hierarchy, Liquid Glass usage, and layout intent.
+- Run **Product Integration Mode** to confirm the change fits the full user journey and every interaction state is explicitly defined.
+- Do not write any SwiftUI code until Design Mode output is reviewed and Product Integration Mode is complete.
+- Non-functional visual language changes (colour, typography tone, motion style, glass treatment) require explicit user approval before implementation.
+
 ### For complex multi-step work
 - Invoke **`writing-plans`** after brainstorming. Save the plan to `docs/plans/YYYY-MM-DD-<topic>-design.md` and commit it before touching implementation.
 
@@ -100,19 +107,26 @@ swift build          # Must pass with zero warnings introduced by your changes
 swift test           # All existing tests must pass; new behaviour must have tests
 ```
 
-### For any UI-touching change
-Invoke **`apple-grade-ui-system`** and run all three mandatory modes:
-1. **Design Mode** — verify visual hierarchy, Liquid Glass usage, typography, spacing
-2. **Product Integration Mode** — verify the change fits the full user journey
-3. **Gatekeeper Review Mode** — pass/block decision; if BLOCKED, fix before proceeding
+### For any UI or UX change
+`apple-grade-ui-system` is the **full-lifecycle approach** for UI work — not just an end-gate. It was already invoked in Phase 1 (Design Mode + Product Integration Mode). In Phase 4, complete the final gate:
 
-UI audit hard rules for FocusFlow specifically:
-- Never stack glass on glass — use `GlassEffectContainer` for grouped glass elements
-- Never use `.buttonStyle(.glass)` on icon-only buttons — use `.buttonStyle(.plain)` + `.frame(width: 28-30)`
-- Never use glass panels on list rows — use `Color.white.opacity(0.04)` fills
-- Popover background opacity: 0.45–0.55 max
-- Minimum text: 10pt; minimum tap target: 30pt
-- Conditional `.glassProminent` vs `.glass` requires `if/else` branches, not ternary
+**Gatekeeper Review Mode** — strict pass/block decision against the implemented code.
+- If BLOCKED: fixes are mandatory. Do not proceed to Phase 5.
+- If PASSED: record any UI decisions in the decision log before shipping.
+
+UI hard rules for FocusFlow (violations = automatic BLOCKED):
+| Rule | Detail |
+|---|---|
+| No glass-on-glass | Use `GlassEffectContainer` for grouped glass elements |
+| No `.glass` on icon-only buttons | Use `.buttonStyle(.plain)` + `.frame(width: 28-30)` + `.contentShape(Rectangle())` |
+| No glass panels on list rows | Use `Color.white.opacity(0.04)` fills; reserve panels for section containers |
+| Popover background opacity | 0.45–0.55 max — higher kills translucency |
+| Minimum text size | 10pt — Apple HIG floor, no exceptions |
+| Minimum tap target | 30pt — use `.frame()` + `.contentShape(Rectangle())` |
+| Conditional button styles | `if/else` branches for `.glassProminent` vs `.glass` — ternary causes type errors |
+| No custom matchedGeometryEffect pills | Use per-button `.glass`/`.glassProminent` + `.capsule` instead |
+| Timer ring proportions | 160pt ring, 6pt stroke, 36pt text — locked |
+| No double chevrons on Menu labels | Native Menu renders its own; don't add one |
 
 ### For a large feature or end-of-sprint audit
 Invoke **`requesting-code-review`** on the full diff before shipping.
@@ -245,6 +259,7 @@ otherwise
 |---|---|
 | Starting any session | `using-superpowers` |
 | Designing a feature | `brainstorming` |
+| **Any UI/UX change (design → build → review)** | **`apple-grade-ui-system`** |
 | Debugging a bug | `systematic-debugging` |
 | Writing an implementation plan | `writing-plans` |
 | Executing a plan | `executing-plans` |
