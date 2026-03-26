@@ -1,25 +1,33 @@
 import Foundation
 import AppKit
 
-final class AppBlocker {
+@MainActor
+final class AppBlocker: NSObject {
     private var blockedBundleIDs: Set<String> = []
     private var monitorTimer: Timer?
+    private let monitorInterval: TimeInterval = 15
 
     func activate(bundleIDs: [String]) {
         guard !bundleIDs.isEmpty else { return }
         blockedBundleIDs = Set(bundleIDs)
+        installWorkspaceObservers()
         terminateBlockedApps()
         monitorTimer?.invalidate()
-        let t = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.terminateBlockedApps() }
-        }
-        RunLoop.main.add(t, forMode: .common)
-        monitorTimer = t
+        let timer = Timer.scheduledTimer(
+            timeInterval: monitorInterval,
+            target: self,
+            selector: #selector(handleMonitorTimer),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(timer, forMode: .common)
+        monitorTimer = timer
     }
 
     func deactivate() {
         monitorTimer?.invalidate()
         monitorTimer = nil
+        removeWorkspaceObservers()
         blockedBundleIDs.removeAll()
     }
 
@@ -32,6 +40,72 @@ final class AppBlocker {
                 app.terminate()
             }
         }
+    }
+
+    private func installWorkspaceObservers() {
+        let notificationCenter = NSWorkspace.shared.notificationCenter
+        notificationCenter.removeObserver(
+            self,
+            name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil
+        )
+        notificationCenter.removeObserver(
+            self,
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+        notificationCenter.addObserver(
+            self,
+            selector: #selector(handleDidLaunchApplication(_:)),
+            name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil
+        )
+        notificationCenter.addObserver(
+            self,
+            selector: #selector(handleDidActivateApplication(_:)),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+    }
+
+    private func removeWorkspaceObservers() {
+        let notificationCenter = NSWorkspace.shared.notificationCenter
+        notificationCenter.removeObserver(
+            self,
+            name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil
+        )
+        notificationCenter.removeObserver(
+            self,
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+    }
+
+    private func terminateBlockedApplication(app: NSRunningApplication, bundleID: String) {
+        guard blockedBundleIDs.contains(bundleID) else { return }
+        app.terminate()
+    }
+
+    @objc
+    private func handleMonitorTimer() {
+        terminateBlockedApps()
+    }
+
+    @objc
+    private func handleDidLaunchApplication(_ notification: Notification) {
+        handleWorkspaceApplicationNotification(notification)
+    }
+
+    @objc
+    private func handleDidActivateApplication(_ notification: Notification) {
+        handleWorkspaceApplicationNotification(notification)
+    }
+
+    private func handleWorkspaceApplicationNotification(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              let bundleID = app.bundleIdentifier else { return }
+        terminateBlockedApplication(app: app, bundleID: bundleID)
     }
 
     static func installedApps() -> [(name: String, bundleID: String)] {

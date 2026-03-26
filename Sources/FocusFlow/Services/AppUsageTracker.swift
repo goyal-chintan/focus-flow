@@ -14,6 +14,12 @@ final class AppUsageTracker {
     private weak var timerVM: TimerViewModel?
     private var modelContext: ModelContext?
     private var tickCount: Int = 0
+    private var currentTrackingDay: Date = Calendar.current.startOfDay(for: Date())
+    private var appEntriesByBundleID: [String: AppUsageEntry] = [:]
+    private var totalFocusSecondsToday: Int = 0
+    private var distractingFocusSecondsToday: Int = 0
+    private var lastPersistAt: Date = .distantPast
+    private let persistInterval: TimeInterval = 30
 
     // Coach signal tracking
     private var appSwitchTimestamps: [Date] = []
@@ -80,6 +86,12 @@ final class AppUsageTracker {
         hasEngagedProductively = false
         startDelaySeconds = 0
         lastFrontmostCategory = .neutral
+        appEntriesByBundleID.removeAll()
+        totalFocusSecondsToday = 0
+        distractingFocusSecondsToday = 0
+        currentTrackingDay = Calendar.current.startOfDay(for: Date())
+        hydrateDailyCache()
+        lastPersistAt = Date()
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -93,6 +105,7 @@ final class AppUsageTracker {
     }
 
     func stop() {
+        persistIfNeeded(force: true)
         trackingTimer?.invalidate()
         trackingTimer = nil
         isTracking = false
@@ -105,6 +118,7 @@ final class AppUsageTracker {
 
     private func tick() {
         guard let vm = timerVM else { return }
+        rolloverDayIfNeeded()
 
         tickCount += 1
         let isFocusing = vm.state == .focusing
@@ -198,41 +212,18 @@ final class AppUsageTracker {
             inactivitySeconds += 1
         }
 
-        let today = Calendar.current.startOfDay(for: Date())
-
-        // Find or create entry for this app + today
-        let descriptor = FetchDescriptor<AppUsageEntry>(
-            predicate: #Predicate { entry in
-                entry.date == today && entry.bundleIdentifier == bundleId
+        let entry = entryForCurrentDay(bundleId: bundleId, appName: appName, context: ctx)
+        if isFocusing {
+            entry.duringFocusSeconds += 1
+            totalFocusSecondsToday += 1
+            if entry.category == .distracting {
+                distractingFocusSecondsToday += 1
             }
-        )
-
-        do {
-            let existing = try ctx.fetch(descriptor)
-            if let entry = existing.first {
-                if isFocusing {
-                    entry.duringFocusSeconds += 1
-                } else {
-                    entry.outsideFocusSeconds += 1
-                }
-            } else {
-                let entry = AppUsageEntry(
-                    date: today,
-                    appName: appName,
-                    bundleIdentifier: bundleId,
-                    duringFocusSeconds: isFocusing ? 1 : 0,
-                    outsideFocusSeconds: isFocusing ? 0 : 1
-                )
-                ctx.insert(entry)
-            }
-
-            // Save periodically (every 30 seconds) to avoid constant writes
-            if tickCount % 30 == 0 {
-                try ctx.save()
-            }
-        } catch {
-            log("Failed to track app usage: \(error)")
+        } else {
+            entry.outsideFocusSeconds += 1
         }
+
+        persistIfNeeded()
     }
 
     // MARK: - Coach Signal Feed
@@ -243,23 +234,9 @@ final class AppUsageTracker {
             windowSeconds: 60
         )
 
-        // Compute non-work foreground ratio from today's during-focus entries
-        var totalFocusSeconds: Int = 0
-        var distractingFocusSeconds: Int = 0
-        if let ctx = modelContext {
-            let today = Calendar.current.startOfDay(for: Date())
-            let descriptor = FetchDescriptor<AppUsageEntry>(
-                predicate: #Predicate { $0.date == today }
-            )
-            if let entries = try? ctx.fetch(descriptor) {
-                for entry in entries {
-                    totalFocusSeconds += entry.duringFocusSeconds
-                    if entry.category == .distracting {
-                        distractingFocusSeconds += entry.duringFocusSeconds
-                    }
-                }
-            }
-        }
+        // Reuse in-memory counters to avoid recurring full-day fetches.
+        let totalFocusSeconds = totalFocusSecondsToday
+        let distractingFocusSeconds = distractingFocusSecondsToday
         let nonWorkRatio = totalFocusSeconds > 0
             ? Double(distractingFocusSeconds) / Double(totalFocusSeconds)
             : 0
@@ -279,6 +256,89 @@ final class AppUsageTracker {
         signals.inactivityBurstSeconds = Double(inactivitySeconds)
         signals.startDelaySeconds = startDelaySeconds
         vm.coachEngine.recordBehaviorSample(signals)
+    }
+
+    private func hydrateDailyCache() {
+        guard let ctx = modelContext else { return }
+        let day = currentTrackingDay
+        let descriptor = FetchDescriptor<AppUsageEntry>(
+            predicate: #Predicate { $0.date == day }
+        )
+        do {
+            let entries = try ctx.fetch(descriptor)
+            appEntriesByBundleID = Dictionary(uniqueKeysWithValues: entries.map { ($0.bundleIdentifier, $0) })
+            totalFocusSecondsToday = entries.reduce(0) { $0 + $1.duringFocusSeconds }
+            distractingFocusSecondsToday = entries.reduce(0) { sum, entry in
+                sum + (entry.category == .distracting ? entry.duringFocusSeconds : 0)
+            }
+        } catch {
+            appEntriesByBundleID.removeAll()
+            totalFocusSecondsToday = 0
+            distractingFocusSecondsToday = 0
+            log("Failed to hydrate app usage cache: \(error)")
+        }
+    }
+
+    private func rolloverDayIfNeeded() {
+        let today = Calendar.current.startOfDay(for: Date())
+        guard today != currentTrackingDay else { return }
+        persistIfNeeded(force: true)
+        currentTrackingDay = today
+        appEntriesByBundleID.removeAll()
+        totalFocusSecondsToday = 0
+        distractingFocusSecondsToday = 0
+        hydrateDailyCache()
+    }
+
+    private func entryForCurrentDay(
+        bundleId: String,
+        appName: String,
+        context: ModelContext
+    ) -> AppUsageEntry {
+        if let cached = appEntriesByBundleID[bundleId] {
+            if cached.appName != appName {
+                cached.appName = appName
+            }
+            return cached
+        }
+
+        let day = currentTrackingDay
+        let descriptor = FetchDescriptor<AppUsageEntry>(
+            predicate: #Predicate { entry in
+                entry.date == day && entry.bundleIdentifier == bundleId
+            }
+        )
+
+        if let existing = try? context.fetch(descriptor).first {
+            if existing.appName != appName {
+                existing.appName = appName
+            }
+            appEntriesByBundleID[bundleId] = existing
+            return existing
+        }
+
+        let newEntry = AppUsageEntry(
+            date: day,
+            appName: appName,
+            bundleIdentifier: bundleId,
+            duringFocusSeconds: 0,
+            outsideFocusSeconds: 0
+        )
+        context.insert(newEntry)
+        appEntriesByBundleID[bundleId] = newEntry
+        return newEntry
+    }
+
+    private func persistIfNeeded(force: Bool = false) {
+        guard let ctx = modelContext else { return }
+        let now = Date()
+        guard force || now.timeIntervalSince(lastPersistAt) >= persistInterval else { return }
+        do {
+            try ctx.save()
+            lastPersistAt = now
+        } catch {
+            log("Failed to persist app usage: \(error)")
+        }
     }
 
     // MARK: - SuspiciousContextObservation Builder
