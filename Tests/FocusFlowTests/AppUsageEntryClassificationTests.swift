@@ -97,4 +97,39 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         let label = AppUsageEntry.recommendationDisplayLabel(for: "youtube.com")
         XCTAssertEqual(label, "YouTube")
     }
+
+    // MARK: - Domain-prefix key handling (added by AppUsageTracker for browser tab contexts)
+
+    func testRecommendedBlockTargetReturnsDomainForDomainPrefixKey() {
+        // AppUsageTracker stores browser tab entries as bundleIdentifier="domain:<host>"
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "domain:youtube.com",
+            appName: "YouTube"
+        )
+        XCTAssertEqual(target, "youtube.com")
+    }
+
+    func testRecommendedBlockTargetHandlesArbitraryDomainPrefix() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "domain:github.com",
+            appName: "GitHub"
+        )
+        XCTAssertEqual(target, "github.com")
+    }
+
+    func testRecommendedBlockTargetReturnsDomainForNonMappedSocialSite() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "domain:linkedin.com",
+            appName: "LinkedIn"
+        )
+        XCTAssertEqual(target, "linkedin.com")
+    }
+
+    func testRecommendedBlockTargetRejectsEmptyDomainPrefix() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "domain:",
+            appName: ""
+        )
+        XCTAssertNil(target)
+    }
 }

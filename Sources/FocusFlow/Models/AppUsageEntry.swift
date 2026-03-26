@@ -171,6 +171,13 @@ final class AppUsageEntry {
         let id = bundleIdentifier.lowercased()
         let name = appName.lowercased()
 
+        // Domain-keyed entries written by AppUsageTracker for browser tab contexts.
+        // bundleIdentifier is stored as "domain:<host>" so the host IS the block target.
+        if id.hasPrefix("domain:") {
+            let host = String(id.dropFirst(7))
+            return host.isEmpty ? nil : host
+        }
+
         let mapping: [(needle: String, target: String)] = [
             ("youtube", "youtube.com"),
             ("reddit", "reddit.com"),
@@ -234,6 +241,13 @@ final class AppUsageEntry {
                 .map(String.init) ?? trimmed
             let safeTail = prettifyToken(tail)
             return safeTail.isEmpty ? "This context" : safeTail
+        }
+
+        // If the string has no technical separators (dots, colons, slashes, hyphens, underscores)
+        // and starts with an uppercase letter, it's already a proper display name (e.g. "YouTube",
+        // "ChatGPT", "Slack") — return it unchanged rather than destroying mixed-case via prettify.
+        if !trimmed.contains(where: { ".:/-_".contains($0) }) && trimmed.first?.isUppercase == true {
+            return trimmed
         }
 
         let pretty = prettifyToken(trimmed)
