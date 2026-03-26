@@ -171,7 +171,9 @@ private struct WindowLauncherBridge: View {
                     openWindow(id: "coach-intervention")
                 }
                 timerVM.requestAppActivation = {
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    // activate(ignoringOtherApps:) is deprecated on macOS 14+ and is a no-op on
+                    // macOS 26 Tahoe — it no longer steals focus. Use the modern API instead.
+                    NSApplication.shared.activate()
                 }
                 // Graceful shutdown — save session state on app termination
                 NotificationCenter.default.addObserver(
