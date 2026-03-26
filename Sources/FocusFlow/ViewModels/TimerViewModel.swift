@@ -309,7 +309,7 @@ final class TimerViewModel {
 
     // MARK: - Work Intent Timestamps
     /// Time the app was launched — used as a proxy for "opened app recently".
-    let appLaunchTime: Date = Date()
+    var appLaunchTime: Date = Date()
     /// Set when the user selects or changes a project in the picker.
     var lastProjectSelectedAt: Date?
     /// Set when the user is shown an idle-starter prompt but dismisses without starting.
@@ -2144,7 +2144,8 @@ final class TimerViewModel {
     func evaluateIdleStarterIntervention(
         idleSeconds: Int,
         escalationLevel: Int,
-        frontmostCategory: AppUsageEntry.AppCategory
+        frontmostCategory: AppUsageEntry.AppCategory,
+        currentHourOverride: Int? = nil
     ) {
         guard state == .idle, !isOvertime, let settings else { return }
         let now = Date()
@@ -2178,7 +2179,7 @@ final class TimerViewModel {
             showCoachInterventionWindow = false
             return
         }
-        let hour = Calendar.current.component(.hour, from: now)
+        let hour = currentHourOverride ?? Calendar.current.component(.hour, from: now)
         let weekday = Calendar.current.component(.weekday, from: now)
         let isWeekday = (2...6).contains(weekday)
         let opportunityContext = coachOpportunityModel.idleStarterContext(
@@ -2250,7 +2251,11 @@ final class TimerViewModel {
             engagementMode: engagementMode,
             guardianState: currentGuardianState,
             isInReleaseWindow: isInReleaseWindow,
-            workIntentSignal: workIntentSignal,
+            // When a notification was already sent and the user hasn't responded, we're already
+            // committed to an escalation sequence. Pass nil so the planner's work-intent gate
+            // (which blocks challenge-state routes when isWorkIntentWindow=false) is bypassed.
+            // The ignored notification IS the work-intent signal.
+            workIntentSignal: outsideSessionAwaitingStartFocus ? nil : workIntentSignal,
             repeatedProjectPattern: repeatedProjectPattern
         )
 

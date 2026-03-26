@@ -379,6 +379,42 @@ Scripts/
 
 ---
 
+---
+
+## Session: Guardian Recs, Domain Tracking & Idle Escalation Fix (2026-03-26)
+
+**Session ID:** a78f68d5-ee86-4127-b11d-18d71d7a35b8  
+**PRs:** #22 (merged), #23 (merged)
+
+### What Happened
+
+Three systemic bugs were root-caused and fixed via systematic-debugging protocol.
+
+**Bug 1 — Guardian Recommendations stale & app-only (PR #22)**
+- `AppUsageTracker` tracked the frontmost browser but never wrote a separate `AppUsageEntry` for the active website domain. Websites (YouTube, Reddit, GitHub) never appeared in Insights.
+- Fix: write `AppUsageEntry(bundleIdentifier: "domain:<host>")` every second when a known browser is frontmost. `recommendedBlockTarget()` and `recommendationDisplayLabel()` handle the `domain:` prefix.
+
+**Bug 2 — All Guardian scores flat at 87% (PR #22)**
+- Confidence formula `0.62 + min(0.25, ws/7_200)` saturated at 30 min of usage. All three tracked apps exceeded the threshold → identical scores.
+- Fix: `0.50 + min(0.40, ws/36_000)` — saturation now at ~10 h/7 days, producing meaningful differentiation.
+
+**Bug 3 — `prettifyToken` mangled brand names (PR #22)**
+- `prettifyToken("YouTube")` → `"Youtube"`, breaking downstream copy-text matching in the coach engine.
+- Fix: preserve-case guard in `recommendationDisplayLabel()` — if `appName` has no technical separators and starts uppercase, return as-is.
+
+**Bug 4 — Idle hard prompt never fired outside 9 am–6 pm (PR #23)**
+- After 20 min idle, `routeIdleStarter` gated the strong prompt behind `WorkIntentSignal.isWorkIntentWindow`. Outside work hours (and with no recent FocusFlow interaction), `isWorkIntentWindow = false` blocked the prompt even after a prior notification was sent and ignored.
+- Fix: pass `workIntentSignal: nil` to `routeIdleStarter` when `outsideSessionAwaitingStartFocus = true`. The `if let signal` guard naturally skips the gate, so `shouldPresent` is driven only by guardian state (`.challenge` → true).
+
+### Also Created
+- `docs/AGENT_INSTRUCTIONS.md` — 6-phase workflow constitution for all future AI agents working on FocusFlow (commits `222b681`, `79dcc92`)
+
+### Metrics
+- Tests: 206/206 passing
+- New tests added: 5 (4 domain-prefix classification + 1 outside-hours idle escalation)
+
+---
+
 ## Current Status & Next Steps
 
 ### ✅ Shipped & Stable
@@ -389,19 +425,22 @@ Scripts/
 - Motion psychology
 - Accessibility (comprehensive)
 - Calendar/Reminders (hardened)
+- **App & website domain tracking** (domain-keyed AppUsageEntry, per-second, 30 s persist)
+- **Guardian Recommendations with websites** (differentiated confidence scores, brand names preserved)
+- **Idle hard prompt escalation** (fires correctly outside work hours after notification ignored)
 
 ### 🔄 In Progress
-- Guardian escalation system (notification-first phase)
 - Popover UI refinement
-- Outside-session context intelligence
+- Outside-session context intelligence (idle-time drift classification UX)
 - Engagement mode personalization
 
-### ⚠️ Blocked/Under Review
-- Guardian Phase 2 (5 Gatekeeper issues)
-- Popover redesign completion
+### ⚠️ Potential Follow-ups
+- `withinTypicalWorkHours` hardcoded 9–18: could adapt to `AppSettings` user schedule
+- Browser list (`isBrowser()`) missing Brave, Orion, Vivaldi, Zen — consciously deferred
+- `extractBrowserDomain` regex on window title may grab wrong domain on tab-switcher pages
 
 ---
 
-*This chronicle captures 55 sessions of development, 6 major design systems, and the evidence-based reasoning behind FocusFlow's architecture and UI. Refer to specific session IDs and planning documents for deeper implementation details.*
+*This chronicle captures sessions of development, 6+ major design systems, and the evidence-based reasoning behind FocusFlow's architecture and UI. Refer to specific session IDs and planning documents for deeper implementation details.*
 
 *Last Updated: 2026-03-26*
