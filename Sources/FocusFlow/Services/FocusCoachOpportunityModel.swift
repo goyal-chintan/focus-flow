@@ -28,8 +28,10 @@ struct FocusCoachOpportunityModel: Sendable {
         case .neutral:
             categoryFactor = 0.6
         case .productive:
-            // Productive-looking apps can still be avoidant outside active sessions.
-            categoryFactor = 0.5
+            // Being in a coding/productive app *without* a session is itself a work-intent
+            // signal (vibe coding, terminal, Cursor, etc.) — it should prompt the user to
+            // start tracking sooner, not later. 0.7 matches neutral-leaning urgency.
+            categoryFactor = 0.7
         }
 
         return clamp((idleNorm * 0.5) + (escalationNorm * 0.2) + (categoryFactor * 0.3))

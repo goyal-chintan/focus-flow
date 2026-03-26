@@ -424,6 +424,8 @@ struct SessionEditView: View {
         }
         modelContext.delete(session)
         saveWithFeedback(modelContext, errorBinding: $saveError)
+        // Refresh menu-bar today-total after deletion, same as the save path does.
+        NotificationCenter.default.post(name: .focusSessionLoggedManually, object: nil)
         dismiss()
     }
 
