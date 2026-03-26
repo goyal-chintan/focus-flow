@@ -93,8 +93,8 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         XCTAssertEqual(label, "Super Cool App")
     }
 
-    func testRecommendationDisplayLabelKeepsDomainUntouched() {
+    func testRecommendationDisplayLabelUsesFriendlyDomainLabel() {
         let label = AppUsageEntry.recommendationDisplayLabel(for: "youtube.com")
-        XCTAssertEqual(label, "youtube.com")
+        XCTAssertEqual(label, "YouTube")
     }
 }

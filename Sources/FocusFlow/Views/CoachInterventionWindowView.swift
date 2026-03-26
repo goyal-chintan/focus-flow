@@ -35,6 +35,15 @@ struct CoachInterventionWindowView: View {
         }
     }
 
+    private var effectiveActions: [FocusCoachQuickAction] {
+        decision?.suggestedActions ?? []
+    }
+
+    private var startAction: FocusCoachQuickAction {
+        if allows(.startFocusNow) { return .startFocusNow }
+        return .cleanRestart5m
+    }
+
     private var displayTitle: String {
         if pendingAction != nil { return "Quick — what's up?" }
         return coachMessage?.headline ?? titleText
@@ -182,13 +191,50 @@ struct CoachInterventionWindowView: View {
         VStack(spacing: 8) {
             // Primary: Start 5m rescue block
             LiquidActionButton(
-                title: timerVM.state == .idle ? "Start Focus Now" : "Start 5m rescue block",
-                icon: timerVM.state == .idle ? "play.fill" : "arrow.clockwise",
+                title: startAction == .startFocusNow ? "Start Focus Now" : "Start 5m rescue block",
+                icon: startAction == .startFocusNow ? "play.fill" : "arrow.clockwise",
                 role: .primary,
                 tint: LiquidDesignTokens.Spectral.primaryContainer
             ) {
-                timerVM.handleCoachAction(timerVM.state == .idle ? .startFocusNow : .cleanRestart5m)
+                timerVM.handleCoachAction(startAction)
                 dismiss()
+            }
+            .opacity(allows(startAction) ? 1 : 0.4)
+            .disabled(!allows(startAction))
+
+            if allows(.snooze10m) {
+                LiquidActionButton(
+                    title: "Remind me again",
+                    icon: "moon.zzz.fill",
+                    role: .secondary
+                ) {
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
+                        pendingAction = .snooze10m
+                    }
+                }
+            }
+
+            if allows(.skipCheck) {
+                LiquidActionButton(
+                    title: "Not now",
+                    icon: "forward.end.fill",
+                    role: .secondary
+                ) {
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
+                        pendingAction = .skipCheck
+                    }
+                }
+            }
+
+            if allows(.isPlanned) {
+                LiquidActionButton(
+                    title: "This is genuine / planned",
+                    icon: "checkmark.circle",
+                    role: .secondary
+                ) {
+                    timerVM.handleCoachAction(.isPlanned)
+                    dismiss()
+                }
             }
 
             // Secondary: Mark off-duty for now
@@ -200,18 +246,8 @@ struct CoachInterventionWindowView: View {
                 timerVM.handleCoachAction(.markOffDuty)
                 dismiss()
             }
-
-            // Conditional tertiary: "This is planned" — hidden for high-confidence confirmed patterns
-            if decision?.kind != .strongPrompt {
-                LiquidActionButton(
-                    title: "This is planned",
-                    icon: "checkmark.circle",
-                    role: .secondary
-                ) {
-                    timerVM.handleCoachAction(.isPlanned)
-                    dismiss()
-                }
-            }
+            .opacity(allows(.markOffDuty) ? 1 : 0.4)
+            .disabled(!allows(.markOffDuty))
 
             // Conditional: block recommendation when threshold met
             if allows(.blockForProject) {
@@ -361,7 +397,7 @@ struct CoachInterventionWindowView: View {
     }
 
     private func allows(_ action: FocusCoachQuickAction) -> Bool {
-        decision?.suggestedActions.contains(action) ?? false
+        effectiveActions.contains(action)
     }
 
     private func dismiss() {

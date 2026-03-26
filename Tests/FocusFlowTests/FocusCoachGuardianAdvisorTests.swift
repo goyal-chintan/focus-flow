@@ -126,7 +126,8 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
 
         XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
         XCTAssertFalse(recommendation?.reason.contains("app:") ?? true)
-        XCTAssertTrue(recommendation?.reason.contains("com.openai.chatgpt") ?? false)
+        XCTAssertFalse(recommendation?.reason.contains("com.openai.chatgpt") ?? true)
+        XCTAssertTrue(recommendation?.reason.contains("ChatGPT") ?? false)
     }
 
     func testRecommendationFallsBackToNonWebAppContextFromEntries() {

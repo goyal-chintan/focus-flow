@@ -1793,6 +1793,8 @@ final class TimerViewModel {
             registerOutsideSessionDeferral()
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            showCoachInterventionWindow = false
+            activeCoachInterventionDecision = nil
             closePopover()
         case .startFocusNow:
             coachEngine.recordInterventionOutcome(.improved)
@@ -1815,6 +1817,8 @@ final class TimerViewModel {
             registerOutsideSessionDeferral()
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            showCoachInterventionWindow = false
+            activeCoachInterventionDecision = nil
             closePopover()
         case .markOffDuty:
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
@@ -1827,11 +1831,13 @@ final class TimerViewModel {
             currentIdleStarterDecision = nil
             closePopover()
         case .isPlanned:
-            coachEngine.recordOutsideSessionClassification(.plannedWork)
+            coachEngine.recordOutsideSessionClassification(.plannedResearch)
             coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: nil)
             registerOutsideSessionDeferral()
             currentCoachQuickPromptDecision = nil
             currentIdleStarterDecision = nil
+            showCoachInterventionWindow = false
+            activeCoachInterventionDecision = nil
             closePopover()
         }
         // NOTE: Do NOT call dismissCoachInterventionWindow() here.
@@ -1915,6 +1921,23 @@ final class TimerViewModel {
         return actions + [.blockForProject]
     }
 
+    private func augmentIdlePromptActions(
+        _ actions: [FocusCoachQuickAction],
+        context: FocusCoachContext
+    ) -> [FocusCoachQuickAction] {
+        var result = actions
+        if !result.contains(.snooze10m) {
+            result.append(.snooze10m)
+        }
+        if !result.contains(.skipCheck) {
+            result.append(.skipCheck)
+        }
+        if !result.contains(.isPlanned) {
+            result.append(.isPlanned)
+        }
+        return appendBlockActionIfRecommended(actions: result, context: context)
+    }
+
     private func contextualMessage(base: String?, context: FocusCoachContext) -> String {
         if context.inReleaseWindow {
             return "You marked yourself off-duty. Guardian checks are paused until the release window ends."
@@ -1922,8 +1945,8 @@ final class TimerViewModel {
         if let reason = context.blockRecommendationReason, !reason.isEmpty {
             return reason
         }
-        if let app = context.frontmostAppName, context.frontmostAppCategory == .distracting {
-            return "\(app) looks off-plan for your current focus intent. Planned or drift?"
+        if let label = context.frontmostDisplayLabel, context.frontmostAppCategory == .distracting {
+            return "\(label) looks off-plan for your current focus intent. Planned or drift?"
         }
         if let base, !base.isEmpty {
             return base
@@ -1968,15 +1991,15 @@ final class TimerViewModel {
             ?? currentIdleStarterDecision?.context?.suggestedBlockTarget else { return }
         guard let project = selectedProject else { return }
         let isAppTarget = target.lowercased().hasPrefix("app:")
-        let normalizedAppTarget = isAppTarget
-            ? AppUsageEntry.recommendationDisplayLabel(for: target)
+        let appBundleTarget = isAppTarget
+            ? AppUsageEntry.appBundleID(fromRecommendationTarget: target)
             : nil
 
         if project.effectiveBlockProfiles.isEmpty {
             let profile = BlockProfile(
                 name: "\(project.name) Guard",
                 websites: isAppTarget ? [] : [target],
-                apps: normalizedAppTarget.map { [$0] } ?? []
+                apps: appBundleTarget.map { [$0] } ?? []
             )
             modelContext?.insert(profile)
             project.blockProfile = profile
@@ -1999,7 +2022,7 @@ final class TimerViewModel {
             return
         }
 
-        if isAppTarget, let appTarget = normalizedAppTarget {
+        if isAppTarget, let appTarget = appBundleTarget {
             var apps = profile.blockedApps
             if apps.contains(appTarget) { return }
             apps.append(appTarget)
@@ -2049,7 +2072,7 @@ final class TimerViewModel {
             let coachCtx = buildCoachContext(
                 idleSeconds: 0,
                 frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory,
-                frontmostAppName: AppUsageTracker.shared.currentFrontmostAppName
+                frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
             )
             let quickActions = appendBlockActionIfRecommended(
                 actions: quick.suggestedActions,
@@ -2077,7 +2100,7 @@ final class TimerViewModel {
             let coachCtx = buildCoachContext(
                 idleSeconds: 0,
                 frontmostCategory: entryCategory,
-                frontmostAppName: AppUsageTracker.shared.currentFrontmostAppName
+                frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
             )
             let contextualDecision = FocusCoachDecision(
                 kind: strongDecision.kind,
@@ -2244,7 +2267,7 @@ final class TimerViewModel {
             let coachCtx = buildCoachContext(
                 idleSeconds: idleSeconds,
                 frontmostCategory: frontmostCategory,
-                frontmostAppName: AppUsageTracker.shared.currentFrontmostAppName
+                frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
             )
 
             if decision.suggestedActions.contains(.startFocusNow) {
@@ -2257,37 +2280,44 @@ final class TimerViewModel {
             }
             decision = FocusCoachDecision(
                 kind: decision.kind,
-                suggestedActions: appendBlockActionIfRecommended(
-                    actions: decision.suggestedActions,
-                    context: coachCtx
-                ),
+                suggestedActions: augmentIdlePromptActions(decision.suggestedActions, context: coachCtx),
                 message: contextualMessage(base: decision.message, context: coachCtx),
                 context: coachCtx
             )
-            if outsideSessionAwaitingStartFocus {
-                let elapsed = now.timeIntervalSince(pendingNotificationNudgeAt ?? now)
-                let escalationDelay = outsideSessionEscalationDelaySeconds(
-                    now: now,
-                    nonResponseStreak: outsideSessionNonResponseStreak,
-                    skipStreak: outsideSessionSkipStreak
-                )
-                if elapsed < escalationDelay {
-                    lastIdleStarterSuppressionReason = .cooldownActive
-                    currentIdleStarterDecision = nil
-                    activeCoachInterventionDecision = nil
-                    showCoachInterventionWindow = false
-                    return
-                }
-                outsideSessionAwaitingStartFocus = false
-                pendingNotificationNudgeAt = nil
-                outsideSessionNonResponseStreak = min(outsideSessionNonResponseStreak + 1, 8)
-                outsideSessionEscalationCooldownUntil = now.addingTimeInterval(
-                    outsideSessionEscalationDelaySeconds(
+            let shouldEscalateToStrongPrompt =
+                outsideSessionAwaitingStartFocus
+                || (escalationLevel >= 2 && frontmostCategory == .productive)
+            if shouldEscalateToStrongPrompt {
+                if outsideSessionAwaitingStartFocus {
+                    let elapsed = now.timeIntervalSince(pendingNotificationNudgeAt ?? now)
+                    let escalationDelay = outsideSessionEscalationDelaySeconds(
                         now: now,
                         nonResponseStreak: outsideSessionNonResponseStreak,
                         skipStreak: outsideSessionSkipStreak
                     )
-                )
+                    if elapsed < escalationDelay {
+                        lastIdleStarterSuppressionReason = .cooldownActive
+                        currentIdleStarterDecision = nil
+                        activeCoachInterventionDecision = nil
+                        showCoachInterventionWindow = false
+                        return
+                    }
+                    outsideSessionAwaitingStartFocus = false
+                    pendingNotificationNudgeAt = nil
+                    outsideSessionNonResponseStreak = min(outsideSessionNonResponseStreak + 1, 8)
+                    outsideSessionEscalationCooldownUntil = now.addingTimeInterval(
+                        outsideSessionEscalationDelaySeconds(
+                            now: now,
+                            nonResponseStreak: outsideSessionNonResponseStreak,
+                            skipStreak: outsideSessionSkipStreak
+                        )
+                    )
+                } else {
+                    // Escalation-level based hard prompt (e.g. third nudge) without requiring
+                    // notification-first state from this exact app lifecycle.
+                    outsideSessionAwaitingStartFocus = false
+                    pendingNotificationNudgeAt = nil
+                }
                 let strongDecision = FocusCoachDecision(
                     kind: .strongPrompt,
                     suggestedActions: decision.suggestedActions,
@@ -2353,7 +2383,7 @@ final class TimerViewModel {
     private func buildCoachContext(
         idleSeconds: Int,
         frontmostCategory: AppUsageEntry.AppCategory,
-        frontmostAppName: String?
+        frontmostDisplayLabel: String?
     ) -> FocusCoachContext {
         let hour = Calendar.current.component(.hour, from: Date())
 
@@ -2390,7 +2420,7 @@ final class TimerViewModel {
 
         let recommendation = guardianAdvisor.recommendation(
             frontmostBundleId: AppUsageTracker.shared.currentFrontmostBundleId,
-            frontmostAppName: frontmostAppName,
+            frontmostAppName: frontmostDisplayLabel,
             entries: entriesToday,
             selectedProject: selectedProject
         )
@@ -2405,8 +2435,10 @@ final class TimerViewModel {
 
         return FocusCoachContext(
             idleSeconds: idleSeconds,
-            frontmostAppName: frontmostAppName,
+            frontmostAppName: frontmostDisplayLabel,
             frontmostBundleIdentifier: AppUsageTracker.shared.currentFrontmostBundleId,
+            frontmostDisplayLabel: frontmostDisplayLabel,
+            frontmostDomainLabel: AppUsageTracker.shared.currentFrontmostDomainLabel,
             frontmostAppCategory: appCategory,
             isInActiveSession: isInActiveSession,
             todayFocusSeconds: todayFocusTime,

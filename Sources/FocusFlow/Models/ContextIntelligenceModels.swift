@@ -63,13 +63,14 @@ struct SuspiciousContextObservation {
     }
 
     var normalizedContextDisplayName: String {
-        firstNonEmpty(
+        let raw = firstNonEmpty(
             browserHost,
             terminalWorkspace,
             editorWorkspace,
             localizedAppName,
             bundleIdentifier
         ) ?? "Unknown"
+        return AppUsageEntry.recommendationDisplayLabel(for: raw)
     }
 
     private func firstNonEmpty(_ values: String?...) -> String? {

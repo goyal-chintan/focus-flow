@@ -27,6 +27,7 @@ final class FocusCoachMessageBuilderTests: XCTestCase {
 
         XCTAssertFalse(message.headline.contains("app:"))
         XCTAssertFalse(message.bannerLabel?.contains("app:") ?? true)
-        XCTAssertTrue(message.headline.contains("com.openai.chatgpt"))
+        XCTAssertFalse(message.headline.contains("com.openai.chatgpt"))
+        XCTAssertTrue(message.headline.contains("ChatGPT"))
     }
 }

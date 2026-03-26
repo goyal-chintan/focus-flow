@@ -9,6 +9,8 @@ struct FocusCoachContext: Sendable {
     let idleSeconds: Int
     let frontmostAppName: String?
     let frontmostBundleIdentifier: String?
+    let frontmostDisplayLabel: String?
+    let frontmostDomainLabel: String?
     let frontmostAppCategory: AppUsageCategory?
     let isInActiveSession: Bool
 
@@ -33,6 +35,48 @@ struct FocusCoachContext: Sendable {
     let blockRecommendationReason: String?
     let inReleaseWindow: Bool
 
+    init(
+        idleSeconds: Int,
+        frontmostAppName: String?,
+        frontmostBundleIdentifier: String?,
+        frontmostDisplayLabel: String? = nil,
+        frontmostDomainLabel: String? = nil,
+        frontmostAppCategory: AppUsageCategory?,
+        isInActiveSession: Bool,
+        todayFocusSeconds: TimeInterval,
+        dailyGoalSeconds: TimeInterval,
+        todaySessionCount: Int,
+        selectedProjectName: String?,
+        selectedWorkMode: WorkMode?,
+        hourOfDay: Int,
+        topDistractingAppName: String?,
+        topDistractingAppMinutes: Int,
+        recentLowPriorityWorkCount: Int,
+        suggestedBlockTarget: String?,
+        blockRecommendationReason: String?,
+        inReleaseWindow: Bool
+    ) {
+        self.idleSeconds = idleSeconds
+        self.frontmostAppName = frontmostAppName
+        self.frontmostBundleIdentifier = frontmostBundleIdentifier
+        self.frontmostDisplayLabel = frontmostDisplayLabel
+        self.frontmostDomainLabel = frontmostDomainLabel
+        self.frontmostAppCategory = frontmostAppCategory
+        self.isInActiveSession = isInActiveSession
+        self.todayFocusSeconds = todayFocusSeconds
+        self.dailyGoalSeconds = dailyGoalSeconds
+        self.todaySessionCount = todaySessionCount
+        self.selectedProjectName = selectedProjectName
+        self.selectedWorkMode = selectedWorkMode
+        self.hourOfDay = hourOfDay
+        self.topDistractingAppName = topDistractingAppName
+        self.topDistractingAppMinutes = topDistractingAppMinutes
+        self.recentLowPriorityWorkCount = recentLowPriorityWorkCount
+        self.suggestedBlockTarget = suggestedBlockTarget
+        self.blockRecommendationReason = blockRecommendationReason
+        self.inReleaseWindow = inReleaseWindow
+    }
+
     // MARK: - Derived helpers
 
     /// 0.0–1.0 progress toward daily goal.
@@ -43,7 +87,10 @@ struct FocusCoachContext: Sendable {
 
     /// True when the frontmost app is classified as distracting.
     var isInDistractingApp: Bool {
-        frontmostAppCategory == .distracting && frontmostAppName != nil
+        let hasForegroundContext = frontmostDisplayLabel != nil
+            || frontmostAppName != nil
+            || frontmostBundleIdentifier != nil
+        return frontmostAppCategory == .distracting && hasForegroundContext
     }
 
     var hasBlockRecommendation: Bool {
