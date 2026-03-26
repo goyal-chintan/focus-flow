@@ -277,7 +277,9 @@ struct InsightsView: View {
         return grouped.compactMap { target, totals in
             let weightedSeconds = Double(totals.focus) * 1.6 + Double(totals.outside)
             guard weightedSeconds >= 900 else { return nil }
-            let confidence = min(0.98, 0.62 + min(0.25, weightedSeconds / 7200.0) + min(0.08, lowPriorityWeight * 0.02))
+            // Saturation at 36 000 weighted-seconds (~10 h / 7 days) gives heavy-use apps
+            // high scores; light-use apps land 50–65%. Old 7 200s cap made everything 87%.
+            let confidence = min(0.97, 0.50 + min(0.40, weightedSeconds / 36_000.0) + min(0.07, lowPriorityWeight * 0.02))
             let focusMinutes = totals.focus / 60
             let outsideMinutes = totals.outside / 60
             let displayTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
