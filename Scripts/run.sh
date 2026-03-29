@@ -52,6 +52,8 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <true/>
     <key>NSSupportsSuddenTermination</key>
     <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>FocusFlow reads the active browser window title to identify distracting websites during focus sessions. No screen content is captured or stored.</string>
 </dict>
 </plist>
 PLIST
