@@ -107,7 +107,7 @@ trap 'rm -rf "$STAGING"' EXIT
 cp -R "$APP_BUNDLE" "$STAGING/$APP_NAME.app"
 ln -s /Applications "$STAGING/Applications"
 
-info "Creating $DMG_NAME…"
+info "Creating ${DMG_NAME}..."
 hdiutil create \
     -volname "$APP_NAME $VERSION" \
     -srcfolder "$STAGING" \
