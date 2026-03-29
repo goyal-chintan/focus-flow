@@ -1,88 +1,126 @@
 # FocusFlow
 
-A native macOS Pomodoro focus timer built with SwiftUI and Apple's Liquid Glass design language.
+FocusFlow is a native macOS focus companion built for people who want more than a Pomodoro timer. It combines a fast menu bar workflow, a full companion window for planning and review, on-device coaching, and system-level distraction control in a product designed around Apple's Liquid Glass direction.
 
 ![FocusFlow Logo](Brand/LogoConcepts/focusflow-logo-final.svg)
-
-![FocusFlow Screenshot](docs/screenshot-hero.svg)
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-blue)
 ![Swift 6.2](https://img.shields.io/badge/Swift-6.2-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[![Download](https://img.shields.io/github/v/release/goyal-chintan/focus-flow?label=Download&logo=apple&color=blue)](https://github.com/goyal-chintan/focus-flow/releases/latest)
+
+## Screenshots
+
+| Active focus session | Today dashboard |
+|---|---|
+| ![FocusFlow menu bar focus state](docs/screenshots/menu-bar-focusing.png) | ![FocusFlow today stats view](docs/screenshots/today-stats-view.png) |
+
+| Strong coach intervention | Session completion |
+|---|---|
+| ![FocusFlow coach intervention window](docs/screenshots/coach-strong-window.png) | ![FocusFlow session completion earned break state](docs/screenshots/session-complete-earned-stage.png) |
+
+## Product vision
+
+FocusFlow is designed to reduce the gap between intention and action.
+
+- **Calm, low-friction focus** in the menu bar for starting quickly and staying oriented.
+- **Recovery-first coaching** that helps you get back on track without guilt-heavy nudges.
+- **On-device intelligence** so behavior analysis, recommendations, and interventions stay private.
+- **A premium native feel** built around an Obsidian Glass visual language, strong hierarchy, and restrained motion.
+
+## What makes FocusFlow different
+
+- **Two-surface workflow:** a lightweight menu bar timer plus a deeper companion window for planning, trends, projects, settings, and review.
+- **Personal Focus Coach:** live drift detection, quick interventions, stronger re-engagement flows, and weekly insights.
+- **Guardian intelligence:** app and website awareness, browser-domain tracking, and adaptive recommendations based on your real distraction patterns.
+- **System-wide blocking:** optional website, app, and notification blocking tied to your focus sessions.
+- **Apple integrations:** Calendar and Reminders support for planning, review, and session follow-through.
+- **Privacy-first by default:** no cloud dependency, no account system, no remote inference.
 
 ## Features
 
-### Menu Bar Timer
-- Lives in the menu bar — always visible, never in the way
-- Shows live countdown during focus + total daily focus time
-- Animated timer ring with smooth progress
-- Preset durations (15 / 25 / 45 / 60 min) or custom minute input
-- Minimum 5-minute sessions enforced
-- Session cycle tracking with automatic short and long breaks
-- Pause indicator with elapsed time in menu bar
+### Menu bar timer
 
-### Focus Sessions
-- **Start / Pause / Resume / Stop** with Liquid Glass controls
-- **Pause counter** with color-coded warnings — orange at 2 min, red at 5 min, with notification sounds
-- **Abandon session** — stop and choose to save as incomplete or discard entirely
-- **Session completion flow** — when a timer finishes:
-  - Rate your focus (Distracted / Neutral / Focused / Deep Focus)
-  - Record what you achieved
-  - Split time across multiple projects (e.g., 15 min coding + 10 min review)
-  - Choose: Take a Break, Continue Focusing, or End Session
+- Lives in the menu bar so the core workflow is always one click away.
+- Preset focus durations plus custom minute entry.
+- Minimum 5-minute session guard.
+- Live timer ring with state-specific visual language for idle, focusing, paused, break, and overtime states.
+- Pause, resume, stop, and abandon flows with explicit session-state handling.
+- Session cycle tracking for short and long breaks.
+- Blocking status surfaced directly in the popover when protections are active.
 
-### Smart Project Management
-- Inline search-and-create — type to find existing projects or create new ones on the fly
-- Projects with custom colors (10 options) and SF Symbol icons (16 options)
-- Archive projects (soft delete, data preserved)
-- No confusing split between "labels" and "projects" — unified system
+### Session completion and recovery
 
-### Stats & Analytics
-- **Today tab** — focus time, session count, streak, per-project time bars, session timeline with mood icons, reflections summary (mood distribution + achievements)
-- **Week tab** — bar chart with 7-day / 30-day toggle, daily average, best day, total
-- **Edit past sessions** — click any session in the timeline to change project, mood, or achievement
-- **Cross-midnight handling** — sessions spanning midnight are correctly attributed to each day
-- **Time splits in stats** — split sessions show per-project breakdown accurately
+- Post-session reflection flow with mood, achievement notes, and time splitting across projects.
+- Manual stop pathway with explicit save/discard behavior.
+- Continue options after completion: take a break, keep focusing, or end the session.
+- Adaptive **Suggested Earned Break** option that rewards longer or harder effort with a more appropriate recovery window.
+- Break-overrun classification chips and recovery prompts to improve future recommendations.
 
-### Settings
-- Customize focus / short break / long break durations
-- Sessions before long break (2–8)
-- Auto-start breaks and next session toggles
-- Completion sound picker (13 macOS system sounds with preview)
-- Launch at login (SMAppService)
+### Companion window
 
-### Day Boundary Handling
-- Automatic stats refresh at midnight
-- Cross-midnight sessions split attribution between days
-- Session counter resets at day change
+The companion window is the app's deeper control room and includes:
 
-### Notifications
-- Focus session complete — sound + macOS notification
-- Break complete — sound + notification
-- Pause too long — warning at 2 min, critical at 5 min
+- **Today** — daily totals, session timeline, project progress, reminders, and behavioral summaries.
+- **Calendar** — session history and planning surfaces tied to Apple Calendar and Reminders.
+- **Week** — trend views and longer-range progress summaries.
+- **Insights** — productive-hour patterns, focus behavior analysis, and personalized coach guidance.
+- **Projects** — project creation, editing, colors, icons, and archive management.
+- **Settings** — timer preferences, integrations, launch behavior, blocking controls, and coach configuration.
 
-### Personal Focus Coach (On-Device AI)
-- **Real-time risk scoring** — detects drift, app switching, and procrastination patterns every 30 seconds
-- **Adaptive intervention policy** — 3-level escalation (soft nudge → quick prompt → strong prompt) with budget, cooldown, and snooze safeguards
-- **Pre-session intention card** — set task type, expected resistance, and success criteria (MCII-based)
-- **Live coach strip** — green/amber/red risk status bar during active sessions
-- **Anomaly reason chips** — 1-tap reason capture (meeting, fatigue, stress, avoidance) for false-positive control
-- **Idle-time hard prompt** — when a notification is ignored and drift escalates, a full-screen strong coach window fires to surface a re-engagement decision
-- **Personalized weekly insights** — completion rate, recovery rate, top distractions, science-backed coaching tips
-- **Privacy-first** — all data stays on-device, no cloud dependency
-- **Science-informed** — based on Steel 2007 (procrastination), Rozental 2018 (CBT), Albulescu 2022 (micro-breaks)
+### Smart project management
 
-### App & Website Tracking (Guardian Recommendations)
-- **Per-second app tracking** — `AppUsageTracker` records the frontmost app every second; persisted to SwiftData every 30 s
-- **Browser domain tracking** — when Arc, Safari, Chrome, Firefox, Edge, or Opera is frontmost, the active website domain is extracted from the window title and stored as a parallel `domain:<host>` entry (e.g. `domain:youtube.com`)
-- **Guardian Recommendations** — Insights tab surfaces the top distraction apps and websites with a calibrated confidence score, weighted focus-session exposure, and a direct block/allow action
-- **Adaptive coach signals** — real-time `currentFrontmostDomainLabel` feeds coach message personalisation and drift scoring; domain entries also improve idle-prompt specificity
+- Inline search-and-create project picker.
+- Projects with custom colors and SF Symbol icons.
+- Optional project-specific context such as linked blocking behavior.
+- Archived projects remain preserved instead of being destructively deleted.
 
-### Built with Apple's Liquid Glass
-- Native `.glassEffect()` materials with refraction and specular highlights
-- `.buttonStyle(.glass)` and `.glassProminent` controls
-- `GlassEffectContainer` for grouped glass elements
-- Designed exclusively for macOS 26 (Tahoe)
+### Stats and analytics
+
+- Daily focus totals, session counts, streaks, and per-project breakdowns.
+- Session timeline with mood and achievement context.
+- Weekly and longer-range trend views.
+- Cross-midnight attribution so long sessions are split correctly across days.
+- Editable historical sessions for fixing project, mood, or achievement details after the fact.
+- Daily focus-goal tracking in analytics and settings.
+
+### Personal Focus Coach
+
+- Real-time drift/risk scoring during active sessions.
+- Compact in-session interventions for quick recovery.
+- Stronger coach window for higher-risk or ignored-drift scenarios.
+- Pre-session intent capture for task framing and success criteria.
+- Reason chips to separate legitimate interruptions from avoidant behavior.
+- Weekly personalized insights based on intervention outcomes and behavioral history.
+- Science-informed design influenced by procrastination, CBT, implementation-intention, and micro-break research.
+
+### Guardian recommendations and context awareness
+
+- Frontmost-app tracking during active use.
+- Browser-domain labeling when supported, so distracting sites can be identified with more precision than browser-app-level tracking alone.
+- Adaptive recommendation signals that improve blocking suggestions and coach specificity.
+- Screen-sharing-aware suppression rules to avoid disruptive popups in sensitive contexts.
+
+### Blocking
+
+- Optional website blocking using `/etc/hosts`.
+- Optional app blocking and notification muting during focus sessions.
+- Named blocking profiles with reusable website/app/notification sets.
+- Default and project-specific blocking behavior.
+- Crash-recovery cleanup for stale blocking state.
+
+### Calendar and Reminders integration
+
+- Apple Calendar support for logging completed focus sessions.
+- Apple Reminders support for planning and task completion flows.
+- Reminder linking from relevant session flows and companion surfaces.
+
+### Design system
+
+- Native SwiftUI app built around Apple's Liquid Glass direction for macOS 26+.
+- Obsidian Glass visual language: dark premium materials, restrained accents, and strong content-first hierarchy.
+- Motion tuned to behavioral states: calm during focus, escalating when drift or overrun matters, and celebratory when effort is rewarded.
+- Review-driven UI evidence pipeline for regression-proof screenshots and motion capture.
 
 ## Requirements
 
@@ -90,34 +128,54 @@ A native macOS Pomodoro focus timer built with SwiftUI and Apple's Liquid Glass 
 - Xcode 26 or Swift 6.2+
 - Apple Silicon or Intel Mac (2020+)
 
-## Build & Run
+## Run from source
 
 ```bash
 # Clone
 git clone https://github.com/goyal-chintan/focus-flow.git
 cd focus-flow
 
-# Build and launch as .app bundle
+# Build and launch as an .app bundle
 bash Scripts/run.sh
 ```
 
-Or open `Package.swift` in Xcode and press ⌘R.
+`bash Scripts/run.sh` is the preferred local path because FocusFlow needs to run as an app bundle for notification-related behavior.
 
-## Install to Applications
+## Release install flow
 
-```bash
-bash Scripts/run.sh
-cp -R .build/debug/FocusFlow.app /Applications/
-```
+If you are using a DMG release build:
 
-Then launch from Spotlight (⌘+Space → "FocusFlow") or Launchpad.
+1. Download the latest `FocusFlow-*.dmg` from the repository's Releases page.
+2. Drag `FocusFlow.app` into `Applications`.
+3. On first launch, right-click the app and choose **Open** if macOS shows the standard warning for unsigned/not-notarized apps.
 
-## Automated UI Evidence Capture
+## Permissions
 
-Generate review-ready UI evidence (all required contract flows, light/dark screenshots, and animation GIFs):
+Some features require system permissions:
+
+| Permission | Why FocusFlow requests it |
+|---|---|
+| **Calendar** | Save completed focus sessions to Apple Calendar |
+| **Reminders** | Read and complete relevant reminders inside FocusFlow workflows |
+| **Screen Recording** | Read active browser window titles for browser-domain awareness; no screen pixels are captured or stored |
+| **Admin password** | Apply optional website blocking through `/etc/hosts` |
+
+## Automated UI evidence capture
+
+FocusFlow includes a deterministic UI-evidence pipeline for review artifacts:
 
 ```bash
 ./Scripts/capture-ui-evidence.sh
+```
+
+Example filters:
+
+```bash
+# Dark-mode only
+APPEARANCE_FILTER=dark ./Scripts/capture-ui-evidence.sh
+
+# Selected flows only
+FLOW_FILTER=menu_bar_idle,coach_strong_window ./Scripts/capture-ui-evidence.sh
 ```
 
 Artifacts are written to:
@@ -132,63 +190,29 @@ Artifacts/review/<run-id>/
 └── journey.md
 ```
 
-Useful filters:
+## Architecture snapshot
 
-```bash
-# Capture only selected flows
-FLOW_FILTER=menu_bar_idle,coach_strong_window ./Scripts/capture-ui-evidence.sh
+Key modules in the codebase:
 
-# Capture only one appearance
-APPEARANCE_FILTER=dark ./Scripts/capture-ui-evidence.sh
-```
+- `ViewModels/TimerViewModel.swift` — session state machine, focus/break/overtime logic, earned-break calculations, and coach orchestration
+- `Views/MenuBar/` — primary popover workflow
+- `Views/Companion/` — Today, Calendar, Week, Insights, Projects, and Settings surfaces
+- `Views/SessionCompleteWindow.swift` — reflection, recovery, and break-choice flows
+- `Views/CoachInterventionWindowView.swift` — stronger focus-coach intervention surface
+- `Services/AppUsageTracker.swift` — frontmost app and domain-aware context tracking
+- `Services/FocusCoach*.swift` — risk scoring, intervention policy, messaging, insights, and persistence
+- `Services/BlockingService.swift` / `Services/AppBlocker.swift` — distraction controls
+- `Services/CalendarService.swift` / `Services/RemindersService.swift` — Apple integrations
+- `Models/` — projects, sessions, block profiles, task intent, app usage, and intervention history
 
-## Architecture
+## Tech stack
 
-```
-Sources/FocusFlow/
-├── FocusFlowApp.swift              # App entry — MenuBarExtra + Window scenes
-├── Models/
-│   ├── Project.swift               # Projects with color, icon, sessions
-│   ├── FocusSession.swift          # Focus/break session records + mood/achievement
-│   ├── TimeSplit.swift             # Time splits across projects
-│   ├── SessionReflection.swift    # FocusMood enum
-│   ├── AppSettings.swift           # User preferences
-│   └── SessionType.swift           # Focus, short break, long break
-├── ViewModels/
-│   └── TimerViewModel.swift        # Timer state machine, pause tracking, day boundary
-├── Services/
-│   └── NotificationService.swift   # Notifications + sounds + pause warnings
-└── Views/
-    ├── MenuBar/
-    │   ├── MenuBarPopoverView.swift    # Timer popover with controls
-    │   └── TimeSplitView.swift         # Split time across projects UI
-    ├── Companion/
-    │   ├── CompanionWindowView.swift   # Sidebar navigation
-    │   ├── TodayStatsView.swift        # Daily dashboard with reflections
-    │   ├── WeeklyStatsView.swift       # Weekly/monthly charts
-    │   ├── ProjectsListView.swift      # Project management
-    │   ├── ProjectFormView.swift       # Add/edit project
-    │   ├── SessionEditView.swift       # Edit past sessions
-    │   └── SettingsView.swift          # App preferences
-    └── Components/
-        ├── TimerRingView.swift         # Animated progress ring
-        ├── ControlButton.swift         # Liquid Glass buttons
-        ├── SessionDotsView.swift       # Session cycle dots
-        ├── ProjectPickerView.swift     # Search + create project picker
-        ├── StatCard.swift              # Glass stat card
-        ├── BarChartView.swift          # Weekly bar chart
-        ├── ProjectTimeBar.swift        # Per-project progress bar
-        ├── SessionTimelineView.swift   # Clickable session timeline
-        └── TimeFormatting.swift        # Shared time formatting
-```
-
-## Tech Stack
-
-- **SwiftUI** — declarative UI framework
-- **SwiftData** — local persistence (no cloud, no accounts)
-- **Liquid Glass** — Apple's native material system (macOS 26+)
-- **UNUserNotificationCenter** — session and pause notifications
-- **SMAppService** — launch at login
+- **SwiftUI** — native macOS UI
+- **SwiftData** — local persistence
+- **EventKit** — Calendar and Reminders integrations
+- **UNUserNotificationCenter** — notifications and nudges
+- **SMAppService** — launch-at-login support
+- **No external runtime dependencies** — fully native, on-device implementation
 
 ## License
 
