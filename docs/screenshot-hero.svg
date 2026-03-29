@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1">
+      <stop offset="0" stop-color="#071029" />
+      <stop offset="1" stop-color="#071B2A" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="600" rx="20" fill="url(#bg)" />
+  <!-- Mock app window -->
+  <g transform="translate(40,40)">
+    <rect width="1120" height="520" rx="16" fill="#071221" stroke="#112233" stroke-width="1" />
+    <!-- Timer ring -->
+    <g transform="translate(560,260)">
+      <circle r="140" fill="none" stroke="#0ea5e9" stroke-width="20" opacity="0.18" />
+      <circle r="140" fill="none" stroke="#34d399" stroke-width="20" stroke-dasharray="880" stroke-dashoffset="220" stroke-linecap="round" />
+      <text x="0" y="10" font-family="Inter, Arial, sans-serif" font-size="56" fill="#e6f7ff" text-anchor="middle">25:00</text>
+      <text x="0" y="62" font-family="Inter, Arial, sans-serif" font-size="18" fill="#94a3b8" text-anchor="middle">Focus session — Menu bar</text>
+    </g>
+    <!-- Side panel mock -->
+    <rect x="64" y="420" width="340" height="58" rx="8" fill="#0b1722" />
+    <rect x="420" y="420" width="614" height="58" rx="8" fill="#0b1722" />
+  </g>
+  <text x="60" y="36" font-family="Inter, Arial, sans-serif" font-size="20" fill="#9fb2c6">FocusFlow</text>
+</svg>
