@@ -143,11 +143,26 @@ bash Scripts/run.sh
 
 ## Release install flow
 
-If you are using a DMG release build:
+### Option 1 — Homebrew (easiest)
 
-1. Download the latest `FocusFlow-*.dmg` from the repository's Releases page.
-2. Drag `FocusFlow.app` into `Applications`.
-3. On first launch, right-click the app and choose **Open** if macOS shows the standard warning for unsigned/not-notarized apps.
+```sh
+brew tap goyal-chintan/focusflow
+brew install --cask focusflow
+```
+
+### Option 2 — DMG
+
+1. Download the latest `FocusFlow-*.dmg` from the repository's [Releases page](https://github.com/goyal-chintan/focus-flow/releases/latest)
+2. Drag `FocusFlow.app` into `Applications`
+3. On first launch, right-click the app and choose **Open** if macOS shows the standard warning for unsigned/not-notarized apps
+
+### Option 3 — Build from source
+
+```bash
+git clone https://github.com/goyal-chintan/focus-flow.git
+cd focus-flow
+bash Scripts/install-and-register-smart.sh
+```
 
 ## Permissions
 
