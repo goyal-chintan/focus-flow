@@ -46,6 +46,7 @@ extension TimerViewModel {
 
         self.modelContext = modelContext
         self.settings = settings
+        isEvidenceMode = true
         isConfigured = true
         coachEngine.configureStore(SwiftDataCoachStore(modelContext: modelContext))
     }
@@ -142,6 +143,8 @@ final class TimerViewModel {
     var completedFocusSessions: Int = 0
     var selectedProject: Project?
     var customLabel: String = ""
+    /// True only for deterministic UI evidence rendering paths.
+    var isEvidenceMode: Bool = false
 
     // MARK: - Custom Duration
     var selectedMinutes: Int = 25

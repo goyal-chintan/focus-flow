@@ -6,6 +6,7 @@ struct TimerRingView: View {
     let label: String
     let state: TimerState
     let isOvertime: Bool
+    var evidenceMode: Bool = false
     var pauseDuration: TimeInterval = 0
     var pauseTimeString: String = "0:00"
     var overrunSeconds: TimeInterval = 0
@@ -19,6 +20,8 @@ struct TimerRingView: View {
     @State private var breakBreathingOpacity: Double = 0.06
     @State private var completionBurst: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var disableMotion: Bool { reduceMotion || evidenceMode }
 
     private var isActive: Bool {
         switch state {
@@ -105,25 +108,25 @@ struct TimerRingView: View {
     var body: some View {
         ZStack {
             // Idle breathing glow — CPU-safe, only animates opacity
-            if !isActive && !reduceMotion {
+            if !isActive && !disableMotion {
                 Circle()
                     .fill(LiquidDesignTokens.Spectral.mint.opacity(breathingOpacity))
                     .blur(radius: 12)
                     .frame(width: ringSize + 20, height: ringSize + 20)
-                    .animation(FFMotion.breathing, value: breathingOpacity)
+                    .animation(disableMotion ? nil : FFMotion.breathing, value: breathingOpacity)
             }
 
             // Break recovery breathing — calms in last 40%
-            if case .onBreak = state, !reduceMotion {
+            if case .onBreak = state, !disableMotion {
                 Circle()
                     .fill(LiquidDesignTokens.Spectral.mint.opacity(breakBreathingOpacity))
                     .blur(radius: 12)
                     .frame(width: ringSize + 20, height: ringSize + 20)
-                    .animation(FFMotion.breathing, value: breakBreathingOpacity)
+                    .animation(disableMotion ? nil : FFMotion.breathing, value: breakBreathingOpacity)
             }
 
             // Completion mint burst
-            if completionBurst && !reduceMotion {
+            if completionBurst && !disableMotion {
                 Circle()
                     .fill(LiquidDesignTokens.Spectral.mint.opacity(0.3))
                     .blur(radius: 20)
@@ -176,7 +179,7 @@ struct TimerRingView: View {
                     .rotationEffect(.degrees(-90))
                     .shadow(color: ringGlowColor.opacity(glowPulse ? 0.65 : 0.28), radius: glowPulse ? 18 : 10)
                     .shadow(color: ringGlowColor.opacity(glowPulse ? 0.25 : 0.08), radius: glowPulse ? 28 : 18)
-                    .animation(FFMotion.progress, value: progress)
+                    .animation(disableMotion ? nil : FFMotion.progress, value: progress)
             }
 
             // Center text
@@ -223,7 +226,7 @@ struct TimerRingView: View {
                         tracking: 2.2
                     )
                     .contentTransition(.interpolate)
-                    .animation(FFMotion.section, value: label)
+                    .animation(disableMotion ? nil : FFMotion.section, value: label)
 
                     if case .onBreak = state, overrunSeconds > 0 {
                         Text("+\(Int(overrunSeconds / 60))m over")
@@ -246,8 +249,16 @@ struct TimerRingView: View {
         }())
         .onChange(of: isActive, initial: true) { _, active in
             if active {
-                withAnimation(FFMotion.commit) {
-                    glowPulse = true
+                if disableMotion {
+                    var t = Transaction()
+                    t.disablesAnimations = true
+                    withTransaction(t) {
+                        glowPulse = true
+                    }
+                } else {
+                    withAnimation(FFMotion.commit) {
+                        glowPulse = true
+                    }
                 }
                 // Stop idle breathing immediately (view is removed, reset state)
                 var t = Transaction()
@@ -256,16 +267,24 @@ struct TimerRingView: View {
                     breathingOpacity = 0.06
                 }
             } else {
-                withAnimation(.easeOut(duration: 0.4)) {
-                    glowPulse = false
+                if disableMotion {
+                    var t = Transaction()
+                    t.disablesAnimations = true
+                    withTransaction(t) {
+                        glowPulse = false
+                    }
+                } else {
+                    withAnimation(.easeOut(duration: 0.4)) {
+                        glowPulse = false
+                    }
                 }
-                if !reduceMotion {
+                if !disableMotion {
                     breathingOpacity = 0.14
                 }
             }
         }
         .onChange(of: isOvertime) { oldValue, newValue in
-            if newValue && !oldValue && state == .focusing && !reduceMotion {
+            if newValue && !oldValue && state == .focusing && !disableMotion {
                 withAnimation(FFMotion.reward) {
                     completionBurst = true
                 }
@@ -277,7 +296,7 @@ struct TimerRingView: View {
             }
         }
         .onChange(of: state, initial: true) { _, newState in
-            if case .onBreak = newState, !reduceMotion {
+            if case .onBreak = newState, !disableMotion {
                 breakBreathingOpacity = breakBreathingAmplitude
             } else {
                 var t = Transaction()
@@ -288,7 +307,7 @@ struct TimerRingView: View {
             }
         }
         .onChange(of: progress) { _, _ in
-            if case .onBreak = state, progress > 0.6, !reduceMotion {
+            if case .onBreak = state, progress > 0.6, !disableMotion {
                 breakBreathingOpacity = breakBreathingAmplitude
             }
         }
@@ -374,8 +393,8 @@ struct TimerRingView: View {
                 )
                 .rotationEffect(.degrees(-90))
                 .shadow(color: pauseRingColor.opacity(glowPulse ? 0.55 : 0.2), radius: glowPulse ? 14 : 6)
-                .animation(FFMotion.progress, value: progress)
-                .animation(FFMotion.progress, value: pauseDuration)
+                .animation(disableMotion ? nil : FFMotion.progress, value: progress)
+                .animation(disableMotion ? nil : FFMotion.progress, value: pauseDuration)
         }
     }
 
@@ -390,7 +409,7 @@ struct TimerRingView: View {
                         style: StrokeStyle(lineWidth: breakOvertimeStrokeWidth, lineCap: .round)
                     )
                     .shadow(color: Color(hex: 0xE6A820).opacity(0.3), radius: 8)
-                    .animation(FFMotion.progress, value: overrunSeconds)
+                    .animation(disableMotion ? nil : FFMotion.progress, value: overrunSeconds)
 
                 // Dark yellow overtime fill — progress beyond 1.0, map to 0→1 range
                 let overtimeProgress = min(max(progress - 1.0, 0) / 0.5, 1.0)
@@ -399,11 +418,11 @@ struct TimerRingView: View {
                     .stroke(
                         Color(hex: 0xCC8800).opacity(0.9),
                         style: StrokeStyle(lineWidth: breakOvertimeStrokeWidth, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: Color(hex: 0xCC8800).opacity(0.5), radius: 10)
-                    .animation(FFMotion.progress, value: progress)
-                    .animation(FFMotion.progress, value: overrunSeconds)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: Color(hex: 0xCC8800).opacity(0.5), radius: 10)
+                        .animation(disableMotion ? nil : FFMotion.progress, value: progress)
+                        .animation(disableMotion ? nil : FFMotion.progress, value: overrunSeconds)
             } else {
                 // Focus overtime: blue ring base with green overlay growing as overtime increases
                 // Base: full blue ring (same as focusing)
@@ -434,7 +453,7 @@ struct TimerRingView: View {
                         )
                         .rotationEffect(.degrees(-90))
                         .shadow(color: Color(hex: 0x3DA86A).opacity(glowPulse ? 0.5 : 0.25), radius: glowPulse ? 12 : 6)
-                        .animation(FFMotion.progress, value: progress)
+                        .animation(disableMotion ? nil : FFMotion.progress, value: progress)
                 }
             }
         }
@@ -451,7 +470,7 @@ struct TimerRingView: View {
             .frame(width: ringSize + 6, height: ringSize + 6)
             .rotationEffect(.degrees(-90))
             .shadow(color: outerGlowColor.opacity(outerGlowOpacity), radius: outerGlowRadius)
-            .animation(FFMotion.progress, value: progress)
+            .animation(disableMotion ? nil : FFMotion.progress, value: progress)
     }
 
     private var ringColor: Color {

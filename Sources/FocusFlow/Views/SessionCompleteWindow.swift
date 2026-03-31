@@ -29,6 +29,7 @@ struct SessionCompleteWindowView: View {
     private var settings: AppSettings? { allSettings.first }
 
     private var isBreakCompletion: Bool { timerVM.lastCompletionWasBreak }
+    private var disableMotionForEvidence: Bool { reduceMotion || timerVM.isEvidenceMode }
 
     /// Resolved earned context — prefers durable `completedBlockContext`, falls back to legacy session info.
     private var earnedContext: (minutes: Int, projectName: String)? {
@@ -57,10 +58,14 @@ struct SessionCompleteWindowView: View {
         .onAppear {
             stage = .earned
             hasHandledAction = false
-            appeared = false
+            appeared = disableMotionForEvidence
             depositPulse = false
-            bringWindowToFront()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { appeared = true }
+            if !timerVM.isEvidenceMode {
+                bringWindowToFront()
+            }
+            if !disableMotionForEvidence {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { appeared = true }
+            }
         }
         .onDisappear {
             if !hasHandledAction && timerVM.isManualStop && timerVM.showSessionComplete {
@@ -82,7 +87,7 @@ struct SessionCompleteWindowView: View {
                     }
                 }
                 .padding(24)
-                .animation(.easeInOut(duration: 0.22), value: stage)
+                .animation(disableMotionForEvidence ? nil : .easeInOut(duration: 0.22), value: stage)
             }
             footerBar
         }
@@ -115,7 +120,7 @@ struct SessionCompleteWindowView: View {
             remindersSection
             continueButton
         }
-        .animation(FFMotion.section, value: timerVM.showCoachReasonSheet)
+        .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.showCoachReasonSheet)
     }
 
     private var earnedBadge: some View {
@@ -126,7 +131,7 @@ struct SessionCompleteWindowView: View {
                     .fill(LiquidDesignTokens.Spectral.mint.opacity(0.15))
                     .frame(width: 80, height: 80)
                     .blur(radius: appeared ? 14 : 0)
-                    .animation(.easeOut(duration: 0.5), value: appeared)
+                    .animation(disableMotionForEvidence ? nil : .easeOut(duration: 0.5), value: appeared)
 
                 Image(systemName: timerVM.isManualStop ? "stop.circle.fill" : "sparkles")
                     .font(.system(size: 40))
@@ -139,7 +144,7 @@ struct SessionCompleteWindowView: View {
             }
             .scaleEffect(appeared ? 1.0 : 0.85)
             .opacity(appeared ? 1.0 : 0)
-            .animation(FFMotion.reward, value: appeared)
+            .animation(disableMotionForEvidence ? nil : FFMotion.reward, value: appeared)
 
             // Earned time headline
             if let ctx = earnedContext {

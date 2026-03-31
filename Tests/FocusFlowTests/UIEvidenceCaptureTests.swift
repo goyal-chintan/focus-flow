@@ -110,6 +110,58 @@ final class UIEvidenceCaptureTests: XCTestCase {
         try writeManifest(manifest, to: root.appendingPathComponent("manifest.json"))
     }
 
+    func testSessionCompleteEarnedStageCaptureIsStableAcrossRepeatedRenders() throws {
+        let firstFixtures = FixturePool(owner: self)
+        defer { firstFixtures.cleanup() }
+
+        let secondFixtures = FixturePool(owner: self)
+        defer { secondFixtures.cleanup() }
+
+        let firstImage = try captureFlow(
+            flowID: "session_complete_earned_stage",
+            appearance: .dark,
+            fixtures: firstFixtures
+        )
+        let secondImage = try captureFlow(
+            flowID: "session_complete_earned_stage",
+            appearance: .dark,
+            fixtures: secondFixtures
+        )
+
+        let diff = try differingPixelSummary(between: firstImage, and: secondImage)
+        XCTAssertEqual(
+            diff.count,
+            0,
+            "Repeated earned-stage evidence renders should be pixel-stable, but found \(diff.count) differing pixels. First difference: \(diff.firstDifferenceDescription)"
+        )
+    }
+
+    func testMenuBarFocusingCaptureIsStableAcrossRepeatedRenders() throws {
+        let firstFixtures = FixturePool(owner: self)
+        defer { firstFixtures.cleanup() }
+
+        let secondFixtures = FixturePool(owner: self)
+        defer { secondFixtures.cleanup() }
+
+        let firstImage = try captureFlow(
+            flowID: "menu_bar_focusing",
+            appearance: .dark,
+            fixtures: firstFixtures
+        )
+        let secondImage = try captureFlow(
+            flowID: "menu_bar_focusing",
+            appearance: .dark,
+            fixtures: secondFixtures
+        )
+
+        let diff = try differingPixelSummary(between: firstImage, and: secondImage)
+        XCTAssertEqual(
+            diff.count,
+            0,
+            "Repeated menu-bar focusing evidence renders should be pixel-stable, but found \(diff.count) differing pixels. First difference: \(diff.firstDifferenceDescription)"
+        )
+    }
+
     // MARK: - Flow Capture
 
     private func captureFlow(
@@ -321,7 +373,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
         appearance: ReviewArtifactAppearance,
         size: CGSize
     ) throws -> CGImage {
-        let rootView = view.environment(\.colorScheme, appearance == .dark ? .dark : .light)
+        let rootView = view
+            .environment(\.colorScheme, appearance == .dark ? .dark : .light)
         let host = NSHostingView(rootView: rootView)
         host.frame = NSRect(origin: .zero, size: size)
         host.layoutSubtreeIfNeeded()
@@ -566,6 +619,70 @@ final class UIEvidenceCaptureTests: XCTestCase {
         guard CGImageDestinationFinalize(destination) else {
             throw CaptureError.imageWriteFailed("Unable to finalize PNG at \(url.path)")
         }
+    }
+
+    private func differingPixelSummary(
+        between left: CGImage,
+        and right: CGImage
+    ) throws -> (count: Int, firstDifferenceDescription: String) {
+        guard left.width == right.width, left.height == right.height else {
+            return (
+                count: -1,
+                firstDifferenceDescription: "size mismatch \(left.width)x\(left.height) vs \(right.width)x\(right.height)"
+            )
+        }
+
+        let leftPixels = try normalizedRGBAData(from: left)
+        let rightPixels = try normalizedRGBAData(from: right)
+
+        var diffCount = 0
+        var firstDifferenceDescription = "none"
+
+        for pixelIndex in stride(from: 0, to: leftPixels.count, by: 4) {
+            let leftPixel = Array(leftPixels[pixelIndex..<(pixelIndex + 4)])
+            let rightPixel = Array(rightPixels[pixelIndex..<(pixelIndex + 4)])
+            guard leftPixel != rightPixel else { continue }
+
+            diffCount += 1
+            if diffCount == 1 {
+                let linearPixelIndex = pixelIndex / 4
+                let x = linearPixelIndex % left.width
+                let y = linearPixelIndex / left.width
+                firstDifferenceDescription = "(\(x), \(y)) \(leftPixel) vs \(rightPixel)"
+            }
+        }
+
+        return (count: diffCount, firstDifferenceDescription: firstDifferenceDescription)
+    }
+
+    private func normalizedRGBAData(from image: CGImage) throws -> Data {
+        let bytesPerRow = image.width * 4
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        var data = Data(count: bytesPerRow * image.height)
+
+        let drew = data.withUnsafeMutableBytes { buffer -> Bool in
+            guard let baseAddress = buffer.baseAddress,
+                  let context = CGContext(
+                    data: baseAddress,
+                    width: image.width,
+                    height: image.height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: bytesPerRow,
+                    space: colorSpace,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ) else {
+                return false
+            }
+
+            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return true
+        }
+
+        guard drew else {
+            throw CaptureError.renderFailed("Unable to normalize CGImage pixel data")
+        }
+
+        return data
     }
 
     private func writeTimerRingAnimation(
