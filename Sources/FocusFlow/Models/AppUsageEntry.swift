@@ -174,8 +174,9 @@ final class AppUsageEntry {
         // Domain-keyed entries written by AppUsageTracker for browser tab contexts.
         // bundleIdentifier is stored as "domain:<host>" so the host IS the block target.
         if id.hasPrefix("domain:") {
-            let host = String(id.dropFirst(7))
-            return host.isEmpty ? nil : host
+            let host = String(id.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !host.isEmpty, isLikelyWebHost(host), !looksLikeBundleIdentifier(host) else { return nil }
+            return host
         }
 
         let mapping: [(needle: String, target: String)] = [
@@ -202,17 +203,28 @@ final class AppUsageEntry {
             "slack", "discord",
             "telegram", "whatsapp"
         ]
-        let browserNeedles = [
-            "safari", "chrome", "firefox",
-            "brave", "arc", "edge",
-            "opera", "orion"
-        ]
         if !bundleIdentifier.isEmpty,
-           !browserNeedles.contains(where: { id.contains($0) }),
+           !isBrowserBundleIdentifier(bundleIdentifier),
            derailerNeedles.contains(where: { id.contains($0) || name.contains($0) }) {
             return "app:\(id)"
         }
         return nil
+    }
+
+    static func isBrowserBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier else { return false }
+        let id = bundleIdentifier.lowercased()
+        let knownBrowserBundleIDs: Set<String> = [
+            "com.apple.safari",
+            "com.google.chrome",
+            "company.thebrowser.browser",
+            "org.mozilla.firefox",
+            "com.microsoft.edgemac",
+            "com.operasoftware.opera"
+        ]
+        if knownBrowserBundleIDs.contains(id) { return true }
+        let browserNeedles = ["safari", "chrome", "firefox", "brave", "arc", "edge", "thebrowser", "opera", "orion"]
+        return browserNeedles.contains(where: { id.contains($0) })
     }
 
     /// Converts persisted context keys into display-safe labels for prompts and insights.
@@ -302,7 +314,11 @@ final class AppUsageEntry {
             return host.lowercased().replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
         }
         let lower = trimmed.lowercased()
-        if !lower.contains(" "), lower.contains("."), !lower.contains("/") {
+        if !lower.contains(" "),
+           lower.contains("."),
+           !lower.contains("/"),
+           !looksLikeBundleIdentifier(trimmed),
+           isLikelyWebHost(lower) {
             return lower.replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
         }
         return nil
@@ -334,6 +350,15 @@ final class AppUsageEntry {
         let lowered = value.lowercased()
         guard !lowered.contains(" "), lowered.contains("."), !lowered.contains("/") else { return false }
         return lowered.split(separator: ".").count >= 3
+    }
+
+    private static func isLikelyWebHost(_ value: String) -> Bool {
+        let host = value.lowercased()
+        guard !host.isEmpty, !host.contains(" "), !host.contains("/") else { return false }
+        guard host.contains(".") else { return false }
+        let tld = host.split(separator: ".").last.map(String.init) ?? ""
+        guard (2...24).contains(tld.count) else { return false }
+        return tld.allSatisfy { $0.isLetter }
     }
 
     private static func prettifyToken(_ value: String) -> String {

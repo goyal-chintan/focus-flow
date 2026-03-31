@@ -151,4 +151,92 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
 
         XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
     }
+
+    func testRecommendationSkipsBrowserEntryFallbackWithoutDomainKey() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "YouTube",
+                bundleIdentifier: "com.apple.Safari",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 1800
+            )
+        ]
+        let project = Project(name: "Office Work")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: "company.thebrowser.browser",
+            frontmostAppName: "Arc",
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertNil(recommendation)
+    }
+
+    func testRecommendationAllowsBrowserFallbackForDomainKeyedEntry() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "YouTube",
+                bundleIdentifier: "domain:youtube.com",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 1800
+            )
+        ]
+        let project = Project(name: "Office Work")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: "company.thebrowser.browser",
+            frontmostAppName: "Arc",
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertEqual(recommendation?.target, "youtube.com")
+    }
+
+    func testRecommendationSkipsRawBundleIdentifierTargetLeak() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "Arc",
+                bundleIdentifier: "company.thebrowser.browser",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 3600
+            )
+        ]
+        let project = Project(name: "Searching")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: nil,
+            frontmostAppName: nil,
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertNil(recommendation)
+    }
+
+    func testRecommendationSkipsBrowserDomainKeyThatContainsBundleIdentifier() {
+        let entries = [
+            AppUsageEntry(
+                date: Date(),
+                appName: "Arc",
+                bundleIdentifier: "domain:company.thebrowser.browser",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 2400
+            )
+        ]
+        let project = Project(name: "Searching")
+
+        let recommendation = advisor.recommendation(
+            frontmostBundleId: "company.thebrowser.browser",
+            frontmostAppName: "Arc",
+            entries: entries,
+            selectedProject: project
+        )
+
+        XCTAssertNil(recommendation)
+    }
 }
