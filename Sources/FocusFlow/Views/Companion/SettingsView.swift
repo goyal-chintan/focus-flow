@@ -68,6 +68,16 @@ struct SettingsView: View {
                     }
                 }
             }
+            // When EventStoreManager auto-disables integration flags because
+            // TCC permissions were revoked, refresh the calendar/reminder lists
+            // so the UI reflects the actual state immediately.
+            .onReceive(NotificationCenter.default.publisher(for: EventStoreManager.permissionsDidChange)) { _ in
+                availableCalendars = []
+                availableReminderLists = []
+                calendarLoadError = nil
+                reminderLoadError = nil
+                reminderAuthError = nil
+            }
         }
     }
 

@@ -67,7 +67,11 @@ cat > "$CONTENTS/Info.plist" << PLIST
     <true/>
     <key>NSCalendarsUsageDescription</key>
     <string>FocusFlow records completed focus sessions to your selected calendar and lets you review session timelines.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>FocusFlow records completed focus sessions to your selected calendar and lets you review session timelines.</string>
     <key>NSRemindersUsageDescription</key>
+    <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
     <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
@@ -91,13 +95,26 @@ fi
 
 ok "App bundle assembled at $APP_BUNDLE"
 
-# ── 3. Code-sign (ad-hoc; replace '-' with 'Developer ID Application: …' if enrolled) ──
+# ── 3. Code-sign ──────────────────────────────────────────────────────────────
+# Use stable certificate so TCC permissions (Calendar, Reminders) survive updates.
+# Run Scripts/setup-codesign.sh once to create the "FocusFlow Development" cert.
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-FocusFlow Development}"
 info "Code-signing…"
-codesign --force --deep --sign - \
-         --identifier com.focusflow.app \
-         --timestamp=none \
-         "$APP_BUNDLE"
-ok "Signed (ad-hoc)"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CODESIGN_IDENTITY"; then
+    codesign --force --deep --sign "$CODESIGN_IDENTITY" \
+             --identifier com.focusflow.app \
+             --timestamp=none \
+             "$APP_BUNDLE"
+    ok "Signed with \"$CODESIGN_IDENTITY\""
+else
+    info "Certificate \"$CODESIGN_IDENTITY\" not found — falling back to ad-hoc signing."
+    info "Run ./Scripts/setup-codesign.sh to fix Calendar/Reminder permission persistence."
+    codesign --force --deep --sign - \
+             --identifier com.focusflow.app \
+             --timestamp=none \
+             "$APP_BUNDLE"
+    ok "Signed (ad-hoc)"
+fi
 
 # ── 4. Build DMG ──────────────────────────────────────────────────────────────
 mkdir -p "$ARTIFACTS_DIR"
