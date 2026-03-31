@@ -41,37 +41,71 @@ focusflow_is_positive_integer() {
 focusflow_pngs_are_pixel_equal() {
     focusflow_left_path="${1:-}"
     focusflow_right_path="${2:-}"
-    focusflow_left_bmp=
-    focusflow_right_bmp=
 
     if [ ! -f "$focusflow_left_path" ] || [ ! -f "$focusflow_right_path" ]; then
         return 1
     fi
 
-    if ! command -v sips >/dev/null 2>&1 || ! command -v cmp >/dev/null 2>&1; then
+    if ! command -v swift >/dev/null 2>&1; then
         return 1
     fi
 
-    focusflow_left_bmp="$(mktemp "${TMPDIR:-/tmp}/focusflow-left.XXXXXX.bmp")"
-    focusflow_right_bmp="$(mktemp "${TMPDIR:-/tmp}/focusflow-right.XXXXXX.bmp")"
+    swift - "$focusflow_left_path" "$focusflow_right_path" <<'SWIFT'
+import AppKit
+import CoreGraphics
+import Foundation
 
-    if ! sips -s format bmp "$focusflow_left_path" --out "$focusflow_left_bmp" >/dev/null 2>&1; then
-        rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
-        return 1
-    fi
+func normalizedRGBAData(from image: CGImage) -> Data? {
+    let width = image.width
+    let height = image.height
+    let bytesPerRow = width * 4
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    var data = Data(count: bytesPerRow * height)
 
-    if ! sips -s format bmp "$focusflow_right_path" --out "$focusflow_right_bmp" >/dev/null 2>&1; then
-        rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
-        return 1
-    fi
+    let drew = data.withUnsafeMutableBytes { buffer -> Bool in
+        guard let baseAddress = buffer.baseAddress,
+              let context = CGContext(
+                data: baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            return false
+        }
 
-    if cmp -s "$focusflow_left_bmp" "$focusflow_right_bmp"; then
-        rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
-        return 0
-    fi
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return true
+    }
 
-    rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
-    return 1
+    return drew ? data : nil
+}
+
+let leftURL = URL(fileURLWithPath: CommandLine.arguments[1])
+let rightURL = URL(fileURLWithPath: CommandLine.arguments[2])
+
+guard let leftData = try? Data(contentsOf: leftURL),
+      let rightData = try? Data(contentsOf: rightURL),
+      let leftRep = NSBitmapImageRep(data: leftData),
+      let rightRep = NSBitmapImageRep(data: rightData),
+      let leftCG = leftRep.cgImage,
+      let rightCG = rightRep.cgImage else {
+    exit(2)
+}
+
+guard leftCG.width == rightCG.width, leftCG.height == rightCG.height else {
+    exit(1)
+}
+
+guard let normalizedLeft = normalizedRGBAData(from: leftCG),
+      let normalizedRight = normalizedRGBAData(from: rightCG) else {
+    exit(2)
+}
+
+exit(normalizedLeft == normalizedRight ? 0 : 1)
+SWIFT
 }
 
 focusflow_publish_readme_screenshots() (
