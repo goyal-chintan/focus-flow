@@ -3,55 +3,55 @@
     {
       "appearance" : "light",
       "flows" : {
-        "break_complete_reason_sheet_hidden" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/break_complete_reason_sheet_hidden.png",
-        "break_complete_reason_sheet_visible" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/break_complete_reason_sheet_visible.png",
-        "coach_quick_prompt" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/coach_quick_prompt.png",
-        "coach_strong_window" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/coach_strong_window.png",
-        "coach_window_dismiss" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/coach_window_dismiss.png",
-        "menu_bar_break_overrun" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/menu_bar_break_overrun.png",
-        "menu_bar_focusing" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/menu_bar_focusing.png",
-        "menu_bar_idle" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/menu_bar_idle.png",
-        "menu_bar_overtime" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/menu_bar_overtime.png",
-        "menu_bar_paused" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/menu_bar_paused.png",
-        "session_complete_break_complete" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/session_complete_break_complete.png",
-        "session_complete_earned_stage" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/session_complete_earned_stage.png",
-        "session_complete_focus_complete" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/session_complete_focus_complete.png",
-        "session_complete_manual_stop" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/session_complete_manual_stop.png",
-        "session_complete_recovery_chips" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/session_complete_recovery_chips.png",
-        "settings_calendar_permissions" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/settings_calendar_permissions.png",
-        "settings_reminders_permissions" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/settings_reminders_permissions.png",
-        "today_stats_view" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/today_stats_view.png"
+        "break_complete_reason_sheet_hidden" : "Artifacts\/review\/20260331-140513\/light\/break_complete_reason_sheet_hidden.png",
+        "break_complete_reason_sheet_visible" : "Artifacts\/review\/20260331-140513\/light\/break_complete_reason_sheet_visible.png",
+        "coach_quick_prompt" : "Artifacts\/review\/20260331-140513\/light\/coach_quick_prompt.png",
+        "coach_strong_window" : "Artifacts\/review\/20260331-140513\/light\/coach_strong_window.png",
+        "coach_window_dismiss" : "Artifacts\/review\/20260331-140513\/light\/coach_window_dismiss.png",
+        "menu_bar_break_overrun" : "Artifacts\/review\/20260331-140513\/light\/menu_bar_break_overrun.png",
+        "menu_bar_focusing" : "Artifacts\/review\/20260331-140513\/light\/menu_bar_focusing.png",
+        "menu_bar_idle" : "Artifacts\/review\/20260331-140513\/light\/menu_bar_idle.png",
+        "menu_bar_overtime" : "Artifacts\/review\/20260331-140513\/light\/menu_bar_overtime.png",
+        "menu_bar_paused" : "Artifacts\/review\/20260331-140513\/light\/menu_bar_paused.png",
+        "session_complete_break_complete" : "Artifacts\/review\/20260331-140513\/light\/session_complete_break_complete.png",
+        "session_complete_earned_stage" : "Artifacts\/review\/20260331-140513\/light\/session_complete_earned_stage.png",
+        "session_complete_focus_complete" : "Artifacts\/review\/20260331-140513\/light\/session_complete_focus_complete.png",
+        "session_complete_manual_stop" : "Artifacts\/review\/20260331-140513\/light\/session_complete_manual_stop.png",
+        "session_complete_recovery_chips" : "Artifacts\/review\/20260331-140513\/light\/session_complete_recovery_chips.png",
+        "settings_calendar_permissions" : "Artifacts\/review\/20260331-140513\/light\/settings_calendar_permissions.png",
+        "settings_reminders_permissions" : "Artifacts\/review\/20260331-140513\/light\/settings_reminders_permissions.png",
+        "today_stats_view" : "Artifacts\/review\/20260331-140513\/light\/today_stats_view.png"
       },
-      "timerAnimationGIF" : "Artifacts\/review\/20260331-111403-evidence-fix\/light\/timer_ring_animation.gif"
+      "timerAnimationGIF" : "Artifacts\/review\/20260331-140513\/light\/timer_ring_animation.gif"
     },
     {
       "appearance" : "dark",
       "flows" : {
-        "break_complete_reason_sheet_hidden" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/break_complete_reason_sheet_hidden.png",
-        "break_complete_reason_sheet_visible" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/break_complete_reason_sheet_visible.png",
-        "coach_quick_prompt" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/coach_quick_prompt.png",
-        "coach_strong_window" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/coach_strong_window.png",
-        "coach_window_dismiss" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/coach_window_dismiss.png",
-        "menu_bar_break_overrun" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/menu_bar_break_overrun.png",
-        "menu_bar_focusing" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/menu_bar_focusing.png",
-        "menu_bar_idle" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/menu_bar_idle.png",
-        "menu_bar_overtime" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/menu_bar_overtime.png",
-        "menu_bar_paused" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/menu_bar_paused.png",
-        "session_complete_break_complete" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/session_complete_break_complete.png",
-        "session_complete_earned_stage" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/session_complete_earned_stage.png",
-        "session_complete_focus_complete" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/session_complete_focus_complete.png",
-        "session_complete_manual_stop" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/session_complete_manual_stop.png",
-        "session_complete_recovery_chips" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/session_complete_recovery_chips.png",
-        "settings_calendar_permissions" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/settings_calendar_permissions.png",
-        "settings_reminders_permissions" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/settings_reminders_permissions.png",
-        "today_stats_view" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/today_stats_view.png"
+        "break_complete_reason_sheet_hidden" : "Artifacts\/review\/20260331-140513\/dark\/break_complete_reason_sheet_hidden.png",
+        "break_complete_reason_sheet_visible" : "Artifacts\/review\/20260331-140513\/dark\/break_complete_reason_sheet_visible.png",
+        "coach_quick_prompt" : "Artifacts\/review\/20260331-140513\/dark\/coach_quick_prompt.png",
+        "coach_strong_window" : "Artifacts\/review\/20260331-140513\/dark\/coach_strong_window.png",
+        "coach_window_dismiss" : "Artifacts\/review\/20260331-140513\/dark\/coach_window_dismiss.png",
+        "menu_bar_break_overrun" : "Artifacts\/review\/20260331-140513\/dark\/menu_bar_break_overrun.png",
+        "menu_bar_focusing" : "Artifacts\/review\/20260331-140513\/dark\/menu_bar_focusing.png",
+        "menu_bar_idle" : "Artifacts\/review\/20260331-140513\/dark\/menu_bar_idle.png",
+        "menu_bar_overtime" : "Artifacts\/review\/20260331-140513\/dark\/menu_bar_overtime.png",
+        "menu_bar_paused" : "Artifacts\/review\/20260331-140513\/dark\/menu_bar_paused.png",
+        "session_complete_break_complete" : "Artifacts\/review\/20260331-140513\/dark\/session_complete_break_complete.png",
+        "session_complete_earned_stage" : "Artifacts\/review\/20260331-140513\/dark\/session_complete_earned_stage.png",
+        "session_complete_focus_complete" : "Artifacts\/review\/20260331-140513\/dark\/session_complete_focus_complete.png",
+        "session_complete_manual_stop" : "Artifacts\/review\/20260331-140513\/dark\/session_complete_manual_stop.png",
+        "session_complete_recovery_chips" : "Artifacts\/review\/20260331-140513\/dark\/session_complete_recovery_chips.png",
+        "settings_calendar_permissions" : "Artifacts\/review\/20260331-140513\/dark\/settings_calendar_permissions.png",
+        "settings_reminders_permissions" : "Artifacts\/review\/20260331-140513\/dark\/settings_reminders_permissions.png",
+        "today_stats_view" : "Artifacts\/review\/20260331-140513\/dark\/today_stats_view.png"
       },
-      "timerAnimationGIF" : "Artifacts\/review\/20260331-111403-evidence-fix\/dark\/timer_ring_animation.gif"
+      "timerAnimationGIF" : "Artifacts\/review\/20260331-140513\/dark\/timer_ring_animation.gif"
     }
   ],
-  "functionalProofReport" : "Artifacts\/review\/20260331-111403-evidence-fix\/functional-proof.json",
-  "generatedAt" : "2026-03-31T11:14:18Z",
-  "journeyReport" : "Artifacts\/review\/20260331-111403-evidence-fix\/journey.md",
+  "functionalProofReport" : "Artifacts\/review\/20260331-140513\/functional-proof.json",
+  "generatedAt" : "2026-03-31T14:05:33Z",
+  "journeyReport" : "Artifacts\/review\/20260331-140513\/journey.md",
   "requiredFlows" : [
     "menu_bar_idle",
     "menu_bar_focusing",
@@ -72,5 +72,5 @@
     "break_complete_reason_sheet_hidden",
     "break_complete_reason_sheet_visible"
   ],
-  "runID" : "20260331-111403-evidence-fix"
+  "runID" : "20260331-140513"
 }
