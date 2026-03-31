@@ -39,8 +39,6 @@ final class ScreenshotAutomationScriptTests: XCTestCase {
         XCTAssertFalse(contract.isEmpty)
 
         let workspaceURL = try makeScratchDirectory(named: "readme-publish")
-        defer { try? FileManager.default.removeItem(at: workspaceURL) }
-
         let sourceDirectoryURL = workspaceURL.appendingPathComponent("source", isDirectory: true)
         let outputDirectoryURL = workspaceURL.appendingPathComponent("output", isDirectory: true)
         try FileManager.default.createDirectory(at: sourceDirectoryURL, withIntermediateDirectories: true)
@@ -81,6 +79,49 @@ final class ScreenshotAutomationScriptTests: XCTestCase {
             XCTAssertEqual(imageSize.width, row.pixelWidth, "Unexpected width for \(row.publishedFilename)")
             XCTAssertEqual(imageSize.height, row.pixelHeight, "Unexpected height for \(row.publishedFilename)")
         }
+    }
+
+    func testReadmePublishingRejectsNonNumericContractDimensions() throws {
+        let workspaceURL = try makeScratchDirectory(named: "invalid-contract")
+        let contractURL = workspaceURL.appendingPathComponent("invalid-contract.tsv")
+        try """
+        flow_id\tpublished_filename\tpixel_width\tpixel_height
+        menu_bar_focusing\tmenu-bar-focusing.png\twide\t760
+        """.write(to: contractURL, atomically: true, encoding: .utf8)
+
+        let result = try runShell(
+            ". Scripts/lib/screenshot-automation.sh; focusflow_publish_readme_screenshots \(shellEscaped(workspaceURL.path)) \(shellEscaped(workspaceURL.path))",
+            environment: ["FOCUSFLOW_README_SCREENSHOT_CONTRACT_PATH": contractURL.path]
+        )
+
+        XCTAssertEqual(result.exitStatus, 1)
+        XCTAssertTrue(result.stderr.contains("Invalid README screenshot size for menu_bar_focusing"), result.stderr)
+    }
+
+    func testReadmePublishingReportsFlowWhenResizeFails() throws {
+        let workspaceURL = try makeScratchDirectory(named: "resize-failure")
+        let sourceDirectoryURL = workspaceURL.appendingPathComponent("source", isDirectory: true)
+        let outputDirectoryURL = workspaceURL.appendingPathComponent("output", isDirectory: true)
+        let contractURL = workspaceURL.appendingPathComponent("resize-contract.tsv")
+
+        try FileManager.default.createDirectory(at: sourceDirectoryURL, withIntermediateDirectories: true)
+        try "not a png".write(
+            to: sourceDirectoryURL.appendingPathComponent("menu_bar_focusing.png"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try """
+        flow_id\tpublished_filename\tpixel_width\tpixel_height
+        menu_bar_focusing\tmenu-bar-focusing.png\t342\t760
+        """.write(to: contractURL, atomically: true, encoding: .utf8)
+
+        let result = try runShell(
+            ". Scripts/lib/screenshot-automation.sh; focusflow_publish_readme_screenshots \(shellEscaped(sourceDirectoryURL.path)) \(shellEscaped(outputDirectoryURL.path))",
+            environment: ["FOCUSFLOW_README_SCREENSHOT_CONTRACT_PATH": contractURL.path]
+        )
+
+        XCTAssertEqual(result.exitStatus, 1)
+        XCTAssertTrue(result.stderr.contains("Failed to publish screenshot for menu_bar_focusing"), result.stderr)
     }
 
     private func loadReadmeScreenshotContract() throws -> [ReadmeScreenshotContractRow] {
@@ -156,6 +197,9 @@ final class ScreenshotAutomationScriptTests: XCTestCase {
             .appendingPathComponent(name, isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try FileManager.default.removeItem(at: directoryURL)
+        }
         return directoryURL
     }
 

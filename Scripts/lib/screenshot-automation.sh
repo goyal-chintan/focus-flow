@@ -27,6 +27,17 @@ focusflow_readme_screenshot_contract_path() {
     printf '%s\n' "$(focusflow_repo_dir)/Scripts/readme-screenshot-contract.tsv"
 }
 
+focusflow_is_positive_integer() {
+    case "${1:-}" in
+        ""|0|*[!0-9]*)
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
 focusflow_publish_readme_screenshots() {
     focusflow_source_dir="${1:-${FOCUSFLOW_README_SCREENSHOT_SOURCE_DIR:-}}"
     focusflow_output_dir="${2:-${FOCUSFLOW_README_SCREENSHOT_OUTPUT_DIR:-}}"
@@ -67,6 +78,11 @@ focusflow_publish_readme_screenshots() {
             return 1
         fi
 
+        if ! focusflow_is_positive_integer "$focusflow_width" || ! focusflow_is_positive_integer "$focusflow_height"; then
+            echo "Invalid README screenshot size for ${focusflow_flow_id:-unknown}: ${focusflow_width:-missing}x${focusflow_height:-missing}" >&2
+            return 1
+        fi
+
         focusflow_source_path="$focusflow_source_dir/$focusflow_flow_id.png"
         focusflow_output_path="$focusflow_output_dir/$focusflow_filename"
 
@@ -76,6 +92,9 @@ focusflow_publish_readme_screenshots() {
         fi
 
         mkdir -p "$(dirname "$focusflow_output_path")"
-        sips -z "$focusflow_height" "$focusflow_width" "$focusflow_source_path" --out "$focusflow_output_path" >/dev/null
+        if ! sips -z "$focusflow_height" "$focusflow_width" "$focusflow_source_path" --out "$focusflow_output_path" >/dev/null; then
+            echo "Failed to publish screenshot for ${focusflow_flow_id:-unknown}: $focusflow_source_path -> $focusflow_output_path" >&2
+            return 1
+        fi
     done < "$focusflow_contract_path"
 }
