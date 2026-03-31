@@ -38,6 +38,42 @@ focusflow_is_positive_integer() {
     esac
 }
 
+focusflow_pngs_are_pixel_equal() {
+    focusflow_left_path="${1:-}"
+    focusflow_right_path="${2:-}"
+    focusflow_left_bmp=
+    focusflow_right_bmp=
+
+    if [ ! -f "$focusflow_left_path" ] || [ ! -f "$focusflow_right_path" ]; then
+        return 1
+    fi
+
+    if ! command -v sips >/dev/null 2>&1 || ! command -v cmp >/dev/null 2>&1; then
+        return 1
+    fi
+
+    focusflow_left_bmp="$(mktemp "${TMPDIR:-/tmp}/focusflow-left.XXXXXX.bmp")"
+    focusflow_right_bmp="$(mktemp "${TMPDIR:-/tmp}/focusflow-right.XXXXXX.bmp")"
+
+    if ! sips -s format bmp "$focusflow_left_path" --out "$focusflow_left_bmp" >/dev/null 2>&1; then
+        rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
+        return 1
+    fi
+
+    if ! sips -s format bmp "$focusflow_right_path" --out "$focusflow_right_bmp" >/dev/null 2>&1; then
+        rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
+        return 1
+    fi
+
+    if cmp -s "$focusflow_left_bmp" "$focusflow_right_bmp"; then
+        rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
+        return 0
+    fi
+
+    rm -f "$focusflow_left_bmp" "$focusflow_right_bmp"
+    return 1
+}
+
 focusflow_publish_readme_screenshots() (
     focusflow_source_dir="${1:-${FOCUSFLOW_README_SCREENSHOT_SOURCE_DIR:-}}"
     focusflow_output_dir="${2:-${FOCUSFLOW_README_SCREENSHOT_OUTPUT_DIR:-}}"
@@ -100,6 +136,11 @@ focusflow_publish_readme_screenshots() (
             rm -rf "$focusflow_stage_dir"
             echo "Failed to publish screenshot for ${focusflow_flow_id:-unknown}: $focusflow_source_path -> $focusflow_output_path" >&2
             exit 1
+        fi
+
+        focusflow_existing_output_path="$focusflow_output_dir/$focusflow_filename"
+        if focusflow_pngs_are_pixel_equal "$focusflow_output_path" "$focusflow_existing_output_path"; then
+            cp "$focusflow_existing_output_path" "$focusflow_output_path"
         fi
     done < "$focusflow_contract_path"
 

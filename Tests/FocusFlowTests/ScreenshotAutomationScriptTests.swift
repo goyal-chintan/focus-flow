@@ -111,6 +111,54 @@ final class ScreenshotAutomationScriptTests: XCTestCase {
         }
     }
 
+    func testReadmePublishingPreservesIdenticalExistingOutputs() throws {
+        let contract = try loadReadmeScreenshotContract()
+        XCTAssertFalse(contract.isEmpty)
+
+        let workspaceURL = try makeScratchDirectory(named: "idempotent-publish")
+        let sourceDirectoryURL = workspaceURL.appendingPathComponent("source", isDirectory: true)
+        let outputDirectoryURL = workspaceURL.appendingPathComponent("output", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectoryURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outputDirectoryURL, withIntermediateDirectories: true)
+
+        for (index, row) in contract.enumerated() {
+            let sourceFileURL = sourceDirectoryURL.appendingPathComponent("\(row.flowID).png")
+
+            try writePNG(
+                to: sourceFileURL,
+                pixelWidth: row.pixelWidth + 50,
+                pixelHeight: row.pixelHeight + 50,
+                color: NSColor(
+                    calibratedHue: CGFloat(index) / CGFloat(max(contract.count, 1)),
+                    saturation: 0.65,
+                    brightness: 0.85,
+                    alpha: 1
+                )
+            )
+        }
+
+        let firstResult = try runShell(
+            ". Scripts/lib/screenshot-automation.sh; focusflow_publish_readme_screenshots \(shellEscaped(sourceDirectoryURL.path)) \(shellEscaped(outputDirectoryURL.path))"
+        )
+        XCTAssertEqual(firstResult.exitStatus, 0, firstResult.stderr)
+
+        let originalDataByFile = try Dictionary(uniqueKeysWithValues: contract.map { row in
+            let outputFileURL = outputDirectoryURL.appendingPathComponent(row.publishedFilename)
+            return (row.publishedFilename, try Data(contentsOf: outputFileURL))
+        })
+
+        let secondResult = try runShell(
+            ". Scripts/lib/screenshot-automation.sh; focusflow_publish_readme_screenshots \(shellEscaped(sourceDirectoryURL.path)) \(shellEscaped(outputDirectoryURL.path))"
+        )
+        XCTAssertEqual(secondResult.exitStatus, 0, secondResult.stderr)
+
+        for row in contract {
+            let outputFileURL = outputDirectoryURL.appendingPathComponent(row.publishedFilename)
+            let repeatedData = try Data(contentsOf: outputFileURL)
+            XCTAssertEqual(repeatedData, originalDataByFile[row.publishedFilename], "Identical published output should be preserved for \(row.publishedFilename)")
+        }
+    }
+
     func testReadmePublishingRejectsNonNumericContractDimensions() throws {
         let workspaceURL = try makeScratchDirectory(named: "invalid-contract")
         let contractURL = workspaceURL.appendingPathComponent("invalid-contract.tsv")
