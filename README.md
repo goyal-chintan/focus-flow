@@ -183,6 +183,8 @@ FocusFlow includes a deterministic UI-evidence pipeline for review artifacts:
 ./Scripts/capture-ui-evidence.sh
 ```
 
+`capture-ui-evidence.sh` now defaults to the non-disruptive `swift` test runner. You can still opt into `xcodebuild` explicitly with `RUNNER=xcodebuild`.
+
 Example filters:
 
 ```bash
@@ -191,6 +193,12 @@ APPEARANCE_FILTER=dark ./Scripts/capture-ui-evidence.sh
 
 # Selected flows only
 FLOW_FILTER=menu_bar_idle,coach_strong_window ./Scripts/capture-ui-evidence.sh
+```
+
+Refresh the published README screenshots from the deterministic dark-mode artifacts:
+
+```bash
+./Scripts/refresh-readme-screenshots.sh
 ```
 
 Artifacts are written to:

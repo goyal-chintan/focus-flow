@@ -3,10 +3,11 @@ set -eu
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+. "$SCRIPT_DIR/lib/screenshot-automation.sh"
 cd "$REPO_DIR"
 
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%d-%H%M%S)}"
-RUNNER="${RUNNER:-xcodebuild}"
+RUNNER="$(focusflow_resolve_capture_runner)"
 FLOW_FILTER="${FLOW_FILTER:-}"
 APPEARANCE_FILTER="${APPEARANCE_FILTER:-}"
 

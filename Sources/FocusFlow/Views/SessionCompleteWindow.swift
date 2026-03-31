@@ -25,10 +25,12 @@ struct SessionCompleteWindowView: View {
     @State private var capturedReason: FocusCoachReason? = nil
     @State private var depositPulse: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
 
     private var settings: AppSettings? { allSettings.first }
 
     private var isBreakCompletion: Bool { timerVM.lastCompletionWasBreak }
+    private var disableMotionForEvidence: Bool { reduceMotion || timerVM.isEvidenceMode }
 
     /// Resolved earned context — prefers durable `completedBlockContext`, falls back to legacy session info.
     private var earnedContext: (minutes: Int, projectName: String)? {
@@ -57,10 +59,14 @@ struct SessionCompleteWindowView: View {
         .onAppear {
             stage = .earned
             hasHandledAction = false
-            appeared = false
+            appeared = disableMotionForEvidence
             depositPulse = false
-            bringWindowToFront()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { appeared = true }
+            if !timerVM.isEvidenceMode {
+                bringWindowToFront()
+            }
+            if !disableMotionForEvidence {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { appeared = true }
+            }
         }
         .onDisappear {
             if !hasHandledAction && timerVM.isManualStop && timerVM.showSessionComplete {
@@ -82,7 +88,7 @@ struct SessionCompleteWindowView: View {
                     }
                 }
                 .padding(24)
-                .animation(.easeInOut(duration: 0.22), value: stage)
+                .animation(disableMotionForEvidence ? nil : .easeInOut(duration: 0.22), value: stage)
             }
             footerBar
         }
@@ -115,7 +121,7 @@ struct SessionCompleteWindowView: View {
             remindersSection
             continueButton
         }
-        .animation(FFMotion.section, value: timerVM.showCoachReasonSheet)
+        .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.showCoachReasonSheet)
     }
 
     private var earnedBadge: some View {
@@ -126,7 +132,7 @@ struct SessionCompleteWindowView: View {
                     .fill(LiquidDesignTokens.Spectral.mint.opacity(0.15))
                     .frame(width: 80, height: 80)
                     .blur(radius: appeared ? 14 : 0)
-                    .animation(.easeOut(duration: 0.5), value: appeared)
+                    .animation(disableMotionForEvidence ? nil : .easeOut(duration: 0.5), value: appeared)
 
                 Image(systemName: timerVM.isManualStop ? "stop.circle.fill" : "sparkles")
                     .font(.system(size: 40))
@@ -139,7 +145,7 @@ struct SessionCompleteWindowView: View {
             }
             .scaleEffect(appeared ? 1.0 : 0.85)
             .opacity(appeared ? 1.0 : 0)
-            .animation(FFMotion.reward, value: appeared)
+            .animation(disableMotionForEvidence ? nil : FFMotion.reward, value: appeared)
 
             // Earned time headline
             if let ctx = earnedContext {
@@ -223,7 +229,7 @@ struct SessionCompleteWindowView: View {
                     .padding(.vertical, 8)
                     .accessibilityLabel(timerVM.isManualStop ? "Achievements" : "Carry-forward note")
             }
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            .evidenceSafeGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
         }
     }
 
@@ -243,7 +249,8 @@ struct SessionCompleteWindowView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
         }
-        .buttonStyle(.glass)
+        .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(isEvidence: true)) }
+        .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
         .buttonBorderShape(.capsule)
         .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
         .accessibilityLabel("Continue to choose next action")
@@ -266,7 +273,7 @@ struct SessionCompleteWindowView: View {
 
             splitSection
 
-            GlassEffectContainer {
+            EvidenceSafeGlassGroup {
                 VStack(spacing: 8) {
                     // Take 5m reset (short break via standard break action)
                     LiquidActionButton(
@@ -339,7 +346,8 @@ struct SessionCompleteWindowView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                         }
-                        .buttonStyle(.glass)
+                        .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(isEvidence: true)) }
+                        .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
                         .buttonBorderShape(.capsule)
                         .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                         .accessibilityLabel("Discard this manual session")
@@ -454,7 +462,8 @@ struct SessionCompleteWindowView: View {
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
+            .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(shape: AnyShape(RoundedRectangle(cornerRadius: 12, style: .continuous)), isEvidence: true)) }
+            .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
             .buttonBorderShape(.roundedRectangle(radius: 12))
             .accessibilityLabel(showSplits ? "Collapse project split" : "Split across projects")
             .accessibilityHint("Allocate session time across multiple projects")
@@ -603,7 +612,7 @@ struct SessionCompleteWindowView: View {
 
     private var breakActionsSection: some View {
         let overrun = timerVM.breakEpisodeContext?.overrunSeconds ?? 0
-        return GlassEffectContainer {
+        return EvidenceSafeGlassGroup {
             VStack(spacing: 8) {
                 LiquidActionButton(
                     title: "Start Next Block",
@@ -737,11 +746,7 @@ struct SessionCompleteWindowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(LiquidDesignTokens.Surface.materialOverlay)
-        )
+        .evidenceSafeMaterial()
     }
 
     private var formattedTodayTotal: String {

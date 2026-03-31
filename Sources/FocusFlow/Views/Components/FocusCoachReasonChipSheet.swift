@@ -5,6 +5,7 @@ import SwiftUI
 /// Includes optional snooze action in the same surface.
 struct FocusCoachReasonChipSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
     let anomalyKind: FocusCoachInterruptionKind
     let onSelect: (FocusCoachReason) -> Void
     let onSnooze: () -> Void
@@ -13,6 +14,10 @@ struct FocusCoachReasonChipSheet: View {
     @State private var selectedReason: FocusCoachReason?
     @State private var confirmedReason: FocusCoachReason?
     @State private var appear = false
+
+    private var disableMotion: Bool {
+        reduceMotion || isEvidenceRendering
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.large) {
@@ -141,14 +146,18 @@ struct FocusCoachReasonChipSheet: View {
                         .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
                 )
         }
-        .opacity(appear ? 1 : 0)
-        .offset(y: reduceMotion ? 0 : (appear ? 0 : 12))
+        .opacity(disableMotion ? 1 : (appear ? 1 : 0))
+        .offset(y: disableMotion ? 0 : (appear ? 0 : 12))
         .onAppear {
-            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.popover) {
+            if disableMotion {
                 appear = true
+            } else {
+                withAnimation(FFMotion.popover) {
+                    appear = true
+                }
             }
         }
-        .animation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control, value: selectedReason)
+        .animation(disableMotion ? .linear(duration: 0.01) : FFMotion.control, value: selectedReason)
     }
 
     @ViewBuilder

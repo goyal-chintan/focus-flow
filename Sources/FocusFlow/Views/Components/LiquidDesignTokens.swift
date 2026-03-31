@@ -270,6 +270,12 @@ extension View {
         modifier(ObsidianGlassContainer(cornerRadius: cornerRadius))
     }
 
+    /// Evidence-safe replacement for `.glassEffect(.regular, in: RoundedRectangle(...))`.
+    /// Uses native glass in production; falls back to obsidian glass during evidence rendering.
+    func evidenceSafeGlass(cornerRadius: CGFloat = LiquidDesignTokens.CornerRadius.control) -> some View {
+        modifier(EvidenceSafeGlassModifier(cornerRadius: cornerRadius))
+    }
+
     /// Conditionally apply a view modifier
     @ViewBuilder
     func `if`<Transform: View>(_ condition: Bool, transform: (Self) -> Transform) -> some View {
@@ -278,6 +284,115 @@ extension View {
         } else {
             self
         }
+    }
+}
+
+/// Modifier that uses native `.glassEffect` in production but falls back to obsidian glass
+/// during evidence rendering, where native glass APIs produce invisible output.
+struct EvidenceSafeGlassModifier: ViewModifier {
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        if isEvidenceRendering {
+            content
+                .obsidianGlass(cornerRadius: cornerRadius)
+        } else {
+            content
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        }
+    }
+}
+
+/// Evidence-safe replacement for `.buttonStyle(.glass)` on standalone buttons.
+/// Renders a visible obsidian-glass capsule during evidence capture.
+struct EvidenceSafeGlassButtonStyle: ButtonStyle {
+    let shape: AnyShape
+    let isEvidence: Bool
+
+    init(shape: AnyShape = AnyShape(Capsule(style: .continuous)), isEvidence: Bool) {
+        self.shape = shape
+        self.isEvidence = isEvidence
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        if isEvidence {
+            configuration.label
+                .background(
+                    shape
+                        .fill(ObsidianGradients.glassPanel())
+                        .overlay(shape.stroke(LiquidDesignTokens.Surface.glassStroke, lineWidth: 0.5))
+                )
+                .opacity(configuration.isPressed ? 0.7 : 1.0)
+        } else {
+            // Fallback plain — the caller should layer .buttonStyle(.glass) on top if not evidence
+            configuration.label
+        }
+    }
+}
+
+/// Evidence-safe replacement for `GlassEffectContainer`.
+/// Uses native `GlassEffectContainer` in production; wraps content with an obsidian glass
+/// background during evidence rendering where the native container renders as invisible.
+struct EvidenceSafeGlassGroup<Content: View>: View {
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
+    let cornerRadius: CGFloat
+    let content: () -> Content
+
+    init(cornerRadius: CGFloat = LiquidDesignTokens.CornerRadius.card, @ViewBuilder content: @escaping () -> Content) {
+        self.cornerRadius = cornerRadius
+        self.content = content
+    }
+
+    var body: some View {
+        if isEvidenceRendering {
+            content()
+                .obsidianGlass(cornerRadius: cornerRadius)
+        } else {
+            GlassEffectContainer {
+                content()
+            }
+        }
+    }
+}
+
+/// Evidence-safe replacement for `.ultraThinMaterial` backgrounds.
+struct EvidenceSafeMaterialModifier: ViewModifier {
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
+
+    func body(content: Content) -> some View {
+        if isEvidenceRendering {
+            content
+                .background(
+                    Rectangle()
+                        .fill(LiquidDesignTokens.Surface.containerLow)
+                        .overlay(LiquidDesignTokens.Surface.materialOverlay)
+                )
+        } else {
+            content
+                .background(
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(LiquidDesignTokens.Surface.materialOverlay)
+                )
+        }
+    }
+}
+
+extension View {
+    func evidenceSafeMaterial() -> some View {
+        modifier(EvidenceSafeMaterialModifier())
+    }
+}
+
+private struct FocusFlowEvidenceRenderingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var focusFlowEvidenceRendering: Bool {
+        get { self[FocusFlowEvidenceRenderingKey.self] }
+        set { self[FocusFlowEvidenceRenderingKey.self] = newValue }
     }
 }
 

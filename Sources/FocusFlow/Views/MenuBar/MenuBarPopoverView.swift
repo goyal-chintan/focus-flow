@@ -8,6 +8,8 @@ struct MenuBarPopoverView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showStopConfirmation = false
 
+    private var disableMotionForEvidence: Bool { reduceMotion || timerVM.isEvidenceMode }
+
     var body: some View {
         popoverShell
             .background(
@@ -218,6 +220,7 @@ struct MenuBarPopoverView: View {
             label: stateLabel,
             state: timerVM.state,
             isOvertime: timerVM.isOvertime,
+            evidenceMode: timerVM.isEvidenceMode,
             pauseDuration: timerVM.pauseElapsed,
             pauseTimeString: timerVM.pauseTimeString,
             labelColorOverride: stateLabelColor
@@ -250,7 +253,7 @@ struct MenuBarPopoverView: View {
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 4)
                     .transition(.move(edge: .leading).combined(with: .opacity))
-                    .animation(FFMotion.warning, value: isActive)
+                    .animation(disableMotionForEvidence ? nil : FFMotion.warning, value: isActive)
             }
 
             // Quick prompt overlay when coach decides to intervene
