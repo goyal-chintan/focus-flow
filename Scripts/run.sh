@@ -5,6 +5,14 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
+# Ensure a stable code-signing certificate exists so macOS TCC permissions
+# (Calendar, Reminders) are not invalidated by each rebuild. The setup script
+# is idempotent — it exits immediately if the cert already exists.
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "FocusFlow Development"; then
+  echo "ℹ Setting up code-signing certificate for stable TCC permissions..."
+  "$SCRIPT_DIR/setup-codesign.sh"
+fi
+
 APP_NAME="FocusFlow"
 BUILD_DIR="$REPO_DIR/.build/debug"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
@@ -46,7 +54,11 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <true/>
     <key>NSCalendarsUsageDescription</key>
     <string>FocusFlow records completed focus sessions to your selected calendar and lets you review session timelines.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>FocusFlow records completed focus sessions to your selected calendar and lets you review session timelines.</string>
     <key>NSRemindersUsageDescription</key>
+    <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
     <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
@@ -68,9 +80,20 @@ if [ -f "Sources/FocusFlow/AppIcon.icns" ]; then
     cp "Sources/FocusFlow/AppIcon.icns" "$RESOURCES/"
 fi
 
-# Ad-hoc sign with stable bundle identifier so macOS notification settings
-# consistently recognize this app as "com.focusflow.app".
-codesign --force --sign - --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"
+# Sign with a stable certificate so macOS TCC permissions (Calendar, Reminders)
+# survive across rebuilds. Ad-hoc signing changes the cdhash every build, which
+# invalidates TCC grants. A certificate-based signature uses the cert identity
+# in the code requirement instead, keeping permissions stable.
+#
+# Run Scripts/setup-codesign.sh once to create the "FocusFlow Development" cert.
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-FocusFlow Development}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CODESIGN_IDENTITY"; then
+  codesign --force --sign "$CODESIGN_IDENTITY" --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"
+else
+  echo "⚠ Certificate \"$CODESIGN_IDENTITY\" not found — falling back to ad-hoc signing."
+  echo "  Run ./Scripts/setup-codesign.sh to fix Calendar/Reminder permission persistence."
+  codesign --force --sign - --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"
+fi
 
 echo "Built $APP_BUNDLE"
 

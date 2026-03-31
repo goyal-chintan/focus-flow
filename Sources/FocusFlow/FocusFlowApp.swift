@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import EventKit
 
 struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
@@ -159,6 +160,10 @@ struct FocusFlowApp: App {
 private struct WindowLauncherBridge: View {
     let timerVM: TimerViewModel
     @Environment(\.openWindow) private var openWindow
+    @Query private var allSettings: [AppSettings]
+    @Environment(\.modelContext) private var modelContext
+
+    private var settings: AppSettings? { allSettings.first }
 
     var body: some View {
         Color.clear
@@ -185,6 +190,26 @@ private struct WindowLauncherBridge: View {
                         timerVM.saveSessionBeforeTermination()
                     }
                 }
+
+                // Reconcile permissions on launch
+                reconcilePermissionsIfNeeded()
             }
+            // Reconcile permissions every time the app becomes active — catches
+            // revocations that happened while the app was in the background or
+            // between launches after a rebuild with a new signature.
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                reconcilePermissionsIfNeeded()
+            }
+            // Also reconcile when EventKit reports store changes (permission
+            // grants/revocations trigger this notification).
+            .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
+                reconcilePermissionsIfNeeded()
+            }
+    }
+
+    private func reconcilePermissionsIfNeeded() {
+        guard let settings else { return }
+        EventStoreManager.shared.reconcilePermissions(settings: settings)
+        try? modelContext.save()
     }
 }

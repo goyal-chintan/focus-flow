@@ -136,7 +136,11 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <true/>
     <key>NSCalendarsUsageDescription</key>
     <string>FocusFlow records completed focus sessions to your selected calendar and lets you review session timelines.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>FocusFlow records completed focus sessions to your selected calendar and lets you review session timelines.</string>
     <key>NSRemindersUsageDescription</key>
+    <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
     <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
@@ -162,9 +166,17 @@ fi
 
 log_success "App bundle created at $APP_BUNDLE"
 
-# Code sign the bundle
+# Code sign with stable certificate so TCC permissions persist across updates.
+# Run Scripts/setup-codesign.sh once to create the "FocusFlow Development" cert.
 log_info "Code signing app bundle..."
-dry_run_exec codesign --force --sign - --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE" 2>/dev/null || true
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-FocusFlow Development}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CODESIGN_IDENTITY"; then
+  dry_run_exec codesign --force --sign "$CODESIGN_IDENTITY" --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE" 2>/dev/null || true
+else
+  log_warn "Certificate \"$CODESIGN_IDENTITY\" not found — using ad-hoc signing."
+  log_warn "Run ./Scripts/setup-codesign.sh to fix Calendar/Reminder permission persistence."
+  dry_run_exec codesign --force --sign - --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE" 2>/dev/null || true
+fi
 
 # Clean up stale Spotlight entries BEFORE installing
 log_info "Cleaning up Spotlight cache..."
