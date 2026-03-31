@@ -565,11 +565,11 @@ final class AppUsageTracker {
     }
 
     private func extractBrowserDomain(windowTitle: String, appName: String, bundleId: String) -> String? {
-        let text = "\(windowTitle) \(appName) \(bundleId)".lowercased()
+        let text = "\(windowTitle) \(appName)".lowercased()
         if let range = text.range(of: #"([a-z0-9-]+\.)+[a-z]{2,}"#, options: .regularExpression) {
             let host = String(text[range])
                 .replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
-            if !host.isEmpty {
+            if !host.isEmpty, !AppUsageEntry.isBrowserBundleIdentifier(host) {
                 return host
             }
         }
