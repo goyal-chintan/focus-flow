@@ -34,6 +34,36 @@ final class ScreenshotAutomationScriptTests: XCTestCase {
         XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines), "xcodebuild")
     }
 
+    func testCaptureScriptDefaultsToSwiftRunner() throws {
+        let source = try String(contentsOf: captureScriptURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains(". \"$SCRIPT_DIR/lib/screenshot-automation.sh\""),
+            "capture-ui-evidence.sh should source the shared screenshot automation helper."
+        )
+        XCTAssertTrue(
+            source.contains("RUNNER=\"$(focusflow_resolve_capture_runner)\""),
+            "capture-ui-evidence.sh should resolve its default runner via the shared helper."
+        )
+        XCTAssertFalse(
+            source.contains("RUNNER=\"${RUNNER:-xcodebuild}\""),
+            "capture-ui-evidence.sh should no longer hardcode xcodebuild as the default runner."
+        )
+    }
+
+    func testCaptureScriptKeepsExplicitRunnerOverrideAvailable() throws {
+        let source = try String(contentsOf: captureScriptURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("if [ \"$RUNNER\" = \"swift\" ]; then"),
+            "capture-ui-evidence.sh should keep the swift branch."
+        )
+        XCTAssertTrue(
+            source.contains("xcodebuild \\"),
+            "capture-ui-evidence.sh should keep xcodebuild support for explicit overrides."
+        )
+    }
+
     func testReadmePublishingUsesContractAndResizesArtifacts() throws {
         let contract = try loadReadmeScreenshotContract()
         XCTAssertFalse(contract.isEmpty)
@@ -293,5 +323,11 @@ final class ScreenshotAutomationScriptTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+    }
+
+    private var captureScriptURL: URL {
+        repoRootURL
+            .appendingPathComponent("Scripts", isDirectory: true)
+            .appendingPathComponent("capture-ui-evidence.sh")
     }
 }
