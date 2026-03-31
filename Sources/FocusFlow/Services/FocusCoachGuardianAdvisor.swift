@@ -34,6 +34,7 @@ struct FocusCoachGuardianAdvisor: Sendable {
         entries: [AppUsageEntry],
         selectedProject: Project?
     ) -> FocusCoachGuardianRecommendation? {
+        let frontmostIsBrowser = AppUsageEntry.isBrowserBundleIdentifier(frontmostBundleId)
         let likelyTarget = AppUsageEntry.recommendedBlockTarget(
             bundleIdentifier: frontmostBundleId ?? "",
             appName: frontmostAppName ?? ""
@@ -48,11 +49,29 @@ struct FocusCoachGuardianAdvisor: Sendable {
             }
             .max { riskScore(for: $0) < riskScore(for: $1) }
 
-        let fallbackTarget = topRiskEntry.flatMap {
-            AppUsageEntry.recommendedBlockTarget(
-                bundleIdentifier: $0.bundleIdentifier,
-                appName: $0.appName
-            )
+        let fallbackTarget: String? = if frontmostIsBrowser {
+            entries
+                .filter { entry in
+                    entry.bundleIdentifier.lowercased().hasPrefix("domain:")
+                    && AppUsageEntry.recommendedBlockTarget(
+                        bundleIdentifier: entry.bundleIdentifier,
+                        appName: entry.appName
+                    ) != nil
+                }
+                .max { riskScore(for: $0) < riskScore(for: $1) }
+                .flatMap {
+                    AppUsageEntry.recommendedBlockTarget(
+                        bundleIdentifier: $0.bundleIdentifier,
+                        appName: $0.appName
+                    )
+                }
+        } else {
+            topRiskEntry.flatMap {
+                AppUsageEntry.recommendedBlockTarget(
+                    bundleIdentifier: $0.bundleIdentifier,
+                    appName: $0.appName
+                )
+            }
         }
 
         guard let target = likelyTarget ?? fallbackTarget else { return nil }

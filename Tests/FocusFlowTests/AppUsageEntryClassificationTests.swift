@@ -98,6 +98,11 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         XCTAssertEqual(label, "YouTube")
     }
 
+    func testRecommendationDisplayLabelTreatsBundleIdentifierAsAppNotDomain() {
+        let label = AppUsageEntry.recommendationDisplayLabel(for: "company.thebrowser.browser")
+        XCTAssertEqual(label, "Arc")
+    }
+
     // MARK: - Domain-prefix key handling (added by AppUsageTracker for browser tab contexts)
 
     func testRecommendedBlockTargetReturnsDomainForDomainPrefixKey() {
@@ -129,6 +134,14 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         let target = AppUsageEntry.recommendedBlockTarget(
             bundleIdentifier: "domain:",
             appName: ""
+        )
+        XCTAssertNil(target)
+    }
+
+    func testRecommendedBlockTargetRejectsDomainPrefixWithBundleIdentifier() {
+        let target = AppUsageEntry.recommendedBlockTarget(
+            bundleIdentifier: "domain:company.thebrowser.browser",
+            appName: "Arc"
         )
         XCTAssertNil(target)
     }
