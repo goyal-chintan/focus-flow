@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LiquidGlassPanel<Content: View>: View {
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
     let cornerRadius: CGFloat
     private let content: Content
 
@@ -12,8 +13,14 @@ struct LiquidGlassPanel<Content: View>: View {
         self.content = content()
     }
 
+    @ViewBuilder
     var body: some View {
-        content
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        if isEvidenceRendering {
+            content
+                .obsidianGlass(cornerRadius: cornerRadius)
+        } else {
+            content
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        }
     }
 }

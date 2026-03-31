@@ -162,6 +162,137 @@ final class UIEvidenceCaptureTests: XCTestCase {
         )
     }
 
+    func testSessionCompleteEarnedStageDarkCaptureKeepsControlsVisible() throws {
+        let fixtures = FixturePool(owner: self)
+        defer { fixtures.cleanup() }
+
+        let image = try captureFlow(
+            flowID: "session_complete_earned_stage",
+            appearance: .dark,
+            fixtures: fixtures
+        )
+
+        // Continue button region — capsule centered around y≈0.62-0.66
+        let continueStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.15, y: 0.62, width: 0.70, height: 0.04)
+        )
+        // Carry-forward text editor region — glass panel at y≈0.35-0.44
+        let textFieldStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.10, y: 0.35, width: 0.80, height: 0.09)
+        )
+        // Footer bar — evidence-safe material at bottom
+        let footerStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.05, y: 0.95, width: 0.90, height: 0.04)
+        )
+
+        XCTAssertGreaterThan(
+            continueStats.mean,
+            8.0,
+            "Continue button should have a visible surface in dark evidence captures, not just floating text. Got mean=\(continueStats.mean)"
+        )
+        XCTAssertGreaterThan(
+            textFieldStats.mean,
+            3.0,
+            "Carry-forward text field should have a visible glass border/fill in dark evidence captures. Got mean=\(textFieldStats.mean)"
+        )
+        XCTAssertGreaterThan(
+            footerStats.mean,
+            4.0,
+            "Footer bar should have a visible material background in dark evidence captures. Got mean=\(footerStats.mean)"
+        )
+    }
+
+    func testCoachStrongWindowDarkCaptureKeepsCoachPanelAndButtonsVisible() throws {
+        let fixtures = FixturePool(owner: self)
+        defer { fixtures.cleanup() }
+
+        let image = try captureFlow(
+            flowID: "coach_strong_window",
+            appearance: .dark,
+            fixtures: fixtures
+        )
+
+        let panelStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.15, y: 0.08, width: 0.70, height: 0.27)
+        )
+        let actionStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.18, y: 0.30, width: 0.64, height: 0.18)
+        )
+
+        XCTAssertGreaterThan(
+            panelStats.mean,
+            4.0,
+            "Coach intervention window panel should remain visibly separated from the dark backdrop in evidence captures."
+        )
+        XCTAssertGreaterThan(
+            actionStats.mean,
+            6.0,
+            "Coach intervention buttons should retain visible surfaces in evidence captures instead of collapsing into the backdrop."
+        )
+    }
+
+    func testBreakCompleteReasonSheetHiddenDarkCaptureKeepsActionButtonsVisible() throws {
+        let fixtures = FixturePool(owner: self)
+        defer { fixtures.cleanup() }
+
+        let image = try captureFlow(
+            flowID: "break_complete_reason_sheet_hidden",
+            appearance: .dark,
+            fixtures: fixtures
+        )
+
+        let backdropStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.02, y: 0.30, width: 0.08, height: 0.18)
+        )
+        let actionStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.18, y: 0.30, width: 0.64, height: 0.18)
+        )
+
+        XCTAssertGreaterThan(
+            actionStats.mean - backdropStats.mean,
+            6.0,
+            "Break-complete actions should remain visibly distinct from the window backdrop in dark evidence captures."
+        )
+    }
+
+    func testBreakCompleteReasonSheetVisibleDarkCaptureSeparatesSheetFromBackdrop() throws {
+        let fixtures = FixturePool(owner: self)
+        defer { fixtures.cleanup() }
+
+        let image = try captureFlow(
+            flowID: "break_complete_reason_sheet_visible",
+            appearance: .dark,
+            fixtures: fixtures
+        )
+
+        let backdropStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.02, y: 0.35, width: 0.06, height: 0.44)
+        )
+        let sheetStats = try luminanceStats(
+            in: image,
+            normalizedRect: CGRect(x: 0.10, y: 0.42, width: 0.80, height: 0.35)
+        )
+
+        XCTAssertGreaterThan(
+            sheetStats.mean - backdropStats.mean,
+            3.0,
+            "Expanded break reason sheet should remain visibly separated from the dark backdrop in evidence captures."
+        )
+        XCTAssertGreaterThan(
+            sheetStats.brightPixelRatio,
+            0.005,
+            "Expanded break reason sheet should retain visible chip and surface details in evidence captures."
+        )
+    }
+
     // MARK: - Flow Capture
 
     private func captureFlow(
@@ -375,6 +506,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
     ) throws -> CGImage {
         let rootView = view
             .environment(\.colorScheme, appearance == .dark ? .dark : .light)
+            .environment(\.focusFlowEvidenceRendering, true)
         let host = NSHostingView(rootView: rootView)
         host.frame = NSRect(origin: .zero, size: size)
         host.layoutSubtreeIfNeeded()
@@ -653,6 +785,58 @@ final class UIEvidenceCaptureTests: XCTestCase {
         }
 
         return (count: diffCount, firstDifferenceDescription: firstDifferenceDescription)
+    }
+
+    private struct LuminanceStats {
+        let mean: Double
+        let brightPixelRatio: Double
+    }
+
+    private func luminanceStats(
+        in image: CGImage,
+        normalizedRect: CGRect,
+        brightThreshold: Double = 40
+    ) throws -> LuminanceStats {
+        let pixels = try normalizedRGBAData(from: image)
+        let xRange = pixelBounds(
+            min: normalizedRect.minX,
+            max: normalizedRect.maxX,
+            limit: image.width
+        )
+        let yRange = pixelBounds(
+            min: normalizedRect.minY,
+            max: normalizedRect.maxY,
+            limit: image.height
+        )
+
+        var luminanceTotal = 0.0
+        var brightPixelCount = 0
+        let pixelCount = xRange.count * yRange.count
+
+        for y in yRange {
+            for x in xRange {
+                let offset = ((y * image.width) + x) * 4
+                let red = Double(pixels[offset])
+                let green = Double(pixels[offset + 1])
+                let blue = Double(pixels[offset + 2])
+                let luminance = (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+                luminanceTotal += luminance
+                if luminance > brightThreshold {
+                    brightPixelCount += 1
+                }
+            }
+        }
+
+        return LuminanceStats(
+            mean: luminanceTotal / Double(max(pixelCount, 1)),
+            brightPixelRatio: Double(brightPixelCount) / Double(max(pixelCount, 1))
+        )
+    }
+
+    private func pixelBounds(min: CGFloat, max: CGFloat, limit: Int) -> Range<Int> {
+        let lower = Swift.max(0, Swift.min(limit - 1, Int(floor(min * CGFloat(limit)))))
+        let upper = Swift.max(lower + 1, Swift.min(limit, Int(ceil(max * CGFloat(limit)))))
+        return lower..<upper
     }
 
     private func normalizedRGBAData(from image: CGImage) throws -> Data {

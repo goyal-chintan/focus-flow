@@ -25,6 +25,7 @@ struct SessionCompleteWindowView: View {
     @State private var capturedReason: FocusCoachReason? = nil
     @State private var depositPulse: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -228,7 +229,7 @@ struct SessionCompleteWindowView: View {
                     .padding(.vertical, 8)
                     .accessibilityLabel(timerVM.isManualStop ? "Achievements" : "Carry-forward note")
             }
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+            .evidenceSafeGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
         }
     }
 
@@ -248,7 +249,8 @@ struct SessionCompleteWindowView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
         }
-        .buttonStyle(.glass)
+        .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(isEvidence: true)) }
+        .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
         .buttonBorderShape(.capsule)
         .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
         .accessibilityLabel("Continue to choose next action")
@@ -271,7 +273,7 @@ struct SessionCompleteWindowView: View {
 
             splitSection
 
-            GlassEffectContainer {
+            EvidenceSafeGlassGroup {
                 VStack(spacing: 8) {
                     // Take 5m reset (short break via standard break action)
                     LiquidActionButton(
@@ -344,7 +346,8 @@ struct SessionCompleteWindowView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                         }
-                        .buttonStyle(.glass)
+                        .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(isEvidence: true)) }
+                        .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
                         .buttonBorderShape(.capsule)
                         .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                         .accessibilityLabel("Discard this manual session")
@@ -459,7 +462,8 @@ struct SessionCompleteWindowView: View {
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
+            .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(shape: AnyShape(RoundedRectangle(cornerRadius: 12, style: .continuous)), isEvidence: true)) }
+            .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
             .buttonBorderShape(.roundedRectangle(radius: 12))
             .accessibilityLabel(showSplits ? "Collapse project split" : "Split across projects")
             .accessibilityHint("Allocate session time across multiple projects")
@@ -608,7 +612,7 @@ struct SessionCompleteWindowView: View {
 
     private var breakActionsSection: some View {
         let overrun = timerVM.breakEpisodeContext?.overrunSeconds ?? 0
-        return GlassEffectContainer {
+        return EvidenceSafeGlassGroup {
             VStack(spacing: 8) {
                 LiquidActionButton(
                     title: "Start Next Block",
@@ -742,11 +746,7 @@ struct SessionCompleteWindowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(LiquidDesignTokens.Surface.materialOverlay)
-        )
+        .evidenceSafeMaterial()
     }
 
     private var formattedTodayTotal: String {
