@@ -1,144 +1,140 @@
 import XCTest
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
+import AppKit
 
+@MainActor
 final class ScreenshotAutomationScriptTests: XCTestCase {
-    private struct ContractRow {
-        let flowID: String
-        let appearance: String
-        let sourceWidth: Int
-        let sourceHeight: Int
-        let outputPath: String
-        let outputWidth: Int
-        let outputHeight: Int
-    }
-
-    private struct ImageDimensions: Equatable {
-        let width: Int
-        let height: Int
-    }
-
     private struct ShellResult {
-        let exitCode: Int32
+        let exitStatus: Int32
         let stdout: String
         let stderr: String
     }
 
-    private enum TestError: Error {
-        case invalidContractRow(String)
-        case imageWriteFailed(String)
-        case imageReadFailed(String)
+    private struct ReadmeScreenshotContractRow {
+        let flowID: String
+        let publishedFilename: String
+        let pixelWidth: Int
+        let pixelHeight: Int
     }
 
-    func testDefaultRunnerResolutionReturnsSwiftWhenRUNNERIsUnset() throws {
-        let result = try runHelperCommand("unset RUNNER\nfocusflow_screenshot_resolve_runner")
-        XCTAssertEqual(result.exitCode, 0, result.stderr)
+    func testDefaultCaptureRunnerFallsBackToSwift() throws {
+        let result = try runShell(
+            ". Scripts/lib/screenshot-automation.sh; unset RUNNER; focusflow_resolve_capture_runner"
+        )
+
+        XCTAssertEqual(result.exitStatus, 0, result.stderr)
         XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines), "swift")
     }
 
-    func testExplicitRunnerOverridePreservesXcodebuild() throws {
-        let result = try runHelperCommand("RUNNER=xcodebuild\nexport RUNNER\nfocusflow_screenshot_resolve_runner")
-        XCTAssertEqual(result.exitCode, 0, result.stderr)
+    func testExplicitCaptureRunnerOverridePreservesXcodebuild() throws {
+        let result = try runShell(
+            ". Scripts/lib/screenshot-automation.sh; RUNNER=xcodebuild; export RUNNER; focusflow_resolve_capture_runner"
+        )
+
+        XCTAssertEqual(result.exitStatus, 0, result.stderr)
         XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines), "xcodebuild")
     }
 
-    func testReadmePublishingReadsContractCopiesAndResizesArtifacts() throws {
-        let contractRows = try loadContractRows(from: contractURL)
-        let sandboxURL = try makeSandboxRepo()
-        defer { try? FileManager.default.removeItem(at: sandboxURL) }
+    func testReadmePublishingUsesContractAndResizesArtifacts() throws {
+        let contract = try loadReadmeScreenshotContract()
+        XCTAssertFalse(contract.isEmpty)
 
-        let sandboxContractURL = sandboxURL
-            .appendingPathComponent("Scripts", isDirectory: true)
-            .appendingPathComponent("readme-screenshot-contract.tsv")
-        try FileManager.default.copyItem(at: contractURL, to: sandboxContractURL)
+        let workspaceURL = try makeScratchDirectory(named: "readme-publish")
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
 
-        let runID = "task1-readme-publish"
-        for row in contractRows {
-            let sourceURL = sandboxURL
-                .appendingPathComponent("Artifacts", isDirectory: true)
-                .appendingPathComponent("review", isDirectory: true)
-                .appendingPathComponent(runID, isDirectory: true)
-                .appendingPathComponent(row.appearance, isDirectory: true)
-                .appendingPathComponent("\(row.flowID).png")
-            try writePNG(at: sourceURL, width: row.sourceWidth, height: row.sourceHeight)
+        let sourceDirectoryURL = workspaceURL.appendingPathComponent("source", isDirectory: true)
+        let outputDirectoryURL = workspaceURL.appendingPathComponent("output", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectoryURL, withIntermediateDirectories: true)
+
+        for (index, row) in contract.enumerated() {
+            let sourceFileURL = sourceDirectoryURL.appendingPathComponent("\(row.flowID).png")
+            try writePNG(
+                to: sourceFileURL,
+                pixelWidth: row.pixelWidth + 73,
+                pixelHeight: row.pixelHeight + 91,
+                color: NSColor(
+                    calibratedHue: CGFloat(index) / CGFloat(max(contract.count, 1)),
+                    saturation: 0.75,
+                    brightness: 0.9,
+                    alpha: 1
+                )
+            )
+
+            let sourceSize = try pixelSize(of: sourceFileURL)
+            XCTAssertNotEqual(sourceSize.width, row.pixelWidth, "Test setup should require width resizing for \(row.flowID)")
+            XCTAssertNotEqual(sourceSize.height, row.pixelHeight, "Test setup should require height resizing for \(row.flowID)")
         }
 
-        let result = try runHelperCommand(
-            "focusflow_publish_readme_screenshots \(shellQuote(sandboxURL.path)) \(shellQuote(runID))"
+        let result = try runShell(
+            ". Scripts/lib/screenshot-automation.sh; focusflow_publish_readme_screenshots \(shellEscaped(sourceDirectoryURL.path)) \(shellEscaped(outputDirectoryURL.path))"
         )
-        XCTAssertEqual(result.exitCode, 0, result.stderr)
 
-        for row in contractRows {
-            let outputURL = sandboxURL.appendingPathComponent(row.outputPath)
-            XCTAssertTrue(
-                FileManager.default.fileExists(atPath: outputURL.path),
-                "Missing published screenshot at \(row.outputPath)"
-            )
-            let dimensions = try readImageDimensions(at: outputURL)
-            XCTAssertEqual(dimensions, ImageDimensions(width: row.outputWidth, height: row.outputHeight))
+        XCTAssertEqual(result.exitStatus, 0, result.stderr)
+
+        let generatedFiles = try Set(FileManager.default.contentsOfDirectory(atPath: outputDirectoryURL.path))
+        XCTAssertEqual(generatedFiles, Set(contract.map(\.publishedFilename)))
+
+        for row in contract {
+            let outputFileURL = outputDirectoryURL.appendingPathComponent(row.publishedFilename)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: outputFileURL.path), "Missing \(row.publishedFilename)")
+
+            let imageSize = try pixelSize(of: outputFileURL)
+            XCTAssertEqual(imageSize.width, row.pixelWidth, "Unexpected width for \(row.publishedFilename)")
+            XCTAssertEqual(imageSize.height, row.pixelHeight, "Unexpected height for \(row.publishedFilename)")
         }
     }
 
-    private var repoRootURL: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-    }
-
-    private var helperScriptURL: URL {
-        repoRootURL
-            .appendingPathComponent("Scripts", isDirectory: true)
-            .appendingPathComponent("lib", isDirectory: true)
-            .appendingPathComponent("screenshot-automation.sh")
-    }
-
-    private var contractURL: URL {
-        repoRootURL
+    private func loadReadmeScreenshotContract() throws -> [ReadmeScreenshotContractRow] {
+        let contractURL = repoRootURL
             .appendingPathComponent("Scripts", isDirectory: true)
             .appendingPathComponent("readme-screenshot-contract.tsv")
-    }
+        let contents = try String(contentsOf: contractURL, encoding: .utf8)
 
-    private func loadContractRows(from url: URL) throws -> [ContractRow] {
-        let contents = try String(contentsOf: url, encoding: .utf8)
-        let lines = contents
-            .split(whereSeparator: \ .isNewline)
+        return try contents
+            .split(whereSeparator: \.isNewline)
             .map(String.init)
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .compactMap { line in
+                let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmedLine.isEmpty, !trimmedLine.hasPrefix("#") else { return nil }
 
-        guard !lines.isEmpty else { return [] }
+                let columns = trimmedLine
+                    .split(separator: "\t", omittingEmptySubsequences: false)
+                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
 
-        return try lines.dropFirst().map { line in
-            let columns = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard columns.count == 7,
-                  let sourceWidth = Int(columns[2]),
-                  let sourceHeight = Int(columns[3]),
-                  let outputWidth = Int(columns[5]),
-                  let outputHeight = Int(columns[6]) else {
-                throw TestError.invalidContractRow(line)
+                guard columns.first != "flow_id" else { return nil }
+                guard columns.count == 4 else {
+                    throw NSError(
+                        domain: "ScreenshotAutomationScriptTests",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Invalid contract row: \(trimmedLine)"]
+                    )
+                }
+
+                guard let pixelWidth = Int(columns[2]), let pixelHeight = Int(columns[3]) else {
+                    throw NSError(
+                        domain: "ScreenshotAutomationScriptTests",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Invalid screenshot size in row: \(trimmedLine)"]
+                    )
+                }
+
+                return ReadmeScreenshotContractRow(
+                    flowID: columns[0],
+                    publishedFilename: columns[1],
+                    pixelWidth: pixelWidth,
+                    pixelHeight: pixelHeight
+                )
             }
-
-            return ContractRow(
-                flowID: columns[0],
-                appearance: columns[1],
-                sourceWidth: sourceWidth,
-                sourceHeight: sourceHeight,
-                outputPath: columns[4],
-                outputWidth: outputWidth,
-                outputHeight: outputHeight
-            )
-        }
     }
 
-    private func runHelperCommand(_ command: String) throws -> ShellResult {
+    private func runShell(
+        _ command: String,
+        environment: [String: String] = [:]
+    ) throws -> ShellResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = [
-            "-c",
-            "set -eu\n. \(shellQuote(helperScriptURL.path))\n\(command)"
-        ]
+        process.arguments = ["-c", command]
         process.currentDirectoryURL = repoRootURL
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -148,84 +144,89 @@ final class ScreenshotAutomationScriptTests: XCTestCase {
         try process.run()
         process.waitUntilExit()
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-
-        return ShellResult(
-            exitCode: process.terminationStatus,
-            stdout: String(decoding: stdoutData, as: UTF8.self),
-            stderr: String(decoding: stderrData, as: UTF8.self)
-        )
+        let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return ShellResult(exitStatus: process.terminationStatus, stdout: stdout, stderr: stderr)
     }
 
-    private func makeSandboxRepo() throws -> URL {
-        let sandboxURL = repoRootURL
+    private func makeScratchDirectory(named name: String) throws -> URL {
+        let directoryURL = repoRootURL
             .appendingPathComponent(".build", isDirectory: true)
             .appendingPathComponent("screenshot-automation-tests", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-
-        try FileManager.default.createDirectory(at: sandboxURL, withIntermediateDirectories: true, attributes: nil)
-        try FileManager.default.createDirectory(
-            at: sandboxURL.appendingPathComponent("Scripts", isDirectory: true),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-
-        return sandboxURL
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        return directoryURL
     }
 
-    private func writePNG(at url: URL, width: Int, height: Int) throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
+    private func writePNG(
+        to url: URL,
+        pixelWidth: Int,
+        pixelHeight: Int,
+        color: NSColor
+    ) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            throw TestError.imageWriteFailed("Unable to create CGContext for \(url.path)")
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                data: nil,
+                width: pixelWidth,
+                height: pixelHeight,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            throw NSError(
+                domain: "ScreenshotAutomationScriptTests",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to create bitmap context"]
+            )
         }
 
-        context.setFillColor(CGColor(red: 0.16, green: 0.22, blue: 0.34, alpha: 1.0))
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(color.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
 
         guard let image = context.makeImage() else {
-            throw TestError.imageWriteFailed("Unable to create CGImage for \(url.path)")
-        }
-        guard let destination = CGImageDestinationCreateWithURL(
-            url as CFURL,
-            UTType.png.identifier as CFString,
-            1,
-            nil
-        ) else {
-            throw TestError.imageWriteFailed("Unable to create PNG destination for \(url.path)")
+            throw NSError(
+                domain: "ScreenshotAutomationScriptTests",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to create image"]
+            )
         }
 
-        CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else {
-            throw TestError.imageWriteFailed("Unable to finalize PNG for \(url.path)")
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else {
+            throw NSError(
+                domain: "ScreenshotAutomationScriptTests",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to encode PNG"]
+            )
         }
+
+        try data.write(to: url)
     }
 
-    private func readImageDimensions(at url: URL) throws -> ImageDimensions {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int else {
-            throw TestError.imageReadFailed("Unable to read image dimensions for \(url.path)")
+    private func pixelSize(of url: URL) throws -> (width: Int, height: Int) {
+        let data = try Data(contentsOf: url)
+        guard let bitmap = NSBitmapImageRep(data: data) else {
+            throw NSError(
+                domain: "ScreenshotAutomationScriptTests",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to decode image at \(url.path)"]
+            )
         }
-
-        return ImageDimensions(width: width, height: height)
+        return (bitmap.pixelsWide, bitmap.pixelsHigh)
     }
 
-    private func shellQuote(_ value: String) -> String {
+    private func shellEscaped(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    private var repoRootURL: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
     }
 }
