@@ -228,7 +228,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertNotNil(vm.pendingNotificationNudgeAt)
     }
 
-    func testIdleInterventionSendsNotificationFirstWhenEligible() throws {
+    func testIdleInterventionFallsBackToInAppPromptWhenNotificationsAreUnavailable() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
         vm.configure(modelContext: container.mainContext)
@@ -241,6 +241,9 @@ final class TimerCompletionFlowTests: XCTestCase {
         settings.coachInterventionMode = .balanced
         try container.mainContext.save()
 
+        NotificationService.shared.refreshAuthorizationStatus()
+        XCTAssertEqual(NotificationService.shared.authorizationState, .denied)
+
         vm.lastProjectSelectedAt = Date()
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
@@ -248,9 +251,9 @@ final class TimerCompletionFlowTests: XCTestCase {
             frontmostCategory: .distracting
         )
 
-        XCTAssertTrue(vm.outsideSessionAwaitingStartFocus)
-        XCTAssertEqual(vm.outsideSessionNudgeAttemptCount, 1)
-        XCTAssertNotNil(vm.pendingNotificationNudgeAt)
+        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus)
+        XCTAssertNil(vm.pendingNotificationNudgeAt)
+        XCTAssertEqual(vm.currentIdleStarterDecision?.kind, .quickPrompt)
     }
 
     func testMissedNotificationEscalatesToStrongPrompt() throws {
@@ -302,8 +305,9 @@ final class TimerCompletionFlowTests: XCTestCase {
         settings.coachBringAppToFrontOnStrongPrompt = false
         try container.mainContext.save()
 
-        // Notification was sent 10 minutes ago; no response (escalation delay = 5 min default)
-        vm.pendingNotificationNudgeAt = Date().addingTimeInterval(-600)
+        // Notification was sent long enough ago to exceed the escalation delay even during the
+        // night-time backoff window. This keeps the test focused on the work-intent gate.
+        vm.pendingNotificationNudgeAt = Date().addingTimeInterval(-(20 * 60))
         vm.outsideSessionAwaitingStartFocus = true
         vm.outsideSessionNudgeAttemptCount = 1
         // App opened and project selected a LONG time ago — no recency signals

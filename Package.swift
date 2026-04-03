@@ -8,7 +8,7 @@ let package = Package(
         .executableTarget(
             name: "FocusFlow",
             path: "Sources/FocusFlow",
-            exclude: ["Info.plist"],
+            exclude: ["Info.plist", "AppIcon.icns"],
             resources: [
                 .process("Assets.xcassets")
             ]

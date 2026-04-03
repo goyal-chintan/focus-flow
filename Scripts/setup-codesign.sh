@@ -17,6 +17,7 @@ set -eu
 CERT_NAME="FocusFlow Development"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 TMPDIR_CERT="$(mktemp -d)"
+PKCS12_PASS="focusflow-codesign-temp-pass"
 trap 'rm -rf "$TMPDIR_CERT"' EXIT
 
 GREEN='\033[0;32m'; BLUE='\033[0;34m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -62,7 +63,7 @@ openssl pkcs12 -export \
     -out "$TMPDIR_CERT/cert.p12" \
     -inkey "$TMPDIR_CERT/key.pem" \
     -in "$TMPDIR_CERT/cert.pem" \
-    -passout pass: \
+    -passout pass:"$PKCS12_PASS" \
     2>/dev/null || err "Failed to create PKCS12 bundle"
 
 # Import into login keychain with codesign trust
@@ -70,7 +71,7 @@ security import "$TMPDIR_CERT/cert.p12" \
     -k "$KEYCHAIN" \
     -T /usr/bin/codesign \
     -f pkcs12 \
-    -P "" \
+    -P "$PKCS12_PASS" \
     2>/dev/null || err "Failed to import certificate into keychain"
 
 # Trust the certificate for code signing

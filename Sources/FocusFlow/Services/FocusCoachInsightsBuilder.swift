@@ -130,6 +130,9 @@ struct FocusCoachInsightsBuilder: Sendable {
         // Top triggers from app usage during focus
         let distractingApps = appUsage
             .filter { $0.category == "distracting" && $0.duringFocusSeconds > 30 }
+            // Prefer concrete distracting contexts (YouTube, Reddit, etc.) over generic browser app
+            // labels like Arc/Safari/Chrome when ranking top triggers.
+            .filter { !AppUsageEntry.isBrowserBundleIdentifier($0.appName) }
             .sorted { $0.duringFocusSeconds > $1.duringFocusSeconds }
             .prefix(5)
 

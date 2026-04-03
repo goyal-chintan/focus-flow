@@ -103,6 +103,11 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         XCTAssertEqual(label, "Arc")
     }
 
+    func testRecommendationDisplayLabelTreatsArcBundleIdentifierVariantAsApp() {
+        let label = AppUsageEntry.recommendationDisplayLabel(for: "company.thebrowser.Browser")
+        XCTAssertEqual(label, "Arc")
+    }
+
     // MARK: - Domain-prefix key handling (added by AppUsageTracker for browser tab contexts)
 
     func testRecommendedBlockTargetReturnsDomainForDomainPrefixKey() {

@@ -44,7 +44,7 @@ Code signing changes the binary content even if the source code is identical. Us
 ✅ **Automatic Cleanup**: Removes stale Spotlight entries  
 ✅ **Single Instance**: One app, one Spotlight entry, one menu bar item  
 ✅ **Process Management**: Quits running instances gracefully  
-✅ **Code Signing**: Proper ad-hoc signing for notifications  
+✅ **Code Signing**: Stable certificate signing for TCC persistence  
 ✅ **Verification**: Confirms installation success  
 ✅ **Dry-run Support**: Preview without changes (DRY_RUN=1)
 
@@ -213,9 +213,10 @@ Installed:        ~/Applications/FocusFlow.app
 - Ensures single Spotlight entry
 
 ### Code Signing
-- Uses ad-hoc signing (`--sign -`)
+- Uses stable certificate signing (`FocusFlow Development`)
 - Stable bundle identifier (`com.focusflow.app`)
-- Preserves notification permissions
+- Preserves Calendar/Reminder permissions across rebuilds
+- Refuses ad-hoc signing and fails fast if certificate signing is unavailable
 
 ## Status
 

@@ -30,6 +30,12 @@ ok()   { printf "${GREEN}✓${NC} %s\n" "$1"; }
 info() { printf "${BLUE}ℹ${NC} %s\n" "$1"; }
 err()  { printf "${RED}✗${NC} %s\n" "$1" >&2; exit 1; }
 
+resolve_codesign_identity_hash() {
+    identity_name="$1"
+    security find-identity -v -p codesigning 2>/dev/null \
+        | awk -v identity="$identity_name" '$0 ~ "\"" identity "\"" { print $2; exit }'
+}
+
 # ── 1. Release build ──────────────────────────────────────────────────────────
 info "Building $APP_NAME $VERSION (release)…"
 swift build -c release --product "$APP_NAME" || err "Swift build failed"
@@ -100,21 +106,15 @@ ok "App bundle assembled at $APP_BUNDLE"
 # Run Scripts/setup-codesign.sh once to create the "FocusFlow Development" cert.
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-FocusFlow Development}"
 info "Code-signing…"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CODESIGN_IDENTITY"; then
-    codesign --force --deep --sign "$CODESIGN_IDENTITY" \
-             --identifier com.focusflow.app \
-             --timestamp=none \
-             "$APP_BUNDLE"
-    ok "Signed with \"$CODESIGN_IDENTITY\""
-else
-    info "Certificate \"$CODESIGN_IDENTITY\" not found — falling back to ad-hoc signing."
-    info "Run ./Scripts/setup-codesign.sh to fix Calendar/Reminder permission persistence."
-    codesign --force --deep --sign - \
-             --identifier com.focusflow.app \
-             --timestamp=none \
-             "$APP_BUNDLE"
-    ok "Signed (ad-hoc)"
+CODESIGN_IDENTITY_HASH="$(resolve_codesign_identity_hash "$CODESIGN_IDENTITY")"
+if [ -z "$CODESIGN_IDENTITY_HASH" ]; then
+    err "Certificate \"$CODESIGN_IDENTITY\" not found. Run ./Scripts/setup-codesign.sh"
 fi
+codesign --force --deep --sign "$CODESIGN_IDENTITY_HASH" \
+         --identifier com.focusflow.app \
+         --timestamp=none \
+         "$APP_BUNDLE"
+ok "Signed with \"$CODESIGN_IDENTITY\" ($CODESIGN_IDENTITY_HASH)"
 
 # ── 4. Build DMG ──────────────────────────────────────────────────────────────
 mkdir -p "$ARTIFACTS_DIR"

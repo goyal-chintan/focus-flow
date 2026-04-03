@@ -5,6 +5,12 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
 
+resolve_codesign_identity_hash() {
+  identity_name="$1"
+  security find-identity -v -p codesigning 2>/dev/null \
+    | awk -v identity="$identity_name" '$0 ~ "\"" identity "\"" { print $2; exit }'
+}
+
 # Ensure a stable code-signing certificate exists so macOS TCC permissions
 # (Calendar, Reminders) are not invalidated by each rebuild. The setup script
 # is idempotent — it exits immediately if the cert already exists.
@@ -87,13 +93,13 @@ fi
 #
 # Run Scripts/setup-codesign.sh once to create the "FocusFlow Development" cert.
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-FocusFlow Development}"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CODESIGN_IDENTITY"; then
-  codesign --force --sign "$CODESIGN_IDENTITY" --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"
-else
-  echo "⚠ Certificate \"$CODESIGN_IDENTITY\" not found — falling back to ad-hoc signing."
+CODESIGN_IDENTITY_HASH="$(resolve_codesign_identity_hash "$CODESIGN_IDENTITY")"
+if [ -z "$CODESIGN_IDENTITY_HASH" ]; then
+  echo "✗ Certificate \"$CODESIGN_IDENTITY\" not found."
   echo "  Run ./Scripts/setup-codesign.sh to fix Calendar/Reminder permission persistence."
-  codesign --force --sign - --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"
+  exit 1
 fi
+codesign --force --sign "$CODESIGN_IDENTITY_HASH" --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"
 
 echo "Built $APP_BUNDLE"
 

@@ -2359,20 +2359,35 @@ final class TimerViewModel {
                 }
                 lastIdleInterventionAt = now
             } else {
-                NotificationService.shared.sendGenericNotification(
-                    title: "Focus check-in",
-                    body: opportunityContext.summary,
-                    sound: settings.completionSound
-                )
-                pendingNotificationNudgeAt = now
-                outsideSessionAwaitingStartFocus = true
-                outsideSessionNudgeAttemptCount += 1
+                if NotificationService.shared.authorizationState == .authorized {
+                    NotificationService.shared.sendGenericNotification(
+                        title: "Focus check-in",
+                        body: opportunityContext.summary,
+                        sound: settings.completionSound
+                    )
+                    pendingNotificationNudgeAt = now
+                    outsideSessionAwaitingStartFocus = true
+                    outsideSessionNudgeAttemptCount += 1
+                    outsideSessionEscalationCooldownUntil = nil
+                    currentIdleStarterDecision = nil
+                    activeCoachInterventionDecision = nil
+                    showCoachInterventionWindow = false
+                    lastIdleInterventionAt = now
+                    return
+                }
+
+                pendingNotificationNudgeAt = nil
+                outsideSessionAwaitingStartFocus = false
                 outsideSessionEscalationCooldownUntil = nil
-                currentIdleStarterDecision = nil
+                currentIdleStarterDecision = decision
                 activeCoachInterventionDecision = nil
                 showCoachInterventionWindow = false
+                coachEngine.recordDeliveredIntervention(
+                    kind: .quickPrompt,
+                    riskScore: opportunityContext.driftConfidence,
+                    sessionId: nil
+                )
                 lastIdleInterventionAt = now
-                return
             }
         } else {
             if currentGuardianState == .challenge && !workIntentSignal.isWorkIntentWindow {
