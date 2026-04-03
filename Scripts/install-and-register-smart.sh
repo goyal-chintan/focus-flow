@@ -47,6 +47,62 @@ dry_run_exec() {
   fi
 }
 
+resolve_codesign_identity_hash() {
+  identity_name="$1"
+  security find-identity -v -p codesigning 2>/dev/null \
+    | awk -v identity="$identity_name" '$0 ~ "\"" identity "\"" { print $2; exit }'
+}
+
+count_codesign_identity_matches() {
+  identity_name="$1"
+  security find-identity -v -p codesigning 2>/dev/null \
+    | awk -v identity="$identity_name" '$0 ~ "\"" identity "\"" { count++ } END { print count+0 }'
+}
+
+ensure_codesign_identity() {
+  CODESIGN_IDENTITY_NAME="${CODESIGN_IDENTITY:-FocusFlow Development}"
+  CODESIGN_IDENTITY_HASH="$(resolve_codesign_identity_hash "$CODESIGN_IDENTITY_NAME")"
+  if [ -n "$CODESIGN_IDENTITY_HASH" ]; then
+    match_count="$(count_codesign_identity_matches "$CODESIGN_IDENTITY_NAME")"
+    if [ "$match_count" -gt 1 ]; then
+      log_warn "Multiple \"$CODESIGN_IDENTITY_NAME\" identities found; using SHA $CODESIGN_IDENTITY_HASH"
+    fi
+    return 0
+  fi
+
+  if [ "$DRY_RUN" = "1" ]; then
+    log_info "[DRY-RUN] Would create \"$CODESIGN_IDENTITY_NAME\" via $SCRIPT_DIR/setup-codesign.sh"
+    CODESIGN_IDENTITY_HASH="$CODESIGN_IDENTITY_NAME"
+    return 0
+  fi
+
+  log_warn "Certificate \"$CODESIGN_IDENTITY_NAME\" not found. Bootstrapping it now..."
+  if ! "$SCRIPT_DIR/setup-codesign.sh"; then
+    log_error "Failed to create code-signing certificate \"$CODESIGN_IDENTITY_NAME\"."
+    exit 1
+  fi
+
+  CODESIGN_IDENTITY_HASH="$(resolve_codesign_identity_hash "$CODESIGN_IDENTITY_NAME")"
+  if [ -z "$CODESIGN_IDENTITY_HASH" ]; then
+    log_error "Certificate \"$CODESIGN_IDENTITY_NAME\" is still unavailable after setup."
+    exit 1
+  fi
+}
+
+verify_non_adhoc_signature() {
+  target_path="$1"
+  target_label="${2:-App bundle}"
+  if [ "$DRY_RUN" = "1" ]; then
+    return 0
+  fi
+
+  if codesign -dv --verbose=4 "$target_path" 2>&1 | grep -q "^Signature=adhoc"; then
+    log_error "$target_label is ad-hoc signed; Calendar/Reminder permissions will be reset."
+    log_error "Run ./Scripts/setup-codesign.sh and re-run this installer."
+    exit 1
+  fi
+}
+
 # Calculate MD5 checksum of a file
 get_checksum() {
   if [ -f "$1" ]; then
@@ -78,9 +134,14 @@ INSTALLED_BINARY_CHECKSUM="$(get_checksum "$INSTALLED_BINARY")"
 # Compare file timestamps instead of checksums (more reliable due to code signing)
 NEW_BINARY_TIME="$(stat -f %m "$BUILD_DIR/$APP_NAME" 2>/dev/null || echo 0)"
 INSTALLED_BINARY_TIME="$(stat -f %m "$INSTALLED_BINARY" 2>/dev/null || echo 0)"
+INSTALLED_IS_ADHOC=0
+if [ -d "$INSTALLED_APP" ] && codesign -dv --verbose=4 "$INSTALLED_APP" 2>&1 | grep -q "^Signature=adhoc"; then
+  INSTALLED_IS_ADHOC=1
+  log_warn "Installed app is ad-hoc signed; forcing reinstall to preserve Calendar/Reminder permissions."
+fi
 
 # If app is already installed and timestamps match, skip update
-if [ -n "$INSTALLED_BINARY_CHECKSUM" ] && [ "$NEW_BINARY_TIME" -le "$INSTALLED_BINARY_TIME" ]; then
+if [ -n "$INSTALLED_BINARY_CHECKSUM" ] && [ "$NEW_BINARY_TIME" -le "$INSTALLED_BINARY_TIME" ] && [ "$INSTALLED_IS_ADHOC" -eq 0 ]; then
   log_success "Installed app is already the latest build"
   
   # Kill any running instances
@@ -169,24 +230,27 @@ log_success "App bundle created at $APP_BUNDLE"
 # Code sign with stable certificate so TCC permissions persist across updates.
 # Run Scripts/setup-codesign.sh once to create the "FocusFlow Development" cert.
 log_info "Code signing app bundle..."
-CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-FocusFlow Development}"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CODESIGN_IDENTITY"; then
-  dry_run_exec codesign --force --sign "$CODESIGN_IDENTITY" --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE" 2>/dev/null || true
-else
-  log_warn "Certificate \"$CODESIGN_IDENTITY\" not found — using ad-hoc signing."
-  log_warn "Run ./Scripts/setup-codesign.sh to fix Calendar/Reminder permission persistence."
-  dry_run_exec codesign --force --sign - --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE" 2>/dev/null || true
+ensure_codesign_identity
+if ! dry_run_exec codesign --force --sign "$CODESIGN_IDENTITY_HASH" --identifier com.focusflow.app --timestamp=none "$APP_BUNDLE"; then
+  log_error "Code signing failed with identity \"$CODESIGN_IDENTITY_NAME\"."
+  exit 1
 fi
+verify_non_adhoc_signature "$APP_BUNDLE" "Build app bundle"
+log_success "Signed with \"$CODESIGN_IDENTITY_NAME\" ($CODESIGN_IDENTITY_HASH)"
 
 # Clean up stale Spotlight entries BEFORE installing
 log_info "Cleaning up Spotlight cache..."
 if command -v mdutil >/dev/null 2>&1; then
   # Disable Spotlight indexing for the directory
-  dry_run_exec mdutil -i off "$INSTALL_DIR" 2>/dev/null || true
+  if ! dry_run_exec mdutil -i off "$INSTALL_DIR" 2>/dev/null; then
+    log_warn "Could not disable Spotlight indexing for $INSTALL_DIR; continuing."
+  fi
   # Remove old entries
   dry_run_exec rm -rf "$INSTALL_DIR/.Spotlight-V100" 2>/dev/null || true
   # Re-enable Spotlight indexing
-  dry_run_exec mdutil -i on "$INSTALL_DIR" 2>/dev/null || true
+  if ! dry_run_exec mdutil -i on "$INSTALL_DIR" 2>/dev/null; then
+    log_warn "Could not re-enable Spotlight indexing for $INSTALL_DIR; continuing."
+  fi
   log_success "Spotlight cache cleaned"
 fi
 
@@ -216,6 +280,7 @@ if [ -e "$INSTALLED_APP" ]; then
 fi
 
 dry_run_exec cp -R "$APP_BUNDLE" "$INSTALLED_APP"
+verify_non_adhoc_signature "$INSTALLED_APP" "Installed app"
 log_success "Installed to $INSTALLED_APP"
 
 # Update Spotlight index

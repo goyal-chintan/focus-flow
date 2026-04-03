@@ -123,6 +123,21 @@ final class FocusCoachInsightsBuilderTests: XCTestCase {
         XCTAssertEqual(report.topTriggers.first?.label, "Drift")
     }
 
+    func testTopTriggersPreferSpecificSitesOverGenericBrowserAppLabels() {
+        let report = builder.build(
+            sessions: makeSessions(count: 3),
+            interruptions: [],
+            attempts: [],
+            appUsage: [
+                .init(appName: "Arc", duringFocusSeconds: 900, category: "distracting"),
+                .init(appName: "YouTube", duringFocusSeconds: 840, category: "distracting"),
+                .init(appName: "Reddit", duringFocusSeconds: 600, category: "distracting")
+            ]
+        )
+        XCTAssertFalse(report.topTriggers.contains(where: { $0.label == "Arc" }))
+        XCTAssertEqual(report.topTriggers.first?.label, "YouTube")
+    }
+
     func testLegitimateInterruptionRatio() {
         let legit = makeInterruptions(count: 3, legitimate: true)
         let avoidance = makeInterruptions(count: 7, legitimate: false)

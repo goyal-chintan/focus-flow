@@ -59,6 +59,13 @@ struct SessionCompleteWindowView: View {
         .onAppear {
             stage = .earned
             hasHandledAction = false
+            selectedMood = nil
+            carryForwardNote = ""
+            showSplits = false
+            splits = []
+            selectedReminderItems = []
+            showReminderPicker = false
+            capturedReason = nil
             appeared = disableMotionForEvidence
             depositPulse = false
             if !timerVM.isEvidenceMode {

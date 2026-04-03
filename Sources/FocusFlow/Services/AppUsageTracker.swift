@@ -530,9 +530,7 @@ final class AppUsageTracker {
         return idMatches || nameMatches
     }
     private func isBrowser(bundleId: String) -> Bool {
-        let browsers = ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser",
-                        "org.mozilla.firefox", "com.microsoft.edgemac", "com.operasoftware.Opera"]
-        return browsers.contains(bundleId)
+        AppUsageEntry.isBrowserBundleIdentifier(bundleId)
     }
 
     private func isTerminalOrEditor(bundleId: String) -> Bool {

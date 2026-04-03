@@ -54,6 +54,42 @@ final class ReviewContractsTests: XCTestCase {
         )
     }
 
+    func testSessionCompleteClearsReflectionDraftsOnAppear() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("SessionCompleteWindow.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("carryForwardNote = \"\""),
+            "SessionCompleteWindow should clear any carry-forward note draft on each appearance."
+        )
+        XCTAssertTrue(
+            source.contains("selectedMood = nil"),
+            "SessionCompleteWindow should clear the prior mood selection on each appearance."
+        )
+        XCTAssertTrue(
+            source.contains("showSplits = false"),
+            "SessionCompleteWindow should collapse project splits on each appearance."
+        )
+        XCTAssertTrue(
+            source.contains("splits = []"),
+            "SessionCompleteWindow should clear split allocations on each appearance."
+        )
+        XCTAssertTrue(
+            source.contains("selectedReminderItems = []"),
+            "SessionCompleteWindow should clear reminder selections on each appearance."
+        )
+        XCTAssertTrue(
+            source.contains("capturedReason = nil"),
+            "SessionCompleteWindow should clear the prior coach reason confirmation on each appearance."
+        )
+    }
+
     func testProjectFormDropdownRowsHaveFullWidthHitTargets() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
