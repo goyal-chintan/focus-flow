@@ -219,8 +219,11 @@ final class ReviewContractsTests: XCTestCase {
 
         XCTAssertFalse(modelsSource.contains("case unsupported"))
         XCTAssertFalse(modelsSource.contains("case captureUnsupported"))
+        XCTAssertFalse(modelsSource.contains("case captureUnavailable"))
         XCTAssertFalse(todaySource.contains("case .captureUnsupported"))
+        XCTAssertFalse(todaySource.contains("case .captureUnavailable"))
         XCTAssertFalse(weeklySource.contains("case .captureUnsupported"))
+        XCTAssertFalse(weeklySource.contains("case .captureUnavailable"))
         XCTAssertFalse(settingsSource.contains("case unsupportedBrowser"))
     }
 
@@ -248,8 +251,8 @@ final class ReviewContractsTests: XCTestCase {
 
         XCTAssertFalse(todaySource.contains("AppUsageTracker.shared.currentFrontmostBundleId"))
         XCTAssertFalse(weeklySource.contains("AppUsageTracker.shared.currentFrontmostBundleId"))
-        XCTAssertTrue(todaySource.contains("captureAvailability: .available"))
-        XCTAssertTrue(weeklySource.contains("captureAvailability: .available"))
+        XCTAssertFalse(todaySource.contains("captureAvailability:"))
+        XCTAssertFalse(weeklySource.contains("captureAvailability:"))
     }
 
 
@@ -274,7 +277,7 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(source.contains("\"Domain Signals\""))
         XCTAssertTrue(source.contains("CompanionAnalyticsBuilder().build("))
         XCTAssertTrue(source.contains("analyticsReport.today"))
-        XCTAssertTrue(source.contains("captureAvailability: .available"))
+        XCTAssertFalse(source.contains("captureAvailability:"))
         XCTAssertTrue(source.contains("DomainSignalRow("))
         XCTAssertTrue(source.contains("case .trackingDisabled"))
         XCTAssertTrue(source.contains("case .noValidDomainsYet"))
@@ -299,7 +302,7 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertLessThan(domainPatternsIndex, streakIndex, "Domain Patterns should appear before Streak.")
         XCTAssertTrue(source.contains("\"Domain Patterns\""))
         XCTAssertTrue(source.contains("CompanionAnalyticsBuilder().build("))
-        XCTAssertTrue(source.contains("captureAvailability: .available"))
+        XCTAssertFalse(source.contains("captureAvailability:"))
         XCTAssertTrue(source.contains("selectedPeriod == .week ? \"7 Days\" : \"30 Days\""))
         XCTAssertTrue(source.contains("analyticsReport.trailing7Days.domainRows"))
         XCTAssertTrue(source.contains("analyticsReport.trailing30Days.domainRows"))

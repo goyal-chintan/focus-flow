@@ -28,15 +28,9 @@ enum CompanionAnalyticsWindow: CaseIterable {
     }
 }
 
-enum CompanionAnalyticsCaptureAvailability {
-    case available
-    case unavailable
-}
-
 enum CompanionAnalyticsDomainEmptyState: Equatable {
     case trackingDisabled
     case noValidDomainsYet
-    case captureUnavailable
 }
 
 enum CompanionAnalyticsRowKind: Equatable {

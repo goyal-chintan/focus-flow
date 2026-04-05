@@ -10,7 +10,6 @@ struct CompanionAnalyticsBuilder {
     func build(
         entries: [AppUsageEntry],
         domainTrackingEnabled: Bool,
-        captureAvailability: CompanionAnalyticsCaptureAvailability = .available,
         now: Date = Date()
     ) -> CompanionAnalyticsReport {
         CompanionAnalyticsReport(
@@ -18,21 +17,18 @@ struct CompanionAnalyticsBuilder {
                 for: .today,
                 entries: entries,
                 domainTrackingEnabled: domainTrackingEnabled,
-                captureAvailability: captureAvailability,
                 now: now
             ),
             trailing7Days: buildSnapshot(
                 for: .trailing7Days,
                 entries: entries,
                 domainTrackingEnabled: domainTrackingEnabled,
-                captureAvailability: captureAvailability,
                 now: now
             ),
             trailing30Days: buildSnapshot(
                 for: .trailing30Days,
                 entries: entries,
                 domainTrackingEnabled: domainTrackingEnabled,
-                captureAvailability: captureAvailability,
                 now: now
             )
         )
@@ -59,7 +55,6 @@ struct CompanionAnalyticsBuilder {
         for window: CompanionAnalyticsWindow,
         entries: [AppUsageEntry],
         domainTrackingEnabled: Bool,
-        captureAvailability: CompanionAnalyticsCaptureAvailability,
         now: Date
     ) -> CompanionAnalyticsWindowSnapshot {
         guard let interval = window.dateInterval(relativeTo: now, calendar: calendar) else {
@@ -67,10 +62,7 @@ struct CompanionAnalyticsBuilder {
                 window: window,
                 rows: [],
                 domainRows: [],
-                domainEmptyState: resolveDomainEmptyState(
-                    domainTrackingEnabled: domainTrackingEnabled,
-                    captureAvailability: captureAvailability
-                )
+                domainEmptyState: resolveDomainEmptyState(domainTrackingEnabled: domainTrackingEnabled)
             )
         }
 
@@ -114,10 +106,7 @@ struct CompanionAnalyticsBuilder {
             rows: rows,
             domainRows: domainRows,
             domainEmptyState: domainRows.isEmpty
-                ? resolveDomainEmptyState(
-                    domainTrackingEnabled: domainTrackingEnabled,
-                    captureAvailability: captureAvailability
-                )
+                ? resolveDomainEmptyState(domainTrackingEnabled: domainTrackingEnabled)
                 : nil
         )
     }
@@ -177,20 +166,11 @@ struct CompanionAnalyticsBuilder {
         return trimmed
     }
 
-    private func resolveDomainEmptyState(
-        domainTrackingEnabled: Bool,
-        captureAvailability: CompanionAnalyticsCaptureAvailability
-    ) -> CompanionAnalyticsDomainEmptyState {
+    private func resolveDomainEmptyState(domainTrackingEnabled: Bool) -> CompanionAnalyticsDomainEmptyState {
         guard domainTrackingEnabled else {
             return .trackingDisabled
         }
-
-        switch captureAvailability {
-        case .available:
-            return .noValidDomainsYet
-        case .unavailable:
-            return .captureUnavailable
-        }
+        return .noValidDomainsYet
     }
 
     private static func rowComparator(lhs: CompanionAnalyticsRow, rhs: CompanionAnalyticsRow) -> Bool {

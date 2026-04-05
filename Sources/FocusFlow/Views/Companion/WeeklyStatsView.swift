@@ -32,7 +32,6 @@ struct WeeklyStatsView: View {
         CompanionAnalyticsBuilder().build(
             entries: visibleAppUsageEntries,
             domainTrackingEnabled: shouldExposeRawDomains,
-            captureAvailability: .available,
             now: analyticsSnapshotNow
         )
     }
@@ -546,13 +545,6 @@ struct WeeklyStatsView: View {
                 message: "FocusFlow will show distracting domains here after it captures a valid browser domain in this \(selectedPeriod == .week ? "7-day" : "30-day") window. If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles.",
                 icon: "safari",
                 tint: .blue
-            )
-        case .captureUnavailable:
-            return (
-                title: "Browser title fallback unavailable",
-                message: "Screen Recording is off, so FocusFlow can’t recover domains from browser title fallback for browsers that do not expose a tab URL.",
-                icon: "rectangle.badge.exclamationmark",
-                tint: .orange
             )
         }
     }

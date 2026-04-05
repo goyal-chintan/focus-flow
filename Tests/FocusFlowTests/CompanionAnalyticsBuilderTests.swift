@@ -200,19 +200,14 @@ final class CompanionAnalyticsBuilderTests: XCTestCase {
         XCTAssertEqual(report.trailing30Days.domainEmptyState, .trackingDisabled)
     }
 
-    func testBuildReportsCaptureAvailabilityEmptyStatesWhenNoValidDomainsExist() {
+    func testBuildReportsNoValidDomainEmptyStateWhenNoValidDomainsExist() {
         let calendar = Self.utcCalendar
         let now = Self.date(year: 2026, month: 2, day: 20, hour: 15, minute: 0)
         let builder = CompanionAnalyticsBuilder(calendar: calendar)
 
-        let unavailable = builder.build(
-            entries: [],
-            domainTrackingEnabled: true,
-            captureAvailability: .unavailable,
-            now: now
-        )
+        let report = builder.build(entries: [], domainTrackingEnabled: true, now: now)
 
-        XCTAssertEqual(unavailable.today.domainEmptyState, .captureUnavailable)
+        XCTAssertEqual(report.today.domainEmptyState, .noValidDomainsYet)
     }
 
     func testTodaySnapshotExcludesTomorrowStartBoundaryEntries() {
