@@ -246,6 +246,64 @@ sqlite3 docs/project-memory/DECISION_LOG.db \
 
 ---
 
+## Session: Domain Analytics Integrity Rollout (2026-04-06)
+
+**Session ID:** 71def331-9ad6-4d58-87ad-bdd1e0782d57
+
+Browser-domain capture, companion analytics windows, and recovery messaging were tightened so Today, Week, Insights, and Settings all describe the same data pipeline.
+
+---
+
+#### D3.1: Shared Windowed Domain Analytics With Privacy-Safe Browser Context
+
+**Category:** Data/UI/Architecture
+**Date:** 2026-04-06
+**Status:** Active
+**Session(s):** 71def331-9ad6-4d58-87ad-bdd1e0782d57
+
+### Problem
+
+- Browser-domain history contained malformed `domain:` rows and no reliable contract for what counted as a valid website.
+- Insights mixed incompatible time windows, which made domain guidance feel stale even when fresh activity existed.
+- Turning off detailed domains in Settings did not fully stop browser-title-derived coaching context.
+- Browser app rows and resolved domain rows could distort live ratios and hide unresolved browser time.
+
+### Alternatives Considered
+
+- **Keep per-surface analytics logic** — faster in the short term, but guaranteed more drift between Today, Week, Insights, and Settings recovery states.
+- **Persist only domain rows for browser time** — simpler analytics, but risked losing generic browser visibility when a site could not be resolved.
+- **Treat Screen Recording as universally required** — easier messaging, but false for supported browsers that expose active-tab URLs directly.
+
+### Decision
+
+- Keep `AppUsageEntry` as the persisted primitive, but centralize domain validation and windowing in a shared `CompanionAnalyticsBuilder`.
+- Treat Today, trailing 7 days, and trailing 30 days as the canonical windows for all companion domain surfaces.
+- Preserve app-level browser tracking as the authoritative total, use valid `domain:` rows to refine site-level analytics, and keep residual unresolved browser time visible instead of dropping it.
+- When detailed domains are off, sanitize browser coaching context back to app-level labels and titles.
+- Treat Screen Recording as a title-fallback aid only, not a blanket prerequisite for all browser-domain capture.
+
+### Rationale
+
+This keeps the product honest in both directions: precise site-level insight when valid domains exist, and accurate generic browser/app tracking when they do not. One shared analytics contract also prevents Today, Week, Insights, and Settings from drifting into conflicting explanations.
+
+### Outcomes
+
+- Browser-domain capture is validated before persistence and malformed legacy `domain:` rows are ignored in analytics and recovery messaging.
+- Today and Week gained always-visible domain sections backed by the same analytics source as Insights.
+- Insights now uses explicit today and trailing-window inputs instead of mixed all-time data, while Today and Week keep owning the today / 7-day / 30-day domain surfaces.
+- Settings copy and recovery states now match the real capture pipeline, including the Screen Recording fallback nuance.
+
+### Related Decisions
+
+- D1.1: 3-Gate Visual Review Process
+- D2.1: `domain:` Prefix Convention for Browser-Domain AppUsageEntries
+
+### Learnings
+
+Privacy toggles are not complete until labels, coaching, persistence, and recovery messaging all agree. For browser analytics, "supported browser", "title fallback", and "valid domain history" are distinct concepts and must not be collapsed into one state.
+
+---
+
 ## Session: Guardian Recommendations & Idle Escalation (2026-03-26)
 
 **Session ID:** a78f68d5-ee86-4127-b11d-18d71d7a35b8

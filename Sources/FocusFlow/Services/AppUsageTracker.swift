@@ -8,6 +8,14 @@ import SwiftData
 final class AppUsageTracker {
     static let shared = AppUsageTracker()
 
+    struct FrontmostContextPresentation: Equatable {
+        let browserHost: String?
+        let displayLabel: String
+        let domainLabel: String?
+        let effectiveWindowTitle: String
+        let category: AppUsageEntry.AppCategory
+    }
+
     private var trackingTimer: Timer?
     private var idleSeconds: Int = 0
     private var isTracking = false
@@ -31,6 +39,8 @@ final class AppUsageTracker {
     private var lastFrontmostDomainLabel: String?
     private var lastBrowserContextRefreshAt: Date = .distantPast
     private let browserContextRefreshInterval: TimeInterval = 12
+    private let browserDomainResolver: BrowserDomainResolver
+    private let appUsageCaptureWriter: AppUsageCaptureWriter
     private var inactivitySeconds: Int = 0
     private var hasEngagedProductively: Bool = false
     private var startDelaySeconds: Double = 0
@@ -86,7 +96,75 @@ final class AppUsageTracker {
         }
     }
 
-    private init() {}
+    static func frontmostContextPresentation(
+        bundleIdentifier: String,
+        appName: String,
+        windowTitle: String,
+        resolvedBrowserHost: String?,
+        settings: AppSettings?
+    ) -> FrontmostContextPresentation {
+        let appLabel = AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleIdentifier)")
+        let shouldCollectRawDomains = settings?.coachCollectRawDomains == true
+        let browserHost = shouldCollectRawDomains
+            ? AppUsageEntry.normalizedBrowserHost(from: resolvedBrowserHost)
+            : nil
+        let domainLabel = browserHost.map(AppUsageEntry.domainDisplayName(for:))
+        let effectiveWindowTitle = shouldCollectRawDomains ? windowTitle : appName
+        let displayLabel = domainLabel ?? appLabel
+        let category = AppUsageEntry.classify(
+            bundleIdentifier: bundleIdentifier,
+            appName: appName,
+            windowTitle: effectiveWindowTitle,
+            browserHost: browserHost
+        )
+
+        return FrontmostContextPresentation(
+            browserHost: browserHost,
+            displayLabel: displayLabel,
+            domainLabel: domainLabel,
+            effectiveWindowTitle: effectiveWindowTitle,
+            category: category
+        )
+    }
+
+    static func focusTotals(for entries: [AppUsageEntry]) -> (totalFocusSeconds: Int, distractingFocusSeconds: Int) {
+        let totalFocusSeconds = entries.reduce(0) { sum, entry in
+            guard !CompanionAnalyticsBuilder.isPersistedDomainBundleIdentifier(entry.bundleIdentifier) else {
+                // Domain rows are additive browser detail, including malformed historical keys.
+                return sum
+            }
+            return sum + entry.duringFocusSeconds
+        }
+
+        let distractingFocusSeconds = entries.reduce(0) { sum, entry in
+            if let host = CompanionAnalyticsBuilder.validPersistedDomainHost(for: entry.bundleIdentifier) {
+                let category = AppUsageEntry.classify(
+                    bundleIdentifier: "domain:\(host)",
+                    appName: entry.appName,
+                    browserHost: host
+                )
+                return sum + (category == .distracting ? entry.duringFocusSeconds : 0)
+            }
+
+            guard !CompanionAnalyticsBuilder.isPersistedDomainBundleIdentifier(entry.bundleIdentifier) else {
+                return sum
+            }
+            guard !AppUsageEntry.isBrowserBundleIdentifier(entry.bundleIdentifier) else {
+                return sum
+            }
+            return sum + (entry.category == .distracting ? entry.duringFocusSeconds : 0)
+        }
+
+        return (totalFocusSeconds, distractingFocusSeconds)
+    }
+
+    private init(
+        browserDomainResolver: BrowserDomainResolver = BrowserDomainResolver(),
+        appUsageCaptureWriter: AppUsageCaptureWriter = AppUsageCaptureWriter()
+    ) {
+        self.browserDomainResolver = browserDomainResolver
+        self.appUsageCaptureWriter = appUsageCaptureWriter
+    }
 
         // MARK: - Lifecycle
 
@@ -208,44 +286,52 @@ final class AppUsageTracker {
         let appName = frontApp.localizedName ?? "Unknown"
         let now = Date()
         let windowTitle: String
-        let browserHost: String?
+        let resolvedBrowserHost: String?
+        let shouldCollectRawDomains = timerVM?.settings?.coachCollectRawDomains == true
         if isBrowser(bundleId: bundleId) {
             let shouldRefreshBrowserContext =
                 bundleId != lastFrontmostBundleId
                 || now.timeIntervalSince(lastBrowserContextRefreshAt) >= browserContextRefreshInterval
             if shouldRefreshBrowserContext {
-                let resolvedTitle = currentWindowTitle(processID: frontApp.processIdentifier) ?? appName
-                let resolvedHost = extractBrowserDomain(
-                    windowTitle: resolvedTitle,
-                    appName: appName,
-                    bundleId: bundleId
-                )
+                let resolvedTitle = shouldCollectRawDomains
+                    ? (currentWindowTitle(processID: frontApp.processIdentifier) ?? appName)
+                    : appName
+                let resolvedHost = shouldCollectRawDomains
+                    ? browserDomainResolver.resolve(
+                        bundleIdentifier: bundleId,
+                        windowTitle: resolvedTitle,
+                        appName: appName
+                    )?.host
+                    : nil
                 lastFrontmostWindowTitle = resolvedTitle
                 lastFrontmostBrowserHost = resolvedHost
                 lastBrowserContextRefreshAt = now
                 windowTitle = resolvedTitle
-                browserHost = resolvedHost
+                resolvedBrowserHost = resolvedHost
             } else {
-                windowTitle = lastFrontmostWindowTitle.isEmpty ? appName : lastFrontmostWindowTitle
-                browserHost = lastFrontmostBrowserHost
+                windowTitle = shouldCollectRawDomains
+                    ? (lastFrontmostWindowTitle.isEmpty ? appName : lastFrontmostWindowTitle)
+                    : appName
+                resolvedBrowserHost = shouldCollectRawDomains ? lastFrontmostBrowserHost : nil
             }
         } else {
             windowTitle = appName
-            browserHost = nil
+            resolvedBrowserHost = nil
             lastFrontmostWindowTitle = windowTitle
             lastFrontmostBrowserHost = nil
             lastBrowserContextRefreshAt = .distantPast
         }
-        let domainLabel = browserHost.map { AppUsageEntry.recommendationDisplayLabel(for: $0) }
-        let appLabel = AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
-        lastFrontmostDomainLabel = domainLabel
-        lastFrontmostDisplayLabel = domainLabel ?? appLabel
-        lastFrontmostCategory = AppUsageEntry.classify(
+        let contextPresentation = Self.frontmostContextPresentation(
             bundleIdentifier: bundleId,
             appName: appName,
             windowTitle: windowTitle,
-            browserHost: browserHost
+            resolvedBrowserHost: resolvedBrowserHost,
+            settings: timerVM?.settings
         )
+        let browserHost = contextPresentation.browserHost
+        lastFrontmostDomainLabel = contextPresentation.domainLabel
+        lastFrontmostDisplayLabel = contextPresentation.displayLabel
+        lastFrontmostCategory = contextPresentation.category
 
         // Skip FocusFlow itself
         if bundleId == Bundle.main.bundleIdentifier { return }
@@ -265,7 +351,7 @@ final class AppUsageTracker {
             let obs = buildObservation(
                 bundleId: bundleId,
                 appName: appName,
-                windowTitle: windowTitle,
+                windowTitle: contextPresentation.effectiveWindowTitle,
                 browserHost: browserHost,
                 isInSession: isFocusing,
                 selectedProjectId: timerVM?.selectedProject?.id,
@@ -281,24 +367,21 @@ final class AppUsageTracker {
         if isFocusing {
             entry.duringFocusSeconds += 1
             totalFocusSecondsToday += 1
-            if entry.category == .distracting {
+            if contextPresentation.category == .distracting {
                 distractingFocusSecondsToday += 1
             }
         } else {
             entry.outsideFocusSeconds += 1
         }
 
-        // For browser tab contexts, also persist a domain-keyed entry so Guardian Recommendations
+        // For browser tab contexts, optionally persist a domain-keyed entry so Guardian Recommendations
         // can aggregate time per website rather than per browser app.
-        if let host = browserHost, !host.isEmpty {
-            let domainKey = "domain:\(host)"
-            let domainName = AppUsageEntry.recommendationDisplayLabel(for: host)
-            let domainEntry = entryForCurrentDay(bundleId: domainKey, appName: domainName, context: ctx)
-            if isFocusing {
-                domainEntry.duringFocusSeconds += 1
-            } else {
-                domainEntry.outsideFocusSeconds += 1
-            }
+        appUsageCaptureWriter.recordBrowserDomainUsage(
+            resolvedHost: browserHost,
+            settings: timerVM?.settings,
+            isFocusing: isFocusing
+        ) { bundleIdentifier, appName in
+            entryForCurrentDay(bundleId: bundleIdentifier, appName: appName, context: ctx)
         }
 
         persistIfNeeded()
@@ -345,10 +428,9 @@ final class AppUsageTracker {
         do {
             let entries = try ctx.fetch(descriptor)
             appEntriesByBundleID = Dictionary(uniqueKeysWithValues: entries.map { ($0.bundleIdentifier, $0) })
-            totalFocusSecondsToday = entries.reduce(0) { $0 + $1.duringFocusSeconds }
-            distractingFocusSecondsToday = entries.reduce(0) { sum, entry in
-                sum + (entry.category == .distracting ? entry.duringFocusSeconds : 0)
-            }
+            let totals = Self.focusTotals(for: entries)
+            totalFocusSecondsToday = totals.totalFocusSeconds
+            distractingFocusSecondsToday = totals.distractingFocusSeconds
         } catch {
             appEntriesByBundleID.removeAll()
             totalFocusSecondsToday = 0
@@ -560,26 +642,6 @@ final class AppUsageTracker {
             }
         }
         return nil
-    }
-
-    private func extractBrowserDomain(windowTitle: String, appName: String, bundleId: String) -> String? {
-        let text = "\(windowTitle) \(appName)".lowercased()
-        if let range = text.range(of: #"([a-z0-9-]+\.)+[a-z]{2,}"#, options: .regularExpression) {
-            let host = String(text[range])
-                .replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
-            if !host.isEmpty, !AppUsageEntry.isBrowserBundleIdentifier(host) {
-                return host
-            }
-        }
-        let knownDomains: [(needle: String, domain: String)] = [
-            ("youtube", "youtube.com"), ("reddit", "reddit.com"),
-            ("twitter", "twitter.com"), ("x.com", "x.com"),
-            ("instagram", "instagram.com"), ("facebook", "facebook.com"),
-            ("tiktok", "tiktok.com"), ("netflix", "netflix.com"),
-            ("github", "github.com"), ("stackoverflow", "stackoverflow.com"),
-            ("linkedin", "linkedin.com"), ("twitch", "twitch.tv")
-        ]
-        return knownDomains.first(where: { text.contains($0.needle) })?.domain
     }
 
     private func extractBrowserTitle(appName: String) -> String? {

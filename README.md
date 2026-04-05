@@ -61,10 +61,10 @@ FocusFlow is designed to reduce the gap between intention and action.
 
 The companion window is the app's deeper control room and includes:
 
-- **Today** — daily totals, session timeline, project progress, reminders, and behavioral summaries.
+- **Today** — daily totals, session timeline, project progress, reminders, behavioral summaries, and domain signals for the current day.
 - **Calendar** — session history and planning surfaces tied to Apple Calendar and Reminders.
-- **Week** — trend views and longer-range progress summaries.
-- **Insights** — productive-hour patterns, focus behavior analysis, and personalized coach guidance.
+- **Week** — trend views, longer-range progress summaries, and domain patterns for the active 7-day or 30-day period.
+- **Insights** — productive-hour patterns, focus behavior analysis, windowed domain analytics, and personalized coach guidance.
 - **Projects** — project creation, editing, colors, icons, and archive management.
 - **Settings** — timer preferences, integrations, launch behavior, blocking controls, and coach configuration.
 
@@ -80,6 +80,7 @@ The companion window is the app's deeper control room and includes:
 - Daily focus totals, session counts, streaks, and per-project breakdowns.
 - Session timeline with mood and achievement context.
 - Weekly and longer-range trend views.
+- Shared today / trailing-7-day / trailing-30-day analytics windows keep Today, Week, and Insights in sync; domain sections use today, 7-day, and 30-day windows where they actually appear.
 - Cross-midnight attribution so long sessions are split correctly across days.
 - Editable historical sessions for fixing project, mood, or achievement details after the fact.
 - Daily focus-goal tracking in analytics and settings.
@@ -98,6 +99,7 @@ The companion window is the app's deeper control room and includes:
 
 - Frontmost-app tracking during active use.
 - Browser-domain labeling when supported, so distracting sites can be identified with more precision than browser-app-level tracking alone.
+- Detailed domain capture remains configurable in Settings; when it is off, FocusFlow falls back to app-level labels and coaching context only.
 - Adaptive recommendation signals that improve blocking suggestions and coach specificity.
 - Screen-sharing-aware suppression rules to avoid disruptive popups in sensitive contexts.
 
@@ -172,7 +174,7 @@ Some features require system permissions:
 |---|---|
 | **Calendar** | Save completed focus sessions to Apple Calendar |
 | **Reminders** | Read and complete relevant reminders inside FocusFlow workflows |
-| **Screen Recording** | Read active browser window titles for browser-domain awareness; no screen pixels are captured or stored |
+| **Screen Recording** | Support browser title fallback for domain awareness when a browser does not expose its active tab URL; no screen pixels are captured or stored |
 | **Admin password** | Apply optional website blocking through `/etc/hosts` |
 
 ## Automated UI evidence capture
