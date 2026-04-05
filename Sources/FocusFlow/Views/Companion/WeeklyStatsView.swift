@@ -3,6 +3,9 @@ import SwiftData
 
 struct WeeklyStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
+    @Query private var allSettings: [AppSettings]
+    @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
+    private let analyticsSnapshotNow = Date()
     @State private var selectedPeriod: Period = .week
     @State private var selectedDayIndex: Int? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -12,6 +15,28 @@ struct WeeklyStatsView: View {
         case month = "30 Days"
     }
 
+    private var settings: AppSettings? { allSettings.first }
+
+    private var shouldExposeRawDomains: Bool {
+        settings?.coachCollectRawDomains == true
+    }
+
+    private var visibleAppUsageEntries: [AppUsageEntry] {
+        InsightsAppUsagePolicy.visibleEntries(
+            from: appUsageEntries,
+            collectRawDomains: shouldExposeRawDomains
+        )
+    }
+
+    private var analyticsReport: CompanionAnalyticsReport {
+        CompanionAnalyticsBuilder().build(
+            entries: visibleAppUsageEntries,
+            domainTrackingEnabled: shouldExposeRawDomains,
+            captureAvailability: .available,
+            now: analyticsSnapshotNow
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -19,6 +44,7 @@ struct WeeklyStatsView: View {
                 chartSection
                 heatmapSection
                 summarySection
+                domainPatternsSection
                 streakSection
             }
             .padding(24)
@@ -101,7 +127,7 @@ struct WeeklyStatsView: View {
     private var selectedDayDetail: DayDetail? {
         guard let idx = selectedDayIndex, idx < chartData.count else { return nil }
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
         guard let day = calendar.date(byAdding: .day, value: -(days - 1 - idx), to: today),
               let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
             return nil
@@ -186,6 +212,30 @@ struct WeeklyStatsView: View {
         .accessibilityElement(children: .combine)
     }
 
+    private var domainPatternsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "Domain Patterns",
+                    subtitle: domainPatternsSubtitle
+                )
+
+                if let emptyState = selectedDomainEmptyState {
+                    domainPatternsEmptyState(emptyState)
+                } else if selectedDistractingDomainRows.isEmpty {
+                    noDistractingDomainsState
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(selectedDistractingDomainRows) { row in
+                            DomainSignalRow(row: row)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
     // MARK: - Heatmap
 
     private var heatmapSection: some View {
@@ -247,6 +297,28 @@ struct WeeklyStatsView: View {
         chartData.filter { $0.value > 0 }.count
     }
 
+    private var selectedDomainEmptyState: CompanionAnalyticsDomainEmptyState? {
+        selectedPeriod == .week
+            ? analyticsReport.trailing7Days.domainEmptyState
+            : analyticsReport.trailing30Days.domainEmptyState
+    }
+
+    private var selectedDistractingDomainRows: [CompanionAnalyticsRow] {
+        selectedPeriod == .week
+            ? analyticsReport.trailing7Days.domainRows
+                .filter { $0.category == .distracting }
+                .prefix(5)
+                .map { $0 }
+            : analyticsReport.trailing30Days.domainRows
+                .filter { $0.category == .distracting }
+                .prefix(5)
+                .map { $0 }
+    }
+
+    private var domainPatternsSubtitle: String {
+        "Top distracting domains · \(selectedPeriod == .week ? "7 Days" : "30 Days")"
+    }
+
     private var chartSubtitle: String {
         if bestDayDuration <= 0 {
             return "No focus time logged in this period"
@@ -254,11 +326,21 @@ struct WeeklyStatsView: View {
         return "Best day: \(bestDayLabel) · \(bestDayDuration.formattedFocusTime)"
     }
 
+    private var periodInterval: DateInterval? {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: today),
+              let start = calendar.date(byAdding: .day, value: -(days - 1), to: today) else {
+            return nil
+        }
+        return DateInterval(start: start, end: end)
+    }
+
     private var days: Int { selectedPeriod == .week ? 7 : 30 }
 
     private var chartData: [(label: String, value: Double)] {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
         let focusSessions = allSessions.filter { $0.type == .focus }
 
         return (0..<days).compactMap { offset in
@@ -308,7 +390,7 @@ struct WeeklyStatsView: View {
 
     private var peakHour: String {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
         guard let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else {
             return "—"
         }
@@ -332,17 +414,15 @@ struct WeeklyStatsView: View {
     // MARK: - Completion Rate
 
     private var periodSessionCount: Int {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        guard let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else { return 0 }
-        return allSessions.filter { $0.type == .focus && $0.startedAt >= periodStart }.count
+        guard let periodInterval else { return 0 }
+        return InsightsWindowing.overlappingFocusSessions(allSessions, in: periodInterval).count
     }
 
     private var periodCompletedCount: Int {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        guard let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: today) else { return 0 }
-        return allSessions.filter { $0.type == .focus && $0.completed && $0.startedAt >= periodStart }.count
+        guard let periodInterval else { return 0 }
+        return InsightsWindowing.overlappingFocusSessions(allSessions, in: periodInterval)
+            .filter(\.completed)
+            .count
     }
 
     private var completionRate: String {
@@ -354,7 +434,7 @@ struct WeeklyStatsView: View {
 
     private var currentStreak: Int {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
         var streak = 0
         var dayOffset = 0
         while true {
@@ -397,6 +477,84 @@ struct WeeklyStatsView: View {
             }
         }
         return maxStreak
+    }
+
+    private var noDistractingDomainsState: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "checkmark.shield")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.mint)
+                .frame(width: 18)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No distracting domains in this period")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text("FocusFlow captured browser domains across the last \(selectedPeriod == .week ? "7" : "30") days, but none were classified as distracting.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+    }
+
+    private func domainPatternsEmptyState(_ state: CompanionAnalyticsDomainEmptyState) -> some View {
+        let descriptor = domainPatternEmptyStateDescriptor(for: state)
+
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: descriptor.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(descriptor.tint)
+                .frame(width: 18)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(descriptor.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(descriptor.message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+    }
+
+    private func domainPatternEmptyStateDescriptor(
+        for state: CompanionAnalyticsDomainEmptyState
+    ) -> (title: String, message: String, icon: String, tint: Color) {
+        switch state {
+        case .trackingDisabled:
+            return (
+                title: "Detailed domains are off",
+                message: "Turn on Detailed domains in Settings to show distracting websites from the last \(selectedPeriod == .week ? "7" : "30") days.",
+                icon: "eye.slash",
+                tint: Color.secondary
+            )
+        case .noValidDomainsYet:
+            return (
+                title: "No valid domains yet",
+                message: "FocusFlow will show distracting domains here after it captures a valid browser domain in this \(selectedPeriod == .week ? "7-day" : "30-day") window. If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles.",
+                icon: "safari",
+                tint: .blue
+            )
+        case .captureUnavailable:
+            return (
+                title: "Browser title fallback unavailable",
+                message: "Screen Recording is off, so FocusFlow can’t recover domains from browser title fallback for browsers that do not expose a tab URL.",
+                icon: "rectangle.badge.exclamationmark",
+                tint: .orange
+            )
+        }
     }
 
 }

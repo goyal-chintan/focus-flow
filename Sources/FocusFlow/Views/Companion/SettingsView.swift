@@ -1,16 +1,19 @@
 import SwiftUI
 import SwiftData
 import ServiceManagement
+import CoreGraphics
 
 struct SettingsView: View {
     enum ScrollTarget {
         case integrations
+        case domainTracking
     }
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openWindow) private var openWindow
     @Environment(TimerViewModel.self) private var timerVM
     @Query private var allSettings: [AppSettings]
+    @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
     @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
     @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
     @State private var isLoadingCalendars = false
@@ -62,9 +65,14 @@ struct SettingsView: View {
                 if settings.remindersIntegrationEnabled {
                     loadReminderLists()
                 }
-                if initialScrollTarget == .integrations {
+                if let initialScrollTarget {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        proxy.scrollTo("integrations", anchor: .top)
+                        switch initialScrollTarget {
+                        case .integrations:
+                            proxy.scrollTo("integrations", anchor: .top)
+                        case .domainTracking:
+                            proxy.scrollTo("domainTracking", anchor: .top)
+                        }
                     }
                 }
             }
@@ -1204,11 +1212,17 @@ struct SettingsView: View {
                         set: { settings.coachCollectRawDomains = $0; save() }
                     )
                 )
+                .id("domainTracking")
 
-                Text("When off, only app categories (productive/neutral/distracting) are tracked. All data stays on this device.")
+                Text("When off, FocusFlow still tracks frontmost apps and categories. Existing saved domain history stays on this device, but FocusFlow stops collecting and using website domains for new labels and coaching.")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .padding(.leading, 28)
+
+                if let domainTrackingRecoveryState {
+                    domainTrackingRecoveryView(for: domainTrackingRecoveryState)
+                        .padding(.leading, 28)
+                }
 
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "checkmark.shield")
@@ -1233,8 +1247,91 @@ struct SettingsView: View {
         saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 
+    static func hasValidCapturedBrowserDomains(in entries: [AppUsageEntry]) -> Bool {
+        entries.contains { entry in
+            CompanionAnalyticsBuilder.validPersistedDomainHost(for: entry.bundleIdentifier) != nil
+            && (entry.duringFocusSeconds > 0 || entry.outsideFocusSeconds > 0)
+        }
+    }
+
+    private var hasCapturedBrowserDomains: Bool {
+        Self.hasValidCapturedBrowserDomains(in: appUsageEntries)
+    }
+
+    private var domainTrackingRecoveryState: DomainTrackingRecoveryState? {
+        if settings.coachCollectRawDomains == false {
+            return .disabled
+        }
+
+        guard !hasCapturedBrowserDomains else { return nil }
+
+        if let frontmostBundleId = AppUsageTracker.shared.currentFrontmostBundleId,
+           AppUsageEntry.isBrowserBundleIdentifier(frontmostBundleId) {
+            if BrowserDomainResolver.supports(bundleIdentifier: frontmostBundleId) == false,
+               !CGPreflightScreenCaptureAccess() {
+                return .screenRecordingUnavailable
+            }
+        }
+
+        return .awaitingFirstCapture
+    }
+
+    private func domainTrackingRecoveryView(for state: DomainTrackingRecoveryState) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: state.icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(state.tint)
+                    .frame(width: 16)
+                    .padding(.top, 1)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(state.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    Text(state.message)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if state == .screenRecordingUnavailable {
+                Button {
+                    openScreenRecordingSettings()
+                } label: {
+                    Label("Open Screen Recording Settings", systemImage: "gearshape")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+                .accessibilityIdentifier("settings.domainTracking.openScreenRecordingSettings")
+                .accessibilityLabel("Open Screen Recording privacy settings")
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(LiquidDesignTokens.Surface.materialOverlay)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(LiquidDesignTokens.Surface.glassStroke, lineWidth: 0.5)
+        )
+    }
+
     private func joinedSignals(_ signals: [String]) -> String {
         signals.isEmpty ? "none" : signals.joined(separator: ", ")
+    }
+
+    private func openScreenRecordingSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
@@ -1249,6 +1346,58 @@ struct SettingsView: View {
         "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero",
         "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"
     ]
+}
+
+private enum DomainTrackingRecoveryState: Equatable {
+    private static let supportedBrowserList = "Safari, Chrome, Arc, Edge, Brave, or Opera"
+
+    case disabled
+    case awaitingFirstCapture
+    case screenRecordingUnavailable
+
+    var icon: String {
+        switch self {
+        case .disabled:
+            return "eye.slash"
+        case .awaitingFirstCapture:
+            return "safari"
+        case .screenRecordingUnavailable:
+            return "rectangle.badge.exclamationmark"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .disabled:
+            return .secondary
+        case .awaitingFirstCapture:
+            return LiquidDesignTokens.Spectral.electricBlue
+        case .screenRecordingUnavailable:
+            return .orange
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .disabled:
+            return "Detailed domains are off"
+        case .awaitingFirstCapture:
+            return "Waiting for the first browser domain"
+        case .screenRecordingUnavailable:
+            return "Browser titles are unavailable"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .disabled:
+            return "Turn this on only if you want website-level labels and coaching context for supported browsers. Until then, FocusFlow keeps app-level tracking only."
+        case .awaitingFirstCapture:
+            return "FocusFlow hasn't captured a valid browser domain yet. Visit a site in \(Self.supportedBrowserList) and keep it frontmost for a moment. If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles."
+        case .screenRecordingUnavailable:
+            return "Screen Recording is off, so FocusFlow can't recover domains from browser title fallback when a browser doesn't expose a tab URL. Enable it, then revisit the site."
+        }
+    }
 }
 
 private struct DurationRow: View {

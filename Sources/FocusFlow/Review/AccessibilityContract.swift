@@ -48,6 +48,11 @@ enum AccessibilityContract {
             id: "coachWindow.skipWithoutReason",
             label: "Skip this check without giving a reason",
             sourceFile: "Sources/FocusFlow/Views/CoachInterventionWindowView.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "settings.domainTracking.openScreenRecordingSettings",
+            label: "Open Screen Recording privacy settings",
+            sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
         )
     ]
 }

@@ -175,8 +175,7 @@ final class AppUsageEntry {
         // bundleIdentifier is stored as "domain:<host>" so the host IS the block target.
         if id.hasPrefix("domain:") {
             let host = String(id.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !host.isEmpty, isLikelyWebHost(host), !looksLikeBundleIdentifier(host) else { return nil }
-            return host
+            return normalizedBrowserHost(from: host)
         }
 
         let mapping: [(needle: String, target: String)] = [
@@ -209,6 +208,28 @@ final class AppUsageEntry {
             return "app:\(id)"
         }
         return nil
+    }
+
+    static func normalizedBrowserHost(from input: String?) -> String? {
+        guard let input else { return nil }
+
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let url = URL(string: trimmed), let host = url.host {
+            return validatedBrowserHost(host)
+        }
+
+        if !trimmed.contains("://"), let url = URL(string: "https://\(trimmed)"), let host = url.host {
+            return validatedBrowserHost(host)
+        }
+
+        return validatedBrowserHost(trimmed)
+    }
+
+    static func browserDomainDisplayLabel(for hostOrURL: String?) -> String? {
+        guard let host = normalizedBrowserHost(from: hostOrURL) else { return nil }
+        return domainDisplayName(for: host)
     }
 
     static func isBrowserBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
@@ -306,25 +327,10 @@ final class AppUsageEntry {
     }
 
     private static func hostFromURLOrDomain(_ input: String) -> String? {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let url = URL(string: trimmed), let host = url.host {
-            return host.lowercased().replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
-        }
-        if trimmed.contains("://"), let components = URLComponents(string: trimmed), let host = components.host {
-            return host.lowercased().replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
-        }
-        let lower = trimmed.lowercased()
-        if !lower.contains(" "),
-           lower.contains("."),
-           !lower.contains("/"),
-           !looksLikeBundleIdentifier(trimmed),
-           isLikelyWebHost(lower) {
-            return lower.replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
-        }
-        return nil
+        normalizedBrowserHost(from: input)
     }
 
-    private static func domainDisplayName(for host: String) -> String {
+    static func domainDisplayName(for host: String) -> String {
         let knownDomains: [String: String] = [
             "youtube.com": "YouTube",
             "reddit.com": "Reddit",
@@ -346,20 +352,78 @@ final class AppUsageEntry {
         return host
     }
 
+    private static func validatedBrowserHost(_ value: String) -> String? {
+        let normalized = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            .replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+
+        guard isLikelyWebHost(normalized), !looksLikeBundleIdentifier(normalized) else { return nil }
+        return normalized
+    }
+
     private static func looksLikeBundleIdentifier(_ value: String) -> Bool {
         let lowered = value.lowercased()
-        guard !lowered.contains(" "), lowered.contains("."), !lowered.contains("/") else { return false }
-        return lowered.split(separator: ".").count >= 3
+        guard !lowered.contains(" "), lowered.contains("."), !lowered.contains("/"), !lowered.contains("://") else {
+            return false
+        }
+
+        if knownBundleIdentifiers.contains(lowered) {
+            return true
+        }
+
+        let parts = lowered.split(separator: ".")
+        guard parts.count >= 3 else { return false }
+
+        guard parts.allSatisfy({ part in
+            !part.isEmpty && part.allSatisfy { character in
+                character.isLetter || character.isNumber || character == "-" || character == "_"
+            }
+        }) else {
+            return false
+        }
+
+        let reverseDNSRoots: Set<String> = ["com", "org", "net", "edu", "gov", "mil"]
+        return reverseDNSRoots.contains(String(parts[0]))
     }
 
     private static func isLikelyWebHost(_ value: String) -> Bool {
         let host = value.lowercased()
-        guard !host.isEmpty, !host.contains(" "), !host.contains("/") else { return false }
-        guard host.contains(".") else { return false }
-        let tld = host.split(separator: ".").last.map(String.init) ?? ""
-        guard (2...24).contains(tld.count) else { return false }
-        return tld.allSatisfy { $0.isLetter }
+        guard !host.isEmpty, !host.contains(" "), !host.contains("/"), !host.contains("://") else { return false }
+
+        let parts = host.split(separator: ".")
+        guard parts.count >= 2 else { return false }
+
+        for part in parts {
+            guard !part.isEmpty, part.count <= 63, part.first != "-", part.last != "-" else { return false }
+            guard part.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return false }
+        }
+
+        let tld = parts.last.map(String.init) ?? ""
+        return isValidWebTLD(tld)
     }
+
+    private static func isValidWebTLD(_ value: String) -> Bool {
+        let tld = value.lowercased()
+        return (2...24).contains(tld.count) && tld.allSatisfy(\.isLetter)
+    }
+
+    private static let knownBundleIdentifiers: Set<String> = [
+        "com.anthropic.claudefordesktop",
+        "com.apple.safari",
+        "com.brave.browser",
+        "com.google.chrome",
+        "com.google.chrome.canary",
+        "com.microsoft.edgemac",
+        "com.mitchellh.ghostty",
+        "com.openai.chatgpt",
+        "com.openai.codex",
+        "com.operasoftware.opera",
+        "com.tinyspeck.slackmacgap",
+        "company.thebrowser.browser",
+        "org.mozilla.firefox"
+    ]
 
     private static func prettifyToken(_ value: String) -> String {
         value
