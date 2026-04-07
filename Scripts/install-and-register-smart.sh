@@ -203,6 +203,8 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>FocusFlow syncs your reminders so you can plan sessions, update tasks, and mark them complete.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>FocusFlow reads the active tab URL from supported browsers so it can identify distracting websites and show domain-level coaching.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
     <key>NSSupportsSuddenTermination</key>

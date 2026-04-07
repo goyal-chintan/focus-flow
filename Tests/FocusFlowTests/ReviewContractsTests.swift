@@ -135,6 +135,20 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertFalse(source.contains("saved history. All data stays on this device."))
     }
 
+    func testFocusFlowAppBootstrapsTimerConfigurationBeforePopoverOpen() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("FocusFlowApp.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains(".background(AppLaunchBridge(timerVM: timerVM, modelContext: container.mainContext))"))
+        XCTAssertTrue(source.contains("private struct AppLaunchBridge: View"))
+        XCTAssertTrue(source.contains("timerVM.ensureConfigured(modelContext: modelContext)"))
+    }
+
     func testSettingsDomainRecoveryGuidanceCoversDisabledEmptyAndUnavailableStates() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
@@ -148,7 +162,8 @@ final class ReviewContractsTests: XCTestCase {
 
         XCTAssertTrue(source.contains("Detailed domains are off"))
         XCTAssertTrue(source.contains("FocusFlow hasn't captured a valid browser domain yet."))
-        XCTAssertTrue(source.contains("If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles."))
+        XCTAssertTrue(source.contains("FocusFlow reads supported browsers through macOS Automation first"))
+        XCTAssertTrue(source.contains("If a browser does not expose a tab URL, Screen Recording lets FocusFlow fall back to browser titles."))
         XCTAssertTrue(source.contains("Screen Recording is off, so FocusFlow can't recover domains from browser title fallback"))
         XCTAssertTrue(source.contains("Safari, Chrome, Arc, Edge, Brave, or Opera"))
     }
@@ -176,6 +191,126 @@ final class ReviewContractsTests: XCTestCase {
             1,
             "Open Screen Recording Settings CTA should keep a 44pt hit target."
         )
+    }
+
+    func testFocusFlowBundlesDeclareAppleEventsUsageDescriptionEverywhere() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let requiredFiles = [
+            "Sources/FocusFlow/Info.plist",
+            "Scripts/run.sh",
+            "Scripts/build-dmg.sh",
+            "Scripts/install-and-register-smart.sh"
+        ]
+
+        for relativePath in requiredFiles {
+            let source = try String(contentsOf: repoRoot.appendingPathComponent(relativePath), encoding: .utf8)
+            XCTAssertTrue(
+                source.contains("NSAppleEventsUsageDescription"),
+                "\(relativePath) must declare NSAppleEventsUsageDescription because browser domain capture sends Apple events."
+            )
+        }
+    }
+
+    func testSettingsDomainRecoveryGuidancePrioritizesAutomationBeforeScreenRecordingFallback() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("SettingsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("FocusFlow reads supported browsers through macOS Automation first"))
+        XCTAssertTrue(source.contains("Open Automation Settings"))
+        XCTAssertTrue(source.contains("If a browser does not expose a tab URL, Screen Recording lets FocusFlow fall back to browser titles."))
+        XCTAssertFalse(source.contains("App activity monitoring does not require a macOS permission prompt."))
+        XCTAssertFalse(source.contains("If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles."))
+    }
+
+    func testSettingsDomainRecoveryAutomationCTAUsesAccessibleFullHitTarget() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("SettingsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"settings.domainTracking.openAutomationSettings\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Open Automation privacy settings\")"))
+
+        let hitTargetPattern = try NSRegularExpression(
+            pattern: #"Open Automation Settings[\s\S]*?\.frame\(minHeight:\s*44\)"#
+        )
+        XCTAssertEqual(
+            hitTargetPattern.numberOfMatches(in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)),
+            1,
+            "Open Automation Settings CTA should keep a 44pt hit target."
+        )
+    }
+
+    func testSettingsViewAddsPermissionHealthSectionAsFinalSurface() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("SettingsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("permissionHealthSection"))
+        XCTAssertTrue(source.contains("LiquidSectionHeader(\"Permission & Integration Health\""))
+        XCTAssertTrue(source.contains("Notifications"))
+        XCTAssertTrue(source.contains("Calendar"))
+        XCTAssertTrue(source.contains("Reminders"))
+        XCTAssertTrue(source.contains("Browser Automation"))
+        XCTAssertTrue(source.contains("Screen Recording"))
+
+        let aboutRange = try XCTUnwrap(source.range(of: "aboutSection"))
+        let healthRange = try XCTUnwrap(source.range(of: "permissionHealthSection"))
+        XCTAssertLessThan(aboutRange.lowerBound, healthRange.lowerBound)
+    }
+
+    func testSettingsPermissionHealthRowsExposeAccessibleActions() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("SettingsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("settings.permissionHealth.notifications.action"))
+        XCTAssertTrue(source.contains("settings.permissionHealth.calendar.action"))
+        XCTAssertTrue(source.contains("settings.permissionHealth.reminders.action"))
+        XCTAssertTrue(source.contains("settings.permissionHealth.automation.action"))
+        XCTAssertTrue(source.contains("settings.permissionHealth.screenRecording.action"))
+    }
+
+    func testPermissionHealthServiceContractExists() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Services")
+            .appendingPathComponent("PermissionHealthService.swift")
+        let source = (try? String(contentsOf: sourceURL, encoding: .utf8)) ?? ""
+
+        XCTAssertTrue(source.contains("struct PermissionHealthService"))
+        XCTAssertTrue(source.contains("enum PermissionHealthStatus"))
+        XCTAssertTrue(source.contains("struct PermissionHealthRow"))
+        XCTAssertTrue(source.contains("struct BrowserAutomationTargetStatus"))
     }
 
     func testDomainAnalyticsContractsDoNotExposeDeadUnsupportedRecoveryStates() throws {
@@ -541,6 +676,60 @@ final class ReviewContractsTests: XCTestCase {
                 AccessibilityControlRequirement(
                     id: "settings.domainTracking.openScreenRecordingSettings",
                     label: "Open Screen Recording privacy settings",
+                    sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+                )
+            )
+        )
+        XCTAssertTrue(
+            controls.contains(
+                AccessibilityControlRequirement(
+                    id: "settings.domainTracking.openAutomationSettings",
+                    label: "Open Automation privacy settings",
+                    sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+                )
+            )
+        )
+        XCTAssertTrue(
+            controls.contains(
+                AccessibilityControlRequirement(
+                    id: "settings.permissionHealth.notifications.action",
+                    label: "Review notification permission",
+                    sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+                )
+            )
+        )
+        XCTAssertTrue(
+            controls.contains(
+                AccessibilityControlRequirement(
+                    id: "settings.permissionHealth.calendar.action",
+                    label: "Review Calendar permission",
+                    sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+                )
+            )
+        )
+        XCTAssertTrue(
+            controls.contains(
+                AccessibilityControlRequirement(
+                    id: "settings.permissionHealth.reminders.action",
+                    label: "Review Reminders permission",
+                    sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+                )
+            )
+        )
+        XCTAssertTrue(
+            controls.contains(
+                AccessibilityControlRequirement(
+                    id: "settings.permissionHealth.automation.action",
+                    label: "Review browser Automation permission",
+                    sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+                )
+            )
+        )
+        XCTAssertTrue(
+            controls.contains(
+                AccessibilityControlRequirement(
+                    id: "settings.permissionHealth.screenRecording.action",
+                    label: "Review Screen Recording permission",
                     sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
                 )
             )

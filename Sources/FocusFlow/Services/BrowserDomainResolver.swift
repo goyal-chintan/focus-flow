@@ -1,5 +1,12 @@
 import Foundation
 
+struct BrowserAutomationTarget: Equatable {
+    let bundleIdentifier: String
+    let displayName: String
+    let scriptingName: String
+    let usesSafariTabsAPI: Bool
+}
+
 struct BrowserDomainResolution: Equatable {
     let host: String
     let displayLabel: String
@@ -8,7 +15,55 @@ struct BrowserDomainResolution: Equatable {
 struct BrowserDomainResolver {
     typealias AppleScriptRunner = (String) -> String?
 
-    static let recoverySupportedBrowserList = "Safari, Chrome, Arc, Edge, Brave, or Opera"
+    static let supportedAutomationTargets: [BrowserAutomationTarget] = [
+        BrowserAutomationTarget(
+            bundleIdentifier: "com.apple.safari",
+            displayName: "Safari",
+            scriptingName: "Safari",
+            usesSafariTabsAPI: true
+        ),
+        BrowserAutomationTarget(
+            bundleIdentifier: "com.google.chrome",
+            displayName: "Chrome",
+            scriptingName: "Google Chrome",
+            usesSafariTabsAPI: false
+        ),
+        BrowserAutomationTarget(
+            bundleIdentifier: "company.thebrowser.browser",
+            displayName: "Arc",
+            scriptingName: "Arc",
+            usesSafariTabsAPI: false
+        ),
+        BrowserAutomationTarget(
+            bundleIdentifier: "com.microsoft.edgemac",
+            displayName: "Edge",
+            scriptingName: "Microsoft Edge",
+            usesSafariTabsAPI: false
+        ),
+        BrowserAutomationTarget(
+            bundleIdentifier: "com.brave.browser",
+            displayName: "Brave",
+            scriptingName: "Brave Browser",
+            usesSafariTabsAPI: false
+        ),
+        BrowserAutomationTarget(
+            bundleIdentifier: "com.operasoftware.opera",
+            displayName: "Opera",
+            scriptingName: "Opera",
+            usesSafariTabsAPI: false
+        ),
+        BrowserAutomationTarget(
+            bundleIdentifier: "com.google.chrome.canary",
+            displayName: "Chrome Canary",
+            scriptingName: "Google Chrome Canary",
+            usesSafariTabsAPI: false
+        )
+    ]
+
+    static let recoverySupportedBrowserList = supportedAutomationTargets
+        .filter { $0.bundleIdentifier != "com.google.chrome.canary" }
+        .map(\.displayName)
+        .joined(separator: ", ")
 
     private let runAppleScript: AppleScriptRunner
 
@@ -28,10 +83,7 @@ struct BrowserDomainResolver {
 
     static func supports(bundleIdentifier: String?) -> Bool {
         guard let normalizedBundleIdentifier = bundleIdentifier?.lowercased() else { return false }
-        if normalizedBundleIdentifier == "com.apple.safari" {
-            return true
-        }
-        return chromiumApplicationName(for: normalizedBundleIdentifier) != nil
+        return supportedAutomationTargets.contains { $0.bundleIdentifier == normalizedBundleIdentifier }
     }
 
     private func normalizeResolution(from rawValue: String?) -> BrowserDomainResolution? {
@@ -83,8 +135,11 @@ struct BrowserDomainResolver {
 
     private func appleScriptSources(for bundleIdentifier: String) -> [String] {
         let normalizedBundleIdentifier = bundleIdentifier.lowercased()
+        guard let target = Self.supportedAutomationTargets.first(where: { $0.bundleIdentifier == normalizedBundleIdentifier }) else {
+            return []
+        }
 
-        if normalizedBundleIdentifier == "com.apple.safari" {
+        if target.usesSafariTabsAPI {
             return [
                 """
                 tell application id "\(normalizedBundleIdentifier)"
@@ -113,10 +168,6 @@ struct BrowserDomainResolver {
             ]
         }
 
-        guard let applicationName = chromiumApplicationName(for: normalizedBundleIdentifier) else {
-            return []
-        }
-
         return [
             """
             tell application id "\(normalizedBundleIdentifier)"
@@ -131,13 +182,13 @@ struct BrowserDomainResolver {
             end tell
             """,
             """
-            tell application "\(applicationName)"
+            tell application "\(target.scriptingName)"
                 if (count of windows) is 0 then return ""
                 return URL of active tab of front window
             end tell
             """,
             """
-            tell application "\(applicationName)"
+            tell application "\(target.scriptingName)"
                 if (count of windows) is 0 then return ""
                 return URL of active tab of window 1
             end tell
@@ -150,22 +201,9 @@ struct BrowserDomainResolver {
     }
 
     private static func chromiumApplicationName(for bundleIdentifier: String) -> String? {
-        switch bundleIdentifier {
-        case "com.google.chrome":
-            return "Google Chrome"
-        case "com.google.chrome.canary":
-            return "Google Chrome Canary"
-        case "company.thebrowser.browser":
-            return "Arc"
-        case "com.brave.browser":
-            return "Brave Browser"
-        case "com.microsoft.edgemac":
-            return "Microsoft Edge"
-        case "com.operasoftware.opera":
-            return "Opera"
-        default:
-            return nil
-        }
+        supportedAutomationTargets
+            .first(where: { $0.bundleIdentifier == bundleIdentifier && !$0.usesSafariTabsAPI })?
+            .scriptingName
     }
 
     private static func executeAppleScript(_ source: String) -> String? {

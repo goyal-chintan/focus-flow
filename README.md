@@ -35,6 +35,7 @@ FocusFlow is designed to reduce the gap between intention and action.
 - **Guardian intelligence:** app and website awareness, browser-domain tracking, and adaptive recommendations based on your real distraction patterns.
 - **System-wide blocking:** optional website, app, and notification blocking tied to your focus sessions.
 - **Apple integrations:** Calendar and Reminders support for planning, review, and session follow-through.
+- **Permission health at a glance:** a final Settings panel shows whether Notifications, Calendar, Reminders, Browser Automation, and Screen Recording are ready, and gives each one a direct recovery action.
 - **Privacy-first by default:** no cloud dependency, no account system, no remote inference.
 
 ## Features
@@ -172,10 +173,13 @@ Some features require system permissions:
 
 | Permission | Why FocusFlow requests it |
 |---|---|
+| **Automation (Apple Events)** | Read the active tab URL from supported browsers like Safari, Arc, and Chrome so FocusFlow can classify distracting sites accurately |
 | **Calendar** | Save completed focus sessions to Apple Calendar |
 | **Reminders** | Read and complete relevant reminders inside FocusFlow workflows |
 | **Screen Recording** | Support browser title fallback for domain awareness when a browser does not expose its active tab URL; no screen pixels are captured or stored |
 | **Admin password** | Apply optional website blocking through `/etc/hosts` |
+
+FocusFlow also includes a **Permission & Integration Health** section at the end of Settings so you can verify these core permissions and jump straight to the relevant recovery action when one is blocked.
 
 ## Automated UI evidence capture
 

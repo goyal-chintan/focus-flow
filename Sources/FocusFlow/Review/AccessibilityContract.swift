@@ -53,6 +53,36 @@ enum AccessibilityContract {
             id: "settings.domainTracking.openScreenRecordingSettings",
             label: "Open Screen Recording privacy settings",
             sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "settings.domainTracking.openAutomationSettings",
+            label: "Open Automation privacy settings",
+            sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "settings.permissionHealth.notifications.action",
+            label: "Review notification permission",
+            sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "settings.permissionHealth.calendar.action",
+            label: "Review Calendar permission",
+            sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "settings.permissionHealth.reminders.action",
+            label: "Review Reminders permission",
+            sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "settings.permissionHealth.automation.action",
+            label: "Review browser Automation permission",
+            sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
+        ),
+        AccessibilityControlRequirement(
+            id: "settings.permissionHealth.screenRecording.action",
+            label: "Review Screen Recording permission",
+            sourceFile: "Sources/FocusFlow/Views/Companion/SettingsView.swift"
         )
     ]
 }
