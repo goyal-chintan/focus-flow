@@ -1,4 +1,5 @@
 import XCTest
+@testable import FocusFlow
 
 final class ReviewQualityGateTests: XCTestCase {
     func testCriticalViewsAvoidTopMoveTransitions() throws {
@@ -56,6 +57,14 @@ final class ReviewQualityGateTests: XCTestCase {
             reasonSheetSource.contains(".frame(minWidth: 44, minHeight: 44)"),
             "Reason sheet dismiss control must use a minimum 44x44 tap target."
         )
+    }
+
+    func testDomainAnalyticsReviewFlowsRemainInRenderedEvidenceContract() {
+        let requiredFlows = Set(ReviewArtifactContract.requiredFlowIDs)
+        XCTAssertTrue(requiredFlows.contains("today_stats_view"))
+        XCTAssertTrue(requiredFlows.contains("weekly_stats_view"))
+        XCTAssertTrue(requiredFlows.contains("insights_view_domains"))
+        XCTAssertTrue(requiredFlows.contains("settings_domain_tracking"))
     }
 
     // MARK: - Helpers

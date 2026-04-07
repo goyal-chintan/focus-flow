@@ -2409,6 +2409,7 @@ final class TimerViewModel {
         frontmostDisplayLabel: String?
     ) -> FocusCoachContext {
         let hour = Calendar.current.component(.hour, from: Date())
+        let shouldUseDomainEntriesForCoachContext = settings?.coachCollectRawDomains == true
 
         let appCategory: AppUsageCategory
         switch frontmostCategory {
@@ -2428,9 +2429,18 @@ final class TimerViewModel {
             )
             do {
                 let entries = try ctx.fetch(descriptor)
-                entriesToday = entries
-                let topDistracting = entries
-                    .filter { AppUsageEntry.classify(bundleIdentifier: $0.bundleIdentifier, appName: $0.appName) == .distracting }
+                entriesToday = shouldUseDomainEntriesForCoachContext
+                    ? entries
+                    : entries.filter { !$0.bundleIdentifier.lowercased().hasPrefix("domain:") }
+                let topDistracting = entriesToday
+                    .filter {
+                        let host = CompanionAnalyticsBuilder.validPersistedDomainHost(for: $0.bundleIdentifier)
+                        return AppUsageEntry.classify(
+                            bundleIdentifier: $0.bundleIdentifier,
+                            appName: $0.appName,
+                            browserHost: host
+                        ) == .distracting
+                    }
                     .max { $0.outsideFocusSeconds < $1.outsideFocusSeconds }
                 if let top = topDistracting, top.outsideFocusSeconds > 0 {
                     topDistractingName = top.appName

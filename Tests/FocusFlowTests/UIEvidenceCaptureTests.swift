@@ -110,6 +110,113 @@ final class UIEvidenceCaptureTests: XCTestCase {
         try writeManifest(manifest, to: root.appendingPathComponent("manifest.json"))
     }
 
+    func testTodayStatsFixtureSeedsDomainSignalsAndEvidenceDescriptionMentionsThem() throws {
+        let fixture = try makeTodayStatsFixture()
+        defer { cleanup(fixture) }
+
+        let appUsageEntries = try fixture.context.fetch(FetchDescriptor<AppUsageEntry>())
+        let settings = try XCTUnwrap(try fixture.context.fetch(FetchDescriptor<AppSettings>()).first)
+        let seededToday = Calendar.current.startOfDay(
+            for: try XCTUnwrap(appUsageEntries.map(\.date).max())
+        )
+        let report = CompanionAnalyticsBuilder().build(
+            entries: InsightsAppUsagePolicy.visibleEntries(
+                from: appUsageEntries,
+                collectRawDomains: settings.coachCollectRawDomains
+            ),
+            domainTrackingEnabled: settings.coachCollectRawDomains,
+            now: seededToday.addingTimeInterval(12 * 60 * 60)
+        )
+
+        XCTAssertTrue(report.today.domainRows.contains { $0.bundleIdentifier == "domain:youtube.com" })
+        XCTAssertTrue(report.today.domainRows.contains { $0.bundleIdentifier == "domain:reddit.com" })
+        XCTAssertFalse(report.today.domainRows.contains { $0.bundleIdentifier == "domain:news.ycombinator.com" })
+        XCTAssertTrue(
+            flowPurpose(for: "today_stats_view").contains("Domain Signals"),
+            "Today evidence description should mention the Domain Signals panel."
+        )
+    }
+
+    func testWeeklyStatsFixtureSeedsPeriodSpecificDomainPatternsAndSupportsEvidenceCapture() throws {
+        let fixture = try makeWeeklyStatsFixture()
+        defer { cleanup(fixture) }
+
+        let appUsageEntries = try fixture.context.fetch(FetchDescriptor<AppUsageEntry>())
+        let settings = try XCTUnwrap(try fixture.context.fetch(FetchDescriptor<AppSettings>()).first)
+        let seededToday = Calendar.current.startOfDay(
+            for: try XCTUnwrap(appUsageEntries.map(\.date).max())
+        )
+        let report = CompanionAnalyticsBuilder().build(
+            entries: InsightsAppUsagePolicy.visibleEntries(
+                from: appUsageEntries,
+                collectRawDomains: settings.coachCollectRawDomains
+            ),
+            domainTrackingEnabled: settings.coachCollectRawDomains,
+            now: seededToday.addingTimeInterval(12 * 60 * 60)
+        )
+
+        XCTAssertEqual(
+            report.trailing7Days.domainRows.map(\.bundleIdentifier),
+            ["domain:youtube.com", "domain:reddit.com"]
+        )
+        XCTAssertEqual(
+            report.trailing30Days.domainRows.map(\.bundleIdentifier),
+            ["domain:youtube.com", "domain:reddit.com", "domain:claude.ai"]
+        )
+        XCTAssertTrue(
+            flowPurpose(for: "weekly_stats_view").contains("Domain Patterns"),
+            "Weekly evidence description should mention the Domain Patterns panel."
+        )
+
+        let fixtures = FixturePool(owner: self)
+        defer { fixtures.cleanup() }
+        _ = try captureFlow(flowID: "weekly_stats_view", appearance: .light, fixtures: fixtures)
+    }
+
+    func testInsightsFixtureSeedsDomainAnalyticsAndSupportsEvidenceCapture() throws {
+        let fixture = try makeInsightsFixture()
+        defer { cleanup(fixture) }
+
+        let appUsageEntries = try fixture.context.fetch(FetchDescriptor<AppUsageEntry>())
+        let settings = try XCTUnwrap(try fixture.context.fetch(FetchDescriptor<AppSettings>()).first)
+        let seededNow = try XCTUnwrap(appUsageEntries.map(\.date).max())
+        let report = CompanionAnalyticsBuilder().build(
+            entries: InsightsAppUsagePolicy.visibleEntries(
+                from: appUsageEntries,
+                collectRawDomains: settings.coachCollectRawDomains
+            ),
+            domainTrackingEnabled: settings.coachCollectRawDomains,
+            now: seededNow
+        )
+
+        XCTAssertTrue(report.trailing7Days.domainRows.contains { $0.bundleIdentifier == "domain:youtube.com" })
+        XCTAssertTrue(report.today.rows.contains { $0.bundleIdentifier == "domain:youtube.com" })
+        XCTAssertTrue(
+            flowPurpose(for: "insights_view_domains").contains("Guardian Recommendations"),
+            "Insights evidence description should mention the domain-backed Guardian Recommendations surface."
+        )
+
+        let fixtures = FixturePool(owner: self)
+        defer { fixtures.cleanup() }
+        _ = try captureFlow(flowID: "insights_view_domains", appearance: .light, fixtures: fixtures)
+    }
+
+    func testSettingsDomainTrackingFixtureShowsRecoveryGuidanceAndSupportsEvidenceCapture() throws {
+        let fixture = try makeSettingsDomainTrackingFixture()
+        defer { cleanup(fixture) }
+
+        let settings = try XCTUnwrap(try fixture.context.fetch(FetchDescriptor<AppSettings>()).first)
+        XCTAssertFalse(settings.coachCollectRawDomains)
+        XCTAssertTrue(
+            flowPurpose(for: "settings_domain_tracking").contains("domain tracking"),
+            "Settings evidence description should mention the domain tracking surface."
+        )
+
+        let fixtures = FixturePool(owner: self)
+        defer { fixtures.cleanup() }
+        _ = try captureFlow(flowID: "settings_domain_tracking", appearance: .light, fixtures: fixtures)
+    }
+
     func testSessionCompleteEarnedStageCaptureIsStableAcrossRepeatedRenders() throws {
         let firstFixtures = FixturePool(owner: self)
         defer { firstFixtures.cleanup() }
@@ -440,6 +547,21 @@ final class UIEvidenceCaptureTests: XCTestCase {
             let fixture = try fixtures.todayStatsFixture()
             return try renderTodayStats(fixture, appearance: appearance)
 
+        case "weekly_stats_view":
+            // Captures the Weekly companion window with the Domain Patterns panel visible.
+            let fixture = try fixtures.weeklyStatsFixture()
+            return try renderWeeklyStats(fixture, appearance: appearance)
+
+        case "insights_view_domains":
+            // Captures the Insights window with domain-backed Guardian Recommendations and App Usage visible.
+            let fixture = try fixtures.insightsDomainsFixture()
+            return try renderInsights(fixture, appearance: appearance)
+
+        case "settings_domain_tracking":
+            // Captures the Settings focus-coach domain tracking row and recovery guidance.
+            let fixture = try fixtures.settingsDomainTrackingFixture()
+            return try renderSettingsDomainTracking(fixture, appearance: appearance)
+
         default:
             throw CaptureError.flowFixtureFailed("Unhandled flowID: \(flowID)")
         }
@@ -497,6 +619,39 @@ final class UIEvidenceCaptureTests: XCTestCase {
             .padding(16)
             .background(backgroundColor(for: appearance))
         return try render(view, appearance: appearance, size: CGSize(width: 760, height: 600))
+    }
+
+    private func renderWeeklyStats(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let view = WeeklyStatsView()
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: 720)
+            .padding(16)
+            .background(backgroundColor(for: appearance))
+        return try render(view, appearance: appearance, size: CGSize(width: 760, height: 1260))
+    }
+
+    private func renderInsights(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let view = InsightsView()
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: 720)
+            .padding(16)
+            .background(backgroundColor(for: appearance))
+        return try render(view, appearance: appearance, size: CGSize(width: 760, height: 1900))
+    }
+
+    private func renderSettingsDomainTracking(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let view = SettingsView(initialScrollTarget: .domainTracking)
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: 720, height: 620)
+            .padding(16)
+            .background(backgroundColor(for: appearance))
+        return try render(view, appearance: appearance, size: CGSize(width: 760, height: 660))
     }
 
     private func render<V: View>(
@@ -570,6 +725,9 @@ final class UIEvidenceCaptureTests: XCTestCase {
         private var settingsCalendar: Fixture?
         private var settingsReminders: Fixture?
         private var todayStats: Fixture?
+        private var weeklyStats: Fixture?
+        private var insightsDomains: Fixture?
+        private var settingsDomainTracking: Fixture?
 
         init(owner: UIEvidenceCaptureTests) {
             self.owner = owner
@@ -635,6 +793,33 @@ final class UIEvidenceCaptureTests: XCTestCase {
             return created
         }
 
+        func weeklyStatsFixture() throws -> Fixture {
+            if let weeklyStats {
+                return weeklyStats
+            }
+            let created = try owner.makeWeeklyStatsFixture()
+            self.weeklyStats = created
+            return created
+        }
+
+        func insightsDomainsFixture() throws -> Fixture {
+            if let insightsDomains {
+                return insightsDomains
+            }
+            let created = try owner.makeInsightsFixture()
+            self.insightsDomains = created
+            return created
+        }
+
+        func settingsDomainTrackingFixture() throws -> Fixture {
+            if let settingsDomainTracking {
+                return settingsDomainTracking
+            }
+            let created = try owner.makeSettingsDomainTrackingFixture()
+            self.settingsDomainTracking = created
+            return created
+        }
+
         func cleanup() {
             if let base {
                 owner.cleanup(base)
@@ -645,6 +830,24 @@ final class UIEvidenceCaptureTests: XCTestCase {
             if let breakCompleted {
                 owner.cleanup(breakCompleted)
             }
+            if let settingsCalendar {
+                owner.cleanup(settingsCalendar)
+            }
+            if let settingsReminders {
+                owner.cleanup(settingsReminders)
+            }
+            if let todayStats {
+                owner.cleanup(todayStats)
+            }
+            if let weeklyStats {
+                owner.cleanup(weeklyStats)
+            }
+            if let insightsDomains {
+                owner.cleanup(insightsDomains)
+            }
+            if let settingsDomainTracking {
+                owner.cleanup(settingsDomainTracking)
+            }
         }
     }
 
@@ -653,22 +856,191 @@ final class UIEvidenceCaptureTests: XCTestCase {
         let container = try makeInMemoryContainer()
         let context = container.mainContext
         let settings = AppSettings()
+        settings.coachCollectRawDomains = true
         context.insert(settings)
         let project = Project(name: "Interview Prep", color: "blue", icon: "scope")
         context.insert(project)
+        let seededNow = Date()
+        let todayStart = Calendar.current.startOfDay(for: seededNow)
+        let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
         // Seed 3 completed focus sessions totalling 1h 45m
         for minutes in [25, 25, 50] {
             let session = FocusSession(type: .focus, duration: TimeInterval(minutes * 60), project: project)
             session.completed = true
-            session.startedAt = Date().addingTimeInterval(-Double(minutes * 60 + 300))
-            session.endedAt = Date().addingTimeInterval(-300)
+            session.startedAt = seededNow.addingTimeInterval(-Double(minutes * 60 + 300))
+            session.endedAt = seededNow.addingTimeInterval(-300)
             context.insert(session)
         }
+        context.insert(
+            AppUsageEntry(
+                date: todayStart,
+                appName: "YouTube",
+                bundleIdentifier: "domain:youtube.com",
+                duringFocusSeconds: 18 * 60,
+                outsideFocusSeconds: 6 * 60
+            )
+        )
+        context.insert(
+            AppUsageEntry(
+                date: todayStart,
+                appName: "Reddit",
+                bundleIdentifier: "domain:reddit.com",
+                duringFocusSeconds: 12 * 60,
+                outsideFocusSeconds: 4 * 60
+            )
+        )
+        context.insert(
+            AppUsageEntry(
+                date: yesterdayStart,
+                appName: "Hacker News",
+                bundleIdentifier: "domain:news.ycombinator.com",
+                duringFocusSeconds: 10 * 60,
+                outsideFocusSeconds: 0
+            )
+        )
         try context.save()
         let vm = TimerViewModel()
         vm.configureForEvidence(modelContext: context, settings: settings)
         vm.todayFocusTime = (1 * 60 + 40) * 60
         vm.todaySessionCount = 3
+        return Fixture(container: container, context: context, vm: vm)
+    }
+
+    private func makeWeeklyStatsFixture() throws -> Fixture {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let settings = AppSettings()
+        settings.coachCollectRawDomains = true
+        context.insert(settings)
+
+        let project = Project(name: "Interview Prep", color: "blue", icon: "scope")
+        context.insert(project)
+
+        let seededNow = Date()
+        let todayStart = Calendar.current.startOfDay(for: seededNow)
+        let eightDaysAgo = Calendar.current.date(byAdding: .day, value: -8, to: todayStart) ?? todayStart
+        let threeDaysAgo = Calendar.current.date(byAdding: .day, value: -3, to: todayStart) ?? todayStart
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
+
+        for (day, minutes) in [(yesterday, 50), (threeDaysAgo, 25)] {
+            let session = FocusSession(type: .focus, duration: TimeInterval(minutes * 60), project: project)
+            session.completed = true
+            session.startedAt = day.addingTimeInterval(9 * 60 * 60)
+            session.endedAt = session.startedAt.addingTimeInterval(TimeInterval(minutes * 60))
+            context.insert(session)
+        }
+
+        context.insert(
+            AppUsageEntry(
+                date: yesterday,
+                appName: "YouTube",
+                bundleIdentifier: "domain:youtube.com",
+                duringFocusSeconds: 14 * 60,
+                outsideFocusSeconds: 7 * 60
+            )
+        )
+        context.insert(
+            AppUsageEntry(
+                date: threeDaysAgo,
+                appName: "Reddit",
+                bundleIdentifier: "domain:reddit.com",
+                duringFocusSeconds: 9 * 60,
+                outsideFocusSeconds: 5 * 60
+            )
+        )
+        context.insert(
+            AppUsageEntry(
+                date: eightDaysAgo,
+                appName: "Claude",
+                bundleIdentifier: "domain:claude.ai",
+                duringFocusSeconds: 8 * 60,
+                outsideFocusSeconds: 4 * 60
+            )
+        )
+        try context.save()
+
+        let vm = TimerViewModel()
+        vm.configureForEvidence(modelContext: context, settings: settings)
+        return Fixture(container: container, context: context, vm: vm)
+    }
+
+    private func makeInsightsFixture() throws -> Fixture {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let settings = AppSettings()
+        settings.coachCollectRawDomains = true
+        context.insert(settings)
+
+        let project = Project(name: "System Design", color: "purple", icon: "brain")
+        context.insert(project)
+
+        let seededNow = Date()
+        let todayStart = Calendar.current.startOfDay(for: seededNow)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
+        let fourDaysAgo = Calendar.current.date(byAdding: .day, value: -4, to: todayStart) ?? todayStart
+
+        for (day, minutes) in [(todayStart, 45), (yesterday, 35), (fourDaysAgo, 55)] {
+            let session = FocusSession(type: .focus, duration: TimeInterval(minutes * 60), project: project)
+            session.completed = true
+            session.startedAt = day.addingTimeInterval(9 * 60 * 60)
+            session.endedAt = session.startedAt.addingTimeInterval(TimeInterval(minutes * 60))
+            context.insert(session)
+        }
+
+        context.insert(
+            AppUsageEntry(
+                date: todayStart,
+                appName: "YouTube",
+                bundleIdentifier: "domain:youtube.com",
+                duringFocusSeconds: 16 * 60,
+                outsideFocusSeconds: 8 * 60
+            )
+        )
+        context.insert(
+            AppUsageEntry(
+                date: yesterday,
+                appName: "Reddit",
+                bundleIdentifier: "domain:reddit.com",
+                duringFocusSeconds: 11 * 60,
+                outsideFocusSeconds: 5 * 60
+            )
+        )
+        context.insert(
+            AppUsageEntry(
+                date: todayStart,
+                appName: "GitHub",
+                bundleIdentifier: "domain:github.com",
+                duringFocusSeconds: 14 * 60,
+                outsideFocusSeconds: 2 * 60
+            )
+        )
+        try context.save()
+
+        let vm = TimerViewModel()
+        vm.configureForEvidence(modelContext: context, settings: settings)
+        return Fixture(container: container, context: context, vm: vm)
+    }
+
+    private func makeSettingsDomainTrackingFixture() throws -> Fixture {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let settings = AppSettings()
+        settings.coachCollectRawDomains = false
+        context.insert(settings)
+
+        context.insert(
+            AppUsageEntry(
+                date: Date(),
+                appName: "YouTube",
+                bundleIdentifier: "domain:youtube.com",
+                duringFocusSeconds: 12 * 60,
+                outsideFocusSeconds: 4 * 60
+            )
+        )
+        try context.save()
+
+        let vm = TimerViewModel()
+        vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
 
@@ -1191,7 +1563,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         case "coach_window_dismiss": return "Coach window X dismiss button evidence"
         case "settings_calendar_permissions": return "Calendar integration permission surface"
         case "settings_reminders_permissions": return "Reminders integration permission surface"
-        case "today_stats_view": return "Today companion behavioral metrics (Earned Blocks, Guardian Learned)"
+        case "today_stats_view": return "Today companion behavioral metrics (Earned Blocks, Guardian Learned, Domain Signals)"
+        case "weekly_stats_view": return "Weekly companion trends and Domain Patterns panel"
+        case "insights_view_domains": return "Insights Guardian Recommendations and App Usage domain analytics"
+        case "settings_domain_tracking": return "Settings domain tracking toggle and recovery guidance"
         case "break_complete_reason_sheet_hidden": return "Break-complete window with reason sheet collapsed"
         case "break_complete_reason_sheet_visible": return "Break-complete window with reason sheet expanded"
         default: return "Review evidence capture"

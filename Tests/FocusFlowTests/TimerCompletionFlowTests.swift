@@ -473,6 +473,86 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertNil(vm.currentIdleStarterDecision)
     }
 
+    func testIdleStarterContextSuppressesPersistedDomainEntriesWhenRawDomainCaptureDisabled() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachAutoOpenPopoverOnStrongPrompt = false
+        settings.coachBringAppToFrontOnStrongPrompt = false
+        settings.coachInterventionMode = .balanced
+        settings.coachCollectRawDomains = false
+
+        container.mainContext.insert(
+            AppUsageEntry(
+                date: Calendar.current.startOfDay(for: Date()),
+                appName: "YouTube",
+                bundleIdentifier: "domain:youtube.com",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 30 * 60
+            )
+        )
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        let context = try XCTUnwrap(vm.currentIdleStarterDecision?.context)
+        XCTAssertNil(context.suggestedBlockTarget)
+        XCTAssertNil(context.blockRecommendationReason)
+        XCTAssertNil(context.topDistractingAppName)
+        XCTAssertFalse(vm.currentIdleStarterDecision?.message?.contains("YouTube") ?? true)
+        XCTAssertFalse(vm.currentIdleStarterDecision?.message?.contains("youtube.com") ?? true)
+    }
+
+    func testIdleStarterContextUsesPersistedDomainEntriesWhenRawDomainCaptureEnabled() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachAutoOpenPopoverOnStrongPrompt = false
+        settings.coachBringAppToFrontOnStrongPrompt = false
+        settings.coachInterventionMode = .balanced
+        settings.coachCollectRawDomains = true
+
+        container.mainContext.insert(
+            AppUsageEntry(
+                date: Calendar.current.startOfDay(for: Date()),
+                appName: "YouTube",
+                bundleIdentifier: "domain:youtube.com",
+                duringFocusSeconds: 0,
+                outsideFocusSeconds: 30 * 60
+            )
+        )
+        try container.mainContext.save()
+
+        vm.lastProjectSelectedAt = Date()
+        vm.evaluateIdleStarterIntervention(
+            idleSeconds: 10 * 60,
+            escalationLevel: 2,
+            frontmostCategory: .productive
+        )
+
+        let context = try XCTUnwrap(vm.currentIdleStarterDecision?.context)
+        XCTAssertEqual(context.suggestedBlockTarget, "youtube.com")
+        XCTAssertEqual(context.topDistractingAppName, "YouTube")
+        XCTAssertEqual(context.topDistractingAppMinutes, 30)
+        XCTAssertTrue(context.blockRecommendationReason?.contains("YouTube") ?? false)
+        XCTAssertTrue(vm.currentIdleStarterDecision?.message?.contains("YouTube") ?? false)
+    }
+
     func testStartFocusRequestsPopoverCloseOnCommit() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()

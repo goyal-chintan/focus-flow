@@ -4,19 +4,77 @@ import SwiftData
 struct InsightsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
-    @Query(sort: \AppUsageRecord.date) private var usageRecords: [AppUsageRecord]
     @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
     @Query(sort: \CoachInterruption.detectedAt) private var coachInterruptions: [CoachInterruption]
     @Query(sort: \InterventionAttempt.deliveredAt) private var coachAttempts: [InterventionAttempt]
     @Query(sort: \TaskIntent.createdAt) private var taskIntents: [TaskIntent]
+    private let analyticsSnapshotNow = Date()
     @State private var selectedHour: Int? = nil
     @State private var showAllInsights = false
     @State private var showScienceTips = false
     @State private var showAppUsage = false
+    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var dailyGoal: TimeInterval {
         allSettings.first?.dailyFocusGoal ?? 7200
+    }
+
+    private var shouldExposeRawDomains: Bool {
+        allSettings.first?.coachCollectRawDomains == true
+    }
+
+    private var visibleAppUsageEntries: [AppUsageEntry] {
+        InsightsAppUsagePolicy.visibleEntries(
+            from: appUsageEntries,
+            collectRawDomains: shouldExposeRawDomains
+        )
+    }
+
+    private var analyticsReport: CompanionAnalyticsReport {
+        CompanionAnalyticsBuilder().build(
+            entries: visibleAppUsageEntries,
+            domainTrackingEnabled: shouldExposeRawDomains,
+            now: analyticsSnapshotNow
+        )
+    }
+
+    private var coachReportWindow: DateInterval {
+        let calendar = Calendar.current
+        return InsightsWindowing.trailing7DayInterval(relativeTo: analyticsSnapshotNow, calendar: calendar)
+            ?? DateInterval(start: analyticsSnapshotNow, end: analyticsSnapshotNow)
+    }
+
+    private var previousCoachReportWindow: DateInterval {
+        let calendar = Calendar.current
+        return InsightsWindowing.previousInterval(before: coachReportWindow, calendar: calendar)
+            ?? DateInterval(start: coachReportWindow.start, end: coachReportWindow.start)
+    }
+
+    private var coachWindowSessions: [FocusSession] {
+        InsightsWindowing.overlappingFocusSessions(allSessions, in: coachReportWindow)
+    }
+
+    private var previousCoachWindowSessions: [FocusSession] {
+        InsightsWindowing.overlappingFocusSessions(allSessions, in: previousCoachReportWindow)
+    }
+
+    private var coachWindowInterruptions: [CoachInterruption] {
+        coachInterruptions.filter { coachReportWindow.contains($0.detectedAt) }
+    }
+
+    private var coachWindowAttempts: [InterventionAttempt] {
+        coachAttempts.filter { coachReportWindow.contains($0.deliveredAt) }
+    }
+
+    private var coachWindowTaskIntents: [TaskIntent] {
+        let currentSessionIDs = Set(coachWindowSessions.map(\.id))
+        return taskIntents.filter { intent in
+            if let sessionId = intent.sessionId {
+                return currentSessionIDs.contains(sessionId)
+            }
+            return coachReportWindow.contains(intent.createdAt)
+        }
     }
 
     private var focusSessions: [FocusSession] {
@@ -40,6 +98,11 @@ struct InsightsView: View {
         }
         .background(.clear)
         .animation(reduceMotion ? nil : FFMotion.section, value: selectedHour)
+        .onAppear {
+            if isEvidenceRendering {
+                showAppUsage = true
+            }
+        }
     }
 
     // MARK: - Header
@@ -156,7 +219,7 @@ struct InsightsView: View {
 
     private func calculateConsistency() -> Double {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
         let daysWithSessions = (0..<7).filter { offset in
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return false }
             return focusSessions.contains { calendar.isDate($0.startedAt, inSameDayAs: day) }
@@ -165,17 +228,12 @@ struct InsightsView: View {
     }
 
     private func calculateCompletionRate() -> Double {
-        let calendar = Calendar.current
-        guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date())) else { return 0 }
-        let recentSessions = focusSessions.filter { $0.startedAt >= weekAgo }
-        guard !recentSessions.isEmpty else { return 0 }
-        let completed = recentSessions.filter(\.completed).count
-        return Double(completed) / Double(recentSessions.count)
+        InsightsWindowing.completionRate(for: focusSessions, in: coachReportWindow)
     }
 
     private func calculateGoalAdherence() -> Double {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
         let goal = dailyGoal
         let daysMetGoal = (0..<7).filter { offset in
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return false }
@@ -194,11 +252,11 @@ struct InsightsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 LiquidSectionHeader(
                     "Guardian Recommendations",
-                    subtitle: "Data-driven block candidates for your current patterns"
+                    subtitle: "Data-driven block candidates from your last 7 days"
                 )
 
                 if guardianRecommendations.isEmpty {
-                    Text("No high-confidence block recommendations yet. Keep using FocusFlow and classify drift honestly to train guardian intelligence.")
+                    Text("No high-confidence block recommendations in the last 7 days yet. Keep using FocusFlow and classify drift honestly to train guardian intelligence.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 } else {
@@ -252,9 +310,7 @@ struct InsightsView: View {
     }
 
     private var guardianRecommendations: [GuardianRecommendation] {
-        let calendar = Calendar.current
-        guard let weekAgo = calendar.date(byAdding: .day, value: -7, to: Date()) else { return [] }
-        let recent = appUsageEntries.filter { $0.date >= weekAgo }
+        let recent = analyticsReport.trailing7Days.rows
         guard !recent.isEmpty else { return [] }
 
         var grouped = [String: (focus: Int, outside: Int)]()
@@ -262,7 +318,7 @@ struct InsightsView: View {
         for entry in recent {
             guard let target = AppUsageEntry.recommendedBlockTarget(
                 bundleIdentifier: entry.bundleIdentifier,
-                appName: entry.appName
+                appName: entry.label
             ) else { continue }
             var state = grouped[target, default: (focus: 0, outside: 0)]
             state.focus += entry.duringFocusSeconds
@@ -271,7 +327,7 @@ struct InsightsView: View {
         }
 
         let lowPriorityWeight = Double(
-            coachAttempts.filter { $0.skipReasonRaw == FocusCoachSkipReason.lowPriorityWork.rawValue }.count
+            coachWindowAttempts.filter { $0.skipReasonRaw == FocusCoachSkipReason.lowPriorityWork.rawValue }.count
         )
 
         return grouped.compactMap { target, totals in
@@ -340,7 +396,7 @@ struct InsightsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 LiquidSectionHeader(
                     "Coach Report",
-                    subtitle: "Science-based coaching from your patterns"
+                    subtitle: "Science-based coaching from your last 7 days"
                 )
 
                 let report = buildCoachReport()
@@ -373,7 +429,7 @@ struct InsightsView: View {
                     .font(.system(size: 18, weight: .light))
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
-                Text("Complete 3+ sessions to unlock personalized coaching insights")
+                Text("Complete 3+ focus sessions in the last 7 days to unlock personalized coaching insights")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -385,7 +441,7 @@ struct InsightsView: View {
 
     @ViewBuilder
     private func coachHeroMetrics(report: FocusCoachWeeklyReport) -> some View {
-        let hasInterventionData = !coachAttempts.isEmpty
+        let hasInterventionData = !coachWindowAttempts.isEmpty
         HStack(spacing: 12) {
             coachMetricCard(
                 value: "\(Int(report.completionRate * 100))%",
@@ -605,7 +661,7 @@ struct InsightsView: View {
 
     @ViewBuilder
     private var coachInterventionEffectiveness: some View {
-        let attemptSnapshots = coachAttempts.map {
+        let attemptSnapshots = coachWindowAttempts.map {
             FocusCoachInsightsBuilder.AttemptSnapshot(
                 kind: $0.kind,
                 outcome: $0.outcome,
@@ -782,14 +838,7 @@ struct InsightsView: View {
     }
 
     private func buildCoachReport() -> FocusCoachWeeklyReport {
-        let now = Date()
-        let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: now) ?? now
-        let fourteenDaysAgo = Calendar.current.date(byAdding: .day, value: -14, to: now) ?? now
-
-        let thisWeekSessions = allSessions.filter { $0.type == .focus && $0.startedAt >= sevenDaysAgo }
-        let prevWeekSessions = allSessions.filter { $0.type == .focus && $0.startedAt >= fourteenDaysAgo && $0.startedAt < sevenDaysAgo }
-
-        let sessions = thisWeekSessions.map { session in
+        let sessions = coachWindowSessions.map { session in
             FocusCoachInsightsBuilder.SessionSnapshot(
                 id: session.id,
                 type: session.type.rawValue,
@@ -799,7 +848,7 @@ struct InsightsView: View {
                 completed: session.completed
             )
         }
-        let prevSessions = prevWeekSessions.map { session in
+        let prevSessions = previousCoachWindowSessions.map { session in
             FocusCoachInsightsBuilder.SessionSnapshot(
                 id: session.id,
                 type: session.type.rawValue,
@@ -809,7 +858,7 @@ struct InsightsView: View {
                 completed: session.completed
             )
         }
-        let interruptions = coachInterruptions.filter { $0.detectedAt >= sevenDaysAgo }.map {
+        let interruptions = coachWindowInterruptions.map {
             FocusCoachInsightsBuilder.InterruptionSnapshot(
                 kind: $0.kind,
                 reason: $0.reason,
@@ -817,7 +866,7 @@ struct InsightsView: View {
                 detectedAt: $0.detectedAt
             )
         }
-        let attempts = coachAttempts.filter { $0.deliveredAt >= sevenDaysAgo }.map {
+        let attempts = coachWindowAttempts.map {
             FocusCoachInsightsBuilder.AttemptSnapshot(
                 kind: $0.kind,
                 outcome: $0.outcome,
@@ -826,14 +875,14 @@ struct InsightsView: View {
                 resolvedAt: $0.resolvedAt
             )
         }
-        let appSnapshots = appUsageEntries.map { entry in
+        let appSnapshots = analyticsReport.trailing7Days.rows.map { entry in
             FocusCoachInsightsBuilder.AppUsageSnapshot(
-                appName: entry.appName,
+                appName: entry.label,
                 duringFocusSeconds: entry.duringFocusSeconds,
                 category: entry.category.rawValue
             )
         }
-        let intentSnapshots = taskIntents.map {
+        let intentSnapshots = coachWindowTaskIntents.map {
             FocusCoachInsightsBuilder.TaskIntentSnapshot(
                 sessionId: $0.sessionId,
                 taskType: $0.taskType
@@ -880,9 +929,9 @@ struct InsightsView: View {
             }
             if let trend = report.weekOverWeekTrend, trend < -0.1 {
                 tips.append("Completion dropped this week. Consider reviewing your session length — shorter focused blocks may help rebuild consistency.")
-            }
+        }
         // Resistance-aware tip
-        let highResistanceIntents = taskIntents.filter { $0.expectedResistance >= 4 }
+        let highResistanceIntents = coachWindowTaskIntents.filter { $0.expectedResistance >= 4 }
         if highResistanceIntents.count >= 3 {
             tips.append("You frequently report high resistance. Try pairing difficult tasks with 'implementation intentions': specify exactly when, where, and how you'll start (Gollwitzer, 1999).")
         }
@@ -905,7 +954,7 @@ struct InsightsView: View {
 
     private func buildReasonBreakdown() -> [ReasonCount] {
         var counts: [FocusCoachReason: Int] = [:]
-        for interruption in coachInterruptions {
+        for interruption in coachWindowInterruptions {
             if let reason = interruption.reason {
                 counts[reason, default: 0] += 1
             }
@@ -928,7 +977,8 @@ struct InsightsView: View {
     private var behavioralInsights: [BehavioralInsight] {
         var insights = [BehavioralInsight]()
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
+        let coachCompletionSessions = coachWindowSessions
 
         // 1. Pause/break duration pattern
         let breaks = allSessions.filter { $0.type != .focus }
@@ -982,8 +1032,8 @@ struct InsightsView: View {
         }
 
         // 3. Focus momentum — once started, how long do you go?
-        let completedSessions = focusSessions.filter(\.completed)
-        let abandonedSessions = focusSessions.filter { !$0.completed }
+        let completedSessions = coachCompletionSessions.filter(\.completed)
+        let abandonedSessions = coachCompletionSessions.filter { !$0.completed }
         if completedSessions.count + abandonedSessions.count >= 5 {
             let completionRate = Double(completedSessions.count) / Double(completedSessions.count + abandonedSessions.count)
             let avgCompletedMin = completedSessions.isEmpty ? 0 : Int(completedSessions.reduce(0.0) { $0 + $1.actualDuration } / Double(completedSessions.count) / 60)
@@ -1144,7 +1194,7 @@ struct InsightsView: View {
                             .font(.system(size: 20, weight: .light))
                             .foregroundStyle(.tertiary)
                             .accessibilityHidden(true)
-                        Text("App tracking will appear as you use your Mac")
+                        Text("Today's app usage will appear here as you use your Mac")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
                     }
@@ -1173,25 +1223,16 @@ struct InsightsView: View {
     }
 
     private var todayTopApps: [AppUsageSummaryItem] {
-        let today = Calendar.current.startOfDay(for: Date())
-        let todayEntries = appUsageEntries.filter { Calendar.current.isDate($0.date, inSameDayAs: today) }
-
-        // Aggregate by app name
-        var grouped = [String: (name: String, bundleId: String, total: Int, focus: Int, category: AppUsageEntry.AppCategory)]()
-        for entry in todayEntries {
-            let key = entry.bundleIdentifier
-            if var existing = grouped[key] {
-                existing.total += entry.totalSeconds
-                existing.focus += entry.duringFocusSeconds
-                grouped[key] = existing
-            } else {
-                grouped[key] = (entry.appName, entry.bundleIdentifier, entry.totalSeconds, entry.duringFocusSeconds, entry.category)
+        analyticsReport.today.rows
+            .map {
+                AppUsageSummaryItem(
+                    name: $0.label,
+                    bundleId: $0.bundleIdentifier,
+                    totalSeconds: $0.totalSeconds,
+                    duringFocus: $0.duringFocusSeconds,
+                    category: $0.category
+                )
             }
-        }
-
-        return grouped.values
-            .map { AppUsageSummaryItem(name: $0.name, bundleId: $0.bundleId, totalSeconds: $0.total, duringFocus: $0.focus, category: $0.category) }
-            .sorted { $0.totalSeconds > $1.totalSeconds }
             .prefix(8)
             .map { $0 }
     }
@@ -1577,7 +1618,7 @@ struct InsightsView: View {
 
     private var last30DaysData: [Double] {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
         return (0..<30).map { offset in
             guard let day = calendar.date(byAdding: .day, value: -(29 - offset), to: today),
                   let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { return 0 }
@@ -1656,6 +1697,7 @@ struct InsightsView: View {
 
     private var contextualTips: [ScienceTip] {
         var tips = [ScienceTip]()
+        let coachCompletionSessions = coachWindowSessions
 
         // Tip based on average session length (with specific research)
         let avgDuration = focusSessions.isEmpty ? 0 : focusSessions.reduce(0.0) { $0 + $1.actualDuration } / Double(focusSessions.count)
@@ -1721,8 +1763,10 @@ struct InsightsView: View {
         }
 
         // Completion-based tip (using procrastination research)
-        let completionRate = focusSessions.isEmpty ? 0 : Double(focusSessions.filter(\.completed).count) / Double(focusSessions.count)
-        if completionRate < 0.4 && focusSessions.count >= 5 {
+        let completionRate = coachCompletionSessions.isEmpty
+            ? 0
+            : Double(coachCompletionSessions.filter(\.completed).count) / Double(coachCompletionSessions.count)
+        if completionRate < 0.4 && coachCompletionSessions.count >= 5 {
             tips.append(ScienceTip(
                 icon: "exclamationmark.triangle.fill",
                 title: "Completion Challenge",
@@ -1732,7 +1776,7 @@ struct InsightsView: View {
         }
 
         // Mental contrasting tip based on resistance data
-        let highResistanceIntents = taskIntents.filter { $0.expectedResistance >= 4 }
+        let highResistanceIntents = coachWindowTaskIntents.filter { $0.expectedResistance >= 4 }
         if highResistanceIntents.count >= 3 {
             tips.append(ScienceTip(
                 icon: "brain.head.profile",

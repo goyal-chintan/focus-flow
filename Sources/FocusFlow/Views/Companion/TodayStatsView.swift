@@ -5,6 +5,8 @@ struct TodayStatsView: View {
     @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
     @Query(sort: \CoachInterruption.detectedAt) private var allCoachInterruptions: [CoachInterruption]
+    @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
+    private let analyticsSnapshotNow = Date()
 
     private var dailyGoal: TimeInterval {
         max(60, allSettings.first?.dailyFocusGoal ?? 7200)
@@ -12,7 +14,7 @@ struct TodayStatsView: View {
 
     /// Sessions that overlap with today (includes cross-midnight sessions from yesterday)
     private var todaySessions: [FocusSession] {
-        let start = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.startOfDay(for: analyticsSnapshotNow)
         guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return [] }
         return allSessions.filter { session in
             guard session.type == .focus && session.actualDuration >= 60 else { return false }
@@ -23,7 +25,7 @@ struct TodayStatsView: View {
 
     /// Focus time attributed to today only (handles cross-midnight correctly)
     private func todayPortion(of session: FocusSession) -> TimeInterval {
-        let start = Calendar.current.startOfDay(for: Date())
+        let start = Calendar.current.startOfDay(for: analyticsSnapshotNow)
         guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return 0 }
         let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
         let overlapStart = max(session.startedAt, start)
@@ -37,6 +39,22 @@ struct TodayStatsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var settings: AppSettings? { allSettings.first }
+    private var shouldExposeRawDomains: Bool { settings?.coachCollectRawDomains == true }
+
+    private var visibleAppUsageEntries: [AppUsageEntry] {
+        InsightsAppUsagePolicy.visibleEntries(
+            from: appUsageEntries,
+            collectRawDomains: shouldExposeRawDomains
+        )
+    }
+
+    private var analyticsReport: CompanionAnalyticsReport {
+        CompanionAnalyticsBuilder().build(
+            entries: visibleAppUsageEntries,
+            domainTrackingEnabled: shouldExposeRawDomains,
+            now: analyticsSnapshotNow
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -45,6 +63,7 @@ struct TodayStatsView: View {
                 dueRemindersStrip
                 goalProgressBar
                 summarySection
+                domainSignalsSection
                 nextBestBlockRow
                 guardianLearnedRow
                 streakRow
@@ -97,7 +116,7 @@ struct TodayStatsView: View {
                 Text("Today,")
                     .font(.system(size: 42, weight: .light))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                Text(Date().formatted(.dateTime.month(.wide).day()))
+                Text(analyticsSnapshotNow.formatted(.dateTime.month(.wide).day()))
                     .font(.system(size: 42, weight: .light))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
             }
@@ -181,6 +200,30 @@ struct TodayStatsView: View {
         .accessibilityElement(children: .combine)
     }
 
+    private var domainSignalsSection: some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                LiquidSectionHeader(
+                    "Domain Signals",
+                    subtitle: "Top distracting domains today"
+                )
+
+                if let emptyState = analyticsReport.today.domainEmptyState {
+                    domainSignalsEmptyState(emptyState)
+                } else if todayDistractingDomainRows.isEmpty {
+                    noDistractingDomainsState
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(todayDistractingDomainRows) { row in
+                            DomainSignalRow(row: row)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
     private var averageSessionLength: Int {
         guard completedCount > 0 else { return 0 }
         return Int(totalFocusTime / Double(completedCount) / 60)
@@ -218,6 +261,84 @@ struct TodayStatsView: View {
             return "You protected 1 important block today"
         default:
             return "You protected \(count) important blocks today"
+        }
+    }
+
+    private var todayDistractingDomainRows: [CompanionAnalyticsRow] {
+        analyticsReport.today.domainRows
+            .filter { $0.category == .distracting }
+            .prefix(5)
+            .map { $0 }
+    }
+
+    private var noDistractingDomainsState: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "checkmark.shield")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.mint)
+                .frame(width: 18)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No distracting domains today")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text("FocusFlow captured browser domains, but none of today’s domains were classified as distracting.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+    }
+
+    private func domainSignalsEmptyState(_ state: CompanionAnalyticsDomainEmptyState) -> some View {
+        let descriptor = domainSignalEmptyStateDescriptor(for: state)
+
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: descriptor.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(descriptor.tint)
+                .frame(width: 18)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(descriptor.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(descriptor.message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+    }
+
+    private func domainSignalEmptyStateDescriptor(
+        for state: CompanionAnalyticsDomainEmptyState
+    ) -> (title: String, message: String, icon: String, tint: Color) {
+        switch state {
+        case .trackingDisabled:
+            return (
+                title: "Detailed domains are off",
+                message: "Turn on Detailed domains in Settings to show distracting websites here.",
+                icon: "eye.slash",
+                tint: Color.secondary
+            )
+        case .noValidDomainsYet:
+            return (
+                title: "No valid domains yet",
+                message: "FocusFlow will show today’s distracting websites after it captures a valid browser domain. If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles.",
+                icon: "safari",
+                tint: .blue
+            )
         }
     }
 

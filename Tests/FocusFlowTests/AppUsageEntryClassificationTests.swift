@@ -98,6 +98,36 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         XCTAssertEqual(label, "YouTube")
     }
 
+    func testNormalizedBrowserHostExtractsHostFromURL() {
+        let host = AppUsageEntry.normalizedBrowserHost(from: "https://www.youtube.com/watch?v=123")
+        XCTAssertEqual(host, "youtube.com")
+    }
+
+    func testNormalizedBrowserHostAcceptsUncommonValidTLDs() {
+        XCTAssertEqual(
+            AppUsageEntry.normalizedBrowserHost(from: "https://focusflow.cloud/dashboard"),
+            "focusflow.cloud"
+        )
+        XCTAssertEqual(
+            AppUsageEntry.normalizedBrowserHost(from: "store.example.shop"),
+            "store.example.shop"
+        )
+        XCTAssertEqual(
+            AppUsageEntry.normalizedBrowserHost(from: "planner.online"),
+            "planner.online"
+        )
+    }
+
+    func testNormalizedBrowserHostRejectsBundleIdentifierMasqueradingAsDomain() {
+        let host = AppUsageEntry.normalizedBrowserHost(from: "company.thebrowser.browser")
+        XCTAssertNil(host)
+    }
+
+    func testBrowserDomainDisplayLabelReturnsNilForInvalidHost() {
+        let label = AppUsageEntry.browserDomainDisplayLabel(for: "com.apple.Safari")
+        XCTAssertNil(label)
+    }
+
     func testRecommendationDisplayLabelTreatsBundleIdentifierAsAppNotDomain() {
         let label = AppUsageEntry.recommendationDisplayLabel(for: "company.thebrowser.browser")
         XCTAssertEqual(label, "Arc")

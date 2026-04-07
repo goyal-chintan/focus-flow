@@ -24,6 +24,9 @@ enum ReviewArtifactContract {
         "settings_calendar_permissions",
         "settings_reminders_permissions",
         "today_stats_view",
+        "weekly_stats_view",
+        "insights_view_domains",
+        "settings_domain_tracking",
         "break_complete_reason_sheet_hidden",
         "break_complete_reason_sheet_visible"
     ]
