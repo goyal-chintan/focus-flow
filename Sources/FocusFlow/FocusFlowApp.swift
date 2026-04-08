@@ -71,6 +71,7 @@ struct FocusFlowApp: App {
                 }
             }
             .font(.system(size: 12, weight: .medium, design: .rounded))
+            .background(AppLaunchBridge(timerVM: timerVM, modelContext: container.mainContext))
         }
         .menuBarExtraStyle(.window)
         .modelContainer(container)
@@ -152,6 +153,19 @@ struct FocusFlowApp: App {
                 return timerVM.selectedProject?.icon ?? "scope"
             }
         }
+    }
+}
+
+private struct AppLaunchBridge: View {
+    let timerVM: TimerViewModel
+    let modelContext: ModelContext
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .task {
+                timerVM.ensureConfigured(modelContext: modelContext)
+            }
     }
 }
 

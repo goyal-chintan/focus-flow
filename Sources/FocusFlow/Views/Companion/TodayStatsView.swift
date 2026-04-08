@@ -335,7 +335,7 @@ struct TodayStatsView: View {
         case .noValidDomainsYet:
             return (
                 title: "No valid domains yet",
-                message: "FocusFlow will show today’s distracting websites after it captures a valid browser domain. If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles.",
+                message: "FocusFlow will show today’s distracting websites after it captures a valid browser domain. Supported browsers use macOS Automation first. If a browser does not expose a tab URL, Screen Recording lets FocusFlow fall back to browser titles.",
                 icon: "safari",
                 tint: .blue
             )

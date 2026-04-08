@@ -27,8 +27,16 @@ struct SettingsView: View {
     @State private var isEnablingCalendar = false
     @State private var isEnablingReminders = false
     @State private var showBlockingSheet = false
+    @State private var permissionHealthRefreshTick = 0
     @StateObject private var notificationService = NotificationService.shared
     private let initialScrollTarget: ScrollTarget?
+    private let permissionHealthExpectedTitles = [
+        "Notifications",
+        "Calendar",
+        "Reminders",
+        "Browser Automation",
+        "Screen Recording"
+    ]
 
     init(initialScrollTarget: ScrollTarget? = nil) {
         self.initialScrollTarget = initialScrollTarget
@@ -52,6 +60,7 @@ struct SettingsView: View {
                         .id("integrations")
                     focusCoachSection
                     aboutSection
+                    permissionHealthSection(proxy: proxy)
                 }
                 .padding(24)
             }
@@ -59,6 +68,7 @@ struct SettingsView: View {
             .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
             .saveErrorOverlay($saveError)
             .onAppear {
+                refreshPermissionHealth()
                 if settings.calendarIntegrationEnabled {
                     loadCalendars()
                 }
@@ -85,8 +95,20 @@ struct SettingsView: View {
                 calendarLoadError = nil
                 reminderLoadError = nil
                 reminderAuthError = nil
+                refreshPermissionHealth()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                refreshPermissionHealth()
             }
         }
+    }
+
+    private var permissionHealthRows: [PermissionHealthRow] {
+        _ = permissionHealthRefreshTick
+        return PermissionHealthService().rows(
+            calendarIntegrationEnabled: settings.calendarIntegrationEnabled,
+            remindersIntegrationEnabled: settings.remindersIntegrationEnabled
+        )
     }
 
     private var durationsSection: some View {
@@ -324,12 +346,11 @@ struct SettingsView: View {
             Task { @MainActor in
                 _ = await notificationService.requestPermission()
                 isRequestingNotificationPermission = false
+                refreshPermissionHealth()
                 restoreCompanionWindow()
             }
         case .denied:
-            if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings") {
-                NSWorkspace.shared.open(url)
-            }
+            openNotificationSettings()
         }
     }
 
@@ -365,6 +386,182 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
             }
             .padding(16)
+        }
+    }
+
+    private func permissionHealthSection(proxy: ScrollViewProxy) -> some View {
+        LiquidGlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                LiquidSectionHeader("Permission & Integration Health", subtitle: "See what FocusFlow can access and recover blocked permissions fast")
+
+                VStack(spacing: 10) {
+                    ForEach(permissionHealthRows.sorted(by: permissionHealthRowComesFirst)) { row in
+                        permissionHealthRow(row, proxy: proxy)
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private func permissionHealthRow(_ row: PermissionHealthRow, proxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: row.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(permissionHealthTint(for: row.status))
+                    .frame(width: 20)
+                    .padding(.top, 1)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(row.title)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.primary)
+
+                        permissionHealthStatusBadge(for: row.status)
+                    }
+
+                    Text(row.message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !row.detailLines.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(row.detailLines, id: \.self) { detail in
+                                Text(detail)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button {
+                handlePermissionHealthAction(row.action, proxy: proxy)
+            } label: {
+                Label(row.actionTitle, systemImage: "gearshape")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+            .accessibilityIdentifier(permissionHealthActionIdentifier(for: row.kind))
+            .accessibilityLabel(permissionHealthActionLabel(for: row.kind))
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+    }
+
+    @ViewBuilder
+    private func permissionHealthStatusBadge(for status: PermissionHealthStatus) -> some View {
+        Label(status.title, systemImage: permissionHealthStatusIcon(for: status))
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(permissionHealthTint(for: status))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(permissionHealthTint(for: status).opacity(0.10), in: Capsule())
+    }
+
+    private func permissionHealthStatusIcon(for status: PermissionHealthStatus) -> String {
+        switch status {
+        case .ready:
+            return "checkmark.circle.fill"
+        case .needsAction:
+            return "exclamationmark.triangle.fill"
+        case .notRequested:
+            return "clock.badge.questionmark.fill"
+        case .unavailable:
+            return "minus.circle.fill"
+        }
+    }
+
+    private func permissionHealthTint(for status: PermissionHealthStatus) -> Color {
+        switch status {
+        case .ready:
+            return .green
+        case .needsAction:
+            return .orange
+        case .notRequested:
+            return LiquidDesignTokens.Spectral.electricBlue
+        case .unavailable:
+            return .secondary
+        }
+    }
+
+    private func permissionHealthActionIdentifier(for kind: PermissionHealthRow.Kind) -> String {
+        switch kind {
+        case .notifications:
+            return "settings.permissionHealth.notifications.action"
+        case .calendar:
+            return "settings.permissionHealth.calendar.action"
+        case .reminders:
+            return "settings.permissionHealth.reminders.action"
+        case .automation:
+            return "settings.permissionHealth.automation.action"
+        case .screenRecording:
+            return "settings.permissionHealth.screenRecording.action"
+        }
+    }
+
+    private func permissionHealthActionLabel(for kind: PermissionHealthRow.Kind) -> String {
+        switch kind {
+        case .notifications:
+            return "Review notification permission"
+        case .calendar:
+            return "Review Calendar permission"
+        case .reminders:
+            return "Review Reminders permission"
+        case .automation:
+            return "Review browser Automation permission"
+        case .screenRecording:
+            return "Review Screen Recording permission"
+        }
+    }
+
+    private func permissionHealthRowComesFirst(_ lhs: PermissionHealthRow, _ rhs: PermissionHealthRow) -> Bool {
+        let lhsIndex = permissionHealthExpectedTitles.firstIndex(of: lhs.title) ?? .max
+        let rhsIndex = permissionHealthExpectedTitles.firstIndex(of: rhs.title) ?? .max
+        return lhsIndex < rhsIndex
+    }
+
+    private func handlePermissionHealthAction(_ action: PermissionHealthAction, proxy: ScrollViewProxy) {
+        switch action {
+        case .requestNotifications:
+            guard !isRequestingNotificationPermission else { return }
+            isRequestingNotificationPermission = true
+            Task { @MainActor in
+                _ = await notificationService.requestPermission()
+                isRequestingNotificationPermission = false
+                refreshPermissionHealth()
+                restoreCompanionWindow()
+            }
+        case .openNotificationSettings:
+            openNotificationSettings()
+        case .requestCalendarPermission:
+            Task { @MainActor in
+                _ = await requestCalendarPermissionFromHealthPanel()
+            }
+        case .openCalendarSettings:
+            openCalendarSettings()
+        case .requestRemindersPermission:
+            Task { @MainActor in
+                _ = await requestRemindersPermissionFromHealthPanel()
+            }
+        case .openRemindersSettings:
+            openRemindersSettings()
+        case .openIntegrationsSection:
+            withAnimation(reduceMotion ? nil : FFMotion.section) {
+                proxy.scrollTo("integrations", anchor: .top)
+            }
+        case .openAutomationSettings:
+            openAutomationSettings()
+        case .openScreenRecordingSettings:
+            openScreenRecordingSettings()
         }
     }
 
@@ -818,6 +1015,7 @@ struct SettingsView: View {
             calendarLoadError = "FocusFlow needs Calendar access. Enable it in System Settings → Privacy & Security → Calendars."
             save()
         }
+        refreshPermissionHealth()
         restoreCompanionWindow()
     }
 
@@ -891,7 +1089,29 @@ struct SettingsView: View {
             availableReminderLists = []
             save()
         }
+        refreshPermissionHealth()
         restoreCompanionWindow()
+    }
+
+    @MainActor
+    private func requestCalendarPermissionFromHealthPanel() async -> Bool {
+        let granted = await CalendarService.shared.requestAccess()
+        refreshPermissionHealth()
+        restoreCompanionWindow()
+        return granted
+    }
+
+    @MainActor
+    private func requestRemindersPermissionFromHealthPanel() async -> Bool {
+        let granted = await RemindersService.shared.requestAccess()
+        refreshPermissionHealth()
+        restoreCompanionWindow()
+        return granted
+    }
+
+    private func refreshPermissionHealth() {
+        permissionHealthRefreshTick += 1
+        notificationService.refreshAuthorizationStatus()
     }
 
     @MainActor
@@ -1230,7 +1450,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .padding(.top, 1)
                         .accessibilityHidden(true)
-                    Text("App activity monitoring does not require a macOS permission prompt. FocusFlow reads only the frontmost app metadata already exposed by NSWorkspace.")
+                    Text("FocusFlow can track frontmost apps without extra permission. FocusFlow reads supported browsers through macOS Automation first. If a browser does not expose a tab URL, Screen Recording lets FocusFlow fall back to browser titles.")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1259,16 +1479,35 @@ struct SettingsView: View {
     }
 
     private var domainTrackingRecoveryState: DomainTrackingRecoveryState? {
-        if settings.coachCollectRawDomains == false {
+        Self.domainTrackingRecoveryState(
+            collectRawDomains: settings.coachCollectRawDomains,
+            hasCapturedBrowserDomains: hasCapturedBrowserDomains,
+            frontmostBundleIdentifier: AppUsageTracker.shared.currentFrontmostBundleId,
+            screenRecordingAccess: CGPreflightScreenCaptureAccess(),
+            automationStatusProvider: PermissionHealthService.automationStatus(for:)
+        )
+    }
+
+    static func domainTrackingRecoveryState(
+        collectRawDomains: Bool,
+        hasCapturedBrowserDomains: Bool,
+        frontmostBundleIdentifier: String?,
+        screenRecordingAccess: Bool,
+        automationStatusProvider: (String?) -> PermissionHealthStatus?
+    ) -> DomainTrackingRecoveryState? {
+        if collectRawDomains == false {
             return .disabled
         }
 
         guard !hasCapturedBrowserDomains else { return nil }
 
-        if let frontmostBundleId = AppUsageTracker.shared.currentFrontmostBundleId,
+        if let frontmostBundleId = frontmostBundleIdentifier,
            AppUsageEntry.isBrowserBundleIdentifier(frontmostBundleId) {
-            if BrowserDomainResolver.supports(bundleIdentifier: frontmostBundleId) == false,
-               !CGPreflightScreenCaptureAccess() {
+            if BrowserDomainResolver.supports(bundleIdentifier: frontmostBundleId) {
+                if automationStatusProvider(frontmostBundleId) != .ready {
+                    return .automationUnavailable
+                }
+            } else if !screenRecordingAccess {
                 return .screenRecordingUnavailable
             }
         }
@@ -1296,6 +1535,21 @@ struct SettingsView: View {
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            if state == .automationUnavailable {
+                Button {
+                    openAutomationSettings()
+                } label: {
+                    Label("Open Automation Settings", systemImage: "gearshape")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+                .accessibilityIdentifier("settings.domainTracking.openAutomationSettings")
+                .accessibilityLabel("Open Automation privacy settings")
             }
 
             if state == .screenRecordingUnavailable {
@@ -1328,6 +1582,30 @@ struct SettingsView: View {
         signals.isEmpty ? "none" : signals.joined(separator: ", ")
     }
 
+    private func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openCalendarSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openRemindersSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openAutomationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     private func openScreenRecordingSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
@@ -1348,10 +1626,11 @@ struct SettingsView: View {
     ]
 }
 
-private enum DomainTrackingRecoveryState: Equatable {
+enum DomainTrackingRecoveryState: Equatable {
     private static let supportedBrowserList = "Safari, Chrome, Arc, Edge, Brave, or Opera"
 
     case disabled
+    case automationUnavailable
     case awaitingFirstCapture
     case screenRecordingUnavailable
 
@@ -1359,6 +1638,8 @@ private enum DomainTrackingRecoveryState: Equatable {
         switch self {
         case .disabled:
             return "eye.slash"
+        case .automationUnavailable:
+            return "hand.raised.app"
         case .awaitingFirstCapture:
             return "safari"
         case .screenRecordingUnavailable:
@@ -1370,6 +1651,8 @@ private enum DomainTrackingRecoveryState: Equatable {
         switch self {
         case .disabled:
             return .secondary
+        case .automationUnavailable:
+            return .orange
         case .awaitingFirstCapture:
             return LiquidDesignTokens.Spectral.electricBlue
         case .screenRecordingUnavailable:
@@ -1381,6 +1664,8 @@ private enum DomainTrackingRecoveryState: Equatable {
         switch self {
         case .disabled:
             return "Detailed domains are off"
+        case .automationUnavailable:
+            return "Browser access needs approval"
         case .awaitingFirstCapture:
             return "Waiting for the first browser domain"
         case .screenRecordingUnavailable:
@@ -1392,8 +1677,10 @@ private enum DomainTrackingRecoveryState: Equatable {
         switch self {
         case .disabled:
             return "Turn this on only if you want website-level labels and coaching context for supported browsers. Until then, FocusFlow keeps app-level tracking only."
+        case .automationUnavailable:
+            return "FocusFlow reads supported browsers through macOS Automation first. If macOS has not asked yet, revisit the site and approve browser access. If you already denied it, open Automation Settings and re-enable FocusFlow for your browser."
         case .awaitingFirstCapture:
-            return "FocusFlow hasn't captured a valid browser domain yet. Visit a site in \(Self.supportedBrowserList) and keep it frontmost for a moment. If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles."
+            return "FocusFlow hasn't captured a valid browser domain yet. Visit a site in \(Self.supportedBrowserList) and keep it frontmost for a moment. FocusFlow reads supported browsers through macOS Automation first. If a browser does not expose a tab URL, Screen Recording lets FocusFlow fall back to browser titles."
         case .screenRecordingUnavailable:
             return "Screen Recording is off, so FocusFlow can't recover domains from browser title fallback when a browser doesn't expose a tab URL. Enable it, then revisit the site."
         }

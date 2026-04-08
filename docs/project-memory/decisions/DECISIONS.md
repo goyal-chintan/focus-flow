@@ -304,6 +304,52 @@ Privacy toggles are not complete until labels, coaching, persistence, and recove
 
 ---
 
+#### D3.2: Settings Needs a Unified Permission Health Surface
+
+**Category:** UI/Architecture/Notifications
+**Date:** 2026-04-07
+**Status:** Active
+**Session(s):** 71def331-9ad6-4d58-87ad-bdd1e0782d57
+
+### Problem
+
+- FocusFlow depended on multiple macOS permission surfaces, but the recovery path was fragmented across Settings.
+- Browser-domain capture relies on Automation first and Screen Recording only as fallback, which made the old "permission help" copy too easy to misread.
+- Users had no single place to see whether Notifications, Calendar, Reminders, Browser Automation, and Screen Recording were actually ready.
+
+### Alternatives Considered
+
+- **Keep recovery in each local section only** — less UI surface area, but users still have to hunt across Settings to understand what is broken.
+- **Add a summary without actions** — visually lighter, but still forces a second navigation step for recovery.
+- **Collapse all setup into one new panel** — centralizes status, but weakens the existing organization of Calendar, Reminders, and coach settings.
+
+### Decision
+
+- Keep the existing Calendar, Reminders, and domain-tracking controls where they belong.
+- Add a final `Permission & Integration Health` section in Settings with five live rows: Notifications, Calendar, Reminders, Browser Automation, and Screen Recording.
+- Give every row a direct recovery action, and compute Browser Automation status per supported installed browser with Apple Events permission probing instead of a blanket assumption.
+
+### Rationale
+
+This keeps setup discoverable while adding a single trustworthy health check. It also makes the browser capture pipeline honest: Automation is primary, Screen Recording is fallback, and both should be visible without forcing the user to infer internal implementation details.
+
+### Outcomes
+
+- Settings now ends with one canonical permission health surface for the app’s core integrations.
+- Each permission row has an explicit status and an actionable recovery button.
+- Browser-domain recovery no longer warns supported browsers indiscriminately; approved browsers stay in the normal "waiting for first capture" state.
+
+### Related Decisions
+
+- D1.1: 3-Gate Visual Review Process
+- D3.1: Shared Windowed Domain Analytics With Privacy-Safe Browser Context
+
+### Learnings
+
+Permission UX should describe the real pipeline, not the easiest simplification. For FocusFlow, "feature enabled", "OS permission granted", and "integration configured" are separate states and deserve separate feedback.
+
+---
+
 ## Session: Guardian Recommendations & Idle Escalation (2026-03-26)
 
 **Session ID:** a78f68d5-ee86-4127-b11d-18d71d7a35b8

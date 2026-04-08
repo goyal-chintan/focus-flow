@@ -542,7 +542,7 @@ struct WeeklyStatsView: View {
         case .noValidDomainsYet:
             return (
                 title: "No valid domains yet",
-                message: "FocusFlow will show distracting domains here after it captures a valid browser domain in this \(selectedPeriod == .week ? "7-day" : "30-day") window. If a browser doesn’t expose a tab URL, turn on Screen Recording so FocusFlow can fall back to browser titles.",
+                message: "FocusFlow will show distracting domains here after it captures a valid browser domain in this \(selectedPeriod == .week ? "7-day" : "30-day") window. Supported browsers use macOS Automation first. If a browser does not expose a tab URL, Screen Recording lets FocusFlow fall back to browser titles.",
                 icon: "safari",
                 tint: .blue
             )
