@@ -2,7 +2,7 @@
 
 FocusFlow is a native macOS focus companion built for people who want more than a Pomodoro timer. It combines a fast menu bar workflow, a full companion window for planning and review, on-device coaching, and system-level distraction control in a product designed around Apple's Liquid Glass direction.
 
-![FocusFlow Logo](Brand/LogoConcepts/focusflow-logo-final.svg)
+![FocusFlow Logo](Brand/focusflow-logo.png)
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-blue)
 ![Swift 6.2](https://img.shields.io/badge/Swift-6.2-orange)
