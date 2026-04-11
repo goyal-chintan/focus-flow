@@ -469,10 +469,43 @@ Create `docs/AGENT_INSTRUCTIONS.md` — a 6-phase workflow guide (Orient → Und
 
 ---
 
+---
+
+## Stats Window Minimum Frame Constraint
+
+**Category:** Architecture
+**Date:** 2026-04-11
+**Status:** Active
+**Session(s):** fix/stats-window-layout-loop (fixes #33)
+
+### Problem
+On macOS 26 Tahoe the Stats/Companion window deadlocked the main thread on every open attempt. `sample` showed 100% of samples stuck in an infinite `NSPerformVisuallyAtomicChange` → `NSView._layoutSubtreeWithOldSize` recursion triggered from `CompanionWindowView`'s `NavigationSplitView(.balanced)`. The app had been frozen for 3+ days.
+
+### Alternatives Considered
+- **Add `.windowResizability(.contentSize)`** — too restrictive; user should be able to resize a full companion window freely.
+- **Add `.frame(minWidth:minHeight:)` to `CompanionWindowView`** — gives AppKit a concrete lower bound without restricting resize behaviour. ✅ Chosen.
+- **Switch `NavigationSplitView` style to `.prominentDetail`** — would change UX; not the minimal surgical fix.
+
+### Decision
+Add `.frame(minWidth: 600, minHeight: 400)` to `CompanionWindowView` inside the `"stats"` Window scene in `FocusFlowApp.swift`.
+
+### Rationale
+The `NavigationSplitView(.balanced)` style negotiates equal column widths, requiring the window to have a concrete total-width bound during the first-responder layout pass (`layoutIfNeeded`). Without `.frame(minWidth:)`, AppKit on macOS 26 Tahoe re-enters `NSPerformVisuallyAtomicChange` from within itself, producing an infinite loop. A 600pt minimum (180pt sidebar + 420pt detail) matches `navigationSplitViewColumnWidth(min: 180)` already declared in `CompanionWindowView`, so layout can always settle.
+
+### Outcomes
+- Stats/Companion window opens without hanging.
+- `swift build` zero new warnings; all 40 non-screenshot test suites pass.
+
+### Learnings
+- Every `Window` scene containing a `NavigationSplitView` on macOS 26 Tahoe **must** carry either `.windowResizability(.contentSize)` or an explicit `.frame(minWidth:minHeight:)` to avoid the layout-loop regression.
+- The other two windows (`"session-complete"`, `"coach-intervention"`) already had `.windowResizability(.contentSize)` and were unaffected — this asymmetry was the distinguishing clue.
+
+---
+
 **By Category Summary (updated)**
 
 - **UI Decisions** (6): Glass styling, button patterns, list rows, reference-driven design, 3-gate review, prettifyToken preserve-case
-- **Architecture Decisions** (3): Complex view extraction, domain-prefix convention, work-intent gate bypass
+- **Architecture Decisions** (4): Complex view extraction, domain-prefix convention, work-intent gate bypass, stats-window minimum frame constraint
 - **Data Decisions** (2): `domain:` AppUsageEntry, confidence formula recalibration
 - **Process Decisions** (1): AGENT_INSTRUCTIONS workflow constitution
 - **Notifications** (0): *Added in future sessions*
