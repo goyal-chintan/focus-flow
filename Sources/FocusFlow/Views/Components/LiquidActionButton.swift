@@ -23,6 +23,7 @@ struct LiquidActionButton: View {
     let title: String
     let icon: String
     let role: LiquidActionRole
+    let fillsWidth: Bool
     let tint: Color?
     let action: () -> Void
 
@@ -30,12 +31,14 @@ struct LiquidActionButton: View {
         title: String,
         icon: String,
         role: LiquidActionRole,
+        fillsWidth: Bool = true,
         tint: Color? = nil,
         action: @escaping () -> Void
     ) {
         self.title = title
         self.icon = icon
         self.role = role
+        self.fillsWidth = fillsWidth
         self.tint = tint
         self.action = action
     }
@@ -53,12 +56,11 @@ struct LiquidActionButton: View {
             .buttonBorderShape(.capsule)
         } else {
             Button(action: action) {
-                Label(title, systemImage: icon)
-                    .font(LiquidDesignTokens.Typography.controlLabel)
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(role == .destructive ? LiquidDesignTokens.Spectral.destructive : LiquidDesignTokens.Surface.onSurface)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, LiquidDesignTokens.Padding.controlVertical)
+                buttonLabel(
+                    foreground: role == .destructive
+                        ? LiquidDesignTokens.Spectral.destructive
+                        : LiquidDesignTokens.Surface.onSurface
+                )
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.capsule)
@@ -89,9 +91,11 @@ struct LiquidActionButton: View {
         Label(title, systemImage: icon)
             .font(LiquidDesignTokens.Typography.controlLabel)
             .labelStyle(.titleAndIcon)
+            .lineLimit(1)
+            .minimumScaleFactor(0.9)
             .foregroundStyle(foreground)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .padding(.vertical, LiquidDesignTokens.Padding.controlVertical)
+            .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: 44)
+            .padding(.horizontal, LiquidDesignTokens.Padding.controlHorizontal)
     }
 
     @ViewBuilder

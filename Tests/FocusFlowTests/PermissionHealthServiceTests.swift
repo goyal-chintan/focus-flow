@@ -63,6 +63,35 @@ final class PermissionHealthServiceTests: XCTestCase {
         XCTAssertTrue(row.message.contains("No supported browsers"))
     }
 
+    func testBrowserAutomationRowCanRenderPendingStateWithoutLiveProbe() throws {
+        let arc = try XCTUnwrap(
+            BrowserDomainResolver.supportedAutomationTargets.first(where: { $0.displayName == "Arc" })
+        )
+        var probeCallCount = 0
+        let service = PermissionHealthService(
+            notificationStateProvider: { .authorized },
+            calendarStatusProvider: { .authorized },
+            remindersStatusProvider: { .authorized },
+            screenRecordingAccessProvider: { true },
+            installedAutomationTargetsProvider: { [arc] },
+            automationStatusProvider: { _ in
+                probeCallCount += 1
+                return .ready
+            }
+        )
+
+        let row = service.rows(
+            calendarIntegrationEnabled: false,
+            remindersIntegrationEnabled: false,
+            automationProbeInProgress: true
+        )[3]
+
+        XCTAssertEqual(probeCallCount, 0)
+        XCTAssertEqual(row.status, .notRequested)
+        XCTAssertTrue(row.message.contains("Checking"))
+        XCTAssertEqual(row.detailLines, ["Arc: Checking…"])
+    }
+
     func testCalendarRowExplainsWhenPermissionIsGrantedButIntegrationIsStillOff() {
         let service = PermissionHealthService(
             notificationStateProvider: { .authorized },
@@ -78,5 +107,11 @@ final class PermissionHealthServiceTests: XCTestCase {
         XCTAssertEqual(row.status, .ready)
         XCTAssertEqual(row.action, .openIntegrationsSection)
         XCTAssertTrue(row.message.contains("Turn on Record to Calendar in Integrations"))
+    }
+
+    func testBrowserAutomationProbeReturnsNotRequestedUnderXCTest() throws {
+        let target = try XCTUnwrap(BrowserDomainResolver.supportedAutomationTargets.first)
+
+        XCTAssertEqual(BrowserAutomationPermissionProbe.status(for: target), .notRequested)
     }
 }

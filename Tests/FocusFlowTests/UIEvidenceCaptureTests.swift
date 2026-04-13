@@ -557,6 +557,11 @@ final class UIEvidenceCaptureTests: XCTestCase {
             let fixture = try fixtures.insightsDomainsFixture()
             return try renderInsights(fixture, appearance: appearance)
 
+        case "distractions_view":
+            // Captures the Distractions tab with active rules, pending suggestions, and manual add CTA.
+            let fixture = try fixtures.distractionsFixture()
+            return try renderDistractions(fixture, appearance: appearance)
+
         case "settings_domain_tracking":
             // Captures the Settings focus-coach domain tracking row and recovery guidance.
             let fixture = try fixtures.settingsDomainTrackingFixture()
@@ -643,6 +648,17 @@ final class UIEvidenceCaptureTests: XCTestCase {
         return try render(view, appearance: appearance, size: CGSize(width: 760, height: 1900))
     }
 
+    private func renderDistractions(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let view = DistractionsView()
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: 720)
+            .padding(16)
+            .background(backgroundColor(for: appearance))
+        return try render(view, appearance: appearance, size: CGSize(width: 760, height: 1100))
+    }
+
     private func renderSettingsDomainTracking(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
         let view = SettingsView(initialScrollTarget: .domainTracking)
             .environment(fixture.vm)
@@ -727,6 +743,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         private var todayStats: Fixture?
         private var weeklyStats: Fixture?
         private var insightsDomains: Fixture?
+        private var distractions: Fixture?
         private var settingsDomainTracking: Fixture?
 
         init(owner: UIEvidenceCaptureTests) {
@@ -811,6 +828,15 @@ final class UIEvidenceCaptureTests: XCTestCase {
             return created
         }
 
+        func distractionsFixture() throws -> Fixture {
+            if let distractions {
+                return distractions
+            }
+            let created = try owner.makeDistractionsFixture()
+            self.distractions = created
+            return created
+        }
+
         func settingsDomainTrackingFixture() throws -> Fixture {
             if let settingsDomainTracking {
                 return settingsDomainTracking
@@ -844,6 +870,9 @@ final class UIEvidenceCaptureTests: XCTestCase {
             }
             if let insightsDomains {
                 owner.cleanup(insightsDomains)
+            }
+            if let distractions {
+                owner.cleanup(distractions)
             }
             if let settingsDomainTracking {
                 owner.cleanup(settingsDomainTracking)
@@ -1012,6 +1041,63 @@ final class UIEvidenceCaptureTests: XCTestCase {
                 bundleIdentifier: "domain:github.com",
                 duringFocusSeconds: 14 * 60,
                 outsideFocusSeconds: 2 * 60
+            )
+        )
+        try context.save()
+
+        let vm = TimerViewModel()
+        vm.configureForEvidence(modelContext: context, settings: settings)
+        return Fixture(container: container, context: context, vm: vm)
+    }
+
+    private func makeDistractionsFixture() throws -> Fixture {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let settings = AppSettings()
+        context.insert(settings)
+
+        context.insert(
+            IdleDistractionItem(
+                key: "com.mitchellh.ghostty",
+                displayName: "Ghostty",
+                targetKind: .app,
+                severity: .major,
+                source: .manual,
+                status: .active,
+                evidenceCount: 0
+            )
+        )
+        context.insert(
+            IdleDistractionItem(
+                key: "youtube.com",
+                displayName: "YouTube",
+                targetKind: .website,
+                severity: .allowed,
+                source: .manual,
+                status: .active,
+                evidenceCount: 0
+            )
+        )
+        context.insert(
+            IdleDistractionItem(
+                key: "reddit.com",
+                displayName: "Reddit",
+                targetKind: .website,
+                severity: .minor,
+                source: .suggested,
+                status: .pending,
+                evidenceCount: 3
+            )
+        )
+        context.insert(
+            IdleDistractionItem(
+                key: "news.ycombinator.com",
+                displayName: "Hacker News",
+                targetKind: .website,
+                severity: .minor,
+                source: .suggested,
+                status: .active,
+                evidenceCount: 4
             )
         )
         try context.save()
@@ -1566,6 +1652,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         case "today_stats_view": return "Today companion behavioral metrics (Earned Blocks, Guardian Learned, Domain Signals)"
         case "weekly_stats_view": return "Weekly companion trends and Domain Patterns panel"
         case "insights_view_domains": return "Insights Guardian Recommendations and App Usage domain analytics"
+        case "distractions_view": return "Companion Distractions tab with active rules, learned suggestions, and manual add"
         case "settings_domain_tracking": return "Settings domain tracking toggle and recovery guidance"
         case "break_complete_reason_sheet_hidden": return "Break-complete window with reason sheet collapsed"
         case "break_complete_reason_sheet_visible": return "Break-complete window with reason sheet expanded"
@@ -1605,7 +1692,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
             TaskIntent.self,
             CoachInterruption.self,
             InterventionAttempt.self,
-            BreakLearningEvent.self
+            BreakLearningEvent.self,
+            IdleDistractionItem.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: configuration)

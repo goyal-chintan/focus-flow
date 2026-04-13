@@ -1915,6 +1915,64 @@ final class TimerViewModel {
         outsideSessionEscalationCooldownUntil = Date().addingTimeInterval(delay)
     }
 
+    private func currentIdleDistractionTarget() -> IdleDistractionCatalog.Target? {
+        if let browserHost = AppUsageTracker.shared.currentFrontmostBrowserHost {
+            return .website(browserHost)
+        }
+        if let bundleIdentifier = AppUsageTracker.shared.currentFrontmostBundleId {
+            return .app(bundleIdentifier)
+        }
+        return nil
+    }
+
+    private func loadIdleDistractionCatalog() -> IdleDistractionCatalog {
+        guard let modelContext else {
+            return IdleDistractionCatalog(items: [])
+        }
+        let descriptor = FetchDescriptor<IdleDistractionItem>()
+        let items = (try? modelContext.fetch(descriptor)) ?? []
+        return IdleDistractionCatalog(items: items)
+    }
+
+    @discardableResult
+    private func recordIdleDistractionEvidence(
+        target: IdleDistractionCatalog.Target?,
+        displayName: String?,
+        outcome: IdleDistractionEvidenceOutcome
+    ) -> IdleDistractionCatalog.Resolution? {
+        guard let target, let modelContext else { return nil }
+
+        let resolvedDisplayName: String
+        if let displayName, !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            resolvedDisplayName = displayName
+        } else {
+            switch target {
+            case .app(let bundleIdentifier):
+                resolvedDisplayName = AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleIdentifier)")
+            case .website(let host):
+                resolvedDisplayName = AppUsageEntry.domainDisplayName(for: host)
+            }
+        }
+
+        var catalog = loadIdleDistractionCatalog()
+        let insertedItem = catalog.recordIdleEvidence(
+            target: target,
+            displayName: resolvedDisplayName,
+            outcome: outcome
+        )
+        if let insertedItem {
+            modelContext.insert(insertedItem)
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            log("Failed to persist idle distraction evidence: \(error)")
+        }
+
+        return catalog.resolution(for: target)
+    }
+
     private func appendBlockActionIfRecommended(
         actions: [FocusCoachQuickAction],
         context: FocusCoachContext
@@ -2185,10 +2243,16 @@ final class TimerViewModel {
         let hour = currentHourOverride ?? Calendar.current.component(.hour, from: now)
         let weekday = Calendar.current.component(.weekday, from: now)
         let isWeekday = (2...6).contains(weekday)
+        let idleTarget = currentIdleDistractionTarget()
+        let idleSeverity = idleTarget.flatMap { loadIdleDistractionCatalog().resolution(for: $0).severity }
+        let effectiveFrontmostCategory = AppUsageTracker.idleAdjustedCategory(
+            frontmostCategory: frontmostCategory,
+            idleSeverityOverride: idleSeverity
+        )
         let opportunityContext = coachOpportunityModel.idleStarterContext(
             idleSeconds: idleSeconds,
             escalationLevel: escalationLevel,
-            frontmostCategory: frontmostCategory,
+            frontmostCategory: effectiveFrontmostCategory,
             hourOfDay: hour,
             minutesUntilNextCalendarEvent: nil,
             defaultMinutes: max(5, selectedMinutes)
@@ -2211,7 +2275,7 @@ final class TimerViewModel {
                 isWeekday: isWeekday,
                 preMeetingRunwayMinutes: nil,
                 matchesHistoricalMissedStart: workIntentSignal.matchesHistoricalMissedStart,
-                productiveContinuity: frontmostCategory == .productive
+                productiveContinuity: effectiveFrontmostCategory == .productive
             )
         )
         let appSwitchRate = FocusCoachEngine.computeAppSwitchRate(
@@ -2219,7 +2283,7 @@ final class TimerViewModel {
         )
         let driftScoreResult = outsideSessionSignalScorer.scoreDrift(
             OutsideSessionDriftSignals(
-                frontmostCategory: frontmostCategory,
+                frontmostCategory: effectiveFrontmostCategory,
                 appSwitchesPerMinute: appSwitchRate,
                 contextMismatch: coachEngine.hasRepeatedProjectPatternForLatestObservation(),
                 overPlanningLoopDetected: AppUsageTracker.shared.currentFrontmostBundleId?
@@ -2274,7 +2338,7 @@ final class TimerViewModel {
             // Build personalisation context snapshot
             let coachCtx = buildCoachContext(
                 idleSeconds: idleSeconds,
-                frontmostCategory: frontmostCategory,
+                frontmostCategory: effectiveFrontmostCategory,
                 frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
             )
 
@@ -2294,7 +2358,7 @@ final class TimerViewModel {
             )
             let shouldEscalateToStrongPrompt =
                 outsideSessionAwaitingStartFocus
-                || (escalationLevel >= 2 && frontmostCategory == .productive)
+                || (escalationLevel >= 2 && effectiveFrontmostCategory == .productive)
             if shouldEscalateToStrongPrompt {
                 if outsideSessionAwaitingStartFocus {
                     let elapsed = now.timeIntervalSince(pendingNotificationNudgeAt ?? now)
@@ -2310,6 +2374,11 @@ final class TimerViewModel {
                         showCoachInterventionWindow = false
                         return
                     }
+                    _ = recordIdleDistractionEvidence(
+                        target: idleTarget,
+                        displayName: AppUsageTracker.shared.currentFrontmostDisplayLabel,
+                        outcome: .ignoredNudge
+                    )
                     outsideSessionAwaitingStartFocus = false
                     pendingNotificationNudgeAt = nil
                     outsideSessionNonResponseStreak = min(outsideSessionNonResponseStreak + 1, 8)

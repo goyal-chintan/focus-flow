@@ -26,6 +26,7 @@ enum ReviewArtifactContract {
         "today_stats_view",
         "weekly_stats_view",
         "insights_view_domains",
+        "distractions_view",
         "settings_domain_tracking",
         "break_complete_reason_sheet_hidden",
         "break_complete_reason_sheet_visible"

@@ -64,6 +64,7 @@ final class ReviewQualityGateTests: XCTestCase {
         XCTAssertTrue(requiredFlows.contains("today_stats_view"))
         XCTAssertTrue(requiredFlows.contains("weekly_stats_view"))
         XCTAssertTrue(requiredFlows.contains("insights_view_domains"))
+        XCTAssertTrue(requiredFlows.contains("distractions_view"))
         XCTAssertTrue(requiredFlows.contains("settings_domain_tracking"))
     }
 

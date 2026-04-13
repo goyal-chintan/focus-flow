@@ -86,4 +86,47 @@ final class AppUsageTrackerTests: XCTestCase {
         XCTAssertEqual(totals.totalFocusSeconds, 1500)
         XCTAssertEqual(totals.distractingFocusSeconds, 1200)
     }
+
+    func testObservationProjectScopeDropsRestoredProjectWhenIdle() {
+        let scope = AppUsageTracker.observationProjectScope(
+            isInSession: false,
+            selectedProjectId: UUID(),
+            selectedProjectName: "Office",
+            selectedWorkMode: .deepWork
+        )
+
+        XCTAssertNil(scope.selectedProjectId)
+        XCTAssertNil(scope.selectedProjectName)
+        XCTAssertNil(scope.selectedWorkMode)
+    }
+
+    func testObservationProjectScopeKeepsProjectDuringActiveSession() {
+        let projectId = UUID()
+
+        let scope = AppUsageTracker.observationProjectScope(
+            isInSession: true,
+            selectedProjectId: projectId,
+            selectedProjectName: "Office",
+            selectedWorkMode: .deepWork
+        )
+
+        XCTAssertEqual(scope.selectedProjectId, projectId)
+        XCTAssertEqual(scope.selectedProjectName, "Office")
+        XCTAssertEqual(scope.selectedWorkMode, .deepWork)
+    }
+
+    func testIdleFrontmostContextUsesAcceptedIdleRuleInsteadOfRestoredProjectAllowance() {
+        let settings = AppSettings()
+
+        let context = AppUsageTracker.frontmostContextPresentation(
+            bundleIdentifier: "com.mitchellh.ghostty",
+            appName: "Ghostty",
+            windowTitle: "Ghostty",
+            resolvedBrowserHost: nil,
+            settings: settings,
+            idleSeverityOverride: .major
+        )
+
+        XCTAssertEqual(context.category, .distracting)
+    }
 }

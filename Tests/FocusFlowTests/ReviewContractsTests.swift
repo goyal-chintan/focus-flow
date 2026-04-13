@@ -279,6 +279,205 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertLessThan(aboutRange.lowerBound, healthRange.lowerBound)
     }
 
+    func testCompanionWindowUsesProminentDetailSplitViewStyleToAvoidTahoeLayoutLoop() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("CompanionWindowView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains(".navigationSplitViewStyle(.prominentDetail)"),
+            "CompanionWindowView should use the less aggressive prominent-detail split style so the stats window does not deadlock on macOS Tahoe."
+        )
+        XCTAssertFalse(
+            source.contains(".navigationSplitViewStyle(.balanced)"),
+            "CompanionWindowView must not use the balanced split style because it re-enters AppKit layout and freezes the stats window on macOS Tahoe."
+        )
+    }
+
+    func testStatsWindowUsesContentSizeResizabilityForTahoeLayoutStability() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("FocusFlowApp.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        let statsWindowRange = try XCTUnwrap(source.range(of: "Window(\"FocusFlow\", id: \"stats\")"))
+        let nextWindowRange = try XCTUnwrap(source.range(of: "Window(\"Session Complete\", id: \"session-complete\")"))
+        let statsWindowSource = String(source[statsWindowRange.lowerBound..<nextWindowRange.lowerBound])
+
+        XCTAssertTrue(
+            statsWindowSource.contains(".windowResizability(.contentSize)"),
+            "The stats window scene must opt into content-size resizability so Tahoe applies the companion min size before initial window layout."
+        )
+    }
+
+    func testCompanionWindowIncludesDistractionsTabAndView() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("CompanionWindowView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("case distractions = \"Distractions\""))
+        XCTAssertTrue(source.contains("case .distractions:"))
+        XCTAssertTrue(source.contains("DistractionsView()"))
+    }
+
+    func testDistractionsViewExposesSuggestionsRulesAndManualAdd() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("Suggestions"))
+        XCTAssertTrue(source.contains("Active Rules"))
+        XCTAssertTrue(source.contains("Add Distraction"))
+        XCTAssertTrue(source.contains("LiquidActionButton("))
+        XCTAssertFalse(source.contains("Color.white.opacity("))
+        XCTAssertFalse(source.contains("Form {"))
+    }
+
+    func testDistractionsViewUsesHeaderLevelQuickAddInsteadOfStandaloneAddPanel() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("pageHeaderSection"))
+        XCTAssertTrue(source.contains("quickAddButton"))
+        XCTAssertFalse(source.contains("private var addDistractionSection"))
+    }
+
+    func testDistractionsQuickAddButtonAvoidsOversizedProminentPillTreatment() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains("Add First Rule"))
+        XCTAssertFalse(source.contains(".frame(width: 132)"))
+        XCTAssertTrue(source.contains("role: .secondary"))
+        XCTAssertTrue(source.contains("fillsWidth: false"))
+    }
+
+    func testDistractionsEditorExposesExplicitClearPathsForAppAndWebsiteTargets() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("Clear selected app"))
+        XCTAssertTrue(source.contains("Clear website input"))
+    }
+
+    func testDistractionsEditorAvoidsOversizedSheetDefaults() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains(".frame(width: 460)"))
+        XCTAssertFalse(source.contains(".frame(minHeight: 620)"))
+    }
+
+    func testDistractionsViewLoadsInstalledAppsLazilyForEditorFlow() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("loadInstalledAppsIfNeeded"))
+        XCTAssertFalse(source.contains(".onAppear {\n            if installedApps.isEmpty"))
+    }
+
+    func testLiquidActionButtonDoesNotAddExtraVerticalBulkToProminentButtons() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Components")
+            .appendingPathComponent("LiquidActionButton.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("fillsWidth"))
+        XCTAssertTrue(source.contains(".padding(.horizontal, LiquidDesignTokens.Padding.controlHorizontal)"))
+        XCTAssertFalse(source.contains(".padding(.vertical, LiquidDesignTokens.Padding.controlVertical)"))
+    }
+
+    func testIdleDistractionRuleUpserterReusesAnyActiveMatchAndDismissesSupersededItems() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Services")
+            .appendingPathComponent("IdleDistractionRuleUpserter.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("existingActiveMatch"))
+        XCTAssertFalse(source.contains("$0.source == .manual"))
+        XCTAssertTrue(source.contains("existing.status == .pending || existing.status == .active"))
+    }
+
+    func testInstalledAppCatalogUsesStandardApplicationDirectories() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Services")
+            .appendingPathComponent("InstalledAppCatalog.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("urls(for: .applicationDirectory, in: .allDomainsMask)"))
+        XCTAssertFalse(source.contains("URL(fileURLWithPath: \"/Applications\")"))
+        XCTAssertFalse(source.contains("URL(fileURLWithPath: \"/System/Applications\")"))
+    }
+
     func testSettingsPermissionHealthRowsExposeAccessibleActions() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
@@ -295,6 +494,25 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(source.contains("settings.permissionHealth.reminders.action"))
         XCTAssertTrue(source.contains("settings.permissionHealth.automation.action"))
         XCTAssertTrue(source.contains("settings.permissionHealth.screenRecording.action"))
+    }
+
+    func testSettingsViewLoadsPermissionHealthOutsideBodyRenderPath() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("SettingsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("@State private var permissionHealthRows: [PermissionHealthRow] = []"))
+        XCTAssertTrue(source.contains("DispatchQueue.global(qos: .utility).async"))
+        XCTAssertFalse(
+            source.contains("private var permissionHealthRows: [PermissionHealthRow] {"),
+            "SettingsView must not synchronously compute permission health rows from body; it freezes the Settings tab while probing browser automation access."
+        )
     }
 
     func testPermissionHealthServiceContractExists() throws {
@@ -629,6 +847,7 @@ final class ReviewContractsTests: XCTestCase {
             "today_stats_view",
             "weekly_stats_view",
             "insights_view_domains",
+            "distractions_view",
             "settings_domain_tracking",
             "break_complete_reason_sheet_hidden",
             "break_complete_reason_sheet_visible"

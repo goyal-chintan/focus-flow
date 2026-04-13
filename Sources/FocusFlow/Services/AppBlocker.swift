@@ -109,19 +109,6 @@ final class AppBlocker: NSObject {
     }
 
     static func installedApps() -> [(name: String, bundleID: String)] {
-        var apps: [(String, String)] = []
-        let dirs = [URL(fileURLWithPath: "/Applications"), URL(fileURLWithPath: "/System/Applications")]
-        for dir in dirs {
-            guard let contents = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { continue }
-            for url in contents where url.pathExtension == "app" {
-                guard let bundle = Bundle(url: url),
-                      let bundleID = bundle.bundleIdentifier else { continue }
-                let name = (bundle.infoDictionary?["CFBundleName"] as? String)
-                    ?? (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
-                    ?? url.deletingPathExtension().lastPathComponent
-                apps.append((name, bundleID))
-            }
-        }
-        return apps.sorted { $0.0.localizedCaseInsensitiveCompare($1.0) == .orderedAscending }
+        InstalledAppCatalog.installedApps(in: InstalledAppCatalog.applicationDirectories())
     }
 }

@@ -16,6 +16,12 @@ final class AppUsageTracker {
         let category: AppUsageEntry.AppCategory
     }
 
+    struct ObservationProjectScope: Equatable {
+        let selectedProjectId: UUID?
+        let selectedProjectName: String?
+        let selectedWorkMode: WorkMode?
+    }
+
     private var trackingTimer: Timer?
     private var idleSeconds: Int = 0
     private var isTracking = false
@@ -74,6 +80,12 @@ final class AppUsageTracker {
         return lastFrontmostDisplayLabel
     }
 
+    var currentFrontmostBrowserHost: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return lastFrontmostBrowserHost
+    }
+
     var currentFrontmostDomainLabel: String? {
         guard !lastFrontmostBundleId.isEmpty,
               lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
@@ -101,7 +113,8 @@ final class AppUsageTracker {
         appName: String,
         windowTitle: String,
         resolvedBrowserHost: String?,
-        settings: AppSettings?
+        settings: AppSettings?,
+        idleSeverityOverride: IdleDistractionSeverity? = nil
     ) -> FrontmostContextPresentation {
         let appLabel = AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleIdentifier)")
         let shouldCollectRawDomains = settings?.coachCollectRawDomains == true
@@ -111,11 +124,14 @@ final class AppUsageTracker {
         let domainLabel = browserHost.map(AppUsageEntry.domainDisplayName(for:))
         let effectiveWindowTitle = shouldCollectRawDomains ? windowTitle : appName
         let displayLabel = domainLabel ?? appLabel
-        let category = AppUsageEntry.classify(
-            bundleIdentifier: bundleIdentifier,
-            appName: appName,
-            windowTitle: effectiveWindowTitle,
-            browserHost: browserHost
+        let category = idleAdjustedCategory(
+            frontmostCategory: AppUsageEntry.classify(
+                bundleIdentifier: bundleIdentifier,
+                appName: appName,
+                windowTitle: effectiveWindowTitle,
+                browserHost: browserHost
+            ),
+            idleSeverityOverride: idleSeverityOverride
         )
 
         return FrontmostContextPresentation(
@@ -124,6 +140,41 @@ final class AppUsageTracker {
             domainLabel: domainLabel,
             effectiveWindowTitle: effectiveWindowTitle,
             category: category
+        )
+    }
+
+    static func idleAdjustedCategory(
+        frontmostCategory: AppUsageEntry.AppCategory,
+        idleSeverityOverride: IdleDistractionSeverity?
+    ) -> AppUsageEntry.AppCategory {
+        switch idleSeverityOverride {
+        case .major:
+            return .distracting
+        case .minor, .allowed:
+            return .neutral
+        case nil:
+            return frontmostCategory
+        }
+    }
+
+    static func observationProjectScope(
+        isInSession: Bool,
+        selectedProjectId: UUID?,
+        selectedProjectName: String?,
+        selectedWorkMode: WorkMode?
+    ) -> ObservationProjectScope {
+        guard isInSession else {
+            return ObservationProjectScope(
+                selectedProjectId: nil,
+                selectedProjectName: nil,
+                selectedWorkMode: nil
+            )
+        }
+
+        return ObservationProjectScope(
+            selectedProjectId: selectedProjectId,
+            selectedProjectName: selectedProjectName,
+            selectedWorkMode: selectedWorkMode
         )
     }
 
@@ -348,15 +399,21 @@ final class AppUsageTracker {
             inactivitySeconds = 0
 
             // Emit SuspiciousContextObservation for coach / guardian layer
+            let projectScope = Self.observationProjectScope(
+                isInSession: isFocusing,
+                selectedProjectId: timerVM?.selectedProject?.id,
+                selectedProjectName: timerVM?.selectedProject?.name,
+                selectedWorkMode: timerVM?.selectedProject?.workMode
+            )
             let obs = buildObservation(
                 bundleId: bundleId,
                 appName: appName,
                 windowTitle: contextPresentation.effectiveWindowTitle,
                 browserHost: browserHost,
                 isInSession: isFocusing,
-                selectedProjectId: timerVM?.selectedProject?.id,
-                selectedProjectName: timerVM?.selectedProject?.name,
-                selectedWorkMode: timerVM?.selectedProject?.workMode
+                selectedProjectId: projectScope.selectedProjectId,
+                selectedProjectName: projectScope.selectedProjectName,
+                selectedWorkMode: projectScope.selectedWorkMode
             )
             onSuspiciousObservation?(obs)
         } else {

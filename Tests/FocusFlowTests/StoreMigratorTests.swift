@@ -191,6 +191,51 @@ final class StoreMigratorTests: XCTestCase {
         XCTAssertEqual(original, "Glass")
     }
 
+    func testMigrateAddsIdleDistractionColumnsWhenTableAlreadyExists() throws {
+        let url = try makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let db = try openDB(url)
+        defer { sqlite3_close(db) }
+
+        try exec(db, """
+        CREATE TABLE ZIDLEDISTRACTIONITEM (
+            Z_PK INTEGER PRIMARY KEY,
+            Z_ENT INTEGER,
+            Z_OPT INTEGER,
+            ZKEY VARCHAR
+        );
+        """)
+
+        try exec(db, """
+        INSERT INTO ZIDLEDISTRACTIONITEM (Z_PK, Z_ENT, Z_OPT, ZKEY)
+        VALUES (1, 1, 1, 'youtube.com');
+        """)
+
+        try StoreMigrator.migrateStoreIfNeeded(at: url)
+
+        let columns = try tableColumns(db, table: "ZIDLEDISTRACTIONITEM")
+        XCTAssertTrue(columns.contains("ZDISPLAYNAME"))
+        XCTAssertTrue(columns.contains("ZTARGETKINDRAWVALUE"))
+        XCTAssertTrue(columns.contains("ZSEVERITYRAWVALUE"))
+        XCTAssertTrue(columns.contains("ZSOURCERAWVALUE"))
+        XCTAssertTrue(columns.contains("ZSTATUSRAWVALUE"))
+        XCTAssertTrue(columns.contains("ZEVIDENCECOUNT"))
+        XCTAssertTrue(columns.contains("ZCREATEDAT"))
+        XCTAssertTrue(columns.contains("ZUPDATEDAT"))
+
+        let values = try querySingleIdleDistractionColumns(
+            db,
+            sql: "SELECT ZDISPLAYNAME, ZTARGETKINDRAWVALUE, ZSEVERITYRAWVALUE, ZSOURCERAWVALUE, ZSTATUSRAWVALUE, ZEVIDENCECOUNT FROM ZIDLEDISTRACTIONITEM WHERE Z_PK = 1;"
+        )
+        XCTAssertEqual(values.displayName, "")
+        XCTAssertEqual(values.targetKind, "app")
+        XCTAssertEqual(values.severity, "minor")
+        XCTAssertEqual(values.source, "suggested")
+        XCTAssertEqual(values.status, "pending")
+        XCTAssertEqual(values.evidenceCount, 0)
+    }
+
     private func makeTempStoreURL() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -327,6 +372,37 @@ final class StoreMigratorTests: XCTestCase {
             Int(sqlite3_column_int(statement, 8)),
             Int(sqlite3_column_int(statement, 9)),
             String(cString: modeText)
+        )
+    }
+
+    private func querySingleIdleDistractionColumns(_ db: OpaquePointer, sql: String) throws -> (
+        displayName: String,
+        targetKind: String,
+        severity: String,
+        source: String,
+        status: String,
+        evidenceCount: Int
+    ) {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw NSError(domain: "StoreMigratorTests", code: 17)
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let displayName = sqlite3_column_text(statement, 0),
+              let targetKind = sqlite3_column_text(statement, 1),
+              let severity = sqlite3_column_text(statement, 2),
+              let source = sqlite3_column_text(statement, 3),
+              let status = sqlite3_column_text(statement, 4) else {
+            throw NSError(domain: "StoreMigratorTests", code: 18)
+        }
+        return (
+            String(cString: displayName),
+            String(cString: targetKind),
+            String(cString: severity),
+            String(cString: source),
+            String(cString: status),
+            Int(sqlite3_column_int(statement, 5))
         )
     }
 }

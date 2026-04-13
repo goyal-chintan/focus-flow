@@ -1,6 +1,6 @@
 import Foundation
 
-struct BrowserAutomationTarget: Equatable {
+struct BrowserAutomationTarget: Equatable, Sendable {
     let bundleIdentifier: String
     let displayName: String
     let scriptingName: String

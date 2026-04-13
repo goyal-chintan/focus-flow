@@ -27,7 +27,8 @@ struct SettingsView: View {
     @State private var isEnablingCalendar = false
     @State private var isEnablingReminders = false
     @State private var showBlockingSheet = false
-    @State private var permissionHealthRefreshTick = 0
+    @State private var permissionHealthRows: [PermissionHealthRow] = []
+    @State private var permissionHealthRefreshToken = 0
     @StateObject private var notificationService = NotificationService.shared
     private let initialScrollTarget: ScrollTarget?
     private let permissionHealthExpectedTitles = [
@@ -101,14 +102,6 @@ struct SettingsView: View {
                 refreshPermissionHealth()
             }
         }
-    }
-
-    private var permissionHealthRows: [PermissionHealthRow] {
-        _ = permissionHealthRefreshTick
-        return PermissionHealthService().rows(
-            calendarIntegrationEnabled: settings.calendarIntegrationEnabled,
-            remindersIntegrationEnabled: settings.remindersIntegrationEnabled
-        )
     }
 
     private var durationsSection: some View {
@@ -1110,8 +1103,33 @@ struct SettingsView: View {
     }
 
     private func refreshPermissionHealth() {
-        permissionHealthRefreshTick += 1
         notificationService.refreshAuthorizationStatus()
+        permissionHealthRefreshToken += 1
+        let refreshToken = permissionHealthRefreshToken
+        let calendarIntegrationEnabled = settings.calendarIntegrationEnabled
+        let remindersIntegrationEnabled = settings.remindersIntegrationEnabled
+        let service = PermissionHealthService()
+        let targets = service.installedAutomationTargets()
+
+        permissionHealthRows = service.rows(
+            calendarIntegrationEnabled: calendarIntegrationEnabled,
+            remindersIntegrationEnabled: remindersIntegrationEnabled,
+            automationProbeInProgress: !targets.isEmpty
+        )
+
+        guard !targets.isEmpty else { return }
+
+        DispatchQueue.global(qos: .utility).async {
+            let statuses = BrowserAutomationPermissionProbe.statuses(for: targets)
+            DispatchQueue.main.async {
+                guard refreshToken == permissionHealthRefreshToken else { return }
+                permissionHealthRows = PermissionHealthService().rows(
+                    calendarIntegrationEnabled: calendarIntegrationEnabled,
+                    remindersIntegrationEnabled: remindersIntegrationEnabled,
+                    automationStatuses: statuses
+                )
+            }
+        }
     }
 
     @MainActor

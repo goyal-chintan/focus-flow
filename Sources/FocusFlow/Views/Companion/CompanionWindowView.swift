@@ -5,6 +5,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
     case calendar = "Calendar"
     case weekly = "Week"
     case insights = "Insights"
+    case distractions = "Distractions"
     case projects = "Projects"
     case settings = "Settings"
 
@@ -16,6 +17,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         case .calendar: "calendar"
         case .weekly: "chart.bar.fill"
         case .insights: "brain.head.profile"
+        case .distractions: "hand.raised.fill"
         case .projects: "folder.fill"
         case .settings: "gearshape.fill"
         }
@@ -27,6 +29,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         case .calendar: "Session history"
         case .weekly: "Trends and history"
         case .insights: "Patterns and tips"
+        case .distractions: "Idle rules"
         case .projects: "Manage projects"
         case .settings: "Timer preferences"
         }
@@ -38,6 +41,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
         case .calendar: .red
         case .weekly: .purple
         case .insights: .indigo
+        case .distractions: .pink
         case .projects: .mint
         case .settings: .orange
         }
@@ -60,7 +64,7 @@ struct CompanionWindowView: View {
                 .toolbarBackground(.ultraThinMaterial, for: .windowToolbar)
                 .background(windowBackground)
         }
-        .navigationSplitViewStyle(.balanced)
+        .navigationSplitViewStyle(.prominentDetail)
         .onAppear {
             if let tab = CompanionTab(rawValue: requestedTabRaw), tab != .today {
                 selectedTab = tab
@@ -100,6 +104,8 @@ struct CompanionWindowView: View {
             WeeklyStatsView()
         case .insights:
             InsightsView()
+        case .distractions:
+            DistractionsView()
         case .projects:
             ProjectsListView()
         case .settings:
