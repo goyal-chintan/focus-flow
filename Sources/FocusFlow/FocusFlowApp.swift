@@ -79,16 +79,15 @@ struct FocusFlowApp: App {
         Window("FocusFlow", id: "stats") {
             CompanionWindowView()
                 // Minimum frame gives AppKit's constraint engine a concrete lower bound
-                // during the initial layout pass. Without it, NavigationSplitView(.balanced)
-                // triggers re-entrant NSPerformVisuallyAtomicChange calls on macOS 26 Tahoe,
-                // deadlocking the main thread. Sidebar min is 180pt, so 600pt total width
-                // (180 sidebar + 420 detail) is a safe floor. Fixes #33.
+                // during the initial layout pass. Sidebar min is 180pt, so 600pt total width
+                // (180 sidebar + 420 detail) is a safe floor for Tahoe's first window layout.
                 .frame(minWidth: 600, minHeight: 400)
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
                 .preferredColorScheme(.dark)
         }
         .defaultSize(width: 720, height: 520)
+        .windowResizability(.contentSize)
         .modelContainer(container)
 
         Window("Session Complete", id: "session-complete") {

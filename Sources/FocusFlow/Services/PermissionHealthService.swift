@@ -3,7 +3,7 @@ import CoreGraphics
 import CoreServices
 import Foundation
 
-enum PermissionHealthStatus: Equatable {
+enum PermissionHealthStatus: Equatable, Sendable {
     case ready
     case needsAction
     case notRequested
@@ -23,7 +23,7 @@ enum PermissionHealthStatus: Equatable {
     }
 }
 
-enum PermissionHealthAction: Equatable {
+enum PermissionHealthAction: Equatable, Sendable {
     case requestNotifications
     case openNotificationSettings
     case requestCalendarPermission
@@ -35,13 +35,13 @@ enum PermissionHealthAction: Equatable {
     case openScreenRecordingSettings
 }
 
-struct BrowserAutomationTargetStatus: Equatable {
+struct BrowserAutomationTargetStatus: Equatable, Sendable {
     let target: BrowserAutomationTarget
     let status: PermissionHealthStatus
 }
 
-struct PermissionHealthRow: Identifiable, Equatable {
-    enum Kind: String {
+struct PermissionHealthRow: Identifiable, Equatable, Sendable {
+    enum Kind: String, Sendable {
         case notifications
         case calendar
         case reminders
@@ -84,15 +84,24 @@ struct PermissionHealthService {
         BrowserAutomationPermissionProbe.status(for: $0)
     }
 
+    func installedAutomationTargets() -> [BrowserAutomationTarget] {
+        installedAutomationTargetsProvider()
+    }
+
     func rows(
         calendarIntegrationEnabled: Bool,
-        remindersIntegrationEnabled: Bool
+        remindersIntegrationEnabled: Bool,
+        automationStatuses: [BrowserAutomationTargetStatus]? = nil,
+        automationProbeInProgress: Bool = false
     ) -> [PermissionHealthRow] {
         [
             notificationRow(),
             calendarRow(integrationEnabled: calendarIntegrationEnabled),
             remindersRow(integrationEnabled: remindersIntegrationEnabled),
-            automationRow(),
+            automationRow(
+                automationStatuses: automationStatuses,
+                automationProbeInProgress: automationProbeInProgress
+            ),
             screenRecordingRow()
         ]
     }
@@ -225,7 +234,10 @@ struct PermissionHealthService {
         }
     }
 
-    private func automationRow() -> PermissionHealthRow {
+    private func automationRow(
+        automationStatuses: [BrowserAutomationTargetStatus]? = nil,
+        automationProbeInProgress: Bool = false
+    ) -> PermissionHealthRow {
         let targets = installedAutomationTargetsProvider()
         guard !targets.isEmpty else {
             return PermissionHealthRow(
@@ -240,7 +252,22 @@ struct PermissionHealthService {
             )
         }
 
-        let statuses = targets.map { BrowserAutomationTargetStatus(target: $0, status: automationStatusProvider($0)) }
+        if automationProbeInProgress {
+            return PermissionHealthRow(
+                kind: .automation,
+                icon: "hand.raised.app",
+                title: "Browser Automation",
+                message: "Checking browser automation permissions for your installed supported browsers.",
+                status: .notRequested,
+                actionTitle: "Open Automation Settings",
+                action: .openAutomationSettings,
+                detailLines: targets.map { "\($0.displayName): Checking…" }
+            )
+        }
+
+        let statuses = automationStatuses ?? targets.map {
+            BrowserAutomationTargetStatus(target: $0, status: automationStatusProvider($0))
+        }
         let detailLines = statuses.map { "\($0.target.displayName): \($0.status.title)" }
         let aggregateStatus = aggregateAutomationStatus(for: statuses)
         let message: String
@@ -330,5 +357,9 @@ enum BrowserAutomationPermissionProbe {
         default:
             return .needsAction
         }
+    }
+
+    static func statuses(for targets: [BrowserAutomationTarget]) -> [BrowserAutomationTargetStatus] {
+        targets.map { BrowserAutomationTargetStatus(target: $0, status: status(for: $0)) }
     }
 }
