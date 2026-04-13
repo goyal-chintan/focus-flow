@@ -43,12 +43,21 @@ struct DistractionsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: LiquidDesignTokens.Spacing.large) {
-                overviewSection
-                suggestionsSection
-                activeRulesSection
-                addDistractionSection
+                pageHeaderSection
+
+                if suggestionItems.isEmpty && activeRules.isEmpty {
+                    emptyStateSection
+                } else {
+                    if !suggestionItems.isEmpty {
+                        suggestionsSection
+                    }
+
+                    if !activeRules.isEmpty {
+                        activeRulesSection
+                    }
+                }
             }
-            .padding(24)
+            .padding(20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.clear)
@@ -94,40 +103,59 @@ struct DistractionsView: View {
         installedApps = await InstalledAppCatalog.loadInstalledApps()
     }
 
-    private var overviewSection: some View {
+    private var quickAddButtonTitle: String {
+        activeRules.isEmpty && suggestionItems.isEmpty ? "Add First Rule" : "Add Rule"
+    }
+
+    private var pageHeaderSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.large) {
                 LiquidSectionHeader(
-                    "Idle Rules",
-                    subtitle: "Review learned suggestions and manual overrides for outside-session coaching."
-                )
+                    "Distractions",
+                    subtitle: "Idle coaching rules for outside-session recovery."
+                ) {
+                    quickAddButton
+                }
 
                 Text("These rules affect idle and outside-session coaching globally. Focus-session blocking profiles stay under Projects.")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-                    summaryMetric(
+                    summaryMetricTile(
                         title: "Active",
                         value: activeRules.count,
-                        caption: "rules in effect",
-                        accent: .pink
+                        caption: "live rules",
+                        accent: LiquidDesignTokens.Spectral.destructive
                     )
-                    summaryMetric(
+                    summaryMetricTile(
                         title: "Pending",
                         value: suggestionItems.count,
-                        caption: "suggestions to review",
-                        accent: .orange
+                        caption: "waiting review",
+                        accent: LiquidDesignTokens.Spectral.amberDark
                     )
-                    summaryMetric(
+                    summaryMetricTile(
                         title: "Allowed",
                         value: allowedRulesCount,
-                        caption: "exceptions marked safe",
-                        accent: .green
+                        caption: "safe exceptions",
+                        accent: LiquidDesignTokens.Spectral.mintDark
                     )
                 }
             }
+            .padding(18)
         }
+    }
+
+    private var quickAddButton: some View {
+        LiquidActionButton(
+            title: quickAddButtonTitle,
+            icon: "plus",
+            role: .primary
+        ) {
+            editorDestination = DistractionEditorDestination(kind: .addManual, item: nil)
+        }
+        .frame(width: 132)
+        .accessibilityLabel("Add distraction rule")
     }
 
     private var suggestionsSection: some View {
@@ -135,23 +163,16 @@ struct DistractionsView: View {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
                 LiquidSectionHeader(
                     "Suggestions",
-                    subtitle: suggestionItems.isEmpty
-                        ? "FocusFlow will suggest a rule after repeated ignored nudges."
-                        : "\(suggestionItems.count) pending suggestion\(suggestionItems.count == 1 ? "" : "s")"
+                    subtitle: "\(suggestionItems.count) pending suggestion\(suggestionItems.count == 1 ? "" : "s")"
                 )
 
-                if suggestionItems.isEmpty {
-                    Text("No idle distraction suggestions yet. Ignore a couple of nudges or add a rule manually when FocusFlow misses something.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(spacing: 12) {
-                        ForEach(suggestionItems) { item in
-                            suggestionCard(item)
-                        }
+                VStack(spacing: 12) {
+                    ForEach(suggestionItems) { item in
+                        suggestionCard(item)
                     }
                 }
             }
+            .padding(18)
         }
     }
 
@@ -160,59 +181,54 @@ struct DistractionsView: View {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
                 LiquidSectionHeader(
                     "Active Rules",
-                    subtitle: activeRules.isEmpty
-                        ? "No manual or accepted idle rules yet."
-                        : "\(activeRules.count) rule\(activeRules.count == 1 ? "" : "s") currently shaping idle coaching"
+                    subtitle: "\(activeRules.count) rule\(activeRules.count == 1 ? "" : "s") currently shaping idle coaching"
                 )
 
-                if activeRules.isEmpty {
-                    Text("Manual rules and accepted suggestions will appear here once you save them.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(spacing: 12) {
-                        ForEach(activeRules) { item in
-                            activeRuleCard(item)
-                        }
+                VStack(spacing: 12) {
+                    ForEach(activeRules) { item in
+                        activeRuleCard(item)
                     }
                 }
             }
+            .padding(18)
         }
     }
 
-    private var addDistractionSection: some View {
-        LiquidGlassPanel {
+    private var emptyStateSection: some View {
+        LiquidGlassPanel(cornerRadius: LiquidDesignTokens.CornerRadius.card) {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.medium) {
-                LiquidSectionHeader(
-                    "Add Distraction",
-                    subtitle: "Create a manual app or website rule before it becomes a pattern."
-                )
+                Text("No idle rules yet")
+                    .font(LiquidDesignTokens.Typography.headlineLarge)
 
-                Text("Use manual rules when FocusFlow missed something like Ghostty or YouTube, or when you want a rule in place before the next idle drift.")
-                    .font(.system(size: 13, weight: .medium))
+                Text("Start with a manual rule for something FocusFlow missed, or wait until repeated ignored nudges turn into a suggestion.")
+                    .font(LiquidDesignTokens.Typography.bodySmall)
                     .foregroundStyle(.secondary)
 
-                LiquidActionButton(
-                    title: "Add Distraction",
-                    icon: "plus",
-                    role: .primary,
-                    tint: .pink
-                ) {
-                    editorDestination = DistractionEditorDestination(kind: .addManual, item: nil)
+                VStack(alignment: .leading, spacing: 10) {
+                    emptyStateRow(
+                        icon: "plus.circle.fill",
+                        title: "Quick add",
+                        detail: "Create a rule for Ghostty, YouTube, or any app/site you already know becomes idle drift."
+                    )
+                    emptyStateRow(
+                        icon: "sparkles",
+                        title: "Learned suggestions",
+                        detail: "FocusFlow promotes repeated ignored nudges into reviewable suggestions instead of silently escalating."
+                    )
                 }
-                .accessibilityLabel("Add distraction rule")
             }
+            .padding(18)
         }
     }
 
-    private func summaryMetric(title: String, value: Int, caption: String, accent: Color) -> some View {
+    private func summaryMetricTile(title: String, value: Int, caption: String, accent: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Text("\(value)")
-                .font(.system(size: 26, weight: .semibold))
+                .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(accent)
 
             Text(caption)
@@ -220,8 +236,35 @@ struct DistractionsView: View {
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(cardBackground)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
+                .fill(LiquidDesignTokens.Surface.containerLow)
+                .overlay(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
+                        .stroke(LiquidDesignTokens.Surface.glassStroke, lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func emptyStateRow(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
+                .frame(width: 20, height: 20)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func suggestionCard(_ item: IdleDistractionItem) -> some View {
@@ -240,7 +283,11 @@ struct DistractionsView: View {
                     HStack(spacing: 8) {
                         compactBadge(text: item.targetKind.label, systemImage: item.targetKind.systemImage, tint: .secondary)
                         compactBadge(text: "Suggested: \(item.severity.label)", systemImage: item.severity.systemImage, tint: item.severity.tint)
-                        compactBadge(text: "\(item.evidenceCount) ignored nudges", systemImage: "bell.slash", tint: .orange)
+                        compactBadge(
+                            text: "\(item.evidenceCount) ignored nudges",
+                            systemImage: "bell.slash",
+                            tint: LiquidDesignTokens.Spectral.amberDark
+                        )
                     }
                 }
 
@@ -256,7 +303,7 @@ struct DistractionsView: View {
                     title: "Review Suggestion",
                     icon: "checkmark",
                     role: .primary,
-                    tint: .orange
+                    tint: LiquidDesignTokens.Spectral.amberDark
                 ) {
                     editorDestination = DistractionEditorDestination(kind: .reviewSuggestion, item: item)
                 }
@@ -294,7 +341,11 @@ struct DistractionsView: View {
                         compactBadge(text: item.source.label, systemImage: item.source.systemImage, tint: item.source.tint)
                         compactBadge(text: item.severity.label, systemImage: item.severity.systemImage, tint: item.severity.tint)
                         if item.source == .suggested {
-                            compactBadge(text: "\(item.evidenceCount) signals", systemImage: "chart.bar.fill", tint: .orange)
+                            compactBadge(
+                                text: "\(item.evidenceCount) signals",
+                                systemImage: "chart.bar.fill",
+                                tint: LiquidDesignTokens.Spectral.amberDark
+                            )
                         }
                     }
                 }
@@ -356,9 +407,9 @@ struct DistractionsView: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(tint)
             .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
             .background(
-                Capsule()
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(tint.opacity(0.12))
             )
     }
@@ -435,7 +486,7 @@ private struct DistractionRuleEditor: View {
         let initialTargetKind = initialItem?.targetKind ?? .app
         _targetKind = State(initialValue: initialTargetKind)
         _selectedAppBundleID = State(initialValue: initialTargetKind == .app ? initialItem?.key : nil)
-        _appSearchText = State(initialValue: initialTargetKind == .app ? (initialItem?.displayName ?? "") : "")
+        _appSearchText = State(initialValue: "")
         _websiteInput = State(initialValue: initialTargetKind == .website ? (initialItem?.key ?? "") : "")
         _severity = State(initialValue: initialItem?.severity ?? .minor)
     }
@@ -466,7 +517,7 @@ private struct DistractionRuleEditor: View {
         let normalizedQuery = appSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let baseApps = mergedInstalledApps()
         guard !normalizedQuery.isEmpty else {
-            return Array(baseApps.prefix(12))
+            return Array(baseApps.prefix(8))
         }
 
         return baseApps.filter {
@@ -486,6 +537,19 @@ private struct DistractionRuleEditor: View {
 
     private var primaryActionTitle: String {
         destination.kind == .reviewSuggestion ? "Activate Rule" : "Save Rule"
+    }
+
+    private var selectedApp: (name: String, bundleID: String)? {
+        guard let selectedAppBundleID else { return nil }
+        return mergedInstalledApps().first(where: { $0.bundleID == selectedAppBundleID })
+    }
+
+    private var hasWebsiteInput: Bool {
+        !websiteInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var editorWidth: CGFloat {
+        destination.kind == .reviewSuggestion ? 420 : 400
     }
 
     var body: some View {
@@ -510,11 +574,10 @@ private struct DistractionRuleEditor: View {
 
                 actionButtons
             }
-            .padding(24)
+            .padding(20)
         }
-        .frame(width: 460)
-        .frame(minHeight: 620)
-        .background(.background)
+        .frame(minWidth: 380, idealWidth: editorWidth, maxWidth: editorWidth, alignment: .topLeading)
+        .background(LiquidDesignTokens.Surface.background)
         .saveErrorOverlay($saveError)
         .task(id: targetKind) {
             guard targetKind == .app else { return }
@@ -535,9 +598,24 @@ private struct DistractionRuleEditor: View {
 
     private var appSelectionSection: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("App")
+            HStack(alignment: .center, spacing: 10) {
+                sectionLabel("App")
+                Spacer(minLength: 0)
+                if selectedApp != nil {
+                    inlineUtilityButton("Clear selected app", systemImage: "xmark.circle.fill") {
+                        clearSelectedApp()
+                    }
+                }
+            }
 
-            TextField("Search installed apps", text: $appSearchText)
+            if let selectedApp {
+                selectedAppSummary(selectedApp)
+            }
+
+            TextField(
+                selectedApp == nil ? "Search installed apps" : "Search to replace selected app",
+                text: $appSearchText
+            )
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -563,7 +641,7 @@ private struct DistractionRuleEditor: View {
                         ForEach(filteredApps, id: \.bundleID) { app in
                             Button {
                                 selectedAppBundleID = app.bundleID
-                                appSearchText = app.name
+                                appSearchText = ""
                             } label: {
                                 HStack(spacing: 10) {
                                     VStack(alignment: .leading, spacing: 3) {
@@ -580,7 +658,7 @@ private struct DistractionRuleEditor: View {
 
                                     if app.bundleID == selectedAppBundleID {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.pink)
+                                            .foregroundStyle(targetKind.tint)
                                             .accessibilityHidden(true)
                                     }
                                 }
@@ -594,7 +672,7 @@ private struct DistractionRuleEditor: View {
                                         .overlay(
                                             RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
                                                 .stroke(
-                                                    app.bundleID == selectedAppBundleID ? Color.pink.opacity(0.3) : LiquidDesignTokens.Surface.glassStroke,
+                                                    app.bundleID == selectedAppBundleID ? targetKind.tint.opacity(0.26) : LiquidDesignTokens.Surface.glassStroke,
                                                     lineWidth: 0.5
                                                 )
                                         )
@@ -605,14 +683,22 @@ private struct DistractionRuleEditor: View {
                         }
                     }
                 }
-                .frame(maxHeight: 220)
+                .frame(maxHeight: 180)
             }
         }
     }
 
     private var websiteSection: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Website")
+            HStack(alignment: .center, spacing: 10) {
+                sectionLabel("Website")
+                Spacer(minLength: 0)
+                if hasWebsiteInput {
+                    inlineUtilityButton("Clear website input", systemImage: "xmark.circle.fill") {
+                        clearWebsiteInput()
+                    }
+                }
+            }
 
             TextField("youtube.com or https://youtube.com", text: $websiteInput)
                 .textFieldStyle(.plain)
@@ -663,6 +749,8 @@ private struct DistractionRuleEditor: View {
 
     private var actionButtons: some View {
         HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+            Spacer(minLength: 0)
+
             LiquidActionButton(
                 title: "Cancel",
                 icon: "xmark",
@@ -670,6 +758,7 @@ private struct DistractionRuleEditor: View {
             ) {
                 dismiss()
             }
+            .frame(width: 112)
 
             LiquidActionButton(
                 title: primaryActionTitle,
@@ -679,7 +768,9 @@ private struct DistractionRuleEditor: View {
                 saveRule()
             }
             .disabled(!canSave)
+            .frame(width: destination.kind == .reviewSuggestion ? 156 : 138)
         }
+        .padding(.top, 4)
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -697,7 +788,7 @@ private struct DistractionRuleEditor: View {
                 .font(LiquidDesignTokens.Typography.controlLabel)
                 .foregroundStyle(isSelected ? kind.tint : Color.secondary)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
+                .frame(minHeight: 40)
                 .background(
                     RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
                         .fill(isSelected ? LiquidDesignTokens.Surface.containerHigh : LiquidDesignTokens.Surface.containerLow)
@@ -716,17 +807,18 @@ private struct DistractionRuleEditor: View {
         return Button {
             severity = option
         } label: {
-            VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Label(option.label, systemImage: option.systemImage)
                     .font(LiquidDesignTokens.Typography.controlLabel)
                     .foregroundStyle(isSelected ? option.tint : Color.secondary)
                 Text(option.helperText)
                     .font(.caption2)
                     .foregroundStyle(isSelected ? Color.primary.opacity(0.85) : Color.secondary)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
             }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 72)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
                     .fill(isSelected ? LiquidDesignTokens.Surface.containerHigh : LiquidDesignTokens.Surface.containerLow)
@@ -752,6 +844,60 @@ private struct DistractionRuleEditor: View {
         return apps.sorted { lhs, rhs in
             lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    private func selectedAppSummary(_ app: (name: String, bundleID: String)) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(targetKind.tint)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(app.name)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(app.bundleID)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
+                .fill(LiquidDesignTokens.Surface.containerLow)
+                .overlay(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
+                        .stroke(targetKind.tint.opacity(0.18), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func inlineUtilityButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(LiquidDesignTokens.Typography.controlSmall)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
+                        .fill(LiquidDesignTokens.Surface.containerLow)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func clearSelectedApp() {
+        selectedAppBundleID = nil
+        appSearchText = ""
+    }
+
+    private func clearWebsiteInput() {
+        websiteInput = ""
     }
 
     private func saveRule() {
@@ -844,9 +990,9 @@ private extension IdleDistractionTargetKind {
     var tint: Color {
         switch self {
         case .app:
-            return .blue
+            return LiquidDesignTokens.Spectral.primaryContainer
         case .website:
-            return .purple
+            return LiquidDesignTokens.Spectral.amberDark
         }
     }
 }
@@ -888,11 +1034,11 @@ private extension IdleDistractionSeverity {
     var tint: Color {
         switch self {
         case .allowed:
-            return .green
+            return LiquidDesignTokens.Spectral.mintDark
         case .minor:
-            return .orange
+            return LiquidDesignTokens.Spectral.amberDark
         case .major:
-            return .pink
+            return LiquidDesignTokens.Spectral.destructive
         }
     }
 }
@@ -919,9 +1065,9 @@ private extension IdleDistractionSource {
     var tint: Color {
         switch self {
         case .manual:
-            return .blue
+            return LiquidDesignTokens.Spectral.primaryContainer
         case .suggested:
-            return .orange
+            return LiquidDesignTokens.Spectral.amberDark
         }
     }
 }

@@ -354,6 +354,52 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertFalse(source.contains("Form {"))
     }
 
+    func testDistractionsViewUsesHeaderLevelQuickAddInsteadOfStandaloneAddPanel() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("pageHeaderSection"))
+        XCTAssertTrue(source.contains("quickAddButton"))
+        XCTAssertFalse(source.contains("private var addDistractionSection"))
+    }
+
+    func testDistractionsEditorExposesExplicitClearPathsForAppAndWebsiteTargets() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("Clear selected app"))
+        XCTAssertTrue(source.contains("Clear website input"))
+    }
+
+    func testDistractionsEditorAvoidsOversizedSheetDefaults() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains(".frame(width: 460)"))
+        XCTAssertFalse(source.contains(".frame(minHeight: 620)"))
+    }
+
     func testDistractionsViewLoadsInstalledAppsLazilyForEditorFlow() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
