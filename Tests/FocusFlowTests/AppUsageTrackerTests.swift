@@ -114,4 +114,19 @@ final class AppUsageTrackerTests: XCTestCase {
         XCTAssertEqual(scope.selectedProjectName, "Office")
         XCTAssertEqual(scope.selectedWorkMode, .deepWork)
     }
+
+    func testIdleFrontmostContextUsesAcceptedIdleRuleInsteadOfRestoredProjectAllowance() {
+        let settings = AppSettings()
+
+        let context = AppUsageTracker.frontmostContextPresentation(
+            bundleIdentifier: "com.mitchellh.ghostty",
+            appName: "Ghostty",
+            windowTitle: "Ghostty",
+            resolvedBrowserHost: nil,
+            settings: settings,
+            idleSeverityOverride: .major
+        )
+
+        XCTAssertEqual(context.category, .distracting)
+    }
 }

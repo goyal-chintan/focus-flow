@@ -1605,7 +1605,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
             TaskIntent.self,
             CoachInterruption.self,
             InterventionAttempt.self,
-            BreakLearningEvent.self
+            BreakLearningEvent.self,
+            IdleDistractionItem.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: configuration)

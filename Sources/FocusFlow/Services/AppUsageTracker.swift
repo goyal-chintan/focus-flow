@@ -80,6 +80,12 @@ final class AppUsageTracker {
         return lastFrontmostDisplayLabel
     }
 
+    var currentFrontmostBrowserHost: String? {
+        guard !lastFrontmostBundleId.isEmpty,
+              lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
+        return lastFrontmostBrowserHost
+    }
+
     var currentFrontmostDomainLabel: String? {
         guard !lastFrontmostBundleId.isEmpty,
               lastFrontmostBundleId != Bundle.main.bundleIdentifier else { return nil }
@@ -107,7 +113,8 @@ final class AppUsageTracker {
         appName: String,
         windowTitle: String,
         resolvedBrowserHost: String?,
-        settings: AppSettings?
+        settings: AppSettings?,
+        idleSeverityOverride: IdleDistractionSeverity? = nil
     ) -> FrontmostContextPresentation {
         let appLabel = AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleIdentifier)")
         let shouldCollectRawDomains = settings?.coachCollectRawDomains == true
@@ -117,11 +124,14 @@ final class AppUsageTracker {
         let domainLabel = browserHost.map(AppUsageEntry.domainDisplayName(for:))
         let effectiveWindowTitle = shouldCollectRawDomains ? windowTitle : appName
         let displayLabel = domainLabel ?? appLabel
-        let category = AppUsageEntry.classify(
-            bundleIdentifier: bundleIdentifier,
-            appName: appName,
-            windowTitle: effectiveWindowTitle,
-            browserHost: browserHost
+        let category = idleAdjustedCategory(
+            frontmostCategory: AppUsageEntry.classify(
+                bundleIdentifier: bundleIdentifier,
+                appName: appName,
+                windowTitle: effectiveWindowTitle,
+                browserHost: browserHost
+            ),
+            idleSeverityOverride: idleSeverityOverride
         )
 
         return FrontmostContextPresentation(
@@ -131,6 +141,20 @@ final class AppUsageTracker {
             effectiveWindowTitle: effectiveWindowTitle,
             category: category
         )
+    }
+
+    static func idleAdjustedCategory(
+        frontmostCategory: AppUsageEntry.AppCategory,
+        idleSeverityOverride: IdleDistractionSeverity?
+    ) -> AppUsageEntry.AppCategory {
+        switch idleSeverityOverride {
+        case .major:
+            return .distracting
+        case .minor, .allowed:
+            return .neutral
+        case nil:
+            return frontmostCategory
+        }
     }
 
     static func observationProjectScope(

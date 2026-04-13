@@ -1061,7 +1061,8 @@ final class TimerCompletionFlowTests: XCTestCase {
             TaskIntent.self,
             CoachInterruption.self,
             InterventionAttempt.self,
-            BreakLearningEvent.self
+            BreakLearningEvent.self,
+            IdleDistractionItem.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: config)
