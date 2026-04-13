@@ -79,4 +79,10 @@ final class PermissionHealthServiceTests: XCTestCase {
         XCTAssertEqual(row.action, .openIntegrationsSection)
         XCTAssertTrue(row.message.contains("Turn on Record to Calendar in Integrations"))
     }
+
+    func testBrowserAutomationProbeReturnsNotRequestedUnderXCTest() throws {
+        let target = try XCTUnwrap(BrowserDomainResolver.supportedAutomationTargets.first)
+
+        XCTAssertEqual(BrowserAutomationPermissionProbe.status(for: target), .notRequested)
+    }
 }

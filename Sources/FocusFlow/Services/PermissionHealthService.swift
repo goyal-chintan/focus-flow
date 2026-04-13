@@ -300,7 +300,18 @@ struct PermissionHealthService {
 }
 
 enum BrowserAutomationPermissionProbe {
+    private static var isRunningUnderXCTest: Bool {
+        NSClassFromString("XCTestCase") != nil ||
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
+
     static func status(for target: BrowserAutomationTarget) -> PermissionHealthStatus {
+        // AppleEvent automation permission checks can block indefinitely under xctest,
+        // which stalls non-interactive screenshot and unit-test runs.
+        guard !isRunningUnderXCTest else {
+            return .notRequested
+        }
+
         let descriptor = NSAppleEventDescriptor(bundleIdentifier: target.bundleIdentifier)
         let result = AEDeterminePermissionToAutomateTarget(
             descriptor.aeDesc,
