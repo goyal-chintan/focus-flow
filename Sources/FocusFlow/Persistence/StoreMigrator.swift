@@ -155,6 +155,54 @@ enum StoreMigrator {
             column: "ZDIFFICULTYBIAS",
             sqlType: "VARCHAR",
             defaultSQLValue: "'moderate'"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZDISPLAYNAME",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "''"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZTARGETKINDRAWVALUE",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "'app'"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZSEVERITYRAWVALUE",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "'minor'"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZSOURCERAWVALUE",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "'suggested'"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZSTATUSRAWVALUE",
+            sqlType: "VARCHAR",
+            defaultSQLValue: "'pending'"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZEVIDENCECOUNT",
+            sqlType: "INTEGER",
+            defaultSQLValue: "0"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZCREATEDAT",
+            sqlType: "TIMESTAMP",
+            defaultSQLValue: "0"
+        ),
+        ColumnMigration(
+            table: "ZIDLEDISTRACTIONITEM",
+            column: "ZUPDATEDAT",
+            sqlType: "TIMESTAMP",
+            defaultSQLValue: "0"
         )
     ]
 
