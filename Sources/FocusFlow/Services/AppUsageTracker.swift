@@ -16,6 +16,12 @@ final class AppUsageTracker {
         let category: AppUsageEntry.AppCategory
     }
 
+    struct ObservationProjectScope: Equatable {
+        let selectedProjectId: UUID?
+        let selectedProjectName: String?
+        let selectedWorkMode: WorkMode?
+    }
+
     private var trackingTimer: Timer?
     private var idleSeconds: Int = 0
     private var isTracking = false
@@ -124,6 +130,27 @@ final class AppUsageTracker {
             domainLabel: domainLabel,
             effectiveWindowTitle: effectiveWindowTitle,
             category: category
+        )
+    }
+
+    static func observationProjectScope(
+        isInSession: Bool,
+        selectedProjectId: UUID?,
+        selectedProjectName: String?,
+        selectedWorkMode: WorkMode?
+    ) -> ObservationProjectScope {
+        guard isInSession else {
+            return ObservationProjectScope(
+                selectedProjectId: nil,
+                selectedProjectName: nil,
+                selectedWorkMode: nil
+            )
+        }
+
+        return ObservationProjectScope(
+            selectedProjectId: selectedProjectId,
+            selectedProjectName: selectedProjectName,
+            selectedWorkMode: selectedWorkMode
         )
     }
 
@@ -348,15 +375,21 @@ final class AppUsageTracker {
             inactivitySeconds = 0
 
             // Emit SuspiciousContextObservation for coach / guardian layer
+            let projectScope = Self.observationProjectScope(
+                isInSession: isFocusing,
+                selectedProjectId: timerVM?.selectedProject?.id,
+                selectedProjectName: timerVM?.selectedProject?.name,
+                selectedWorkMode: timerVM?.selectedProject?.workMode
+            )
             let obs = buildObservation(
                 bundleId: bundleId,
                 appName: appName,
                 windowTitle: contextPresentation.effectiveWindowTitle,
                 browserHost: browserHost,
                 isInSession: isFocusing,
-                selectedProjectId: timerVM?.selectedProject?.id,
-                selectedProjectName: timerVM?.selectedProject?.name,
-                selectedWorkMode: timerVM?.selectedProject?.workMode
+                selectedProjectId: projectScope.selectedProjectId,
+                selectedProjectName: projectScope.selectedProjectName,
+                selectedWorkMode: projectScope.selectedWorkMode
             )
             onSuspiciousObservation?(obs)
         } else {
