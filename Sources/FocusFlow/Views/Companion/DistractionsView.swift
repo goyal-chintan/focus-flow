@@ -103,10 +103,6 @@ struct DistractionsView: View {
         installedApps = await InstalledAppCatalog.loadInstalledApps()
     }
 
-    private var quickAddButtonTitle: String {
-        activeRules.isEmpty && suggestionItems.isEmpty ? "Add First Rule" : "Add Rule"
-    }
-
     private var pageHeaderSection: some View {
         LiquidGlassPanel {
             VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.large) {
@@ -148,13 +144,13 @@ struct DistractionsView: View {
 
     private var quickAddButton: some View {
         LiquidActionButton(
-            title: quickAddButtonTitle,
+            title: "Add Rule",
             icon: "plus",
-            role: .primary
+            role: .secondary,
+            fillsWidth: false
         ) {
             editorDestination = DistractionEditorDestination(kind: .addManual, item: nil)
         }
-        .frame(width: 132)
         .accessibilityLabel("Add distraction rule")
     }
 

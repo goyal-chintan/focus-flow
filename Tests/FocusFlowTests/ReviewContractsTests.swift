@@ -370,6 +370,23 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertFalse(source.contains("private var addDistractionSection"))
     }
 
+    func testDistractionsQuickAddButtonAvoidsOversizedProminentPillTreatment() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Companion")
+            .appendingPathComponent("DistractionsView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains("Add First Rule"))
+        XCTAssertFalse(source.contains(".frame(width: 132)"))
+        XCTAssertTrue(source.contains("role: .secondary"))
+        XCTAssertTrue(source.contains("fillsWidth: false"))
+    }
+
     func testDistractionsEditorExposesExplicitClearPathsForAppAndWebsiteTargets() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
@@ -413,6 +430,22 @@ final class ReviewContractsTests: XCTestCase {
 
         XCTAssertTrue(source.contains("loadInstalledAppsIfNeeded"))
         XCTAssertFalse(source.contains(".onAppear {\n            if installedApps.isEmpty"))
+    }
+
+    func testLiquidActionButtonDoesNotAddExtraVerticalBulkToProminentButtons() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let sourceURL = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("FocusFlow")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("Components")
+            .appendingPathComponent("LiquidActionButton.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("fillsWidth"))
+        XCTAssertTrue(source.contains(".padding(.horizontal, LiquidDesignTokens.Padding.controlHorizontal)"))
+        XCTAssertFalse(source.contains(".padding(.vertical, LiquidDesignTokens.Padding.controlVertical)"))
     }
 
     func testIdleDistractionRuleUpserterReusesAnyActiveMatchAndDismissesSupersededItems() throws {
