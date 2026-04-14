@@ -961,4 +961,70 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(MotionGeometryContract.transitionIntents.keys.contains("SessionComplete.coachReasonDisclosure"))
         XCTAssertTrue(MotionGeometryContract.geometryBaselines.keys.contains("SessionComplete.breakPane"))
     }
+
+    // MARK: - Idle distraction alert pipeline contracts
+
+    func testDistractionViewShowsWarningWhenDomainCollectionIsOff() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("Companion")
+                .appendingPathComponent("DistractionsView.swift"),
+            encoding: .utf8
+        )
+
+        // When coachCollectRawDomains is off (the default) website distraction rules cannot
+        // fire because browser domain tracking is suppressed for privacy. The view must warn
+        // the user so they know why their YouTube rule is not triggering alerts.
+        XCTAssertTrue(
+            source.contains("coachCollectRawDomains") || source.contains("domain tracking"),
+            "DistractionsView must surface a warning or guidance when browser domain tracking is off."
+        )
+    }
+
+    func testIdleDistractionNotificationUsesFrontmostContextualMessageNotGenericSummary() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("ViewModels")
+                .appendingPathComponent("TimerViewModel.swift"),
+            encoding: .utf8
+        )
+
+        // The idle-starter notification body must use the decision.message (which includes
+        // the specific app name via contextualMessage) rather than the generic opportunity
+        // summary so users know WHY they're being nudged.
+        XCTAssertFalse(
+            source.contains("body: opportunityContext.summary"),
+            "Notification body must not use the generic opportunityContext.summary — use decision.message instead so the specific distraction app is named."
+        )
+    }
+
+    func testRouteIdleStarterAcceptsMajorDistractionSeverityToLowerThreshold() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Services")
+                .appendingPathComponent("FocusCoachInterventionPlanner.swift"),
+            encoding: .utf8
+        )
+
+        // routeIdleStarter must accept a distraction severity parameter so that known major
+        // distractions lower the confidence threshold — firing the first alert at 5 minutes
+        // instead of requiring ~10 minutes of accumulated drift.
+        XCTAssertTrue(
+            source.contains("distractionSeverity"),
+            "FocusCoachInterventionPlanner.routeIdleStarter must accept distractionSeverity to lower threshold for flagged major distractions."
+        )
+    }
 }

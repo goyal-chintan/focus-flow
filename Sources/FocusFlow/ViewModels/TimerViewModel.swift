@@ -2323,7 +2323,8 @@ final class TimerViewModel {
             // (which blocks challenge-state routes when isWorkIntentWindow=false) is bypassed.
             // The ignored notification IS the work-intent signal.
             workIntentSignal: outsideSessionAwaitingStartFocus ? nil : workIntentSignal,
-            repeatedProjectPattern: repeatedProjectPattern
+            repeatedProjectPattern: repeatedProjectPattern,
+            distractionSeverity: idleSeverity
         )
 
         if route.shouldPresent, var decision = route.decision {
@@ -2431,7 +2432,7 @@ final class TimerViewModel {
                 if NotificationService.shared.authorizationState == .authorized {
                     NotificationService.shared.sendGenericNotification(
                         title: "Focus check-in",
-                        body: opportunityContext.summary,
+                        body: decision.message ?? idleStarterSummary ?? "",
                         sound: settings.completionSound
                     )
                     pendingNotificationNudgeAt = now

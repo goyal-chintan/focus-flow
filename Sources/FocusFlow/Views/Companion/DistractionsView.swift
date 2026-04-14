@@ -4,12 +4,21 @@ import SwiftData
 struct DistractionsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allDistractionItems: [IdleDistractionItem]
+    @Query private var allSettings: [AppSettings]
 
     @State private var editorDestination: DistractionEditorDestination?
     @State private var itemToDelete: IdleDistractionItem?
     @State private var saveError: String?
     @State private var installedApps: [(name: String, bundleID: String)] = []
     @State private var isLoadingInstalledApps = false
+
+    private var domainTrackingEnabled: Bool {
+        allSettings.first?.coachCollectRawDomains == true
+    }
+
+    private var hasActiveWebsiteRules: Bool {
+        allDistractionItems.contains { $0.status == .active && $0.targetKind == .website }
+    }
 
     private var suggestionItems: [IdleDistractionItem] {
         allDistractionItems
@@ -44,6 +53,10 @@ struct DistractionsView: View {
         ScrollView {
             VStack(spacing: LiquidDesignTokens.Spacing.large) {
                 pageHeaderSection
+
+                if !domainTrackingEnabled && hasActiveWebsiteRules {
+                    domainTrackingWarningSection
+                }
 
                 if suggestionItems.isEmpty && activeRules.isEmpty {
                     emptyStateSection
@@ -101,6 +114,31 @@ struct DistractionsView: View {
         isLoadingInstalledApps = true
         defer { isLoadingInstalledApps = false }
         installedApps = await InstalledAppCatalog.loadInstalledApps()
+    }
+
+    // Warning shown when website rules exist but coachCollectRawDomains is off (the default).
+    // Without domain tracking, browser visits are never resolved to a host, so website rules
+    // cannot match and alerts will not fire.
+    private var domainTrackingWarningSection: some View {
+        LiquidGlassPanel {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.amberDark)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Website rules won't fire")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+
+                    Text("Browser domain tracking is off. Enable it in Settings → Coach → \"Collect raw browser domains\" for your website rules to trigger idle alerts.")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(14)
+        }
     }
 
     private var pageHeaderSection: some View {
