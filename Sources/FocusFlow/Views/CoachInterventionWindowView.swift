@@ -114,11 +114,17 @@ struct CoachInterventionWindowView: View {
                     }
 
                     if let action = pendingAction {
-                        skipReasonPanel(for: action)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
-                                removal: .opacity
-                            ))
+                        Group {
+                            if action == .snooze10m {
+                                snoozeDurationPanel
+                            } else {
+                                skipReasonPanel(for: action)
+                            }
+                        }
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                            removal: .opacity
+                        ))
                     } else {
                         actionStack
                             .transition(.asymmetric(
@@ -133,6 +139,7 @@ struct CoachInterventionWindowView: View {
         }
         .frame(width: 360)
         .padding(12)
+        .background(WindowLevelSetter())
         .onAppear {
             bringToFront()
             if let ctx = decision?.context {
@@ -258,6 +265,80 @@ struct CoachInterventionWindowView: View {
                 ) {
                     timerVM.handleCoachAction(.blockForProject)
                     dismiss()
+                }
+            }
+        }
+    }
+
+    // MARK: - Snooze Duration Panel
+
+    private struct SnoozeDuration {
+        let label: String
+        let icon: String
+        let minutes: Int  // -1 = off for today
+    }
+
+    private let snoozeDurations: [SnoozeDuration] = [
+        SnoozeDuration(label: "10 min", icon: "clock", minutes: 10),
+        SnoozeDuration(label: "30 min", icon: "clock", minutes: 30),
+        SnoozeDuration(label: "1 hour", icon: "clock.fill", minutes: 60),
+        SnoozeDuration(label: "2 hours", icon: "clock.fill", minutes: 120),
+        SnoozeDuration(label: "Off for today", icon: "moon.fill", minutes: -1),
+    ]
+
+    @ViewBuilder
+    private var snoozeDurationPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Back + prompt row
+            HStack(spacing: 0) {
+                Button {
+                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { pendingAction = nil }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .accessibilityHidden(true)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+
+                Text("Remind me in…")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+
+                Spacer()
+            }
+
+            FlowLayout(spacing: 7) {
+                ForEach(snoozeDurations, id: \.minutes) { option in
+                    Button {
+                        if option.minutes == -1 {
+                            timerVM.handleCoachAction(.markOffDuty)
+                        } else {
+                            timerVM.handleSnooze(minutes: option.minutes)
+                        }
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: option.icon)
+                                .font(.system(size: 11))
+                                .accessibilityHidden(true)
+                            Text(option.label)
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
+                        .background {
+                            Capsule()
+                                .fill(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.08))
+                                .strokeBorder(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.12), lineWidth: 0.5)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Snooze \(option.label)")
                 }
             }
         }
@@ -406,16 +487,36 @@ struct CoachInterventionWindowView: View {
     }
 
     private func bringToFront() {
-        // Activate app and promote the coach window in a single pass.
-        // Use window identifier only (not localized title) for reliable matching.
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        // WindowLevelSetter (attached as .background) handles floating level via viewDidMoveToWindow.
+        // This fallback runs for cases where the window already exists and is re-shown without
+        // a new view hierarchy (e.g. openWindow on an existing hidden window).
         DispatchQueue.main.async {
             for window in NSApplication.shared.windows
-                where window.identifier?.rawValue.contains("coach-intervention") == true {
+                where window.identifier?.rawValue.contains("coach-intervention") == true
+                   || window.title == "Focus Coach" {
                 window.level = .floating
-                window.makeKeyAndOrderFront(nil)
+                window.orderFront(nil)
                 break
             }
         }
+    }
+}
+
+// MARK: - WindowLevelSetter
+
+/// Promotes the containing NSWindow to `.floating` level the moment the view
+/// is attached to a window, so the coach panel always appears above other apps
+/// on macOS 26 Tahoe where `activate(ignoringOtherApps:)` is a no-op.
+private struct WindowLevelSetter: NSViewRepresentable {
+    func makeNSView(context: Context) -> _WindowLevelView { _WindowLevelView() }
+    func updateNSView(_ nsView: _WindowLevelView, context: Context) {}
+}
+
+final class _WindowLevelView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        window.level = .floating
+        window.orderFront(nil)
     }
 }

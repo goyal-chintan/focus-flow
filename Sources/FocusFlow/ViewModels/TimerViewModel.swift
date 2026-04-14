@@ -1875,6 +1875,17 @@ final class TimerViewModel {
         }
     }
 
+    /// Snooze the coach for a user-chosen duration (in minutes). Called by the snooze chip panel.
+    func handleSnooze(minutes: Int) {
+        coachEngine.snooze(minutes: minutes, skipReason: nil)
+        registerOutsideSessionDeferral()
+        currentCoachQuickPromptDecision = nil
+        currentIdleStarterDecision = nil
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        closePopover()
+    }
+
     func outsideSessionEscalationDelaySeconds(
         now: Date = Date(),
         nonResponseStreak: Int,

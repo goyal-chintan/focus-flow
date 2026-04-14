@@ -1054,4 +1054,59 @@ final class ReviewContractsTests: XCTestCase {
             "Non-notification escalation path must check idleSeverity == .major to fire at the first nudge for explicitly flagged distractions."
         )
     }
+
+    func testCoachWindowUsesWindowLevelSetterForReliableFrontmostPresentation() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("CoachInterventionWindowView.swift"),
+            encoding: .utf8
+        )
+        // On macOS 26 Tahoe, activate(ignoringOtherApps:) is a no-op.
+        // WindowLevelSetter uses viewDidMoveToWindow to reliably set .floating level
+        // so the coach window is always visible above other apps.
+        XCTAssertTrue(
+            source.contains("WindowLevelSetter"),
+            "CoachInterventionWindowView must use WindowLevelSetter to promote the window to .floating level on macOS 26 where NSApp.activate() is a no-op."
+        )
+        XCTAssertTrue(
+            source.contains("viewDidMoveToWindow"),
+            "WindowLevelSetter must override viewDidMoveToWindow to set floating level the moment the view is attached to a window."
+        )
+    }
+
+    func testCoachWindowSnoozePanelOffersMultipleDurations() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let viewSource = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("CoachInterventionWindowView.swift"),
+            encoding: .utf8
+        )
+        let vmSource = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("ViewModels")
+                .appendingPathComponent("TimerViewModel.swift"),
+            encoding: .utf8
+        )
+        // Snooze must offer multiple durations (10m, 30m, 1h, 2h, off for today)
+        // not just the hardcoded 10-minute snooze.
+        XCTAssertTrue(
+            viewSource.contains("snoozeDurationPanel"),
+            "CoachInterventionWindowView must have a snoozeDurationPanel for multi-duration snooze selection."
+        )
+        XCTAssertTrue(
+            vmSource.contains("func handleSnooze(minutes:"),
+            "TimerViewModel must expose handleSnooze(minutes:) for direct duration-based snooze from the view."
+        )
+    }
 }
