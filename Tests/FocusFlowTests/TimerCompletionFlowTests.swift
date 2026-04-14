@@ -228,7 +228,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertNotNil(vm.pendingNotificationNudgeAt)
     }
 
-    func testIdleInterventionFallsBackToInAppPromptWhenNotificationsAreUnavailable() throws {
+    func testIdleInterventionEscalatesToStrongPromptWithoutNotificationsAfterRepeatedNudges() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
         vm.configure(modelContext: container.mainContext)
@@ -239,6 +239,8 @@ final class TimerCompletionFlowTests: XCTestCase {
         settings.coachIdleStarterEnabled = true
         settings.coachSuppressPopupsDuringScreenShare = false
         settings.coachInterventionMode = .balanced
+        // Keep auto-open off so the decision lands in currentIdleStarterDecision for inspection.
+        settings.coachAutoOpenPopoverOnStrongPrompt = false
         try container.mainContext.save()
 
         NotificationService.shared.refreshAuthorizationStatus()
@@ -251,9 +253,11 @@ final class TimerCompletionFlowTests: XCTestCase {
             frontmostCategory: .distracting
         )
 
+        // After 2 prior nudges without notifications, the coach must escalate to a strong prompt
+        // rather than silently setting popover content that the user never sees.
         XCTAssertFalse(vm.outsideSessionAwaitingStartFocus)
         XCTAssertNil(vm.pendingNotificationNudgeAt)
-        XCTAssertEqual(vm.currentIdleStarterDecision?.kind, .quickPrompt)
+        XCTAssertEqual(vm.currentIdleStarterDecision?.kind, .strongPrompt)
     }
 
     func testMissedNotificationEscalatesToStrongPrompt() throws {

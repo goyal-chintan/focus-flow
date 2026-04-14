@@ -2360,6 +2360,11 @@ final class TimerViewModel {
             let shouldEscalateToStrongPrompt =
                 outsideSessionAwaitingStartFocus
                 || (escalationLevel >= 2 && effectiveFrontmostCategory == .productive)
+                // Without notifications the notification→wait→escalate sequence never runs.
+                // Drive straight to the strong prompt after the first attempt, or immediately
+                // for major distractions so the user is never silently ignored.
+                || (NotificationService.shared.authorizationState != .authorized
+                    && (escalationLevel >= 1 || idleSeverity == .major))
             if shouldEscalateToStrongPrompt {
                 if outsideSessionAwaitingStartFocus {
                     let elapsed = now.timeIntervalSince(pendingNotificationNudgeAt ?? now)

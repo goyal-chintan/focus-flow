@@ -1027,4 +1027,31 @@ final class ReviewContractsTests: XCTestCase {
             "FocusCoachInterventionPlanner.routeIdleStarter must accept distractionSeverity to lower threshold for flagged major distractions."
         )
     }
+
+    func testStrongPromptFiresWithoutNotificationsForDistractions() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("ViewModels")
+                .appendingPathComponent("TimerViewModel.swift"),
+            encoding: .utf8
+        )
+
+        // Without notification authorization, the notification→wait→escalate path never runs.
+        // shouldEscalateToStrongPrompt must have a condition that fires the intervention window
+        // directly when notifications are not authorized — otherwise users without notifications
+        // will NEVER see a strong prompt no matter how long they spend in a distracting app.
+        XCTAssertTrue(
+            source.contains("authorizationState != .authorized"),
+            "shouldEscalateToStrongPrompt must include a non-notification path so the strong prompt window opens for users without notification permission."
+        )
+        // And it must cover major-severity distractions immediately (escalationLevel 0)
+        XCTAssertTrue(
+            source.contains("idleSeverity == .major"),
+            "Non-notification escalation path must check idleSeverity == .major to fire at the first nudge for explicitly flagged distractions."
+        )
+    }
 }
