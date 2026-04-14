@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import SwiftData
 
+
 enum TimerState: Equatable {
     case idle
     case focusing
@@ -1875,6 +1876,17 @@ final class TimerViewModel {
         }
     }
 
+    /// Snooze the coach for a user-chosen duration (in minutes). Called by the snooze chip panel.
+    func handleSnooze(minutes: Int) {
+        coachEngine.snooze(minutes: minutes, skipReason: nil)
+        registerOutsideSessionDeferral()
+        currentCoachQuickPromptDecision = nil
+        currentIdleStarterDecision = nil
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        closePopover()
+    }
+
     func outsideSessionEscalationDelaySeconds(
         now: Date = Date(),
         nonResponseStreak: Int,
@@ -2208,7 +2220,9 @@ final class TimerViewModel {
         frontmostCategory: AppUsageEntry.AppCategory,
         currentHourOverride: Int? = nil
     ) {
-        guard state == .idle, !isOvertime, let settings else { return }
+        guard state == .idle, !isOvertime, let settings else {
+            return
+        }
         let now = Date()
         if isInReleaseWindow {
             lastIdleStarterSuppressionReason = .releaseWindowActive
@@ -2323,10 +2337,24 @@ final class TimerViewModel {
             // (which blocks challenge-state routes when isWorkIntentWindow=false) is bypassed.
             // The ignored notification IS the work-intent signal.
             workIntentSignal: outsideSessionAwaitingStartFocus ? nil : workIntentSignal,
-            repeatedProjectPattern: repeatedProjectPattern
+            repeatedProjectPattern: repeatedProjectPattern,
+            distractionSeverity: idleSeverity
         )
 
-        if route.shouldPresent, var decision = route.decision {
+        // Hard-escalation override: 3+ nudges against a productive app forces the strong prompt
+        // regardless of drift score. The route threshold would block low-drift productive apps,
+        // but after escalationLevel >= 2 the user has already been nudged twice with no response.
+        let isHardEscalation = !route.shouldPresent
+            && escalationLevel >= 2
+            && effectiveFrontmostCategory == .productive
+        let routeDecision: FocusCoachDecision? = route.decision ?? {
+            guard isHardEscalation else { return nil }
+            var actions: [FocusCoachQuickAction] = [.startFocusNow, .cleanRestart5m, .snooze10m]
+            if settings.coachAllowSkipAction { actions.append(.skipCheck) }
+            return FocusCoachDecision(kind: .quickPrompt, suggestedActions: actions, message: "")
+        }()
+
+        if (route.shouldPresent || isHardEscalation), var decision = routeDecision {
             if let last = lastIdleInterventionAt, Date().timeIntervalSince(last) < 120 {
                 lastIdleStarterSuppressionReason = .cooldownActive
                 return
@@ -2359,6 +2387,11 @@ final class TimerViewModel {
             let shouldEscalateToStrongPrompt =
                 outsideSessionAwaitingStartFocus
                 || (escalationLevel >= 2 && effectiveFrontmostCategory == .productive)
+                // Without notifications the notification→wait→escalate sequence never runs.
+                // Drive straight to the strong prompt after the first attempt, or immediately
+                // for major distractions so the user is never silently ignored.
+                || (NotificationService.shared.authorizationState != .authorized
+                    && (escalationLevel >= 1 || idleSeverity == .major))
             if shouldEscalateToStrongPrompt {
                 if outsideSessionAwaitingStartFocus {
                     let elapsed = now.timeIntervalSince(pendingNotificationNudgeAt ?? now)
@@ -2425,13 +2458,14 @@ final class TimerViewModel {
                             self?.requestAppActivation?()
                         }
                     }
+                } else {
                 }
                 lastIdleInterventionAt = now
             } else {
                 if NotificationService.shared.authorizationState == .authorized {
                     NotificationService.shared.sendGenericNotification(
                         title: "Focus check-in",
-                        body: opportunityContext.summary,
+                        body: decision.message ?? idleStarterSummary ?? "",
                         sound: settings.completionSound
                     )
                     pendingNotificationNudgeAt = now

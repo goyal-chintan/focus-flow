@@ -961,4 +961,158 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(MotionGeometryContract.transitionIntents.keys.contains("SessionComplete.coachReasonDisclosure"))
         XCTAssertTrue(MotionGeometryContract.geometryBaselines.keys.contains("SessionComplete.breakPane"))
     }
+
+    // MARK: - Idle distraction alert pipeline contracts
+
+    func testDistractionViewShowsWarningWhenDomainCollectionIsOff() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("Companion")
+                .appendingPathComponent("DistractionsView.swift"),
+            encoding: .utf8
+        )
+
+        // When coachCollectRawDomains is off (the default) website distraction rules cannot
+        // fire because browser domain tracking is suppressed for privacy. The view must warn
+        // the user so they know why their YouTube rule is not triggering alerts.
+        XCTAssertTrue(
+            source.contains("coachCollectRawDomains") || source.contains("domain tracking"),
+            "DistractionsView must surface a warning or guidance when browser domain tracking is off."
+        )
+    }
+
+    func testIdleDistractionNotificationUsesFrontmostContextualMessageNotGenericSummary() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("ViewModels")
+                .appendingPathComponent("TimerViewModel.swift"),
+            encoding: .utf8
+        )
+
+        // The idle-starter notification body must use the decision.message (which includes
+        // the specific app name via contextualMessage) rather than the generic opportunity
+        // summary so users know WHY they're being nudged.
+        XCTAssertFalse(
+            source.contains("body: opportunityContext.summary"),
+            "Notification body must not use the generic opportunityContext.summary — use decision.message instead so the specific distraction app is named."
+        )
+    }
+
+    func testRouteIdleStarterAcceptsMajorDistractionSeverityToLowerThreshold() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Services")
+                .appendingPathComponent("FocusCoachInterventionPlanner.swift"),
+            encoding: .utf8
+        )
+
+        // routeIdleStarter must accept a distraction severity parameter so that known major
+        // distractions lower the confidence threshold — firing the first alert at 5 minutes
+        // instead of requiring ~10 minutes of accumulated drift.
+        XCTAssertTrue(
+            source.contains("distractionSeverity"),
+            "FocusCoachInterventionPlanner.routeIdleStarter must accept distractionSeverity to lower threshold for flagged major distractions."
+        )
+    }
+
+    func testStrongPromptFiresWithoutNotificationsForDistractions() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("ViewModels")
+                .appendingPathComponent("TimerViewModel.swift"),
+            encoding: .utf8
+        )
+
+        // Without notification authorization, the notification→wait→escalate path never runs.
+        // shouldEscalateToStrongPrompt must have a condition that fires the intervention window
+        // directly when notifications are not authorized — otherwise users without notifications
+        // will NEVER see a strong prompt no matter how long they spend in a distracting app.
+        XCTAssertTrue(
+            source.contains("authorizationState != .authorized"),
+            "shouldEscalateToStrongPrompt must include a non-notification path so the strong prompt window opens for users without notification permission."
+        )
+        // And it must cover major-severity distractions immediately (escalationLevel 0)
+        XCTAssertTrue(
+            source.contains("idleSeverity == .major"),
+            "Non-notification escalation path must check idleSeverity == .major to fire at the first nudge for explicitly flagged distractions."
+        )
+    }
+
+    func testCoachWindowUsesWindowLevelSetterForReliableFrontmostPresentation() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("CoachInterventionWindowView.swift"),
+            encoding: .utf8
+        )
+        // On macOS 26 Tahoe, activate(ignoringOtherApps:) is a no-op.
+        // WindowLevelSetter uses viewDidMoveToWindow to reliably set .floating level
+        // so the coach window is always visible above other apps.
+        XCTAssertTrue(
+            source.contains("WindowLevelSetter"),
+            "CoachInterventionWindowView must use WindowLevelSetter to promote the window to .floating level on macOS 26 where NSApp.activate() is a no-op."
+        )
+        XCTAssertTrue(
+            source.contains("viewDidMoveToWindow"),
+            "WindowLevelSetter must override viewDidMoveToWindow to set floating level the moment the view is attached to a window."
+        )
+        // canJoinAllSpaces ensures the window appears even when the user is in a full-screen
+        // space (e.g. Ghostty running full-screen on its own Space).
+        XCTAssertTrue(
+            source.contains("canJoinAllSpaces"),
+            "WindowLevelSetter must set collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary] so the coach window appears above full-screen apps on separate Spaces."
+        )
+    }
+
+    func testCoachWindowSnoozePanelOffersMultipleDurations() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let viewSource = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("Views")
+                .appendingPathComponent("CoachInterventionWindowView.swift"),
+            encoding: .utf8
+        )
+        let vmSource = try String(
+            contentsOf: repoRoot
+                .appendingPathComponent("Sources")
+                .appendingPathComponent("FocusFlow")
+                .appendingPathComponent("ViewModels")
+                .appendingPathComponent("TimerViewModel.swift"),
+            encoding: .utf8
+        )
+        // Snooze must offer multiple durations (10m, 30m, 1h, 2h, off for today)
+        // not just the hardcoded 10-minute snooze.
+        XCTAssertTrue(
+            viewSource.contains("snoozeDurationPanel"),
+            "CoachInterventionWindowView must have a snoozeDurationPanel for multi-duration snooze selection."
+        )
+        XCTAssertTrue(
+            vmSource.contains("func handleSnooze(minutes:"),
+            "TimerViewModel must expose handleSnooze(minutes:) for direct duration-based snooze from the view."
+        )
+    }
 }

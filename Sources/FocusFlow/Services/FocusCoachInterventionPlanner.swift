@@ -104,20 +104,23 @@ struct FocusCoachInterventionPlanner: Sendable {
     func shouldShowIdleStarter(
         driftConfidence: Double,
         focusOpportunity: Double,
-        mode: FocusCoachInterventionMode
+        mode: FocusCoachInterventionMode,
+        distractionSeverity: IdleDistractionSeverity? = nil
     ) -> Bool {
         let confidenceThreshold: Double
         let opportunityThreshold: Double
 
         switch mode {
         case .balanced:
-            confidenceThreshold = 0.55
+            // Known major distractions (e.g. Ghostty flagged as vibe-coding) lower the
+            // confidence bar so the first nudge fires at ~5 min instead of ~10 min.
+            confidenceThreshold = distractionSeverity == .major ? 0.35 : 0.55
             opportunityThreshold = 0.45
         case .adaptiveStrict:
-            confidenceThreshold = 0.60
+            confidenceThreshold = distractionSeverity == .major ? 0.40 : 0.60
             opportunityThreshold = 0.50
         case .sessionRescue:
-            confidenceThreshold = 0.65
+            confidenceThreshold = distractionSeverity == .major ? 0.45 : 0.65
             opportunityThreshold = 0.40
         }
 
@@ -217,7 +220,8 @@ struct FocusCoachInterventionPlanner: Sendable {
         guardianState: FocusCoachGuardianState = .observe,
         isInReleaseWindow: Bool = false,
         workIntentSignal: WorkIntentSignal? = nil,
-        repeatedProjectPattern: Bool = false
+        repeatedProjectPattern: Bool = false,
+        distractionSeverity: IdleDistractionSeverity? = nil
     ) -> IdleStarterRoute {
         // Passive mode: suppress idle starter — ambient ring only
         if engagementMode == .passive {
@@ -227,7 +231,8 @@ struct FocusCoachInterventionPlanner: Sendable {
         guard shouldShowIdleStarter(
             driftConfidence: driftConfidence,
             focusOpportunity: focusOpportunity,
-            mode: mode
+            mode: mode,
+            distractionSeverity: distractionSeverity
         ) else {
             return IdleStarterRoute(shouldPresent: false, decision: nil)
         }

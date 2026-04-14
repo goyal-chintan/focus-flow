@@ -152,6 +152,34 @@ final class FocusCoachInterventionPlannerTests: XCTestCase {
         XCTAssertEqual(route.decision?.kind, .quickPrompt)
     }
 
+    func testRouteIdleStarterLowersThresholdForMajorDistraction() {
+        // At 5 minutes (driftConfidence ≈ 0.467) the normal balanced threshold (0.55) blocks
+        // the alert. When distractionSeverity is .major the threshold must drop to ~0.35 so
+        // the user gets an alert at the first nudge instead of waiting ~10 minutes.
+        let route = planner.routeIdleStarter(
+            driftConfidence: 0.467,
+            focusOpportunity: 0.65,
+            mode: .balanced,
+            allowSkipAction: true,
+            distractionSeverity: .major
+        )
+
+        XCTAssertTrue(route.shouldPresent, "Major distraction should fire at 5-min drift confidence (0.467).")
+        XCTAssertNotNil(route.decision)
+    }
+
+    func testRouteIdleStarterNormalThresholdWithoutSeverity() {
+        // Without a severity override, 0.467 drift confidence stays below 0.55 → suppressed.
+        let route = planner.routeIdleStarter(
+            driftConfidence: 0.467,
+            focusOpportunity: 0.65,
+            mode: .balanced,
+            allowSkipAction: true
+        )
+
+        XCTAssertFalse(route.shouldPresent, "Without severity override, 0.467 drift must not fire.")
+    }
+
     func testRouteActiveDecisionAddsSkipActionWhenEnabled() {
         let route = planner.routeActiveDecision(
             FocusCoachDecision(
