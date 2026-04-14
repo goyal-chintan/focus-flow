@@ -20,6 +20,7 @@ struct DistractionsView: View {
         allDistractionItems.contains { $0.status == .active && $0.targetKind == .website }
     }
 
+
     private var suggestionItems: [IdleDistractionItem] {
         allDistractionItems
             .filter {
@@ -57,6 +58,7 @@ struct DistractionsView: View {
                 if !domainTrackingEnabled && hasActiveWebsiteRules {
                     domainTrackingWarningSection
                 }
+
 
                 if suggestionItems.isEmpty && activeRules.isEmpty {
                     emptyStateSection
@@ -140,6 +142,7 @@ struct DistractionsView: View {
             .padding(14)
         }
     }
+
 
     private var pageHeaderSection: some View {
         LiquidGlassPanel {
