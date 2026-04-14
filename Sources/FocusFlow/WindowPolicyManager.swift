@@ -4,8 +4,8 @@ import AppKit
 ///
 /// FocusFlow ships with `LSUIElement=true` so it behaves as a menu-bar-only
 /// app when idle. This manager promotes the app to `.regular` (shows Dock icon,
-/// Cmd+Tab, Activity Monitor) whenever a real companion window is visible, and
-/// reverts to `.accessory` once all such windows close.
+/// Cmd+Tab, Activity Monitor, Force Quit) whenever a companion window is open
+/// (even if minimized), and reverts to `.accessory` once all such windows close.
 ///
 /// The MenuBarExtra popup runs at `.statusBar` window level and is excluded from
 /// the count, so merely opening the popover never triggers a Dock icon.
@@ -39,16 +39,17 @@ final class WindowPolicyManager {
             Task { @MainActor in self?.update() }
         }
 
-        // Fires when a window is miniaturized — may need to revert.
+        // Fires when a window is miniaturized. Keep .regular so the app stays in
+        // Dock/Force Quit while a window is sitting in the Dock.
         let miniaturized = center.addObserver(
             forName: NSWindow.didMiniaturizeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.scheduleRevertIfNeeded() }
+            Task { @MainActor in self?.update() }
         }
 
-        // Fires when a window is restored from the Dock — re-promote.
+        // Fires when a window is restored from the Dock — re-promote if needed.
         let deminiaturized = center.addObserver(
             forName: NSWindow.didDeminiaturizeNotification,
             object: nil,
@@ -66,7 +67,18 @@ final class WindowPolicyManager {
             Task { @MainActor in self?.scheduleRevertIfNeeded() }
         }
 
-        observations = [becameKey, becameMain, miniaturized, deminiaturized, willClose]
+        // Belt-and-suspenders: re-evaluate whenever the app itself becomes active.
+        // This catches the Settings scene (Cmd+,) which re-uses a cached NSWindow
+        // and may not fire didBecomeKey if the window was previously closed.
+        let appActive = center.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.update() }
+        }
+
+        observations = [becameKey, becameMain, miniaturized, deminiaturized, willClose, appActive]
         update()
     }
 
@@ -74,15 +86,16 @@ final class WindowPolicyManager {
         revertTask?.cancel()
         revertTask = nil
 
-        if hasVisibleNormalWindows {
-            if NSApp.activationPolicy() != .regular {
+        if hasCompanionWindows {
+            let wasAccessory = NSApp.activationPolicy() != .regular
+            if wasAccessory {
                 NSApp.setActivationPolicy(.regular)
+                // NSApp.activate() is a no-op on macOS 26 Tahoe. Calling makeKeyAndOrderFront
+                // on the visible window forces it to take key status, which causes macOS to
+                // update the menu bar to show FocusFlow instead of the previously active app.
+                NSApp.windows.first(where: { $0.isVisible && !$0.isMiniaturized && $0.level == .normal })?
+                    .makeKeyAndOrderFront(nil)
             }
-            // NSApp.activate() is a no-op on macOS 26 Tahoe. Calling makeKeyAndOrderFront
-            // on the visible window forces it to take key status, which causes macOS to
-            // update the menu bar to show FocusFlow instead of the previously active app.
-            NSApp.windows.first(where: { $0.isVisible && !$0.isMiniaturized && $0.level == .normal })?
-                .makeKeyAndOrderFront(nil)
         } else {
             revert()
         }
@@ -95,7 +108,7 @@ final class WindowPolicyManager {
             // during transitions (e.g., closing one tab and opening another).
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
-            if !hasVisibleNormalWindows { revert() }
+            if !hasCompanionWindows { revert() }
         }
     }
 
@@ -105,12 +118,12 @@ final class WindowPolicyManager {
         }
     }
 
-    /// Returns true when at least one visible, non-miniaturized window is running
-    /// at `.normal` level — which covers Stats, Settings, Coach, and Session Complete,
-    /// but excludes the MenuBarExtra popup (`.statusBar` level) and system overlays.
-    private var hasVisibleNormalWindows: Bool {
+    /// Returns true when at least one companion window exists — fully on screen OR
+    /// miniaturized in the Dock. Excludes the MenuBarExtra popup (`.statusBar` level)
+    /// and other system overlays above that level.
+    private var hasCompanionWindows: Bool {
         NSApp.windows.contains {
-            $0.isVisible && !$0.isMiniaturized && $0.level == .normal
+            ($0.isVisible || $0.isMiniaturized) && $0.level == .normal
         }
     }
 }
