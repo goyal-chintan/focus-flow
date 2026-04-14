@@ -336,8 +336,10 @@ struct CoachInterventionWindowView: View {
                                 .fill(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.08))
                                 .strokeBorder(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.12), lineWidth: 0.5)
                         }
+                        .frame(minHeight: 44, alignment: .center)
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                     .accessibilityLabel("Snooze \(option.label)")
                 }
             }
@@ -418,7 +420,7 @@ struct CoachInterventionWindowView: View {
         let isSelected = selectedSkipReason == reason
         let accentColor: Color = reason.isLegitimate
             ? LiquidDesignTokens.Spectral.electricBlue  // genuine → teal
-            : Color.white.opacity(0.6)                  // honest → neutral (amber reserved for context pill/warnings)
+            : Color.primary.opacity(0.6)                // honest → neutral (semantic; always resolves to white in dark-mode-only window)
 
         Button {
             withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.control) { selectedSkipReason = reason }
@@ -441,9 +443,9 @@ struct CoachInterventionWindowView: View {
                 Capsule()
                     .fill(isSelected
                         ? accentColor.opacity(0.14)
-                        : (reason.isLegitimate ? Color.white.opacity(0.08) : Color.white.opacity(0.05)))
+                        : (reason.isLegitimate ? Color.primary.opacity(0.08) : Color.primary.opacity(0.05)))
                     .overlay(Capsule().strokeBorder(
-                        isSelected ? accentColor.opacity(0.35) : Color.white.opacity(0.09),
+                        isSelected ? accentColor.opacity(0.35) : Color.primary.opacity(0.09),
                         lineWidth: 0.5))
             }
             .scaleEffect(isSelected ? 1.04 : 1.0)

@@ -822,7 +822,7 @@ private struct DistractionRuleEditor: View {
                 .font(LiquidDesignTokens.Typography.controlLabel)
                 .foregroundStyle(isSelected ? kind.tint : Color.secondary)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 40)
+                .frame(minHeight: 44)
                 .background(
                     RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
                         .fill(isSelected ? LiquidDesignTokens.Surface.containerHigh : LiquidDesignTokens.Surface.containerLow)
@@ -921,8 +921,10 @@ private struct DistractionRuleEditor: View {
                     RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control, style: .continuous)
                         .fill(LiquidDesignTokens.Surface.containerLow)
                 )
+                .frame(minHeight: 44, alignment: .center)
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 
     private func clearSelectedApp() {
