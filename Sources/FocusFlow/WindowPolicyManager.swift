@@ -77,8 +77,12 @@ final class WindowPolicyManager {
         if hasVisibleNormalWindows {
             if NSApp.activationPolicy() != .regular {
                 NSApp.setActivationPolicy(.regular)
-                NSApp.activate()
             }
+            // NSApp.activate() is a no-op on macOS 26 Tahoe. Calling makeKeyAndOrderFront
+            // on the visible window forces it to take key status, which causes macOS to
+            // update the menu bar to show FocusFlow instead of the previously active app.
+            NSApp.windows.first(where: { $0.isVisible && !$0.isMiniaturized && $0.level == .normal })?
+                .makeKeyAndOrderFront(nil)
         } else {
             revert()
         }
