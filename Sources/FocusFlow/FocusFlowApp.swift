@@ -170,6 +170,7 @@ private struct AppLaunchBridge: View {
             .frame(width: 0, height: 0)
             .task {
                 timerVM.ensureConfigured(modelContext: modelContext)
+                WindowPolicyManager.shared.start()
             }
     }
 }
