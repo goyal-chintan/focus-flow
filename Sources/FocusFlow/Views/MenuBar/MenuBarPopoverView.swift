@@ -452,11 +452,13 @@ struct MenuBarPopoverView: View {
         if let requestedTab {
             UserDefaults.standard.set(requestedTab.rawValue, forKey: "companionRequestedTab")
         }
-        // Close popover first so performClose cannot target the newly opened companion window.
+        // Pre-promote while FocusFlow is still active (we're inside a button-tap handler).
+        // Calling this after the popover closes is too late — Tahoe blocks activation then.
+        WindowPolicyManager.shared.prepareToOpen()
+        // Close popover after pre-promoting so the policy change happens in user-event context.
         timerVM.closePopover()
         DispatchQueue.main.async {
             openWindow(id: "stats")
-            timerVM.requestAppActivation?()
         }
     }
 }

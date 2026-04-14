@@ -170,6 +170,7 @@ private struct AppLaunchBridge: View {
             .frame(width: 0, height: 0)
             .task {
                 timerVM.ensureConfigured(modelContext: modelContext)
+                WindowPolicyManager.shared.start()
             }
     }
 }
@@ -189,15 +190,15 @@ private struct WindowLauncherBridge: View {
             .frame(width: 0, height: 0)
             .onAppear {
                 timerVM.openCompletionWindow = {
+                    WindowPolicyManager.shared.prepareToOpen()
                     openWindow(id: "session-complete")
                 }
                 timerVM.openCoachInterventionWindow = {
+                    WindowPolicyManager.shared.prepareToOpen()
                     openWindow(id: "coach-intervention")
                 }
                 timerVM.requestAppActivation = {
-                    // activate(ignoringOtherApps:) is deprecated on macOS 14+ and is a no-op on
-                    // macOS 26 Tahoe — it no longer steals focus. Use the modern API instead.
-                    NSApplication.shared.activate()
+                    WindowPolicyManager.shared.prepareToOpen()
                 }
                 // Graceful shutdown — save session state on app termination
                 NotificationCenter.default.addObserver(
