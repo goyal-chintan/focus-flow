@@ -22,6 +22,30 @@ final class AppUsageTracker {
         let selectedWorkMode: WorkMode?
     }
 
+    private struct UsageDelta {
+        var duringFocusSeconds: Int = 0
+        var outsideFocusSeconds: Int = 0
+
+        var hasChanges: Bool {
+            duringFocusSeconds > 0 || outsideFocusSeconds > 0
+        }
+
+        mutating func addSecond(isFocusing: Bool) {
+            if isFocusing {
+                duringFocusSeconds += 1
+            } else {
+                outsideFocusSeconds += 1
+            }
+        }
+    }
+
+    private struct AppliedUsageDelta {
+        let bundleId: String
+        let delta: UsageDelta
+        let entry: AppUsageEntry
+        let wasInserted: Bool
+    }
+
     private var trackingTimer: Timer?
     private var idleSeconds: Int = 0
     private var isTracking = false
@@ -31,10 +55,15 @@ final class AppUsageTracker {
     private var tickCount: Int = 0
     private var currentTrackingDay: Date = Calendar.current.startOfDay(for: Date())
     private var appEntriesByBundleID: [String: AppUsageEntry] = [:]
+    private var pendingUsageDeltasByBundleID: [String: UsageDelta] = [:]
+    private var pendingAppNamesByBundleID: [String: String] = [:]
     private var totalFocusSecondsToday: Int = 0
     private var distractingFocusSecondsToday: Int = 0
     private var lastPersistAt: Date = .distantPast
     private let persistInterval: TimeInterval = 30
+    #if DEBUG
+    private var testingShouldFailNextSave = false
+    #endif
 
     // Coach signal tracking
     private var appSwitchTimestamps: [Date] = []
@@ -240,6 +269,8 @@ final class AppUsageTracker {
         startDelaySeconds = 0
         lastFrontmostCategory = .neutral
         appEntriesByBundleID.removeAll()
+        pendingUsageDeltasByBundleID.removeAll()
+        pendingAppNamesByBundleID.removeAll()
         totalFocusSecondsToday = 0
         distractingFocusSecondsToday = 0
         currentTrackingDay = Calendar.current.startOfDay(for: Date())
@@ -331,7 +362,7 @@ final class AppUsageTracker {
     // MARK: - App Tracking
 
     private func trackFrontmostApp(isFocusing: Bool) {
-        guard let ctx = modelContext else { return }
+        guard modelContext != nil else { return }
 
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
         let bundleId = frontApp.bundleIdentifier ?? "unknown"
@@ -421,25 +452,25 @@ final class AppUsageTracker {
             inactivitySeconds += 1
         }
 
-        let entry = entryForCurrentDay(bundleId: bundleId, appName: appName, context: ctx)
+        recordUsageDelta(bundleId: bundleId, appName: appName, isFocusing: isFocusing)
         if isFocusing {
-            entry.duringFocusSeconds += 1
             totalFocusSecondsToday += 1
             if contextPresentation.category == .distracting {
                 distractingFocusSecondsToday += 1
             }
-        } else {
-            entry.outsideFocusSeconds += 1
         }
 
         // For browser tab contexts, optionally persist a domain-keyed entry so Guardian Recommendations
         // can aggregate time per website rather than per browser app.
-        appUsageCaptureWriter.recordBrowserDomainUsage(
+        if let identity = appUsageCaptureWriter.browserDomainUsageIdentity(
             resolvedHost: browserHost,
-            settings: timerVM?.settings,
-            isFocusing: isFocusing
-        ) { bundleIdentifier, appName in
-            entryForCurrentDay(bundleId: bundleIdentifier, appName: appName, context: ctx)
+            settings: timerVM?.settings
+        ) {
+            recordUsageDelta(
+                bundleId: identity.bundleIdentifier,
+                appName: identity.appName,
+                isFocusing: isFocusing
+            )
         }
 
         persistIfNeeded()
@@ -512,12 +543,12 @@ final class AppUsageTracker {
         bundleId: String,
         appName: String,
         context: ModelContext
-    ) -> AppUsageEntry {
+    ) -> (entry: AppUsageEntry, wasInserted: Bool) {
         if let cached = appEntriesByBundleID[bundleId] {
             if cached.appName != appName {
                 cached.appName = appName
             }
-            return cached
+            return (cached, false)
         }
 
         let day = currentTrackingDay
@@ -532,7 +563,7 @@ final class AppUsageTracker {
                 existing.appName = appName
             }
             appEntriesByBundleID[bundleId] = existing
-            return existing
+            return (existing, false)
         }
 
         let newEntry = AppUsageEntry(
@@ -544,19 +575,94 @@ final class AppUsageTracker {
         )
         context.insert(newEntry)
         appEntriesByBundleID[bundleId] = newEntry
-        return newEntry
+        return (newEntry, true)
     }
 
     private func persistIfNeeded(force: Bool = false) {
         guard let ctx = modelContext else { return }
         let now = Date()
         guard force || now.timeIntervalSince(lastPersistAt) >= persistInterval else { return }
+
+        let appliedDeltas = hasPendingUsageDeltas ? applyPendingUsageDeltas(context: ctx) : []
+
         do {
-            try ctx.save()
+            try persistContext(ctx)
+            clearPendingUsageDeltas()
             lastPersistAt = now
         } catch {
+            if !appliedDeltas.isEmpty {
+                revertAppliedUsageDeltas(appliedDeltas, context: ctx)
+            }
             log("Failed to persist app usage: \(error)")
         }
+    }
+
+    private var hasPendingUsageDeltas: Bool {
+        pendingUsageDeltasByBundleID.values.contains(where: \.hasChanges)
+    }
+
+    private func recordUsageDelta(bundleId: String, appName: String, isFocusing: Bool) {
+        var delta = pendingUsageDeltasByBundleID[bundleId, default: UsageDelta()]
+        delta.addSecond(isFocusing: isFocusing)
+        pendingUsageDeltasByBundleID[bundleId] = delta
+        pendingAppNamesByBundleID[bundleId] = appName
+    }
+
+    private func applyPendingUsageDeltas(context: ModelContext) -> [AppliedUsageDelta] {
+        guard hasPendingUsageDeltas else { return [] }
+        var appliedDeltas: [AppliedUsageDelta] = []
+
+        for (bundleId, delta) in pendingUsageDeltasByBundleID where delta.hasChanges {
+            let appName = pendingAppNamesByBundleID[bundleId]
+                ?? appEntriesByBundleID[bundleId]?.appName
+                ?? AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
+            let resolved = entryForCurrentDay(bundleId: bundleId, appName: appName, context: context)
+            resolved.entry.duringFocusSeconds += delta.duringFocusSeconds
+            resolved.entry.outsideFocusSeconds += delta.outsideFocusSeconds
+            appliedDeltas.append(
+                AppliedUsageDelta(
+                    bundleId: bundleId,
+                    delta: delta,
+                    entry: resolved.entry,
+                    wasInserted: resolved.wasInserted
+                )
+            )
+        }
+
+        return appliedDeltas
+    }
+
+    private func clearPendingUsageDeltas() {
+        pendingUsageDeltasByBundleID.removeAll()
+        pendingAppNamesByBundleID.removeAll()
+    }
+
+    private func revertAppliedUsageDeltas(_ appliedDeltas: [AppliedUsageDelta], context: ModelContext) {
+        for applied in appliedDeltas.reversed() {
+            applied.entry.duringFocusSeconds -= applied.delta.duringFocusSeconds
+            applied.entry.outsideFocusSeconds -= applied.delta.outsideFocusSeconds
+            if applied.wasInserted,
+               applied.entry.duringFocusSeconds == 0,
+               applied.entry.outsideFocusSeconds == 0 {
+                context.delete(applied.entry)
+                appEntriesByBundleID.removeValue(forKey: applied.bundleId)
+            }
+        }
+    }
+
+    private func persistContext(_ context: ModelContext) throws {
+        #if DEBUG
+        if testingShouldFailNextSave {
+            testingShouldFailNextSave = false
+            throw NSError(
+                domain: "AppUsageTrackerTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Injected AppUsageTracker save failure"]
+            )
+        }
+        #endif
+
+        try context.save()
     }
 
     // MARK: - SuspiciousContextObservation Builder
@@ -734,3 +840,46 @@ final class AppUsageTracker {
         #endif
     }
 }
+
+#if DEBUG
+extension AppUsageTracker {
+    static func makeForTesting(
+        browserDomainResolver: BrowserDomainResolver = BrowserDomainResolver(),
+        appUsageCaptureWriter: AppUsageCaptureWriter = AppUsageCaptureWriter()
+    ) -> AppUsageTracker {
+        AppUsageTracker(
+            browserDomainResolver: browserDomainResolver,
+            appUsageCaptureWriter: appUsageCaptureWriter
+        )
+    }
+
+    var testingPendingDeltaCount: Int {
+        pendingUsageDeltasByBundleID.filter(\.value.hasChanges).count
+    }
+
+    func testingConfigurePersistence(modelContext: ModelContext, day: Date) {
+        self.modelContext = modelContext
+        currentTrackingDay = Calendar.current.startOfDay(for: day)
+        appEntriesByBundleID.removeAll()
+        pendingUsageDeltasByBundleID.removeAll()
+        pendingAppNamesByBundleID.removeAll()
+        hydrateDailyCache()
+    }
+
+    func testingSetLastPersistAt(_ date: Date) {
+        lastPersistAt = date
+    }
+
+    func testingRecordUsageDelta(bundleId: String, appName: String, isFocusing: Bool) {
+        recordUsageDelta(bundleId: bundleId, appName: appName, isFocusing: isFocusing)
+    }
+
+    func testingPersistIfNeeded(force: Bool = false) {
+        persistIfNeeded(force: force)
+    }
+
+    func testingFailNextSave() {
+        testingShouldFailNextSave = true
+    }
+}
+#endif

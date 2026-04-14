@@ -1,7 +1,27 @@
 import Foundation
 
 struct AppUsageCaptureWriter {
+    struct DomainUsageIdentity {
+        let bundleIdentifier: String
+        let appName: String
+    }
+
     typealias EntryResolver = (_ bundleIdentifier: String, _ appName: String) -> AppUsageEntry
+
+    func browserDomainUsageIdentity(
+        resolvedHost: String?,
+        settings: AppSettings?
+    ) -> DomainUsageIdentity? {
+        guard settings?.coachCollectRawDomains == true,
+              let host = AppUsageEntry.normalizedBrowserHost(from: resolvedHost) else {
+            return nil
+        }
+
+        return DomainUsageIdentity(
+            bundleIdentifier: "domain:\(host)",
+            appName: AppUsageEntry.domainDisplayName(for: host)
+        )
+    }
 
     @discardableResult
     func recordBrowserDomainUsage(
@@ -10,12 +30,14 @@ struct AppUsageCaptureWriter {
         isFocusing: Bool,
         entryForKey: EntryResolver
     ) -> AppUsageEntry? {
-        guard settings?.coachCollectRawDomains == true,
-              let host = AppUsageEntry.normalizedBrowserHost(from: resolvedHost) else {
+        guard let identity = browserDomainUsageIdentity(
+            resolvedHost: resolvedHost,
+            settings: settings
+        ) else {
             return nil
         }
 
-        let entry = entryForKey("domain:\(host)", AppUsageEntry.domainDisplayName(for: host))
+        let entry = entryForKey(identity.bundleIdentifier, identity.appName)
         if isFocusing {
             entry.duringFocusSeconds += 1
         } else {

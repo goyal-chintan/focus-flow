@@ -24,18 +24,23 @@ struct DriftClassificationMemoryTests {
     func sessionAllowanceDoesNotCarryOver() {
         var memory = DriftClassificationMemory()
         let key = DriftClassificationMemory.key(projectId: nil, workMode: .learning, appOrDomain: "reddit.com")
+        let previousSessionPlanned = Date(timeIntervalSince1970: 1_000)
+        let newSessionStart = Date(timeIntervalSince1970: 2_000)
 
-        // Record planned 30 minutes ago (within old session, before current session)
-        // Simulate by recording then checking with a future session start
-        memory.recordPlanned(key: key)
-        let newSessionStart = Date()  // new session started NOW, after recording
+        memory.recordPlanned(key: key, at: previousSessionPlanned)
 
-        // The planned event was before newSessionStart — not in current session
-        // Wait: recordPlanned uses Date() internally. To test this properly we verify
-        // that sessionStart AFTER the record means no session-scoped allowance.
-        // Since recordPlanned stamps Date() at call time, and newSessionStart is after,
-        // session-scoped allowance should be false.
         #expect(memory.sessionScopedAllowance(key: key, sessionStart: newSessionStart) == false)
+    }
+
+    @Test("Session-scoped allowance applies when planned at session start")
+    func sessionAllowanceIncludesSessionStartBoundary() {
+        var memory = DriftClassificationMemory()
+        let key = DriftClassificationMemory.key(projectId: nil, workMode: .learning, appOrDomain: "reddit.com")
+        let sessionStart = Date(timeIntervalSince1970: 2_000)
+
+        memory.recordPlanned(key: key, at: sessionStart)
+
+        #expect(memory.sessionScopedAllowance(key: key, sessionStart: sessionStart) == true)
     }
 
     // MARK: - Project-scoped allowance

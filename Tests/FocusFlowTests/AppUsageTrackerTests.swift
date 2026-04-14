@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import FocusFlow
 
 @MainActor
@@ -128,5 +129,86 @@ final class AppUsageTrackerTests: XCTestCase {
         )
 
         XCTAssertEqual(context.category, .distracting)
+    }
+
+    func testUsageMutationsAreBatchedUntilPersistIntervalElapses() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+        tracker.testingSetLastPersistAt(Date())
+
+        tracker.testingRecordUsageDelta(bundleId: "com.apple.Safari", appName: "Safari", isFocusing: true)
+        tracker.testingRecordUsageDelta(bundleId: "com.apple.Safari", appName: "Safari", isFocusing: true)
+        tracker.testingRecordUsageDelta(bundleId: "com.apple.Safari", appName: "Safari", isFocusing: false)
+
+        XCTAssertEqual(try context.fetch(FetchDescriptor<AppUsageEntry>()).count, 0)
+
+        tracker.testingPersistIfNeeded(force: false)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<AppUsageEntry>()).count, 0)
+        XCTAssertEqual(tracker.testingPendingDeltaCount, 1)
+
+        tracker.testingSetLastPersistAt(Date().addingTimeInterval(-31))
+        tracker.testingPersistIfNeeded(force: false)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.duringFocusSeconds, 2)
+        XCTAssertEqual(entries.first?.outsideFocusSeconds, 1)
+        XCTAssertEqual(tracker.testingPendingDeltaCount, 0)
+    }
+
+    func testForcedPersistFlushesAllPendingDeltasWithCorrectCounters() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+
+        tracker.testingRecordUsageDelta(bundleId: "com.apple.Safari", appName: "Safari", isFocusing: true)
+        tracker.testingRecordUsageDelta(bundleId: "com.apple.Safari", appName: "Safari", isFocusing: false)
+        tracker.testingRecordUsageDelta(bundleId: "domain:youtube.com", appName: "YouTube", isFocusing: true)
+        tracker.testingPersistIfNeeded(force: true)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 2)
+
+        let safari = entries.first(where: { $0.bundleIdentifier == "com.apple.Safari" })
+        XCTAssertEqual(safari?.duringFocusSeconds, 1)
+        XCTAssertEqual(safari?.outsideFocusSeconds, 1)
+
+        let domain = entries.first(where: { $0.bundleIdentifier == "domain:youtube.com" })
+        XCTAssertEqual(domain?.duringFocusSeconds, 1)
+        XCTAssertEqual(domain?.outsideFocusSeconds, 0)
+        XCTAssertEqual(tracker.testingPendingDeltaCount, 0)
+    }
+
+    func testPersistFailurePreservesPendingDeltasForRetry() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+
+        tracker.testingRecordUsageDelta(bundleId: "com.apple.Safari", appName: "Safari", isFocusing: true)
+        tracker.testingFailNextSave()
+
+        tracker.testingPersistIfNeeded(force: true)
+        XCTAssertEqual(tracker.testingPendingDeltaCount, 1)
+
+        tracker.testingPersistIfNeeded(force: true)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.duringFocusSeconds, 1)
+        XCTAssertEqual(entries.first?.outsideFocusSeconds, 0)
+        XCTAssertEqual(tracker.testingPendingDeltaCount, 0)
+    }
+
+    private func makeInMemoryContainer() throws -> ModelContainer {
+        let schema = Schema([
+            AppSettings.self,
+            AppUsageEntry.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        return try ModelContainer(for: schema, configurations: configuration)
     }
 }

@@ -127,15 +127,15 @@ struct DriftClassificationMemory: Codable {
     static let projectScopedAllowanceCount = 2
     static let projectScopedRiskCount      = 2
 
-    mutating func recordPlanned(key: String) {
+    mutating func recordPlanned(key: String, at date: Date = Date()) {
         var dates = plannedDates[key] ?? []
-        dates.append(Date())
+        dates.append(date)
         plannedDates[key] = dates
     }
 
-    mutating func recordAvoidant(key: String) {
+    mutating func recordAvoidant(key: String, at date: Date = Date()) {
         var dates = avoidantDates[key] ?? []
-        dates.append(Date())
+        dates.append(date)
         avoidantDates[key] = dates
     }
 

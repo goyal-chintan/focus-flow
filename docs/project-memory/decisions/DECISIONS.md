@@ -502,10 +502,44 @@ The `NavigationSplitView(.balanced)` style negotiates equal column widths, requi
 
 ---
 
+## App Usage Tracking and Companion Analytics Batching
+
+**Category:** Data/Architecture/Performance
+**Date:** 2026-04-14
+**Status:** Active
+**Session(s):** fix/power-usage-reduction
+
+### Problem
+`AppUsageTracker` was mutating `AppUsageEntry` every second, and companion analytics views were recomputing expensive aggregates from live query data too frequently. This created unnecessary UI invalidation and elevated power usage.
+
+### Alternatives Considered
+- Keep per-second persistence and optimize only rendering paths — reduces some overhead but leaves write churn as the primary trigger.
+- Batch writes in memory and flush on cadence while preserving forced flush semantics — minimizes churn without changing persisted model shape. ✅
+- Move analytics computation off-view entirely with broader architecture changes — potentially cleaner long term, but too large for a focused reliability/performance fix.
+
+### Decision
+- Introduce in-memory usage delta batching in `AppUsageTracker` and flush deltas on persist cadence plus forced flush paths (stop/day rollover).
+- Ensure pending deltas are cleared only after successful save; preserve/retry deltas on save failure.
+- Add a debounced, coordinator-backed analytics report cache for `TodayStatsView` to avoid repeated `CompanionAnalyticsBuilder` recomputation during rapid updates.
+
+### Rationale
+The highest-value fix is reducing model mutation frequency while preserving behavioral correctness. A small coordinator for analytics keeps rendering stable and minimizes expensive recomputation without changing the existing report builder contract.
+
+### Outcomes
+- Significantly lower model write frequency from per-second mutations to batched persistence.
+- Companion analytics rendering now coalesces rapid updates instead of rebuilding full reports on each transient change.
+- Added focused regression coverage for batching, save-failure retry behavior, and analytics debounce/coalescing.
+
+### Learnings
+For telemetry-style counters in SwiftData-backed UI, write batching and save-failure-safe buffering are required to keep power usage predictable. View-level caching/debouncing is an effective complement when aggregate computation is non-trivial.
+
+---
+
 **By Category Summary (updated)**
 
 - **UI Decisions** (6): Glass styling, button patterns, list rows, reference-driven design, 3-gate review, prettifyToken preserve-case
-- **Architecture Decisions** (4): Complex view extraction, domain-prefix convention, work-intent gate bypass, stats-window minimum frame constraint
-- **Data Decisions** (2): `domain:` AppUsageEntry, confidence formula recalibration
+- **Architecture Decisions** (5): Complex view extraction, domain-prefix convention, work-intent gate bypass, stats-window minimum frame constraint, app usage + analytics batching
+- **Data Decisions** (3): `domain:` AppUsageEntry, confidence formula recalibration, batched usage delta persistence
+- **Performance Decisions** (1): Companion analytics debounce/caching + save-failure-safe buffering
 - **Process Decisions** (1): AGENT_INSTRUCTIONS workflow constitution
 - **Notifications** (0): *Added in future sessions*
