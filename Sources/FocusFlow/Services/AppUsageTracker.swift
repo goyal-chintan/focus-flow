@@ -275,6 +275,7 @@ final class AppUsageTracker {
 
         tickCount += 1
         let isFocusing = vm.state == .focusing
+
         trackFrontmostApp(isFocusing: isFocusing)
 
         // Feed coach signals every 30 seconds during focus

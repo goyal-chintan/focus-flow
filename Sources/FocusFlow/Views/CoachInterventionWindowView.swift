@@ -495,6 +495,7 @@ struct CoachInterventionWindowView: View {
                 where window.identifier?.rawValue.contains("coach-intervention") == true
                    || window.title == "Focus Coach" {
                 window.level = .floating
+                window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
                 window.orderFront(nil)
                 break
             }
@@ -517,6 +518,8 @@ final class _WindowLevelView: NSView {
         super.viewDidMoveToWindow()
         guard let window else { return }
         window.level = .floating
+        // Appear on all Spaces and above full-screen apps (e.g. Ghostty in full-screen mode)
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.orderFront(nil)
     }
 }

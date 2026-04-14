@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import SwiftData
 
+
 enum TimerState: Equatable {
     case idle
     case focusing
@@ -2219,7 +2220,9 @@ final class TimerViewModel {
         frontmostCategory: AppUsageEntry.AppCategory,
         currentHourOverride: Int? = nil
     ) {
-        guard state == .idle, !isOvertime, let settings else { return }
+        guard state == .idle, !isOvertime, let settings else {
+            return
+        }
         let now = Date()
         if isInReleaseWindow {
             lastIdleStarterSuppressionReason = .releaseWindowActive
@@ -2338,7 +2341,20 @@ final class TimerViewModel {
             distractionSeverity: idleSeverity
         )
 
-        if route.shouldPresent, var decision = route.decision {
+        // Hard-escalation override: 3+ nudges against a productive app forces the strong prompt
+        // regardless of drift score. The route threshold would block low-drift productive apps,
+        // but after escalationLevel >= 2 the user has already been nudged twice with no response.
+        let isHardEscalation = !route.shouldPresent
+            && escalationLevel >= 2
+            && effectiveFrontmostCategory == .productive
+        let routeDecision: FocusCoachDecision? = route.decision ?? {
+            guard isHardEscalation else { return nil }
+            var actions: [FocusCoachQuickAction] = [.startFocusNow, .cleanRestart5m, .snooze10m]
+            if settings.coachAllowSkipAction { actions.append(.skipCheck) }
+            return FocusCoachDecision(kind: .quickPrompt, suggestedActions: actions, message: "")
+        }()
+
+        if (route.shouldPresent || isHardEscalation), var decision = routeDecision {
             if let last = lastIdleInterventionAt, Date().timeIntervalSince(last) < 120 {
                 lastIdleStarterSuppressionReason = .cooldownActive
                 return
@@ -2442,6 +2458,7 @@ final class TimerViewModel {
                             self?.requestAppActivation?()
                         }
                     }
+                } else {
                 }
                 lastIdleInterventionAt = now
             } else {

@@ -1077,6 +1077,12 @@ final class ReviewContractsTests: XCTestCase {
             source.contains("viewDidMoveToWindow"),
             "WindowLevelSetter must override viewDidMoveToWindow to set floating level the moment the view is attached to a window."
         )
+        // canJoinAllSpaces ensures the window appears even when the user is in a full-screen
+        // space (e.g. Ghostty running full-screen on its own Space).
+        XCTAssertTrue(
+            source.contains("canJoinAllSpaces"),
+            "WindowLevelSetter must set collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary] so the coach window appears above full-screen apps on separate Spaces."
+        )
     }
 
     func testCoachWindowSnoozePanelOffersMultipleDurations() throws {
