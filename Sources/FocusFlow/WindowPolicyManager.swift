@@ -15,6 +15,7 @@ final class WindowPolicyManager {
 
     private var observations: [NSObjectProtocol] = []
     private var revertTask: Task<Void, Never>?
+    private var activationTask: Task<Void, Never>?
 
     private init() {}
 
@@ -82,19 +83,39 @@ final class WindowPolicyManager {
         update()
     }
 
+    /// Call this **before** dismissing the MenuBarExtra popover to open a companion window.
+    /// Promoting the policy while FocusFlow is still the active process (inside a user-event
+    /// handler) gives macOS Tahoe the context it needs to accept the activation — calling
+    /// `NSApp.activate()` asynchronously after the popover closes is a no-op on Tahoe.
+    func prepareToOpen() {
+        activationTask?.cancel()
+        activationTask = nil
+        revertTask?.cancel()
+        revertTask = nil
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate()
+    }
+
     private func update() {
         revertTask?.cancel()
         revertTask = nil
+        activationTask?.cancel()
+        activationTask = nil
 
         if hasCompanionWindows {
-            let wasAccessory = NSApp.activationPolicy() != .regular
-            if wasAccessory {
+            if NSApp.activationPolicy() != .regular {
                 NSApp.setActivationPolicy(.regular)
-                // NSApp.activate() is a no-op on macOS 26 Tahoe. Calling makeKeyAndOrderFront
-                // on the visible window forces it to take key status, which causes macOS to
-                // update the menu bar to show FocusFlow instead of the previously active app.
-                NSApp.windows.first(where: { $0.isVisible && !$0.isMiniaturized && $0.level == .normal })?
-                    .makeKeyAndOrderFront(nil)
+                // Reactive fallback for windows that open without a prepareToOpen() call
+                // (e.g. Settings via Cmd+,). setActivationPolicy briefly deactivates the app
+                // on Tahoe, so we defer makeKeyAndOrderFront until the policy change settles.
+                activationTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    guard !Task.isCancelled else { return }
+                    NSApp.windows.first(where: { $0.isVisible && !$0.isMiniaturized && $0.level == .normal })?
+                        .makeKeyAndOrderFront(nil)
+                }
             }
         } else {
             revert()
@@ -113,6 +134,8 @@ final class WindowPolicyManager {
     }
 
     private func revert() {
+        activationTask?.cancel()
+        activationTask = nil
         if NSApp.activationPolicy() != .accessory {
             NSApp.setActivationPolicy(.accessory)
         }
