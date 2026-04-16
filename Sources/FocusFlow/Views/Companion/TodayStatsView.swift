@@ -36,6 +36,7 @@ struct TodayStatsView: View {
     @State private var showManualEntry = false
     @State private var dueReminders: [RemindersService.ReminderItem] = []
     @State private var showLoggedToast = false
+    @StateObject private var analyticsCoordinator = CompanionAnalyticsReportCoordinator()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var settings: AppSettings? { allSettings.first }
@@ -48,12 +49,15 @@ struct TodayStatsView: View {
         )
     }
 
-    private var analyticsReport: CompanionAnalyticsReport {
-        CompanionAnalyticsBuilder().build(
-            entries: visibleAppUsageEntries,
+    private var analyticsRefreshKey: AnalyticsRefreshKey {
+        AnalyticsRefreshKey(
             domainTrackingEnabled: shouldExposeRawDomains,
-            now: analyticsSnapshotNow
+            entries: visibleAppUsageEntries.map(AnalyticsEntryKey.init)
         )
+    }
+
+    private var analyticsReport: CompanionAnalyticsReport {
+        analyticsCoordinator.report
     }
 
     var body: some View {
@@ -107,7 +111,27 @@ struct TodayStatsView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
+        .task(id: analyticsRefreshKey) {
+            analyticsCoordinator.scheduleRefresh(
+                entries: visibleAppUsageEntries,
+                domainTrackingEnabled: shouldExposeRawDomains,
+                now: analyticsSnapshotNow,
+                buildReport: buildAnalyticsReport
+            )
+        }
         .task { await loadDueReminders() }
+    }
+
+    private func buildAnalyticsReport(
+        entries: [AppUsageEntry],
+        domainTrackingEnabled: Bool,
+        now: Date
+    ) -> CompanionAnalyticsReport {
+        CompanionAnalyticsBuilder().build(
+            entries: entries,
+            domainTrackingEnabled: domainTrackingEnabled,
+            now: now
+        )
     }
 
     private var headerSection: some View {
@@ -709,4 +733,25 @@ struct TodayStatsView: View {
         }
     }
 
+}
+
+private struct AnalyticsRefreshKey: Equatable {
+    let domainTrackingEnabled: Bool
+    let entries: [AnalyticsEntryKey]
+}
+
+private struct AnalyticsEntryKey: Equatable {
+    let date: Date
+    let appName: String
+    let bundleIdentifier: String
+    let duringFocusSeconds: Int
+    let outsideFocusSeconds: Int
+
+    init(entry: AppUsageEntry) {
+        self.date = entry.date
+        self.appName = entry.appName
+        self.bundleIdentifier = entry.bundleIdentifier
+        self.duringFocusSeconds = entry.duringFocusSeconds
+        self.outsideFocusSeconds = entry.outsideFocusSeconds
+    }
 }
