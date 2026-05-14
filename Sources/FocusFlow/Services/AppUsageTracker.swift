@@ -8,6 +8,35 @@ import SwiftData
 final class AppUsageTracker {
     static let shared = AppUsageTracker()
 
+    // MARK: - Adaptive Tracking Cadence
+
+    enum TrackingCadence: Equatable {
+        /// 1 s polling during active focus — full precision for usage attribution.
+        case precision
+        /// 4 s polling outside focus — reduces energy impact while idle/background.
+        case eco
+
+        var interval: TimeInterval {
+            switch self {
+            case .precision: return 1
+            case .eco: return 4
+            }
+        }
+
+        /// Browser context refresh interval. Shorter during focus for accurate domain
+        /// attribution; longer when idle to reduce AX/CGWindow queries.
+        var browserRefreshInterval: TimeInterval {
+            switch self {
+            case .precision: return 12
+            case .eco: return 30
+            }
+        }
+
+        static func forState(isFocusing: Bool) -> TrackingCadence {
+            isFocusing ? .precision : .eco
+        }
+    }
+
     struct FrontmostContextPresentation: Equatable {
         let browserHost: String?
         let displayLabel: String
@@ -30,11 +59,11 @@ final class AppUsageTracker {
             duringFocusSeconds > 0 || outsideFocusSeconds > 0
         }
 
-        mutating func addSecond(isFocusing: Bool) {
+        mutating func addSeconds(_ seconds: Int, isFocusing: Bool) {
             if isFocusing {
-                duringFocusSeconds += 1
+                duringFocusSeconds += seconds
             } else {
-                outsideFocusSeconds += 1
+                outsideFocusSeconds += seconds
             }
         }
     }
@@ -47,6 +76,9 @@ final class AppUsageTracker {
     }
 
     private var trackingTimer: Timer?
+    private var currentCadence: TrackingCadence = .eco
+    private var lastSampleAt: Date?
+    private var sampleRemainder: TimeInterval = 0
     private var idleSeconds: Int = 0
     private var isTracking = false
     private var nudgeCount: Int = 0
@@ -73,7 +105,6 @@ final class AppUsageTracker {
     private var lastFrontmostDisplayLabel: String?
     private var lastFrontmostDomainLabel: String?
     private var lastBrowserContextRefreshAt: Date = .distantPast
-    private let browserContextRefreshInterval: TimeInterval = 12
     private let browserDomainResolver: BrowserDomainResolver
     private let appUsageCaptureWriter: AppUsageCaptureWriter
     private var inactivitySeconds: Int = 0
@@ -238,6 +269,17 @@ final class AppUsageTracker {
         return (totalFocusSeconds, distractingFocusSeconds)
     }
 
+    static func shouldRefreshBrowserContext(
+        bundleId: String,
+        lastFrontmostBundleId: String,
+        now: Date,
+        lastRefreshAt: Date,
+        cadence: TrackingCadence
+    ) -> Bool {
+        bundleId != lastFrontmostBundleId
+            || now.timeIntervalSince(lastRefreshAt) >= cadence.browserRefreshInterval
+    }
+
     private init(
         browserDomainResolver: BrowserDomainResolver = BrowserDomainResolver(),
         appUsageCaptureWriter: AppUsageCaptureWriter = AppUsageCaptureWriter()
@@ -276,11 +318,12 @@ final class AppUsageTracker {
         currentTrackingDay = Calendar.current.startOfDay(for: Date())
         hydrateDailyCache()
         lastPersistAt = Date()
+        currentCadence = TrackingCadence.forState(isFocusing: timerVM.state == .focusing)
+        lastSampleAt = Date()
+        sampleRemainder = 0
 
-        trackingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.tick()
-            }
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: currentCadence.interval, repeats: true) { [weak self] _ in
+            self?.tick()
         }
         if let timer = trackingTimer {
             RunLoop.main.add(timer, forMode: .common)
@@ -288,14 +331,81 @@ final class AppUsageTracker {
         log("Started tracking")
     }
 
+    func syncCadence(isFocusing: Bool) {
+        guard isTracking else { return }
+        let desiredCadence = TrackingCadence.forState(isFocusing: isFocusing)
+        guard desiredCadence != currentCadence else { return }
+        flushElapsedSample(isFocusing: currentCadence == .precision)
+        currentCadence = desiredCadence
+        rescheduleTrackingTimer()
+    }
+
     func stop() {
         persistIfNeeded(force: true)
         trackingTimer?.invalidate()
         trackingTimer = nil
         isTracking = false
+        lastSampleAt = nil
+        sampleRemainder = 0
         idleSeconds = 0
         nudgeCount = 0
         log("Stopped tracking")
+    }
+
+    private func flushElapsedSample(isFocusing: Bool, now: Date = Date()) {
+        let elapsedSeconds = consumeElapsedSeconds(now: now)
+        guard elapsedSeconds > 0 else { return }
+
+        if isFocusing {
+            totalFocusSecondsToday += elapsedSeconds
+            if lastFrontmostCategory == .distracting {
+                distractingFocusSecondsToday += elapsedSeconds
+            }
+        }
+
+        guard let bundleId = currentFrontmostBundleId else { return }
+        let appName = currentFrontmostAppName
+            ?? pendingAppNamesByBundleID[bundleId]
+            ?? AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
+
+        recordUsageDelta(bundleId: bundleId, appName: appName, isFocusing: isFocusing, seconds: elapsedSeconds)
+
+        if let identity = appUsageCaptureWriter.browserDomainUsageIdentity(
+            resolvedHost: currentFrontmostBrowserHost,
+            settings: timerVM?.settings
+        ) {
+            recordUsageDelta(
+                bundleId: identity.bundleIdentifier,
+                appName: identity.appName,
+                isFocusing: isFocusing,
+                seconds: elapsedSeconds
+            )
+        }
+    }
+
+    private func consumeElapsedSeconds(now: Date) -> Int {
+        guard let lastSampleAt else {
+            self.lastSampleAt = now
+            return 0
+        }
+
+        let rawElapsed = max(0, sampleRemainder + now.timeIntervalSince(lastSampleAt))
+        let wholeSeconds = Int(rawElapsed.rounded(.down))
+        self.lastSampleAt = now
+        sampleRemainder = rawElapsed - TimeInterval(wholeSeconds)
+        return wholeSeconds
+    }
+
+    /// Re-creates the tracking timer at the current cadence interval.
+    private func rescheduleTrackingTimer() {
+        trackingTimer?.invalidate()
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: currentCadence.interval, repeats: true) { [weak self] _ in
+            self?.tick()
+        }
+        if let timer = trackingTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        log("Cadence switched to \(currentCadence == .precision ? "precision (1s)" : "eco (4s)")")
     }
 
     // MARK: - Tick
@@ -303,11 +413,20 @@ final class AppUsageTracker {
     private func tick() {
         guard let vm = timerVM else { return }
         rolloverDayIfNeeded()
+        let now = Date()
 
         tickCount += 1
         let isFocusing = vm.state == .focusing
 
-        trackFrontmostApp(isFocusing: isFocusing)
+        // Switch tracking cadence when focus state changes
+        let desiredCadence = TrackingCadence.forState(isFocusing: isFocusing)
+        if desiredCadence != currentCadence {
+            currentCadence = desiredCadence
+            rescheduleTrackingTimer()
+        }
+
+        let elapsedSeconds = consumeElapsedSeconds(now: now)
+        trackFrontmostApp(isFocusing: isFocusing, elapsedSeconds: elapsedSeconds)
 
         // Feed coach signals every 30 seconds during focus
         if isFocusing, vm.settings?.coachRealtimeEnabled == true, tickCount % 30 == 0 {
@@ -317,7 +436,7 @@ final class AppUsageTracker {
         // Only count idle time when not in a session
         let isIdle = vm.state == .idle && !vm.isOvertime
         if isIdle {
-            idleSeconds += 1
+            idleSeconds += elapsedSeconds
 
             let threshold = vm.settings?.antiProcrastinationThresholdMinutes ?? 5
             let enabled = vm.settings?.antiProcrastinationEnabled ?? true
@@ -361,7 +480,7 @@ final class AppUsageTracker {
 
     // MARK: - App Tracking
 
-    private func trackFrontmostApp(isFocusing: Bool) {
+    private func trackFrontmostApp(isFocusing: Bool, elapsedSeconds: Int) {
         guard modelContext != nil else { return }
 
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
@@ -372,9 +491,13 @@ final class AppUsageTracker {
         let resolvedBrowserHost: String?
         let shouldCollectRawDomains = timerVM?.settings?.coachCollectRawDomains == true
         if isBrowser(bundleId: bundleId) {
-            let shouldRefreshBrowserContext =
-                bundleId != lastFrontmostBundleId
-                || now.timeIntervalSince(lastBrowserContextRefreshAt) >= browserContextRefreshInterval
+            let shouldRefreshBrowserContext = Self.shouldRefreshBrowserContext(
+                bundleId: bundleId,
+                lastFrontmostBundleId: lastFrontmostBundleId,
+                now: now,
+                lastRefreshAt: lastBrowserContextRefreshAt,
+                cadence: currentCadence
+            )
             if shouldRefreshBrowserContext {
                 let resolvedTitle = shouldCollectRawDomains
                     ? (currentWindowTitle(processID: frontApp.processIdentifier) ?? appName)
@@ -449,14 +572,21 @@ final class AppUsageTracker {
             )
             onSuspiciousObservation?(obs)
         } else {
-            inactivitySeconds += 1
+            inactivitySeconds += elapsedSeconds
         }
 
-        recordUsageDelta(bundleId: bundleId, appName: appName, isFocusing: isFocusing)
-        if isFocusing {
-            totalFocusSecondsToday += 1
-            if contextPresentation.category == .distracting {
-                distractingFocusSecondsToday += 1
+        if elapsedSeconds > 0 {
+            recordUsageDelta(
+                bundleId: bundleId,
+                appName: appName,
+                isFocusing: isFocusing,
+                seconds: elapsedSeconds
+            )
+            if isFocusing {
+                totalFocusSecondsToday += elapsedSeconds
+                if contextPresentation.category == .distracting {
+                    distractingFocusSecondsToday += elapsedSeconds
+                }
             }
         }
 
@@ -466,11 +596,14 @@ final class AppUsageTracker {
             resolvedHost: browserHost,
             settings: timerVM?.settings
         ) {
-            recordUsageDelta(
-                bundleId: identity.bundleIdentifier,
-                appName: identity.appName,
-                isFocusing: isFocusing
-            )
+            if elapsedSeconds > 0 {
+                recordUsageDelta(
+                    bundleId: identity.bundleIdentifier,
+                    appName: identity.appName,
+                    isFocusing: isFocusing,
+                    seconds: elapsedSeconds
+                )
+            }
         }
 
         persistIfNeeded()
@@ -601,9 +734,9 @@ final class AppUsageTracker {
         pendingUsageDeltasByBundleID.values.contains(where: \.hasChanges)
     }
 
-    private func recordUsageDelta(bundleId: String, appName: String, isFocusing: Bool) {
+    private func recordUsageDelta(bundleId: String, appName: String, isFocusing: Bool, seconds: Int) {
         var delta = pendingUsageDeltasByBundleID[bundleId, default: UsageDelta()]
-        delta.addSecond(isFocusing: isFocusing)
+        delta.addSeconds(seconds, isFocusing: isFocusing)
         pendingUsageDeltasByBundleID[bundleId] = delta
         pendingAppNamesByBundleID[bundleId] = appName
     }
@@ -857,6 +990,10 @@ extension AppUsageTracker {
         pendingUsageDeltasByBundleID.filter(\.value.hasChanges).count
     }
 
+    var testingCurrentCadence: TrackingCadence {
+        currentCadence
+    }
+
     func testingConfigurePersistence(modelContext: ModelContext, day: Date) {
         self.modelContext = modelContext
         currentTrackingDay = Calendar.current.startOfDay(for: day)
@@ -870,8 +1007,8 @@ extension AppUsageTracker {
         lastPersistAt = date
     }
 
-    func testingRecordUsageDelta(bundleId: String, appName: String, isFocusing: Bool) {
-        recordUsageDelta(bundleId: bundleId, appName: appName, isFocusing: isFocusing)
+    func testingRecordUsageDelta(bundleId: String, appName: String, isFocusing: Bool, seconds: Int = 1) {
+        recordUsageDelta(bundleId: bundleId, appName: appName, isFocusing: isFocusing, seconds: seconds)
     }
 
     func testingPersistIfNeeded(force: Bool = false) {
@@ -880,6 +1017,34 @@ extension AppUsageTracker {
 
     func testingFailNextSave() {
         testingShouldFailNextSave = true
+    }
+
+    func testingSetCurrentCadence(_ cadence: TrackingCadence) {
+        currentCadence = cadence
+    }
+
+    func testingSetIsTracking(_ isTracking: Bool) {
+        self.isTracking = isTracking
+    }
+
+    func testingSetFrontmostContext(
+        bundleId: String,
+        appName: String,
+        browserHost: String? = nil,
+        category: AppUsageEntry.AppCategory = .neutral
+    ) {
+        lastFrontmostBundleId = bundleId
+        pendingAppNamesByBundleID[bundleId] = appName
+        lastFrontmostBrowserHost = browserHost
+        lastFrontmostCategory = category
+    }
+
+    func testingSetLastSampleAt(_ date: Date?) {
+        lastSampleAt = date
+    }
+
+    func testingFlushElapsedSample(isFocusing: Bool, now: Date) {
+        flushElapsedSample(isFocusing: isFocusing, now: now)
     }
 }
 #endif
