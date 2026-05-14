@@ -459,9 +459,7 @@ final class TimerViewModel {
         let interval = nextMidnight.timeIntervalSinceNow + 1 // 1 sec after midnight
 
         let t = Timer(fire: Date().addingTimeInterval(interval), interval: 0, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.handleDayChange()
-            }
+            self?.handleDayChange()
         }
         RunLoop.main.add(t, forMode: .common)
         midnightTimer = t
@@ -581,11 +579,13 @@ final class TimerViewModel {
 
         if recovery.isPaused {
             state = .paused
+            AppUsageTracker.shared.syncCadence(isFocusing: false)
             pauseStartTime = Date()
             pauseElapsed = 0
             startPauseTimer()
         } else {
             state = .focusing
+            AppUsageTracker.shared.syncCadence(isFocusing: true)
             startTimer()
         }
 
@@ -724,6 +724,7 @@ final class TimerViewModel {
         totalSeconds = duration
         remainingSeconds = duration
         state = .focusing
+        AppUsageTracker.shared.syncCadence(isFocusing: true)
 
         let session = FocusSession(
             type: .focus,
@@ -810,6 +811,7 @@ final class TimerViewModel {
         totalSeconds = newDuration
         remainingSeconds = newDuration
         state = .focusing
+        AppUsageTracker.shared.syncCadence(isFocusing: true)
 
         let session = FocusSession(
             type: .focus,
@@ -912,6 +914,7 @@ final class TimerViewModel {
         totalSeconds = duration
         remainingSeconds = duration
         state = .onBreak(type)
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
 
         let session = FocusSession(type: type, duration: duration)
@@ -937,6 +940,7 @@ final class TimerViewModel {
         timer?.invalidate()
         timer = nil
         state = .paused
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
         pauseStartTime = Date()
         pauseElapsed = 0
         pauseCountThisSession += 1
@@ -977,6 +981,7 @@ final class TimerViewModel {
         pauseStartTime = nil
         pauseElapsed = 0
         state = .focusing
+        AppUsageTracker.shared.syncCadence(isFocusing: true)
         startTimer()
         saveCrashRecoveryCheckpoint() // Persist resumed state for crash recovery
 
@@ -1028,6 +1033,7 @@ final class TimerViewModel {
         deactivateBlocking()
         currentSession = nil
         state = .idle
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
         remainingSeconds = 0
         totalSeconds = 0
     }
@@ -1080,6 +1086,7 @@ final class TimerViewModel {
         isOvertime = false
         overtimeSeconds = 0
         state = .idle
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
         remainingSeconds = 0
         totalSeconds = 0
         showCoachInterventionWindow = false
@@ -1188,6 +1195,7 @@ final class TimerViewModel {
         deactivateBlocking()
         currentSession = nil
         state = .idle
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
         remainingSeconds = 0
         totalSeconds = 0
         closePopover()
@@ -1216,6 +1224,7 @@ final class TimerViewModel {
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
         remainingSeconds = 0
         totalSeconds = 0
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
         loadTodayStats()
         // Transition onBreak → focusing directly; never touch .idle
         startFocusInternal()
@@ -1394,9 +1403,7 @@ final class TimerViewModel {
     private func startTimer() {
         timer?.invalidate()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.tick()
-            }
+            self?.tick()
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -1405,9 +1412,7 @@ final class TimerViewModel {
     private func startPauseTimer() {
         pauseTimer?.invalidate()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.tickPause()
-            }
+            self?.tickPause()
         }
         pauseTimer = t
         RunLoop.main.add(t, forMode: .common)
@@ -1579,6 +1584,7 @@ final class TimerViewModel {
         overtimeSeconds = 0
         remainingSeconds = 0
         state = .idle
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
         showSessionComplete = true
         closePopover()
         DispatchQueue.main.async { [weak self] in
