@@ -343,6 +343,8 @@ final class AppUsageTracker {
     }
 
     func stop() {
+        // Flush any elapsed time since the last tick so it's not lost on shutdown
+        flushElapsedSample(isFocusing: currentCadence == .precision)
         persistIfNeeded(force: true)
         trackingTimer?.invalidate()
         trackingTimer = nil
