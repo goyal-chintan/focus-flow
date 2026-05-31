@@ -203,6 +203,173 @@ final class AppUsageTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.testingPendingDeltaCount, 0)
     }
 
+    func testTrackingCadenceIsPrecisionDuringFocus() {
+        let cadence = AppUsageTracker.TrackingCadence.forState(isFocusing: true)
+        XCTAssertEqual(cadence, .precision)
+        XCTAssertEqual(cadence.interval, 1.0)
+    }
+
+    func testTrackingCadenceIsEcoOutsideFocus() {
+        let cadence = AppUsageTracker.TrackingCadence.forState(isFocusing: false)
+        XCTAssertEqual(cadence, .eco)
+        XCTAssertEqual(cadence.interval, 4.0)
+    }
+
+    func testBrowserRefreshIntervalIsShortDuringFocus() {
+        let interval = AppUsageTracker.TrackingCadence.precision.browserRefreshInterval
+        XCTAssertEqual(interval, 12.0)
+    }
+
+    func testBrowserRefreshIntervalIsLongOutsideFocus() {
+        let interval = AppUsageTracker.TrackingCadence.eco.browserRefreshInterval
+        XCTAssertEqual(interval, 30.0)
+    }
+
+    func testEcoCadencePersistsOutsideFocusUsageForFullTickDuration() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+
+        tracker.testingRecordUsageDelta(
+            bundleId: "com.apple.Safari",
+            appName: "Safari",
+            isFocusing: false,
+            seconds: Int(AppUsageTracker.TrackingCadence.eco.interval)
+        )
+        tracker.testingPersistIfNeeded(force: true)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.duringFocusSeconds, 0)
+        XCTAssertEqual(entries.first?.outsideFocusSeconds, 4)
+    }
+
+    func testPrecisionCadencePersistsFocusUsageForSingleSecond() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+
+        tracker.testingRecordUsageDelta(
+            bundleId: "com.apple.Safari",
+            appName: "Safari",
+            isFocusing: true,
+            seconds: Int(AppUsageTracker.TrackingCadence.precision.interval)
+        )
+        tracker.testingPersistIfNeeded(force: true)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.duringFocusSeconds, 1)
+        XCTAssertEqual(entries.first?.outsideFocusSeconds, 0)
+    }
+
+    func testBrowserRefreshGateSkipsSameAppBeforeEcoIntervalElapses() {
+        let now = Date()
+
+        let shouldRefresh = AppUsageTracker.shouldRefreshBrowserContext(
+            bundleId: "com.apple.Safari",
+            lastFrontmostBundleId: "com.apple.Safari",
+            now: now,
+            lastRefreshAt: now.addingTimeInterval(-10),
+            cadence: .eco
+        )
+
+        XCTAssertFalse(shouldRefresh)
+    }
+
+    func testBrowserRefreshGateRefreshesSameAppAfterEcoIntervalElapses() {
+        let now = Date()
+
+        let shouldRefresh = AppUsageTracker.shouldRefreshBrowserContext(
+            bundleId: "com.apple.Safari",
+            lastFrontmostBundleId: "com.apple.Safari",
+            now: now,
+            lastRefreshAt: now.addingTimeInterval(-31),
+            cadence: .eco
+        )
+
+        XCTAssertTrue(shouldRefresh)
+    }
+
+    func testBrowserAppSwitchBypassesRefreshIntervalGate() {
+        let now = Date()
+
+        let shouldRefresh = AppUsageTracker.shouldRefreshBrowserContext(
+            bundleId: "com.google.Chrome",
+            lastFrontmostBundleId: "com.apple.Safari",
+            now: now,
+            lastRefreshAt: now,
+            cadence: .eco
+        )
+
+        XCTAssertTrue(shouldRefresh)
+    }
+
+    func testSyncCadenceSwitchesTrackerImmediatelyWhenFocusStateChanges() {
+        let tracker = AppUsageTracker.makeForTesting()
+
+        tracker.testingSetIsTracking(true)
+        tracker.testingSetCurrentCadence(.eco)
+        tracker.syncCadence(isFocusing: true)
+
+        XCTAssertEqual(tracker.testingCurrentCadence, .precision)
+    }
+
+    func testFlushElapsedSampleCreditsElapsedFocusSecondsAcrossCadenceChange() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+        tracker.testingSetFrontmostContext(bundleId: "com.apple.Safari", appName: "Safari")
+        tracker.testingSetCurrentCadence(.precision)
+        tracker.testingSetLastSampleAt(Date().addingTimeInterval(-3.2))
+
+        tracker.testingFlushElapsedSample(isFocusing: true, now: Date())
+        tracker.testingPersistIfNeeded(force: true)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.duringFocusSeconds, 3)
+    }
+
+    func testFlushElapsedSampleCreditsElapsedIdleSecondsAcrossCadenceChange() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+        tracker.testingSetFrontmostContext(bundleId: "com.apple.Safari", appName: "Safari")
+        tracker.testingSetCurrentCadence(.eco)
+        tracker.testingSetLastSampleAt(Date().addingTimeInterval(-2.4))
+
+        tracker.testingFlushElapsedSample(isFocusing: false, now: Date())
+        tracker.testingPersistIfNeeded(force: true)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.outsideFocusSeconds, 2)
+    }
+
+    func testSyncCadenceAttributesElapsedSecondsToPreviousState() throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let tracker = AppUsageTracker.makeForTesting()
+        tracker.testingConfigurePersistence(modelContext: context, day: Date())
+        tracker.testingSetIsTracking(true)
+        tracker.testingSetCurrentCadence(.eco)
+        tracker.testingSetFrontmostContext(bundleId: "com.apple.Safari", appName: "Safari")
+        tracker.testingSetLastSampleAt(Date().addingTimeInterval(-2.7))
+
+        tracker.syncCadence(isFocusing: true)
+        tracker.testingPersistIfNeeded(force: true)
+
+        let entries = try context.fetch(FetchDescriptor<AppUsageEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.outsideFocusSeconds, 2)
+        XCTAssertEqual(entries.first?.duringFocusSeconds, 0)
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             AppSettings.self,
