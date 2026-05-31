@@ -159,6 +159,11 @@ final class TimerViewModel {
     var pauseElapsed: TimeInterval = 0
     private var pauseTimer: Timer? = nil
 
+    /// Tracks when the system entered sleep (for auto-resume threshold check)
+    private var systemSleepStartTime: Date?
+    /// Tracks what state we were in before sleep (to know whether to resume focus or break)
+    private var stateBeforeSleep: TimerState?
+
     // MARK: - Crash Recovery
     /// Set during `configure()` if a recoverable session is detected from a previous crash.
     var recoveryState: CrashRecoveryState? = nil
@@ -949,6 +954,66 @@ final class TimerViewModel {
         coachEngine.updatePauseCount(pauseCountThisSession)
         startPauseTimer()
         saveCrashRecoveryCheckpoint() // Persist paused state for crash recovery
+    }
+
+    /// Pauses the current session when the system goes to sleep (lid close, idle sleep, etc.)
+    /// Handles both focus sessions (via pause()) and break sessions (via pauseBreak()).
+    /// Idempotent: safe to call multiple times per sleep event.
+    func pauseForSystemSleep() {
+        // Guard against duplicate notifications — don't overwrite the original pre-sleep state
+        guard systemSleepStartTime == nil else { return }
+        
+        // Record sleep start time for auto-resume threshold check on wake
+        systemSleepStartTime = Date()
+        stateBeforeSleep = state
+
+        switch state {
+        case .focusing:
+            if !isOvertime {
+                pause()
+            }
+        case .onBreak:
+            guard !isBreakPaused else {
+                systemSleepStartTime = nil
+                stateBeforeSleep = nil
+                return
+            }
+            pauseBreak()
+        case .idle, .paused:
+            break
+        }
+    }
+
+    /// Called when the system wakes from sleep. Auto-resumes if the sleep was within the configured threshold.
+    func resumeAfterSystemWake() {
+        guard let sleepStart = systemSleepStartTime else { return }
+        defer {
+            systemSleepStartTime = nil
+            stateBeforeSleep = nil
+        }
+
+        // Check if auto-resume is enabled
+        guard settings?.autoResumeOnWake == true else { return }
+
+        let sleepDuration = Date().timeIntervalSince(sleepStart)
+        let threshold = TimeInterval(settings?.autoResumeThresholdSeconds ?? 120)
+
+        // Only auto-resume if sleep was within threshold
+        guard sleepDuration <= threshold else { return }
+
+        // Resume based on what state we were in before sleep
+        switch stateBeforeSleep {
+        case .focusing:
+            if state == .paused {
+                resume()
+            }
+        case .onBreak:
+            if case .onBreak = state, isBreakPaused {
+                resumeBreak()
+            }
+        default:
+            break
+        }
     }
 
     /// Maximum single session duration: 4 hours (prevents runaway extension)
