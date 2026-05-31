@@ -323,7 +323,9 @@ final class AppUsageTracker {
         sampleRemainder = 0
 
         trackingTimer = Timer.scheduledTimer(withTimeInterval: currentCadence.interval, repeats: true) { [weak self] _ in
-            self?.tick()
+            MainActor.assumeIsolated {
+                self?.tick()
+            }
         }
         if let timer = trackingTimer {
             RunLoop.main.add(timer, forMode: .common)
@@ -400,7 +402,9 @@ final class AppUsageTracker {
     private func rescheduleTrackingTimer() {
         trackingTimer?.invalidate()
         trackingTimer = Timer.scheduledTimer(withTimeInterval: currentCadence.interval, repeats: true) { [weak self] _ in
-            self?.tick()
+            MainActor.assumeIsolated {
+                self?.tick()
+            }
         }
         if let timer = trackingTimer {
             RunLoop.main.add(timer, forMode: .common)
@@ -421,12 +425,14 @@ final class AppUsageTracker {
         // Switch tracking cadence when focus state changes
         let desiredCadence = TrackingCadence.forState(isFocusing: isFocusing)
         if desiredCadence != currentCadence {
+            // Attribute elapsed seconds to previous focus state before switching cadence
+            flushElapsedSample(isFocusing: currentCadence == .precision, now: now)
             currentCadence = desiredCadence
             rescheduleTrackingTimer()
         }
 
         let elapsedSeconds = consumeElapsedSeconds(now: now)
-        trackFrontmostApp(isFocusing: isFocusing, elapsedSeconds: elapsedSeconds)
+        trackFrontmostApp(isFocusing: isFocusing, elapsedSeconds: elapsedSeconds, now: now)
 
         // Feed coach signals every 30 seconds during focus
         if isFocusing, vm.settings?.coachRealtimeEnabled == true, tickCount % 30 == 0 {
@@ -480,13 +486,12 @@ final class AppUsageTracker {
 
     // MARK: - App Tracking
 
-    private func trackFrontmostApp(isFocusing: Bool, elapsedSeconds: Int) {
+    private func trackFrontmostApp(isFocusing: Bool, elapsedSeconds: Int, now: Date) {
         guard modelContext != nil else { return }
 
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
         let bundleId = frontApp.bundleIdentifier ?? "unknown"
         let appName = frontApp.localizedName ?? "Unknown"
-        let now = Date()
         let windowTitle: String
         let resolvedBrowserHost: String?
         let shouldCollectRawDomains = timerVM?.settings?.coachCollectRawDomains == true
@@ -535,12 +540,15 @@ final class AppUsageTracker {
             settings: timerVM?.settings
         )
         let browserHost = contextPresentation.browserHost
+
+        // Skip FocusFlow itself — avoid mutating lastFrontmostCategory/labels so that
+        // flushElapsedSample attributes seconds correctly when a cadence sync fires
+        // while FocusFlow is frontmost.
+        if bundleId == Bundle.main.bundleIdentifier { return }
+
         lastFrontmostDomainLabel = contextPresentation.domainLabel
         lastFrontmostDisplayLabel = contextPresentation.displayLabel
         lastFrontmostCategory = contextPresentation.category
-
-        // Skip FocusFlow itself
-        if bundleId == Bundle.main.bundleIdentifier { return }
 
         // Track app switches for coach signals
         if bundleId != lastFrontmostBundleId {

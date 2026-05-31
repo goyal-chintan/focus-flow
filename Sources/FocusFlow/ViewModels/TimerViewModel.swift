@@ -459,7 +459,9 @@ final class TimerViewModel {
         let interval = nextMidnight.timeIntervalSinceNow + 1 // 1 sec after midnight
 
         let t = Timer(fire: Date().addingTimeInterval(interval), interval: 0, repeats: false) { [weak self] _ in
-            self?.handleDayChange()
+            MainActor.assumeIsolated {
+                self?.handleDayChange()
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         midnightTimer = t
@@ -1403,7 +1405,9 @@ final class TimerViewModel {
     private func startTimer() {
         timer?.invalidate()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            self?.tick()
+            MainActor.assumeIsolated {
+                self?.tick()
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -1412,7 +1416,9 @@ final class TimerViewModel {
     private func startPauseTimer() {
         pauseTimer?.invalidate()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            self?.tickPause()
+            MainActor.assumeIsolated {
+                self?.tickPause()
+            }
         }
         pauseTimer = t
         RunLoop.main.add(t, forMode: .common)
