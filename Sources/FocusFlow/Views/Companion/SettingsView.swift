@@ -253,6 +253,8 @@ struct SettingsView: View {
                             )
                             .frame(width: 145)
                             .font(.subheadline)
+                            .accessibilityLabel("Auto-resume threshold")
+                            .accessibilityValue("\(settings.autoResumeThresholdSeconds / 60) minutes")
                         }
                     }
                 }
@@ -1773,10 +1775,10 @@ private struct DurationRow: View {
                 in: range,
                 step: step
             )
-            .frame(width: 145)
-            .font(.subheadline)
-        }
-    }
+                            .frame(width: 145)
+                            .font(.subheadline)
+                        }
+                    }
 }
 
 private struct ToggleRow: View {

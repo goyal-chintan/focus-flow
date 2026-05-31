@@ -958,7 +958,11 @@ final class TimerViewModel {
 
     /// Pauses the current session when the system goes to sleep (lid close, idle sleep, etc.)
     /// Handles both focus sessions (via pause()) and break sessions (via pauseBreak()).
+    /// Idempotent: safe to call multiple times per sleep event.
     func pauseForSystemSleep() {
+        // Guard against duplicate notifications — don't overwrite the original pre-sleep state
+        guard systemSleepStartTime == nil else { return }
+        
         // Record sleep start time for auto-resume threshold check on wake
         systemSleepStartTime = Date()
         stateBeforeSleep = state

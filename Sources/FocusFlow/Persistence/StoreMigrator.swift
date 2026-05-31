@@ -203,7 +203,19 @@ enum StoreMigrator {
             column: "ZUPDATEDAT",
             sqlType: "TIMESTAMP",
             defaultSQLValue: "0"
-        )
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZAUTORESUMEONWAKE",
+            sqlType: "INTEGER",
+            defaultSQLValue: "1"
+        ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZAUTORESUMETHRESHOLDSECONDS",
+            sqlType: "INTEGER",
+            defaultSQLValue: "120"
+        ),
     ]
 
     static func migrateStoreIfNeeded(at storeURL: URL) throws {
