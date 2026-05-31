@@ -360,6 +360,9 @@ final class AppUsageTracker {
         let elapsedSeconds = consumeElapsedSeconds(now: now)
         guard elapsedSeconds > 0 else { return }
 
+        // Skip attribution when FocusFlow itself is frontmost (consistent with trackFrontmostApp)
+        guard let bundleId = currentFrontmostBundleId else { return }
+
         if isFocusing {
             totalFocusSecondsToday += elapsedSeconds
             if lastFrontmostCategory == .distracting {
@@ -367,7 +370,6 @@ final class AppUsageTracker {
             }
         }
 
-        guard let bundleId = currentFrontmostBundleId else { return }
         let appName = currentFrontmostAppName
             ?? pendingAppNamesByBundleID[bundleId]
             ?? AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
