@@ -973,6 +973,11 @@ final class TimerViewModel {
                 pause()
             }
         case .onBreak:
+            guard !isBreakPaused else {
+                systemSleepStartTime = nil
+                stateBeforeSleep = nil
+                return
+            }
             pauseBreak()
         case .idle, .paused:
             break
