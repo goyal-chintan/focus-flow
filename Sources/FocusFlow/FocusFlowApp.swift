@@ -210,6 +210,26 @@ private struct WindowLauncherBridge: View {
                         timerVM.saveSessionBeforeTermination()
                     }
                 }
+                // Auto-pause running sessions when the Mac goes to sleep
+                NSWorkspace.shared.notificationCenter.addObserver(
+                    forName: NSWorkspace.willSleepNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    Task { @MainActor in
+                        timerVM.pauseForSystemSleep()
+                    }
+                }
+                // Auto-resume if sleep was brief (accidental lid close)
+                NSWorkspace.shared.notificationCenter.addObserver(
+                    forName: NSWorkspace.didWakeNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    Task { @MainActor in
+                        timerVM.resumeAfterSystemWake()
+                    }
+                }
 
                 // Reconcile permissions on launch
                 reconcilePermissionsIfNeeded()

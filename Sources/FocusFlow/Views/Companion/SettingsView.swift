@@ -215,6 +215,46 @@ struct SettingsView: View {
                             }
                         )
                     )
+
+                    Divider()
+
+                    ToggleRow(
+                        label: "Auto-resume on wake",
+                        icon: "moon.circle.fill",
+                        color: .cyan,
+                        isOn: Binding(
+                            get: { settings.autoResumeOnWake },
+                            set: { settings.autoResumeOnWake = $0; save() }
+                        )
+                    )
+
+                    if settings.autoResumeOnWake {
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .foregroundStyle(.cyan)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .accessibilityHidden(true)
+                                Text("Resume if asleep less than")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Stepper(
+                                "\(settings.autoResumeThresholdSeconds / 60) min",
+                                value: Binding(
+                                    get: { settings.autoResumeThresholdSeconds / 60 },
+                                    set: { settings.autoResumeThresholdSeconds = $0 * 60; save() }
+                                ),
+                                in: 1...10,
+                                step: 1
+                            )
+                            .frame(width: 145)
+                            .font(.subheadline)
+                        }
+                    }
                 }
             }
             .padding(16)
