@@ -257,6 +257,41 @@ struct SettingsView: View {
                             .accessibilityValue("\(settings.autoResumeThresholdSeconds / 60) minutes")
                         }
                     }
+
+                    Divider()
+
+                    HStack(alignment: .center) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "bed.double.fill")
+                                .foregroundStyle(.indigo)
+                                .font(.system(size: 13, weight: .semibold))
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Wake recovery threshold")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                Text("Auto-stops and prompts on wake if asleep longer than this")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Spacer()
+
+                        Stepper(
+                            "\(settings.autoStopOnSleepThresholdMinutes) min",
+                            value: Binding(
+                                get: { settings.autoStopOnSleepThresholdMinutes },
+                                set: { settings.autoStopOnSleepThresholdMinutes = $0; save() }
+                            ),
+                            in: 5...240,
+                            step: 5
+                        )
+                        .frame(width: 145)
+                        .font(.subheadline)
+                        .accessibilityLabel("Wake recovery threshold")
+                        .accessibilityValue("\(settings.autoStopOnSleepThresholdMinutes) minutes")
+                    }
                 }
             }
             .padding(16)
