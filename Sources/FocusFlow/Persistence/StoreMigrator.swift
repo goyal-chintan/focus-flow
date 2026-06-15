@@ -216,6 +216,12 @@ enum StoreMigrator {
             sqlType: "INTEGER",
             defaultSQLValue: "120"
         ),
+        ColumnMigration(
+            table: "ZAPPSETTINGS",
+            column: "ZAUTOSTOPONSLEEPTHRESHOLDMINUTES",
+            sqlType: "INTEGER",
+            defaultSQLValue: "60"
+        ),
     ]
 
     static func migrateStoreIfNeeded(at storeURL: URL) throws {

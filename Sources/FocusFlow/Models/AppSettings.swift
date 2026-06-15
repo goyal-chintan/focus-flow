@@ -13,6 +13,7 @@ final class AppSettings {
     var completionSound: String
     var autoResumeOnWake: Bool = true
     var autoResumeThresholdSeconds: Int = 120
+    var autoStopOnSleepThresholdMinutes: Int = 60
 
     // Goals
     var dailyFocusGoal: TimeInterval = 7200
@@ -67,6 +68,7 @@ final class AppSettings {
         self.completionSound = "Glass"
         self.autoResumeOnWake = true
         self.autoResumeThresholdSeconds = 120
+        self.autoStopOnSleepThresholdMinutes = 60
         self.dailyFocusGoal = 7200  // 120 min
         self.calendarIntegrationEnabled = false
         self.calendarName = "FocusFlow"
