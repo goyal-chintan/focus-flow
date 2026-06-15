@@ -48,7 +48,9 @@ struct SessionCompleteWindowView: View {
 
     var body: some View {
         Group {
-            if isBreakCompletion {
+            if timerVM.isWakeRecoveryActive {
+                wakeRecoveryContent
+            } else if isBreakCompletion {
                 breakContent
             } else {
                 focusContent
@@ -80,6 +82,71 @@ struct SessionCompleteWindowView: View {
                 timerVM.preserveManualStop()
             }
         }
+    }
+
+    // MARK: - Wake Recovery (Issue #32)
+
+    private var wakeRecoveryContent: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(LiquidDesignTokens.Spectral.amber.opacity(0.15))
+                    .frame(width: 80, height: 80)
+                    .blur(radius: appeared ? 14 : 0)
+                    .animation(disableMotionForEvidence ? nil : .easeOut(duration: 0.5), value: appeared)
+
+                Image(systemName: "bed.double.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                    .accessibilityHidden(true)
+            }
+            .scaleEffect(appeared ? 1.0 : 0.85)
+            .opacity(appeared ? 1.0 : 0)
+            .animation(disableMotionForEvidence ? nil : FFMotion.reward, value: appeared)
+
+            VStack(spacing: 8) {
+                Text("Resolve Interrupted Session")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                
+                Text("Your focus session was interrupted by system sleep. Choose how you would like to resolve the session's duration.")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+            }
+
+            EvidenceSafeGlassGroup {
+                VStack(spacing: 8) {
+                    LiquidActionButton(
+                        title: "Save up to sleep start",
+                        icon: "clock.arrow.circlepath",
+                        role: .primary
+                    ) {
+                        timerVM.resolveWakeRecovery(choice: .saveToSleepStart)
+                    }
+
+                    LiquidActionButton(
+                        title: "Keep full overtime",
+                        icon: "arrow.right.to.line",
+                        role: .secondary
+                    ) {
+                        timerVM.resolveWakeRecovery(choice: .keepOvertime)
+                    }
+
+                    LiquidActionButton(
+                        title: "Discard session entirely",
+                        icon: "trash",
+                        role: .destructive
+                    ) {
+                        timerVM.resolveWakeRecovery(choice: .discard)
+                        dismissWindow(id: "session-complete")
+                    }
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 480, height: 440)
     }
 
     // MARK: - Focus Completion (two-stage)
