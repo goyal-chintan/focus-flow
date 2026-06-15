@@ -295,7 +295,7 @@ final class TimerViewModel {
     }
 
     // MARK: - Private
-    private var timer: Timer?
+    var timer: Timer?
     private var modelContext: ModelContext?
     private var currentSession: FocusSession?
     private(set) var settings: AppSettings?
@@ -1062,15 +1062,16 @@ final class TimerViewModel {
         systemSleepStartTime = Date()
         stateBeforeSleep = state
 
+        if isOvertime {
+            // For overtime, invalidate the timer immediately to freeze ticking
+            timer?.invalidate()
+            timer = nil
+            return
+        }
+
         switch state {
         case .focusing:
-            if !isOvertime {
-                pause()
-            } else {
-                // For overtime, invalidate the timer immediately to freeze ticking
-                timer?.invalidate()
-                timer = nil
-            }
+            pause()
         case .onBreak:
             guard !isBreakPaused else {
                 systemSleepStartTime = nil
@@ -1145,6 +1146,12 @@ final class TimerViewModel {
 
         // Only auto-resume if sleep was within threshold
         guard sleepDuration <= threshold else { return }
+
+        if isOvertime {
+            // For overtime, recreate the ticking timer
+            startTimer()
+            return
+        }
 
         // Resume based on what state we were in before sleep
         switch stateBeforeSleep {

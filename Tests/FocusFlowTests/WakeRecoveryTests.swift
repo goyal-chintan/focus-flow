@@ -46,19 +46,62 @@ final class WakeRecoveryTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testPauseOnSleepAndWakeAutoResumeShortSleep() {
+    func testPauseOnSleepAndWakeAutoResumeShortSleep() throws {
         // Start a session
         timerVM.startFocus()
         XCTAssertEqual(timerVM.state, .focusing)
+        let initialRemaining = timerVM.remainingSeconds
+        
+        // Let's manually tick the timer down a bit
+        timerVM.remainingSeconds -= 10
+        let expectedRemaining = timerVM.remainingSeconds
+        
+        // Verify database has exactly 1 session
+        var sessions = try modelContext.fetch(FetchDescriptor<FocusSession>())
+        XCTAssertEqual(sessions.count, 1)
         
         // Sleep system (brief)
         timerVM.pauseForSystemSleep()
         XCTAssertEqual(timerVM.state, .paused)
         XCTAssertNotNil(timerVM.systemSleepStartTime)
         
-        // Wake system after 30 seconds (within threshold)
+        // Wake system after 5 seconds (within threshold)
         timerVM.resumeAfterSystemWake()
         XCTAssertEqual(timerVM.state, .focusing)
+        XCTAssertNil(timerVM.systemSleepStartTime)
+        
+        // Assert remainingSeconds is preserved
+        XCTAssertEqual(timerVM.remainingSeconds, expectedRemaining)
+        
+        // Assert no duplicate session was inserted
+        sessions = try modelContext.fetch(FetchDescriptor<FocusSession>())
+        XCTAssertEqual(sessions.count, 1)
+    }
+
+    func testPauseOnSleepAndWakeAutoResumeBriefOvertime() throws {
+        // Start a session and transition to overtime
+        timerVM.startFocus()
+        XCTAssertEqual(timerVM.state, .focusing)
+        
+        timerVM.isOvertime = true
+        timerVM.state = .idle
+        
+        // Sleep system (brief)
+        timerVM.pauseForSystemSleep()
+        
+        // Verify timer is invalidated and nil
+        XCTAssertNil(timerVM.timer)
+        XCTAssertEqual(timerVM.state, .idle)
+        XCTAssertTrue(timerVM.isOvertime)
+        XCTAssertNotNil(timerVM.systemSleepStartTime)
+        
+        // Wake system after 5 seconds (within threshold)
+        timerVM.resumeAfterSystemWake()
+        
+        // Verify timer is restored and ticking
+        XCTAssertNotNil(timerVM.timer)
+        XCTAssertEqual(timerVM.state, .idle)
+        XCTAssertTrue(timerVM.isOvertime)
         XCTAssertNil(timerVM.systemSleepStartTime)
     }
 
