@@ -160,7 +160,7 @@ final class TimerViewModel {
     private var pauseTimer: Timer? = nil
 
     /// Tracks when the system entered sleep (for auto-resume threshold check)
-    private var systemSleepStartTime: Date?
+    var systemSleepStartTime: Date?
     /// Tracks what state we were in before sleep (to know whether to resume focus or break)
     private var stateBeforeSleep: TimerState?
 
@@ -244,6 +244,17 @@ final class TimerViewModel {
     var isOvertime: Bool = false
     var overtimeSeconds: Int = 0
 
+    // MARK: - Wake Recovery (Issue #32)
+    var showWakeRecoveryPrompt: Bool = false
+    var wakeRecoverySleepStartTime: Date? = nil
+    var wakeRecoveryWakeTime: Date? = nil
+    var wakeRecoverySession: FocusSession? = nil
+    var wakeRecoveryWasOvertime: Bool = false
+
+    var isWakeRecoveryActive: Bool {
+        showWakeRecoveryPrompt && wakeRecoverySession != nil
+    }
+
     /// True when the completed session was a focus session (not a break).
     var isFocusOvertime: Bool { isOvertime && lastCompletedSession?.type == .focus }
     /// True when the completed session was a break (break ran past its duration).
@@ -284,7 +295,7 @@ final class TimerViewModel {
     }
 
     // MARK: - Private
-    private var timer: Timer?
+    var timer: Timer?
     private var modelContext: ModelContext?
     private var currentSession: FocusSession?
     private(set) var settings: AppSettings?
@@ -908,6 +919,90 @@ final class TimerViewModel {
         CrashRecoveryState.clear()
     }
 
+    // MARK: - Wake Recovery Resolver (Issue #32)
+    enum WakeRecoveryChoice {
+        case saveToSleepStart
+        case keepOvertime
+        case discard
+    }
+
+    func resolveWakeRecovery(choice: WakeRecoveryChoice) {
+        guard isWakeRecoveryActive, let session = wakeRecoverySession else { return }
+        
+        switch choice {
+        case .saveToSleepStart:
+            let sleepStart = wakeRecoverySleepStartTime ?? Date()
+            session.endedAt = sleepStart
+            
+            if !wakeRecoveryWasOvertime {
+                let elapsed = sleepStart.timeIntervalSince(session.startedAt)
+                session.completed = elapsed >= session.duration
+            } else {
+                session.completed = true
+            }
+            saveContext()
+
+            // Set up contexts so normal reflection displays correct session stats
+            lastCompletedDuration = session.duration
+            lastCompletedLabel = session.label
+            lastCompletedSession = session
+            lastCompletedFocusSession = session
+            lastCompletionWasBreak = (session.type != .focus)
+            if session.type == .focus {
+                completedBlockContext = CompletedBlockContext(
+                    sessionId: session.id,
+                    projectName: session.project?.name ?? selectedProject?.name ?? "Focus",
+                    projectId: session.project?.id ?? selectedProject?.id,
+                    durationMinutes: Int(session.actualDuration / 60),
+                    workMode: session.project?.workMode ?? selectedProject?.workMode ?? .deepWork,
+                    earnedAt: Date()
+                )
+                refreshEarnedBreakSuggestion()
+            }
+            showWakeRecoveryPrompt = false
+
+        case .keepOvertime:
+            let wakeTime = wakeRecoveryWakeTime ?? Date()
+            session.endedAt = wakeTime
+            session.completed = true
+            saveContext()
+
+            lastCompletedDuration = session.duration
+            lastCompletedLabel = session.label
+            lastCompletedSession = session
+            lastCompletedFocusSession = session
+            lastCompletionWasBreak = (session.type != .focus)
+            if session.type == .focus {
+                completedBlockContext = CompletedBlockContext(
+                    sessionId: session.id,
+                    projectName: session.project?.name ?? selectedProject?.name ?? "Focus",
+                    projectId: session.project?.id ?? selectedProject?.id,
+                    durationMinutes: Int(session.actualDuration / 60),
+                    workMode: session.project?.workMode ?? selectedProject?.workMode ?? .deepWork,
+                    earnedAt: Date()
+                )
+                refreshEarnedBreakSuggestion()
+            }
+            showWakeRecoveryPrompt = false
+
+        case .discard:
+            modelContext?.delete(session)
+            saveContext()
+            
+            showWakeRecoveryPrompt = false
+            showSessionComplete = false
+            clearWakeRecoveryState()
+        }
+    }
+
+    func clearWakeRecoveryState() {
+        showWakeRecoveryPrompt = false
+        wakeRecoverySleepStartTime = nil
+        wakeRecoveryWakeTime = nil
+        wakeRecoverySession = nil
+        wakeRecoveryWasOvertime = false
+    }
+
     func startBreak(overrideDuration: TimeInterval? = nil) {
         guard let settings, !isOvertime else { return }
         // Guard against zero/negative sessionsBeforeLongBreak to prevent division-by-zero
@@ -967,11 +1062,16 @@ final class TimerViewModel {
         systemSleepStartTime = Date()
         stateBeforeSleep = state
 
+        if isOvertime {
+            // For overtime, invalidate the timer immediately to freeze ticking
+            timer?.invalidate()
+            timer = nil
+            return
+        }
+
         switch state {
         case .focusing:
-            if !isOvertime {
-                pause()
-            }
+            pause()
         case .onBreak:
             guard !isBreakPaused else {
                 systemSleepStartTime = nil
@@ -992,14 +1092,66 @@ final class TimerViewModel {
             stateBeforeSleep = nil
         }
 
+        let sleepDuration = Date().timeIntervalSince(sleepStart)
+        let autoStopThreshold = TimeInterval((settings?.autoStopOnSleepThresholdMinutes ?? 60) * 60)
+
+        if sleepDuration > autoStopThreshold, currentSession != nil {
+            log("resumeAfterSystemWake: long sleep detected (\(sleepDuration)s > \(autoStopThreshold)s) - triggering wake recovery")
+            
+            // Invalidate any active timers
+            timer?.invalidate()
+            timer = nil
+            pauseTimer?.invalidate()
+            pauseTimer = nil
+            pauseStartTime = nil
+            pauseElapsed = 0
+
+            // Capture wake recovery state
+            wakeRecoverySession = currentSession
+            wakeRecoverySleepStartTime = sleepStart
+            wakeRecoveryWakeTime = Date()
+            wakeRecoveryWasOvertime = isOvertime
+
+            // Provisionally save the session endedAt to wake time (can be overridden by user)
+            if let session = currentSession {
+                session.endedAt = Date()
+                saveContext()
+            }
+
+            // Reset state machine to idle
+            state = .idle
+            isOvertime = false
+            overtimeSeconds = 0
+            remainingSeconds = 0
+            totalSeconds = 0
+            currentSession = nil
+            clearCrashRecoveryState()
+
+            // Trigger recovery window
+            showWakeRecoveryPrompt = true
+            showSessionComplete = true
+            closePopover()
+
+            DispatchQueue.main.async { [weak self] in
+                self?.openCompletionWindow?()
+                self?.requestAppActivation?()
+            }
+            return
+        }
+
         // Check if auto-resume is enabled
         guard settings?.autoResumeOnWake == true else { return }
 
-        let sleepDuration = Date().timeIntervalSince(sleepStart)
         let threshold = TimeInterval(settings?.autoResumeThresholdSeconds ?? 120)
 
         // Only auto-resume if sleep was within threshold
         guard sleepDuration <= threshold else { return }
+
+        if isOvertime {
+            // For overtime, recreate the ticking timer
+            startTimer()
+            return
+        }
 
         // Resume based on what state we were in before sleep
         switch stateBeforeSleep {
