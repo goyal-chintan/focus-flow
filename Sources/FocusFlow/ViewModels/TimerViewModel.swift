@@ -50,6 +50,7 @@ extension TimerViewModel {
         isEvidenceMode = true
         isConfigured = true
         coachEngine.configureStore(SwiftDataCoachStore(modelContext: modelContext))
+        loadWakeRecoveryStateFromDefaults()
     }
 
     /// Seeds deterministic completion/overtime state without running timers.
@@ -273,7 +274,17 @@ final class TimerViewModel {
 
     // MARK: - Window Lifecycle
     /// Set by FocusFlowApp to open the session-complete window from any context
-    var openCompletionWindow: (() -> Void)?
+    var openCompletionWindow: (() -> Void)? {
+        didSet {
+            if openCompletionWindow != nil && showWakeRecoveryPrompt && wakeRecoverySession != nil {
+                log("openCompletionWindow did set and wake recovery is active — triggering window open")
+                DispatchQueue.main.async { [weak self] in
+                    self?.openCompletionWindow?()
+                    self?.requestAppActivation?()
+                }
+            }
+        }
+    }
     /// Set by FocusFlowApp to open the strong coach intervention window
     var openCoachInterventionWindow: (() -> Void)?
     /// Set by FocusFlowApp to request foreground activation based on policy.
@@ -338,6 +349,8 @@ final class TimerViewModel {
     /// Whether the reason chip sheet should be shown (driven by coach engine anomaly detection)
     var showCoachReasonSheet: Bool = false
     var pendingReasonKind: FocusCoachInterruptionKind = .drift
+    /// Distracting apps/domains detected during the last completed focus session (for post-session review).
+    var lastSessionDistractingEntries: [AppUsageTracker.SessionDistractingEntry] = []
     /// Prevents break-overrun reason prompts from reopening repeatedly in the same break episode.
     private var hasPromptedBreakOverrunReasonInCurrentEpisode: Bool = false
     /// Non-blocking inline reason chips shown when resuming from an extended pause (≥2 min).
@@ -421,6 +434,7 @@ final class TimerViewModel {
         seedDefaultProfiles()
         cleanupOrphanedSessions()
         checkForRecoverableSession()
+        loadWakeRecoveryStateFromDefaults()
         purgeShortFocusSessions()
         loadTodayStats()
         // Don't call BlockingService.cleanupIfNeeded() here — it prompts for
@@ -743,6 +757,7 @@ final class TimerViewModel {
         remainingSeconds = duration
         state = .focusing
         AppUsageTracker.shared.syncCadence(isFocusing: true)
+        AppUsageTracker.shared.resetSessionDistractionTracking()
 
         let session = FocusSession(
             type: .focus,
@@ -959,7 +974,9 @@ final class TimerViewModel {
                 )
                 refreshEarnedBreakSuggestion()
             }
+            loadTodayStats()
             showWakeRecoveryPrompt = false
+            clearWakeRecoveryState()
 
         case .keepOvertime:
             let wakeTime = wakeRecoveryWakeTime ?? Date()
@@ -983,7 +1000,9 @@ final class TimerViewModel {
                 )
                 refreshEarnedBreakSuggestion()
             }
+            loadTodayStats()
             showWakeRecoveryPrompt = false
+            clearWakeRecoveryState()
 
         case .discard:
             modelContext?.delete(session)
@@ -992,6 +1011,7 @@ final class TimerViewModel {
             showWakeRecoveryPrompt = false
             showSessionComplete = false
             clearWakeRecoveryState()
+            loadTodayStats()
         }
     }
 
@@ -1001,6 +1021,114 @@ final class TimerViewModel {
         wakeRecoveryWakeTime = nil
         wakeRecoverySession = nil
         wakeRecoveryWasOvertime = false
+        clearWakeRecoveryStateDefaults()
+    }
+
+    private static let systemSleepStartTimeKey = "FocusFlow.systemSleepStartTime"
+    private static let showWakeRecoveryPromptKey = "FocusFlow.showWakeRecoveryPrompt"
+    private static let wakeRecoverySleepStartTimeKey = "FocusFlow.wakeRecoverySleepStartTime"
+    private static let wakeRecoveryWakeTimeKey = "FocusFlow.wakeRecoveryWakeTime"
+    private static let wakeRecoverySessionIdKey = "FocusFlow.wakeRecoverySessionId"
+    private static let wakeRecoveryWasOvertimeKey = "FocusFlow.wakeRecoveryWasOvertime"
+    private static let systemSleepActiveSessionIdKey = "FocusFlow.systemSleepActiveSessionId"
+
+    func saveWakeRecoveryStateToDefaults() {
+        let defaults = UserDefaults.standard
+        defaults.set(showWakeRecoveryPrompt, forKey: Self.showWakeRecoveryPromptKey)
+        defaults.set(wakeRecoverySleepStartTime, forKey: Self.wakeRecoverySleepStartTimeKey)
+        defaults.set(wakeRecoveryWakeTime, forKey: Self.wakeRecoveryWakeTimeKey)
+        defaults.set(wakeRecoverySession?.id.uuidString, forKey: Self.wakeRecoverySessionIdKey)
+        defaults.set(wakeRecoveryWasOvertime, forKey: Self.wakeRecoveryWasOvertimeKey)
+        defaults.set(systemSleepStartTime, forKey: Self.systemSleepStartTimeKey)
+        defaults.set(currentSession?.id.uuidString, forKey: Self.systemSleepActiveSessionIdKey)
+    }
+
+    private func loadWakeRecoveryStateFromDefaults() {
+        let defaults = UserDefaults.standard
+        self.showWakeRecoveryPrompt = defaults.bool(forKey: Self.showWakeRecoveryPromptKey)
+        self.wakeRecoverySleepStartTime = defaults.object(forKey: Self.wakeRecoverySleepStartTimeKey) as? Date
+        self.wakeRecoveryWakeTime = defaults.object(forKey: Self.wakeRecoveryWakeTimeKey) as? Date
+        self.wakeRecoveryWasOvertime = defaults.bool(forKey: Self.wakeRecoveryWasOvertimeKey)
+        self.systemSleepStartTime = defaults.object(forKey: Self.systemSleepStartTimeKey) as? Date
+
+        if let sessionIdString = defaults.string(forKey: Self.wakeRecoverySessionIdKey),
+           let sessionId = UUID(uuidString: sessionIdString) {
+            let descriptor = FetchDescriptor<FocusSession>(predicate: #Predicate<FocusSession> { $0.id == sessionId })
+            self.wakeRecoverySession = try? modelContext?.fetch(descriptor).first
+        }
+        
+        // If we were in the middle of sleep when the app restarted, restore currentSession
+        if let sleepStart = self.systemSleepStartTime, !self.showWakeRecoveryPrompt {
+            if let activeSessionIdString = defaults.string(forKey: Self.systemSleepActiveSessionIdKey),
+               let activeSessionId = UUID(uuidString: activeSessionIdString) {
+                let descriptor = FetchDescriptor<FocusSession>(predicate: #Predicate<FocusSession> { $0.id == activeSessionId })
+                if let session = try? modelContext?.fetch(descriptor).first {
+                    self.currentSession = session
+                    self.state = .paused
+                    if let saved = CrashRecoveryState.load() {
+                        self.remainingSeconds = saved.remainingSeconds
+                        self.totalSeconds = saved.totalSeconds
+                    }
+                    log("Restored pre-sleep session state for session: \(session.id)")
+                    
+                    // Check if sleep was already longer than threshold (meaning the system woke up, but we just launched)
+                    let sleepDuration = Date().timeIntervalSince(sleepStart)
+                    let autoStopThreshold = TimeInterval((settings?.autoStopOnSleepThresholdMinutes ?? 60) * 60)
+                    if sleepDuration > autoStopThreshold {
+                        log("Startup: long sleep duration detected (\(sleepDuration)s > \(autoStopThreshold)s) - triggering wake recovery immediately")
+                        // Clear sleep start time before triggering wake recovery to prevent duplicate runs
+                        self.systemSleepStartTime = nil
+                        defaults.removeObject(forKey: Self.systemSleepStartTimeKey)
+                        defaults.removeObject(forKey: Self.systemSleepActiveSessionIdKey)
+                        
+                        // Capture wake recovery state
+                        self.wakeRecoverySession = session
+                        self.wakeRecoverySleepStartTime = sleepStart
+                        self.wakeRecoveryWakeTime = Date()
+                        self.wakeRecoveryWasOvertime = (self.remainingSeconds <= 0)
+                        
+                        // Provisionally save the session endedAt to wake time
+                        session.endedAt = Date()
+                        saveContext()
+                        
+                        // Reset state machine to idle
+                        self.state = .idle
+                        self.isOvertime = false
+                        self.overtimeSeconds = 0
+                        self.remainingSeconds = 0
+                        self.totalSeconds = 0
+                        self.currentSession = nil
+                        clearCrashRecoveryState()
+                        
+                        self.showWakeRecoveryPrompt = true
+                        self.showSessionComplete = true
+                        saveWakeRecoveryStateToDefaults()
+                    }
+                }
+            }
+        }
+        
+        if showWakeRecoveryPrompt && wakeRecoverySession != nil {
+            log("Loaded unresolved wake recovery session: \(wakeRecoverySession?.id.uuidString ?? "")")
+            // Try to trigger window opening if bridge is already wired up
+            if openCompletionWindow != nil {
+                DispatchQueue.main.async { [weak self] in
+                    self?.openCompletionWindow?()
+                    self?.requestAppActivation?()
+                }
+            }
+        }
+    }
+
+    private func clearWakeRecoveryStateDefaults() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: Self.showWakeRecoveryPromptKey)
+        defaults.removeObject(forKey: Self.wakeRecoverySleepStartTimeKey)
+        defaults.removeObject(forKey: Self.wakeRecoveryWakeTimeKey)
+        defaults.removeObject(forKey: Self.wakeRecoverySessionIdKey)
+        defaults.removeObject(forKey: Self.wakeRecoveryWasOvertimeKey)
+        defaults.removeObject(forKey: Self.systemSleepStartTimeKey)
+        defaults.removeObject(forKey: Self.systemSleepActiveSessionIdKey)
     }
 
     func startBreak(overrideDuration: TimeInterval? = nil) {
@@ -1061,6 +1189,7 @@ final class TimerViewModel {
         // Record sleep start time for auto-resume threshold check on wake
         systemSleepStartTime = Date()
         stateBeforeSleep = state
+        saveWakeRecoveryStateToDefaults()
 
         if isOvertime {
             // For overtime, invalidate the timer immediately to freeze ticking
@@ -1090,6 +1219,7 @@ final class TimerViewModel {
         defer {
             systemSleepStartTime = nil
             stateBeforeSleep = nil
+            saveWakeRecoveryStateToDefaults()
         }
 
         let sleepDuration = Date().timeIntervalSince(sleepStart)
@@ -1227,6 +1357,7 @@ final class TimerViewModel {
         showCoachReasonSheet = false
         showPauseReasonChips = false
         pendingReasonKind = .drift
+        lastSessionDistractingEntries = []
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
         showCoachInterventionWindow = false
         activeCoachInterventionDecision = nil
@@ -1305,6 +1436,7 @@ final class TimerViewModel {
         isOvertime = false
         overtimeSeconds = 0
         state = .idle
+        lastSessionDistractingEntries = AppUsageTracker.shared.sessionDistractingEntries
         AppUsageTracker.shared.syncCadence(isFocusing: false)
         remainingSeconds = 0
         totalSeconds = 0
@@ -1807,6 +1939,7 @@ final class TimerViewModel {
         overtimeSeconds = 0
         remainingSeconds = 0
         state = .idle
+        lastSessionDistractingEntries = AppUsageTracker.shared.sessionDistractingEntries
         AppUsageTracker.shared.syncCadence(isFocusing: false)
         showSessionComplete = true
         closePopover()
@@ -1944,7 +2077,9 @@ final class TimerViewModel {
             if session.type == .focus && session.actualDuration < Self.minimumRetainedFocusSeconds {
                 modelContext?.delete(session)
             } else {
-                session.endedAt = Date()
+                if session.endedAt == nil {
+                    session.endedAt = Date()
+                }
             }
             saveContext()
         }
@@ -2000,6 +2135,29 @@ final class TimerViewModel {
         coachEngine.recordAnomaly(kind: kind, reason: reason, sessionId: currentSession?.id)
         if kind == .breakOverrun {
             hasPromptedBreakOverrunReasonInCurrentEpisode = true
+        }
+    }
+
+    /// Records the user's classification of a detected distracting app from the post-session review.
+    /// - isPlanned=true: records a project-scoped allowance in DriftMemory so coach won't flag it again.
+    /// - isPlanned=false: inserts a manual IdleDistractionItem (minor severity) for future blocking/warnings.
+    func classifySessionApp(entry: AppUsageTracker.SessionDistractingEntry, isPlanned: Bool) {
+        if isPlanned {
+            let target: IdleDistractionCatalog.Target = entry.isBrowserDomain
+                ? .website(entry.domainOrBundleKey)
+                : .app(entry.bundleIdentifier)
+            coachEngine.driftMemoryStore?.recordPlanned(
+                projectId: completedBlockContext?.projectId,
+                workMode: completedBlockContext?.workMode,
+                appOrDomain: target.normalizedKey
+            )
+        } else {
+            guard let ctx = modelContext else { return }
+            let item: IdleDistractionItem = entry.isBrowserDomain
+                ? .manualWebsite(entry.domainOrBundleKey, severity: .minor)
+                : .manualApp(entry.bundleIdentifier, severity: .minor)
+            ctx.insert(item)
+            saveContext()
         }
     }
 

@@ -51,6 +51,24 @@ final class AppUsageTracker {
         let selectedWorkMode: WorkMode?
     }
 
+    /// A single app/domain entry detected as distracting during the most recent focus session.
+    struct SessionDistractingEntry: Sendable {
+        let bundleIdentifier: String
+        let displayLabel: String
+        /// "app:<bundleId>" or "domain:<host>"
+        let normalizedKey: String
+        let seconds: Int
+
+        var isBrowserDomain: Bool { normalizedKey.hasPrefix("domain:") }
+
+        /// The raw host (for domains) or bundle identifier (for apps).
+        var domainOrBundleKey: String {
+            isBrowserDomain
+                ? String(normalizedKey.dropFirst("domain:".count))
+                : bundleIdentifier
+        }
+    }
+
     private struct UsageDelta {
         var duringFocusSeconds: Int = 0
         var outsideFocusSeconds: Int = 0
@@ -91,6 +109,11 @@ final class AppUsageTracker {
     private var pendingAppNamesByBundleID: [String: String] = [:]
     private var totalFocusSecondsToday: Int = 0
     private var distractingFocusSecondsToday: Int = 0
+
+    // Session-scoped distraction tracking — reset at session start, captured at session end.
+    private var sessionDistractingAppSeconds: [String: Int] = [:]   // bundleId → seconds
+    private var sessionDistractingAppNames: [String: String] = [:]  // bundleId → display label
+    private var sessionDistractingDomainKeys: [String: String] = [:] // bundleId → "app:X" or "domain:X"
     private var lastPersistAt: Date = .distantPast
     private let persistInterval: TimeInterval = 30
     #if DEBUG
@@ -340,6 +363,32 @@ final class AppUsageTracker {
         flushElapsedSample(isFocusing: currentCadence == .precision)
         currentCadence = desiredCadence
         rescheduleTrackingTimer()
+    }
+
+    /// Clears session-scoped distraction data. Call at the start of every new focus session.
+    func resetSessionDistractionTracking() {
+        sessionDistractingAppSeconds.removeAll()
+        sessionDistractingAppNames.removeAll()
+        sessionDistractingDomainKeys.removeAll()
+    }
+
+    /// Snapshot of apps/domains detected as distracting during the current (or most recent) focus session.
+    /// Returns entries with ≥10 seconds of screen time, sorted by duration descending.
+    var sessionDistractingEntries: [SessionDistractingEntry] {
+        sessionDistractingAppSeconds
+            .compactMap { bundleId, secs -> SessionDistractingEntry? in
+                guard secs >= 10 else { return nil }  // filter sub-10s noise
+                let label = sessionDistractingAppNames[bundleId]
+                    ?? AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
+                let key = sessionDistractingDomainKeys[bundleId] ?? "app:\(bundleId)"
+                return SessionDistractingEntry(
+                    bundleIdentifier: bundleId,
+                    displayLabel: label,
+                    normalizedKey: key,
+                    seconds: secs
+                )
+            }
+            .sorted { $0.seconds > $1.seconds }
     }
 
     func stop() {
@@ -598,6 +647,12 @@ final class AppUsageTracker {
                 totalFocusSecondsToday += elapsedSeconds
                 if contextPresentation.category == .distracting {
                     distractingFocusSecondsToday += elapsedSeconds
+                    // Session-scoped tracking: record for post-session distraction review.
+                    // Use domain key when browser domain is resolved, otherwise app bundle key.
+                    let sessionKey = browserHost.map { "domain:\($0)" } ?? "app:\(bundleId)"
+                    sessionDistractingAppSeconds[bundleId, default: 0] += elapsedSeconds
+                    sessionDistractingAppNames[bundleId] = contextPresentation.displayLabel
+                    sessionDistractingDomainKeys[bundleId] = sessionKey
                 }
             }
         }
