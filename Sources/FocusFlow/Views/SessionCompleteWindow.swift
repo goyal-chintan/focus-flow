@@ -175,8 +175,16 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 20) {
             earnedBadge
 
-            // Coach reason capture or confirmation pill
-            if timerVM.showCoachReasonSheet {
+            // Session app distraction review — shown first when we have detected apps.
+            // Suppresses the generic coach reason sheet so user sees concrete context instead.
+            if !timerVM.lastSessionDistractingEntries.isEmpty, !timerVM.lastCompletionWasBreak {
+                sessionDistractionReview
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
+                        removal: .opacity
+                    ))
+            } else if timerVM.showCoachReasonSheet {
+                // Only show generic reason sheet when we have no app-level context
                 coachReasonSection
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
@@ -196,6 +204,16 @@ struct SessionCompleteWindowView: View {
             continueButton
         }
         .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.showCoachReasonSheet)
+        .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.lastSessionDistractingEntries.isEmpty)
+    }
+
+    /// Inline distraction review section — shows apps seen during the session.
+    private var sessionDistractionReview: some View {
+        SessionDistractionReviewSection(
+            entries: timerVM.lastSessionDistractingEntries,
+            projectId: timerVM.completedBlockContext?.projectId,
+            projectName: timerVM.completedBlockContext?.projectName
+        )
     }
 
     private var earnedBadge: some View {
@@ -304,7 +322,46 @@ struct SessionCompleteWindowView: View {
                     .accessibilityLabel(timerVM.isManualStop ? "Achievements" : "Carry-forward note")
             }
             .evidenceSafeGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
+
+            // Live checkmark preview — one row per non-empty line
+            if !carryForwardNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                achievementLinePreview
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .animation(disableMotionForEvidence ? nil : FFMotion.control, value: carryForwardNote)
+            }
         }
+    }
+
+    /// Live bullet preview showing one green checkmark per non-empty line of the achievement/notes text.
+    private var achievementLinePreview: some View {
+        let lines = carryForwardNote
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return VStack(alignment: .leading, spacing: 5) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                HStack(alignment: .top, spacing: 7) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(LiquidDesignTokens.Spectral.mint)
+                        .accessibilityHidden(true)
+                    Text(line)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(LiquidDesignTokens.Spectral.mint.opacity(0.06))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(LiquidDesignTokens.Spectral.mint.opacity(0.15), lineWidth: 0.5))
+        )
+        .accessibilityLabel("Achievement preview")
     }
 
     private var continueButton: some View {
