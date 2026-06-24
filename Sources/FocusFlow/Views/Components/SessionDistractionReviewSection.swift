@@ -11,6 +11,11 @@ struct SessionDistractionReviewSection: View {
     let projectName: String?
 
     @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var disableMotionForEvidence: Bool {
+        reduceMotion || timerVM.isEvidenceMode
+    }
 
     /// Per-entry classification (nil = undecided, true = planned, false = distraction)
     @State private var decisions: [String: Bool] = [:]
@@ -86,7 +91,7 @@ struct SessionDistractionReviewSection: View {
 
             // Decision area
             if let decided = decision {
-                confirmedPill(decided: decided, key: entry.normalizedKey)
+                confirmedPill(decided: decided, key: entry.normalizedKey, entry: entry)
             } else {
                 choiceButtons(entry: entry)
             }
@@ -94,10 +99,10 @@ struct SessionDistractionReviewSection: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.md, style: .continuous)
+                .fill(LiquidDesignTokens.Surface.containerLow)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.md, style: .continuous)
                         .strokeBorder(LiquidDesignTokens.Spectral.amber.opacity(0.12), lineWidth: 0.5)
                 )
         )
@@ -119,7 +124,7 @@ struct SessionDistractionReviewSection: View {
         entry: AppUsageTracker.SessionDistractingEntry
     ) -> some View {
         Button {
-            withAnimation(FFMotion.control) {
+            withAnimation(disableMotionForEvidence ? nil : FFMotion.control) {
                 decisions[entry.normalizedKey] = isPlanned
             }
             timerVM.classifySessionApp(entry: entry, isPlanned: isPlanned)
@@ -153,9 +158,10 @@ struct SessionDistractionReviewSection: View {
 
     // MARK: - Confirmed Pill (after selection)
 
-    private func confirmedPill(decided: Bool, key: String) -> some View {
+    private func confirmedPill(decided: Bool, key: String, entry: AppUsageTracker.SessionDistractingEntry) -> some View {
         Button {
-            withAnimation(FFMotion.control) { decisions[key] = nil }
+            withAnimation(disableMotionForEvidence ? nil : FFMotion.control) { decisions[key] = nil }
+            timerVM.declassifySessionApp(entry: entry)
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: decided ? "checkmark.circle.fill" : "xmark.circle.fill")

@@ -326,7 +326,7 @@ struct SessionCompleteWindowView: View {
             // Live checkmark preview — one row per non-empty line
             if !carryForwardNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 achievementLinePreview
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
                     .animation(disableMotionForEvidence ? nil : FFMotion.control, value: carryForwardNote)
             }
         }
@@ -366,7 +366,7 @@ struct SessionCompleteWindowView: View {
 
     private var continueButton: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.22)) {
+            withAnimation(disableMotionForEvidence ? nil : .easeInOut(duration: 0.22)) {
                 stage = .next
             }
         } label: {
@@ -442,7 +442,7 @@ struct SessionCompleteWindowView: View {
                         icon: timerVM.cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill",
                         gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: timerVM.cycleProgress)
                     ) {
-                        if reduceMotion {
+                        if disableMotionForEvidence {
                             saveAndDismiss(action: .endSession)
                         } else {
                             withAnimation(FFMotion.reward) { depositPulse = true }
@@ -564,7 +564,7 @@ struct SessionCompleteWindowView: View {
             )
 
             Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                withAnimation(disableMotionForEvidence ? nil : .spring(response: 0.4, dampingFraction: 0.8)) {
                     showSplits.toggle()
                     if showSplits && splits.isEmpty {
                         let totalMins = Int((timerVM.lastCompletedDuration ?? 0) / 60)

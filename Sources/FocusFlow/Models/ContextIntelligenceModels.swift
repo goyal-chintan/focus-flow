@@ -139,6 +139,14 @@ struct DriftClassificationMemory: Codable {
         avoidantDates[key] = dates
     }
 
+    mutating func removePlanned(key: String) {
+        plannedDates.removeValue(forKey: key)
+    }
+
+    mutating func removeAvoidant(key: String) {
+        avoidantDates.removeValue(forKey: key)
+    }
+
     /// Returns true if user has confirmed this context as planned at least once this session.
     /// Session scope: always granted after 1 confirmation (not persisted across sessions here).
     func sessionScopedAllowance(key: String, sessionStart: Date) -> Bool {

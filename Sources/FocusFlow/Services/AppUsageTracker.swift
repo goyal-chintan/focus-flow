@@ -111,9 +111,9 @@ final class AppUsageTracker {
     private var distractingFocusSecondsToday: Int = 0
 
     // Session-scoped distraction tracking — reset at session start, captured at session end.
-    private var sessionDistractingAppSeconds: [String: Int] = [:]   // bundleId → seconds
-    private var sessionDistractingAppNames: [String: String] = [:]  // bundleId → display label
-    private var sessionDistractingDomainKeys: [String: String] = [:] // bundleId → "app:X" or "domain:X"
+    private var sessionDistractingAppSeconds: [String: Int] = [:]   // sessionKey → seconds
+    private var sessionDistractingAppNames: [String: String] = [:]  // sessionKey → display label
+    private var sessionDistractingAppBundleIds: [String: String] = [:] // sessionKey → bundleId
     private var lastPersistAt: Date = .distantPast
     private let persistInterval: TimeInterval = 30
     #if DEBUG
@@ -369,26 +369,33 @@ final class AppUsageTracker {
     func resetSessionDistractionTracking() {
         sessionDistractingAppSeconds.removeAll()
         sessionDistractingAppNames.removeAll()
-        sessionDistractingDomainKeys.removeAll()
+        sessionDistractingAppBundleIds.removeAll()
     }
 
     /// Snapshot of apps/domains detected as distracting during the current (or most recent) focus session.
     /// Returns entries with ≥10 seconds of screen time, sorted by duration descending.
     var sessionDistractingEntries: [SessionDistractingEntry] {
         sessionDistractingAppSeconds
-            .compactMap { bundleId, secs -> SessionDistractingEntry? in
+            .compactMap { sessionKey, secs -> SessionDistractingEntry? in
                 guard secs >= 10 else { return nil }  // filter sub-10s noise
-                let label = sessionDistractingAppNames[bundleId]
-                    ?? AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
-                let key = sessionDistractingDomainKeys[bundleId] ?? "app:\(bundleId)"
+                let label = sessionDistractingAppNames[sessionKey]
+                    ?? AppUsageEntry.recommendationDisplayLabel(for: sessionKey)
+                let bundleId = sessionDistractingAppBundleIds[sessionKey] ?? bundleIdFromSessionKey(sessionKey)
                 return SessionDistractingEntry(
                     bundleIdentifier: bundleId,
                     displayLabel: label,
-                    normalizedKey: key,
+                    normalizedKey: sessionKey,
                     seconds: secs
                 )
             }
             .sorted { $0.seconds > $1.seconds }
+    }
+
+    private func bundleIdFromSessionKey(_ key: String) -> String {
+        if key.hasPrefix("app:") {
+            return String(key.dropFirst(4))
+        }
+        return "unknown"
     }
 
     func stop() {
@@ -650,9 +657,9 @@ final class AppUsageTracker {
                     // Session-scoped tracking: record for post-session distraction review.
                     // Use domain key when browser domain is resolved, otherwise app bundle key.
                     let sessionKey = browserHost.map { "domain:\($0)" } ?? "app:\(bundleId)"
-                    sessionDistractingAppSeconds[bundleId, default: 0] += elapsedSeconds
-                    sessionDistractingAppNames[bundleId] = contextPresentation.displayLabel
-                    sessionDistractingDomainKeys[bundleId] = sessionKey
+                    sessionDistractingAppSeconds[sessionKey, default: 0] += elapsedSeconds
+                    sessionDistractingAppNames[sessionKey] = contextPresentation.displayLabel
+                    sessionDistractingAppBundleIds[sessionKey] = bundleId
                 }
             }
         }

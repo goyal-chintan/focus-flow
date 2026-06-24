@@ -42,6 +42,20 @@ final class DriftMemoryStore {
         persist()
     }
 
+    /// Revert a planned work classification.
+    func removePlanned(projectId: UUID?, workMode: WorkMode?, appOrDomain: String) {
+        let key = DriftClassificationMemory.key(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain)
+        memory.removePlanned(key: key)
+        persist()
+    }
+
+    /// Revert an avoidant behavior classification.
+    func removeAvoidant(projectId: UUID?, workMode: WorkMode?, appOrDomain: String) {
+        let key = DriftClassificationMemory.key(projectId: projectId, workMode: workMode, appOrDomain: appOrDomain)
+        memory.removeAvoidant(key: key)
+        persist()
+    }
+
     // MARK: - Querying
 
     func sessionScopedAllowance(projectId: UUID?, workMode: WorkMode?, appOrDomain: String) -> Bool {

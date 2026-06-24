@@ -2161,6 +2161,34 @@ final class TimerViewModel {
         }
     }
 
+    /// Reverts a classification made during session review (Undo action).
+    /// Clears any DriftMemory planned allowance and removes manual IdleDistractionItems from SwiftData.
+    func declassifySessionApp(entry: AppUsageTracker.SessionDistractingEntry) {
+        let targetKey = entry.isBrowserDomain
+            ? "domain:\(entry.domainOrBundleKey)"
+            : "app:\(entry.bundleIdentifier)"
+        
+        coachEngine.driftMemoryStore?.removePlanned(
+            projectId: completedBlockContext?.projectId,
+            workMode: completedBlockContext?.workMode,
+            appOrDomain: targetKey
+        )
+        
+        guard let ctx = modelContext else { return }
+        let fetchDescriptor = FetchDescriptor<IdleDistractionItem>()
+        if let items = try? ctx.fetch(fetchDescriptor) {
+            let normalizedKeyToMatch = entry.domainOrBundleKey.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            for item in items {
+                let matches = (item.key == normalizedKeyToMatch) &&
+                              (item.targetKind == (entry.isBrowserDomain ? .website : .app))
+                if matches && item.source == .manual {
+                    ctx.delete(item)
+                }
+            }
+            saveContext()
+        }
+    }
+
     /// Handles a coach quick action selection.
     func handleCoachAction(_ action: FocusCoachQuickAction, skipReason: FocusCoachSkipReason? = nil) {
         switch action {
