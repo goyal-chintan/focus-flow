@@ -253,6 +253,11 @@ struct SessionCompleteWindowView: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                         .lineLimit(1)
+                    if let pauseLabel = timerVM.lastCompletedFocusSession?.pauseLabel ?? timerVM.lastCompletedSession?.pauseLabel {
+                        Text(pauseLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else {
                 Text(timerVM.isManualStop ? "Session Ended Early" : "Session Complete")
@@ -399,6 +404,11 @@ struct SessionCompleteWindowView: View {
                     Text("\(ctx.minutes)m · \(ctx.projectName)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    if let pauseLabel = timerVM.lastCompletedFocusSession?.pauseLabel ?? timerVM.lastCompletedSession?.pauseLabel {
+                        Text(pauseLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 

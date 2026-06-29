@@ -157,6 +157,23 @@ struct WeeklyStatsView: View {
         )
     }
 
+    private var dayPauseSummary: String? {
+        guard let idx = selectedDayIndex, idx < chartData.count else { return nil }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: analyticsSnapshotNow)
+        guard let day = calendar.date(byAdding: .day, value: -(days - 1 - idx), to: today),
+              let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
+            return nil
+        }
+        let daySessions = allSessions.filter { session in
+            session.type == .focus && session.effectiveEnd > day && session.startedAt < nextDay
+        }
+        let pauses = daySessions.reduce(0) { $0 + $1.pauseCount }
+        let pausedSeconds = daySessions.reduce(0) { $0 + $1.totalPausedSeconds }
+        guard pausedSeconds > 0 else { return nil }
+        return "\(pauses) pause\(pauses == 1 ? "" : "s") · \(pausedSeconds.formattedFocusTime) paused"
+    }
+
     private func dayDetailCard(_ detail: DayDetail) -> some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
@@ -175,6 +192,12 @@ struct WeeklyStatsView: View {
                 Label("\(detail.sessionCount) session\(detail.sessionCount == 1 ? "" : "s")", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
+
+                if let pauseLine = dayPauseSummary {
+                    Text(pauseLine)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                }
 
                 Label("Avg \(detail.averageLength.formattedFocusTime)", systemImage: "timer")
                     .font(.system(size: 11, weight: .medium, design: .rounded))

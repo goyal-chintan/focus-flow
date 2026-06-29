@@ -1551,6 +1551,30 @@ struct InsightsView: View {
         return String(format: "%.2f", ratio)
     }
 
+    // MARK: - Pause Behavior Data (rendered inside trends section)
+
+    private var totalPauses: Int {
+        focusSessions.reduce(0) { $0 + $1.pauseCount }
+    }
+
+    private var totalPausedMinutes: Int {
+        let totalPausedSeconds = focusSessions.reduce(0.0) { $0 + $1.totalPausedSeconds }
+        return Int(totalPausedSeconds / 60)
+    }
+
+    private var avgPausesPerSession: String {
+        guard !focusSessions.isEmpty else { return "—" }
+        let avg = Double(totalPauses) / Double(focusSessions.count)
+        return String(format: "%.1f", avg)
+    }
+
+    private var avgPausedMinutesPerSession: String {
+        guard !focusSessions.isEmpty else { return "—" }
+        let totalPausedSeconds = focusSessions.reduce(0.0) { $0 + $1.totalPausedSeconds }
+        let avg = totalPausedSeconds / Double(focusSessions.count) / 60
+        return "\(Int(avg))m"
+    }
+
     private var bestDay: TimeInterval {
         let calendar = Calendar.current
         var dailyTotals = [Date: TimeInterval]()
@@ -1608,6 +1632,13 @@ struct InsightsView: View {
                         icon: "star.fill",
                         color: .yellow,
                         subtitle: bestDayLabel
+                    )
+                    StatCard(
+                        title: "Avg Pauses",
+                        value: avgPausesPerSession,
+                        icon: "pause.circle.fill",
+                        color: .orange,
+                        subtitle: totalPauses > 0 ? "\(totalPausedMinutes)m total paused" : "No pauses yet"
                     )
                 }
                 .accessibilityElement(children: .combine)

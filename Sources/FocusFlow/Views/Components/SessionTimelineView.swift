@@ -88,6 +88,12 @@ struct SessionTimelineView: View {
                             .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                        if let pauseLabel = session.pauseLabel {
+                            Text(pauseLabel)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
                     }
                 }
 
@@ -120,7 +126,7 @@ struct SessionTimelineView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(session.label), \(Int(session.actualDuration / 60)) minutes, \(session.completed ? "completed" : "incomplete")")
+        .accessibilityLabel("\(session.label), \(Int(session.actualDuration / 60)) minutes, \(session.completed ? "completed" : "incomplete")\(session.pauseLabel.map { ", \($0)" } ?? "")")
     }
 
     private func sessionColor(_ session: FocusSession) -> Color {

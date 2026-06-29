@@ -20,6 +20,10 @@ final class FocusSession {
     /// Default is 0 so existing stored sessions are unaffected.
     var totalPausedSeconds: TimeInterval = 0
 
+    /// Number of times this session was paused.
+    /// Default is 0 so existing stored sessions are unaffected.
+    var pauseCount: Int = 0
+
     @Relationship(deleteRule: .cascade)
     var splits: [TimeSplit]
 
@@ -39,6 +43,7 @@ final class FocusSession {
         self.completed = false
         self.calendarEventId = nil
         self.totalPausedSeconds = 0
+        self.pauseCount = 0
         self.splits = []
     }
 
@@ -61,5 +66,14 @@ final class FocusSession {
     /// from duration totals, unlike `endedAt` which is the raw wall-clock end.
     var effectiveEnd: Date {
         startedAt.addingTimeInterval(actualDuration)
+    }
+
+    /// Formatted pause summary: "X pause(s) · Ym Zs paused"
+    /// Returns nil when the session had no pauses (count = 0 and seconds = 0).
+    var pauseLabel: String? {
+        guard totalPausedSeconds > 0 || pauseCount > 0 else { return nil }
+        let timeStr = totalPausedSeconds.formattedFocusTime
+        let countStr = pauseCount == 1 ? "1 pause" : "\(pauseCount) pauses"
+        return "\(countStr) · \(timeStr) paused"
     }
 }
