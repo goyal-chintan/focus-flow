@@ -1053,6 +1053,123 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertFalse(vm.isBreakPaused, "stop() should clear isBreakPaused")
     }
 
+    // MARK: - Pause time exclusion from session duration (bug fix)
+
+    /// Regression: actualDuration must exclude time spent paused.
+    func testActualDurationExcludesPausedSeconds() throws {
+        let session = FocusSession(type: .focus, duration: 1800)
+        let wallElapsed: TimeInterval = 2400 // 40 min wall clock
+        let pausedSeconds: TimeInterval = 600  // 10 min paused
+
+        session.startedAt = Date().addingTimeInterval(-wallElapsed)
+        session.endedAt   = Date()
+        session.completed = true
+        session.totalPausedSeconds = pausedSeconds
+
+        // Active focus = 40 min - 10 min = 30 min
+        XCTAssertEqual(session.actualDuration, wallElapsed - pausedSeconds, accuracy: 1,
+                       "actualDuration should subtract totalPausedSeconds from wall-clock elapsed")
+    }
+
+    /// Regression: actualDuration must not go negative even with extreme pause values.
+    func testActualDurationClampedToZeroWhenPausedExceedsElapsed() throws {
+        let session = FocusSession(type: .focus, duration: 600)
+        session.startedAt = Date().addingTimeInterval(-300)
+        session.endedAt = Date()
+        session.completed = false
+        session.totalPausedSeconds = 1000 // more than elapsed — should clamp to 0
+
+        XCTAssertGreaterThanOrEqual(session.actualDuration, 0,
+                                    "actualDuration must never be negative")
+    }
+
+    /// Regression: sessions with zero paused seconds should behave identically to before.
+    func testActualDurationWithNoPauseUnchanged() throws {
+        let elapsed: TimeInterval = 1500
+        let session = FocusSession(type: .focus, duration: 1500)
+        session.startedAt = Date().addingTimeInterval(-elapsed)
+        session.endedAt = Date()
+        session.completed = true
+        session.totalPausedSeconds = 0
+
+        XCTAssertEqual(session.actualDuration, elapsed, accuracy: 1,
+                       "actualDuration with no pause should equal wall-clock elapsed")
+    }
+
+    /// Regression: resume() must accumulate the pause interval into totalPausedSeconds.
+    func testResumeAccumulatesPauseIntoSession() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        // Simulate a 5-minute pause by back-dating pauseStartTime
+        vm.pause()
+        vm.pauseStartTime = Date().addingTimeInterval(-300) // pretend paused 5 min ago
+
+        vm.resume()
+
+        let sessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        let session = try XCTUnwrap(sessions.first)
+        XCTAssertGreaterThanOrEqual(session.totalPausedSeconds, 299,
+                                    "resume() should commit ~5 min of pause time into session")
+    }
+
+    /// Regression: stop() while paused must also commit in-flight pause time.
+    func testStopWhilePausedAccumulatesPauseIntoSession() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        // Back-date startedAt so the session passes the minimum-retention check
+        let sessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        if let session = sessions.first {
+            session.startedAt = Date().addingTimeInterval(-600)
+            try container.mainContext.save()
+        }
+
+        vm.pause()
+        vm.pauseStartTime = Date().addingTimeInterval(-180) // 3 min in-flight pause
+
+        vm.stop()
+
+        // After stop the session record should have accumulated pause time
+        let updatedSessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        if let saved = updatedSessions.first {
+            XCTAssertGreaterThanOrEqual(saved.totalPausedSeconds, 179,
+                                        "stop() while paused should commit in-flight pause time into the session")
+        }
+        // State machine should be idle regardless
+        XCTAssertEqual(vm.state, .idle)
+    }
+
+    /// Regression: loadTodayStats() must use actualDuration (pause-excluded) not wall-clock overlap.
+    func testLoadTodayStatsExcludesPauseTime() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        // Manually insert a session with 30 min wall-clock, 10 min paused → 20 min active
+        let session = FocusSession(type: .focus, duration: 1800)
+        session.startedAt = Calendar.current.startOfDay(for: Date()).addingTimeInterval(3600) // 1h after midnight
+        session.endedAt   = session.startedAt.addingTimeInterval(1800) // 30 min wall-clock
+        session.completed = true
+        session.totalPausedSeconds = 600 // 10 min paused
+
+        container.mainContext.insert(session)
+        try container.mainContext.save()
+
+        vm.loadTodayStats()
+
+        // todayFocusTime should reflect ~20 min, NOT 30 min
+        XCTAssertEqual(vm.todayFocusTime, 1200, accuracy: 5,
+                       "loadTodayStats should exclude paused seconds from the daily focus total")
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,

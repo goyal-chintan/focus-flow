@@ -1623,7 +1623,8 @@ struct InsightsView: View {
             guard let day = calendar.date(byAdding: .day, value: -(29 - offset), to: today),
                   let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { return 0 }
             return focusSessions.reduce(0.0) { sum, session in
-                let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+                // Use effectiveEnd (pause-excluded) rather than raw endedAt for duration accounting
+                let sessionEnd = session.effectiveEnd
                 guard sessionEnd > day && session.startedAt < nextDay else { return sum }
                 let overlapStart = max(session.startedAt, day)
                 let overlapEnd = min(sessionEnd, nextDay)

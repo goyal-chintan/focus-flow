@@ -138,7 +138,8 @@ struct WeeklyStatsView: View {
 
         for session in focusSessions {
             let sessionStart = session.startedAt
-            let sessionEnd = session.endedAt ?? sessionStart.addingTimeInterval(session.actualDuration)
+            // Use effectiveEnd (pause-excluded) rather than raw endedAt for duration accounting
+            let sessionEnd = session.effectiveEnd
             guard sessionEnd > day && sessionStart < nextDay else { continue }
             let overlapStart = max(sessionStart, day)
             let overlapEnd = min(sessionEnd, nextDay)
@@ -349,7 +350,8 @@ struct WeeklyStatsView: View {
             }
             let total = focusSessions.reduce(0.0) { sum, session in
                 let sessionStart = session.startedAt
-                let sessionEnd = session.endedAt ?? sessionStart.addingTimeInterval(session.actualDuration)
+                // Use effectiveEnd (pause-excluded) rather than raw endedAt for duration accounting
+                let sessionEnd = session.effectiveEnd
                 guard sessionEnd > day && sessionStart < nextDay else { return sum }
                 let overlapStart = max(sessionStart, day)
                 let overlapEnd = min(sessionEnd, nextDay)
