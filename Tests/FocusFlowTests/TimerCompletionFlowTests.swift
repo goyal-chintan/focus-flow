@@ -1266,17 +1266,25 @@ final class TimerCompletionFlowTests: XCTestCase {
     /// pauseLabel formats correctly with multiple pauses.
     func testPauseLabelFormatsMultiplePauses() {
         let session = FocusSession(type: .focus, duration: 1800)
+        session.startedAt = Date().addingTimeInterval(-2400) // 40 min ago
+        session.endedAt = Date()
+        session.completed = true
         session.pauseCount = 3
-        session.totalPausedSeconds = 600
-        XCTAssertEqual(session.pauseLabel, "3 pauses · 10m paused")
+        session.totalPausedSeconds = 600 // 10 min paused
+        // actualDuration = 2400 - 600 = 1800 = 30m
+        XCTAssertEqual(session.pauseLabel, "30m focus · 3 pauses · 10m paused")
     }
 
     /// pauseLabel uses singular "pause" for count of 1.
     func testPauseLabelFormatsSinglePause() {
         let session = FocusSession(type: .focus, duration: 1800)
+        session.startedAt = Date().addingTimeInterval(-1800) // 30 min ago
+        session.endedAt = Date()
+        session.completed = true
         session.pauseCount = 1
-        session.totalPausedSeconds = 120
-        XCTAssertEqual(session.pauseLabel, "1 pause · 2m paused")
+        session.totalPausedSeconds = 120 // 2 min paused
+        // actualDuration = 1800 - 120 = 1680 = 28m
+        XCTAssertEqual(session.pauseLabel, "28m focus · 1 pause · 2m paused")
     }
 
     /// pauseLabel returns nil when only count is set but no time (edge case).

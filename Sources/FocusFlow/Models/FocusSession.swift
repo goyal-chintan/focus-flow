@@ -68,12 +68,13 @@ final class FocusSession {
         startedAt.addingTimeInterval(actualDuration)
     }
 
-    /// Formatted pause summary: "X pause(s) · Ym Zs paused"
+    /// Formatted session summary with pause detail: "24m focus · 3 pauses · 10m paused"
     /// Returns nil when the session had no pauses (count = 0 and seconds = 0).
     var pauseLabel: String? {
         guard totalPausedSeconds > 0 || pauseCount > 0 else { return nil }
+        let focusStr = actualDuration.formattedFocusTime
         let timeStr = totalPausedSeconds.formattedFocusTime
         let countStr = pauseCount == 1 ? "1 pause" : "\(pauseCount) pauses"
-        return "\(countStr) · \(timeStr) paused"
+        return "\(focusStr) focus · \(countStr) · \(timeStr) paused"
     }
 }

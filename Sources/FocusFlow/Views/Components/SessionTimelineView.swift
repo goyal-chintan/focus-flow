@@ -126,7 +126,8 @@ struct SessionTimelineView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(session.label), \(Int(session.actualDuration / 60)) minutes, \(session.completed ? "completed" : "incomplete")\(session.pauseLabel.map { ", \($0)" } ?? "")")
+        .accessibilityLabel(session.pauseLabel.map { "\(session.label), \($0), \(session.completed ? "completed" : "incomplete")" }
+            ?? "\(session.label), \(Int(session.actualDuration / 60)) minutes, \(session.completed ? "completed" : "incomplete")")
     }
 
     private func sessionColor(_ session: FocusSession) -> Color {
