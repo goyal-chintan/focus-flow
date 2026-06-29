@@ -821,6 +821,13 @@ final class TimerViewModel {
         guard state == .focusing || state == .paused, let _ = settings else { return }
         let wasState = state
 
+        // Commit any in-flight pause time to the OLD session before it's finalized.
+        // This must happen before currentSession is reassigned below.
+        if wasState == .paused, let oldSession = currentSession {
+            let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
+            oldSession.totalPausedSeconds += max(0, inFlightPause)
+        }
+
         // 1. Save elapsed time on current session
         let elapsed = totalSeconds - remainingSeconds
         if let session = currentSession {
@@ -860,9 +867,7 @@ final class TimerViewModel {
 
         // 5. Resume timer if we were paused
         if wasState == .paused {
-            // Commit any in-flight pause time before clearing the counter
-            let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
-            currentSession?.totalPausedSeconds += max(0, inFlightPause)
+            // Pause time already committed to old session above; just clear the counter
             pauseTimer?.invalidate()
             pauseTimer = nil
             pauseStartTime = nil
@@ -985,6 +990,9 @@ final class TimerViewModel {
 
         case .keepOvertime:
             let wakeTime = wakeRecoveryWakeTime ?? Date()
+            let sleepStart = wakeRecoverySleepStartTime ?? session.startedAt
+            let sleepDuration = wakeTime.timeIntervalSince(sleepStart)
+            session.totalPausedSeconds += max(0, sleepDuration)
             session.endedAt = wakeTime
             session.completed = true
             saveContext()
