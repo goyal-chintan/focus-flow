@@ -709,14 +709,16 @@ final class TimerViewModel {
             if session.endedAt != nil, session.actualDuration < Self.minimumRetainedFocusSeconds {
                 return false
             }
-            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            // Use the effective end (startedAt + actualDuration) so paused time is excluded
+            let sessionEnd = session.effectiveEnd
             return sessionEnd > startOfDay && session.startedAt < tomorrow
         }
         let newCount = focusSessions.filter(\.completed).count
         let newFocusTime = focusSessions.reduce(0) { sum, session in
-            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            // actualDuration already excludes pause time; clamp to today's window
+            let effectiveEnd = session.effectiveEnd
             let overlapStart = max(session.startedAt, startOfDay)
-            let overlapEnd = min(sessionEnd, tomorrow)
+            let overlapEnd = min(effectiveEnd, tomorrow)
             return sum + max(0, overlapEnd.timeIntervalSince(overlapStart))
         }
         // Only update @Observable properties if values actually changed (avoids unnecessary re-renders)
@@ -858,6 +860,9 @@ final class TimerViewModel {
 
         // 5. Resume timer if we were paused
         if wasState == .paused {
+            // Commit any in-flight pause time before clearing the counter
+            let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
+            currentSession?.totalPausedSeconds += max(0, inFlightPause)
             pauseTimer?.invalidate()
             pauseTimer = nil
             pauseStartTime = nil
@@ -1325,6 +1330,9 @@ final class TimerViewModel {
     func resume() {
         guard state == .paused else { return }
         let wasPauseExtended = pauseElapsed >= 120 // 2+ min pause
+        // Accumulate pause time into the session record before clearing the counter
+        let completedPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
+        currentSession?.totalPausedSeconds += max(0, completedPause)
         pauseTimer?.invalidate()
         pauseTimer = nil
         pauseStartTime = nil
@@ -1347,6 +1355,11 @@ final class TimerViewModel {
         timer = nil
         pauseTimer?.invalidate()
         pauseTimer = nil
+        // If the session was paused when stop() is called, commit the in-flight pause duration
+        if state == .paused, let session = currentSession {
+            let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
+            session.totalPausedSeconds += max(0, inFlightPause)
+        }
         pauseStartTime = nil
         pauseElapsed = 0
         isOvertime = false
@@ -1408,6 +1421,11 @@ final class TimerViewModel {
         timer = nil
         pauseTimer?.invalidate()
         pauseTimer = nil
+        // Commit any in-flight pause duration before finalising the session
+        if state == .paused {
+            let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
+            session.totalPausedSeconds += max(0, inFlightPause)
+        }
         pauseStartTime = nil
         pauseElapsed = 0
 

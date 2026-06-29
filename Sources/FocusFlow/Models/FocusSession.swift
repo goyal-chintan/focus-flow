@@ -15,6 +15,11 @@ final class FocusSession {
     var achievement: String?
     var calendarEventId: String?
 
+    /// Total wall-clock seconds spent paused during this session.
+    /// Accumulated each time the user resumes or the session ends while paused.
+    /// Default is 0 so existing stored sessions are unaffected.
+    var totalPausedSeconds: TimeInterval = 0
+
     @Relationship(deleteRule: .cascade)
     var splits: [TimeSplit]
 
@@ -33,6 +38,7 @@ final class FocusSession {
         self.endedAt = nil
         self.completed = false
         self.calendarEventId = nil
+        self.totalPausedSeconds = 0
         self.splits = []
     }
 
@@ -42,9 +48,18 @@ final class FocusSession {
         project?.name ?? customLabel ?? type.displayName
     }
 
+    /// Active focus time: wall-clock elapsed minus any time spent paused.
     var actualDuration: TimeInterval {
         let end = endedAt ?? Date()
-        let elapsed = end.timeIntervalSince(startedAt)
-        return completed ? elapsed : min(elapsed, duration)
+        let wallElapsed = end.timeIntervalSince(startedAt)
+        let active = max(0, wallElapsed - totalPausedSeconds)
+        return completed ? active : min(active, duration)
+    }
+
+    /// The session's effective end time for stats/overlap calculations.
+    /// Uses `startedAt + actualDuration` so paused time is correctly excluded
+    /// from duration totals, unlike `endedAt` which is the raw wall-clock end.
+    var effectiveEnd: Date {
+        startedAt.addingTimeInterval(actualDuration)
     }
 }

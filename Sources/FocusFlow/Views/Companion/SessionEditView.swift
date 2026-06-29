@@ -55,7 +55,12 @@ struct SessionEditView: View {
     }
 
     private var calculatedActualDuration: TimeInterval {
-        max(0, editedEndedAt.timeIntervalSince(editedStartedAt))
+        // Use the session's own pause-aware actualDuration as the baseline,
+        // but if the user has edited start/end, recompute from those (pauses no longer apply).
+        let editedElapsed = max(0, editedEndedAt.timeIntervalSince(editedStartedAt))
+        let originalElapsed = max(0, (session.endedAt ?? session.startedAt.addingTimeInterval(session.duration)).timeIntervalSince(session.startedAt))
+        let timingChanged = abs(editedElapsed - originalElapsed) > 1
+        return timingChanged ? editedElapsed : session.actualDuration
     }
 
     var body: some View {
@@ -363,6 +368,9 @@ struct SessionEditView: View {
         session.duration = editedDuration
         session.startedAt = editedStartedAt
         session.endedAt = editedEndedAt
+        // Manual edit supersedes automatic pause tracking — the user is asserting
+        // their own start/end, so actualDuration should equal endedAt − startedAt.
+        session.totalPausedSeconds = 0
 
         // Update splits: clear existing, insert new ones if split mode active
         for existing in session.splits {

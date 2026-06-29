@@ -853,8 +853,8 @@ struct CalendarTabView: View {
         let dayStart = calendar.startOfDay(for: date)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
         return allSessions.filter { session in
-            let safeDuration = session.actualDuration.isFinite ? max(0, session.actualDuration) : 0
-            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(safeDuration)
+            // Use effectiveEnd (pause-excluded) for filtering; endedAt is wall-clock
+            let sessionEnd = session.effectiveEnd
             return sessionEnd > dayStart && session.startedAt < dayEnd
         }.sorted { $0.startedAt < $1.startedAt }
     }
@@ -863,8 +863,8 @@ struct CalendarTabView: View {
         let dayStart = calendar.startOfDay(for: date)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return 0 }
         let total = allSessions.filter { $0.type == .focus }.reduce(0.0) { sum, session in
-            let safeDuration = session.actualDuration.isFinite ? max(0, session.actualDuration) : 0
-            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(safeDuration)
+            // Use effectiveEnd so paused time is excluded from day totals
+            let sessionEnd = session.effectiveEnd
             guard sessionEnd > dayStart && session.startedAt < dayEnd else { return sum }
             let overlapStart = max(session.startedAt, dayStart)
             let overlapEnd = min(sessionEnd, dayEnd)
