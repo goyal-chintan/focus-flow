@@ -29,8 +29,6 @@ enum InsightsWindowing {
     }
 
     static func endDate(for session: FocusSession) -> Date {
-        let fallbackEnd = session.startedAt.addingTimeInterval(max(session.actualDuration, 0))
-        let resolvedEnd = session.endedAt ?? fallbackEnd
-        return max(resolvedEnd, session.startedAt)
+        max(session.effectiveEnd, session.startedAt)
     }
 }

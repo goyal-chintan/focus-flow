@@ -88,6 +88,73 @@ final class InsightsWindowingTests: XCTestCase {
         XCTAssertEqual(rate, 0.5, accuracy: 0.0001)
     }
 
+    // MARK: – endDate tests
+
+    func testEndDateReturnsEffectiveEndWhenSessionHasPausedTime() {
+        let startedAt = date(year: 2026, month: 6, day: 15, hour: 10, minute: 0)
+        let wallClockEnd = startedAt.addingTimeInterval(30 * 60) // 10:00 → 10:30
+        let totalPaused: TimeInterval = 10 * 60                  // 10 min paused
+        let expectedEnd = startedAt.addingTimeInterval(20 * 60)  // 10:00 → 10:20
+
+        let session = makeFocusSession(startedAt: startedAt, endedAt: wallClockEnd, completed: true)
+        session.totalPausedSeconds = totalPaused
+
+        let result = InsightsWindowing.endDate(for: session)
+
+        XCTAssertEqual(result, expectedEnd,
+                       "endDate should use effectiveEnd (startedAt + actualDuration), not wall-clock endedAt")
+    }
+
+    func testEndDateClampsToStartedAtForEdgeCases() {
+        // Even if effectiveEnd is before startedAt (shouldn't happen with valid data),
+        // endDate must never return a date before startedAt.
+        let startedAt = date(year: 2026, month: 6, day: 15, hour: 10, minute: 0)
+        let session = makeFocusSession(startedAt: startedAt, endedAt: startedAt.addingTimeInterval(-60), completed: true)
+        session.totalPausedSeconds = 0
+
+        let result = InsightsWindowing.endDate(for: session)
+
+        XCTAssertEqual(result, startedAt,
+                       "endDate must clamp to >= startedAt")
+    }
+
+    func testEndDateIgnoresPausedTimeInOverlapCheck() {
+        // When a session spans a day boundary but most of the wall-clock time
+        // was paused, the effective end should determine which day it falls in.
+        let dayStart = date(year: 2026, month: 6, day: 15, hour: 0, minute: 0)
+        let dayEnd = date(year: 2026, month: 6, day: 16, hour: 0, minute: 0)
+        let interval = DateInterval(start: dayStart, end: dayEnd)
+
+        // Session starts at 23:40 on day 15, wall-clock ends at 00:40 on day 16 (60 min total)
+        // But 50 minutes were paused → actualDuration = 10 min → effectiveEnd = 23:50 on day 15
+        let startedAt = date(year: 2026, month: 6, day: 15, hour: 23, minute: 40)
+        let wallClockEnd = date(year: 2026, month: 6, day: 16, hour: 0, minute: 40)
+        let session = makeFocusSession(startedAt: startedAt, endedAt: wallClockEnd, completed: true)
+        session.totalPausedSeconds = 50 * 60
+
+        let overlapping = InsightsWindowing.overlappingFocusSessions([session], in: interval)
+
+        XCTAssertEqual(overlapping.map(\.id), [session.id],
+                       "Session with paused time should still overlap the day it started in")
+    }
+
+    func testPausedSessionDoesNotLeakIntoNextDay() {
+        // Same setup as above but check it does NOT overlap the *next* day.
+        let dayStart = date(year: 2026, month: 6, day: 16, hour: 0, minute: 0)
+        let dayEnd = date(year: 2026, month: 6, day: 17, hour: 0, minute: 0)
+        let interval = DateInterval(start: dayStart, end: dayEnd)
+
+        let startedAt = date(year: 2026, month: 6, day: 15, hour: 23, minute: 40)
+        let wallClockEnd = date(year: 2026, month: 6, day: 16, hour: 0, minute: 40)
+        let session = makeFocusSession(startedAt: startedAt, endedAt: wallClockEnd, completed: true)
+        session.totalPausedSeconds = 50 * 60
+
+        let overlapping = InsightsWindowing.overlappingFocusSessions([session], in: interval)
+
+        XCTAssertTrue(overlapping.isEmpty,
+                      "Session with effective end before day boundary must not leak into next day")
+    }
+
     private func makeFocusSession(startedAt: Date, endedAt: Date, completed: Bool) -> FocusSession {
         let session = FocusSession(type: .focus, duration: endedAt.timeIntervalSince(startedAt))
         session.startedAt = startedAt

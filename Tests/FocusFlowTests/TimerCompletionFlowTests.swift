@@ -1170,6 +1170,89 @@ final class TimerCompletionFlowTests: XCTestCase {
                        "loadTodayStats should exclude paused seconds from the daily focus total")
     }
 
+    // MARK: - Bug regression: switchProject while paused commits pause to correct session
+
+    /// Regression: switchProject() must commit in-flight pause time to the OLD session,
+    /// not the newly created session.
+    func testSwitchProjectWhilePausedAccumulatesPauseToCorrectSession() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+
+        // Ensure enough elapsed time so the old session passes the minimum-retention check (>= 5 min)
+        let oldTotalSeconds = vm.totalSeconds
+        vm.remainingSeconds = oldTotalSeconds - 360 // 6 min elapsed
+
+        vm.pause()
+        // Back-date pauseStartTime so there's ~5 min of in-flight pause time
+        vm.pauseStartTime = Date().addingTimeInterval(-300)
+
+        // Create a project to switch to
+        let newProject = Project(name: "Switched Project")
+        container.mainContext.insert(newProject)
+        try container.mainContext.save()
+
+        vm.switchProject(to: newProject, reason: .requiredSwitch)
+
+        // Fetch all sessions — should be 2 (old + new)
+        let allSessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        let oldSession = allSessions.first(where: { $0.endedAt != nil })
+        let newSession = allSessions.first(where: { $0.endedAt == nil })
+
+        let old = try XCTUnwrap(oldSession, "Old session should exist (endedAt set)")
+        let new = try XCTUnwrap(newSession, "New session should exist (endedAt nil)")
+
+        // Old session must have accumulated the in-flight pause time
+        XCTAssertGreaterThanOrEqual(old.totalPausedSeconds, 299,
+                                    "Old session must accumulate in-flight pause time from switchProject")
+
+        // New session must NOT have any pause time stolen from the old session
+        XCTAssertEqual(new.totalPausedSeconds, 0,
+                       "New session must not have pause time from the old session")
+    }
+
+    // MARK: - Bug regression: wake recovery keepOvertime excludes sleep from duration
+
+    /// Regression: resolveWakeRecovery(.keepOvertime) must add sleep duration to
+    /// totalPausedSeconds so actualDuration excludes the sleep period.
+    func testWakeRecoveryKeepOvertimeExcludesSleepFromActualDuration() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        // Create a session that ran for 1 hour wall-clock with 30 min of sleep
+        let session = FocusSession(type: .focus, duration: 3600)
+        session.startedAt = Date().addingTimeInterval(-3600) // 1 hour ago
+        session.endedAt = nil
+        container.mainContext.insert(session)
+        try container.mainContext.save()
+
+        // Setup wake recovery state
+        vm.wakeRecoverySession = session
+        vm.wakeRecoverySleepStartTime = session.startedAt.addingTimeInterval(1800) // fell asleep 30 min in
+        vm.wakeRecoveryWakeTime = Date()
+        vm.wakeRecoveryWasOvertime = false
+        vm.showWakeRecoveryPrompt = true // makes isWakeRecoveryActive true
+
+        vm.resolveWakeRecovery(choice: .keepOvertime)
+
+        // Session should be ended and completed
+        XCTAssertTrue(session.completed)
+        XCTAssertNotNil(session.endedAt)
+
+        // Sleep duration is ~30 min = 1800 seconds
+        XCTAssertEqual(session.totalPausedSeconds, 1800, accuracy: 5,
+                       "totalPausedSeconds should include the sleep duration")
+
+        // actualDuration = wall-clock elapsed minus sleep = 3600 - 1800 = 1800 (30 min active)
+        XCTAssertEqual(session.actualDuration, 1800, accuracy: 5,
+                       "actualDuration should exclude the sleep period")
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,

@@ -18,7 +18,7 @@ struct TodayStatsView: View {
         guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return [] }
         return allSessions.filter { session in
             guard session.type == .focus && session.actualDuration >= 60 else { return false }
-            let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+            let sessionEnd = session.effectiveEnd
             return sessionEnd > start && session.startedAt < tomorrow
         }
     }
@@ -27,7 +27,7 @@ struct TodayStatsView: View {
     private func todayPortion(of session: FocusSession) -> TimeInterval {
         let start = Calendar.current.startOfDay(for: analyticsSnapshotNow)
         guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return 0 }
-        let sessionEnd = session.endedAt ?? session.startedAt.addingTimeInterval(session.actualDuration)
+        let sessionEnd = session.effectiveEnd
         let overlapStart = max(session.startedAt, start)
         let overlapEnd = min(sessionEnd, tomorrow)
         return max(0, overlapEnd.timeIntervalSince(overlapStart))
