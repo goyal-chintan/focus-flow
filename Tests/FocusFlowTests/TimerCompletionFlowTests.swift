@@ -1253,6 +1253,131 @@ final class TimerCompletionFlowTests: XCTestCase {
                        "actualDuration should exclude the sleep period")
     }
 
+    // MARK: - Pause count and pause label model tests
+
+    /// New session must have zero pause count.
+    func testNewSessionHasZeroPauseCount() {
+        let session = FocusSession(type: .focus, duration: 1800)
+        XCTAssertEqual(session.pauseCount, 0)
+        XCTAssertEqual(session.totalPausedSeconds, 0)
+        XCTAssertNil(session.pauseLabel)
+    }
+
+    /// pauseLabel formats correctly with multiple pauses.
+    func testPauseLabelFormatsMultiplePauses() {
+        let session = FocusSession(type: .focus, duration: 1800)
+        session.startedAt = Date().addingTimeInterval(-2400) // 40 min ago
+        session.endedAt = Date()
+        session.completed = true
+        session.pauseCount = 3
+        session.totalPausedSeconds = 600 // 10 min paused
+        // actualDuration = 2400 - 600 = 1800 = 30m
+        XCTAssertEqual(session.pauseLabel, "30m focus · 3 pauses · 10m paused")
+    }
+
+    /// pauseLabel uses singular "pause" for count of 1.
+    func testPauseLabelFormatsSinglePause() {
+        let session = FocusSession(type: .focus, duration: 1800)
+        session.startedAt = Date().addingTimeInterval(-1800) // 30 min ago
+        session.endedAt = Date()
+        session.completed = true
+        session.pauseCount = 1
+        session.totalPausedSeconds = 120 // 2 min paused
+        // actualDuration = 1800 - 120 = 1680 = 28m
+        XCTAssertEqual(session.pauseLabel, "28m focus · 1 pause · 2m paused")
+    }
+
+    /// pauseLabel returns nil when only count is set but no time (edge case).
+    func testPauseLabelNilWhenNoPauseTime() {
+        let session = FocusSession(type: .focus, duration: 1800)
+        session.pauseCount = 0
+        session.totalPausedSeconds = 0
+        XCTAssertNil(session.pauseLabel)
+    }
+
+    /// resume() must also set pauseCount on the session.
+    func testResumeSetsPauseCountOnSession() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        vm.pause()
+        vm.pauseStartTime = Date().addingTimeInterval(-60) // 1 min pause
+
+        vm.resume()
+
+        let sessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        let session = try XCTUnwrap(sessions.first)
+        XCTAssertGreaterThanOrEqual(session.pauseCount, 1,
+                                    "resume() should set pauseCount >= 1 on the session")
+        XCTAssertEqual(session.pauseCount, 1,
+                       "resume() should set pauseCount to 1 after one pause cycle")
+    }
+
+    /// stop() while paused must also set pauseCount.
+    func testStopWhilePausedSetsPauseCount() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        // Back-date startedAt so the session passes the minimum-retention check
+        let sessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        if let session = sessions.first {
+            session.startedAt = Date().addingTimeInterval(-600)
+            try container.mainContext.save()
+        }
+
+        vm.pause()
+        vm.pauseStartTime = Date().addingTimeInterval(-60) // 1 min pause
+
+        vm.stop()
+
+        let updatedSessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        if let saved = updatedSessions.first {
+            XCTAssertGreaterThanOrEqual(saved.pauseCount, 1,
+                                        "stop() while paused should set pauseCount >= 1")
+        }
+    }
+
+    /// switchProject() must set pauseCount on the old session, not the new one.
+    func testSwitchProjectSetsPauseCountOnCorrectSession() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        let oldTotalSeconds = vm.totalSeconds
+        vm.remainingSeconds = oldTotalSeconds - 360 // 6 min elapsed
+
+        vm.pause()
+        vm.pauseStartTime = Date().addingTimeInterval(-300)
+
+        let newProject = Project(name: "Switched Project")
+        container.mainContext.insert(newProject)
+        try container.mainContext.save()
+
+        vm.switchProject(to: newProject, reason: .requiredSwitch)
+
+        let allSessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+        let oldSession = allSessions.first(where: { $0.endedAt != nil })
+        let newSession = allSessions.first(where: { $0.endedAt == nil })
+
+        let old = try XCTUnwrap(oldSession)
+        let new = try XCTUnwrap(newSession)
+
+        // Old session must have the pause count
+        XCTAssertGreaterThanOrEqual(old.pauseCount, 1,
+                                    "Old session must have pauseCount set from switchProject")
+        // New session must have zero pause count
+        XCTAssertEqual(new.pauseCount, 0,
+                       "New session must not inherit pause count from old session")
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,

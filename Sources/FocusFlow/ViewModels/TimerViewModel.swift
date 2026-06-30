@@ -826,6 +826,7 @@ final class TimerViewModel {
         if wasState == .paused, let oldSession = currentSession {
             let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
             oldSession.totalPausedSeconds += max(0, inFlightPause)
+            oldSession.pauseCount = pauseCountThisSession
         }
 
         // 1. Save elapsed time on current session
@@ -1341,6 +1342,7 @@ final class TimerViewModel {
         // Accumulate pause time into the session record before clearing the counter
         let completedPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
         currentSession?.totalPausedSeconds += max(0, completedPause)
+        currentSession?.pauseCount = pauseCountThisSession
         pauseTimer?.invalidate()
         pauseTimer = nil
         pauseStartTime = nil
@@ -1367,6 +1369,7 @@ final class TimerViewModel {
         if state == .paused, let session = currentSession {
             let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
             session.totalPausedSeconds += max(0, inFlightPause)
+            session.pauseCount = pauseCountThisSession
         }
         pauseStartTime = nil
         pauseElapsed = 0
@@ -1433,6 +1436,7 @@ final class TimerViewModel {
         if state == .paused {
             let inFlightPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
             session.totalPausedSeconds += max(0, inFlightPause)
+            session.pauseCount = pauseCountThisSession
         }
         pauseStartTime = nil
         pauseElapsed = 0
@@ -1898,6 +1902,7 @@ final class TimerViewModel {
         // Don't invalidate timer — continues for overtime
         currentSession?.endedAt = Date()
         currentSession?.completed = true
+        currentSession?.pauseCount = pauseCountThisSession
         saveContext()
         clearCrashRecoveryState()
 

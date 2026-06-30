@@ -319,6 +319,15 @@ struct CalendarTabView: View {
                         Text(mins > 0 ? "\(Int(mins))m focused · \(sessionsForDay(selectedDate).count) session\(sessionsForDay(selectedDate).count == 1 ? "" : "s")" : "No focus sessions")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
+
+                        let daySessions = sessionsForDay(selectedDate)
+                        let dayPauses = daySessions.reduce(0) { $0 + $1.pauseCount }
+                        let dayPausedSeconds = daySessions.reduce(0) { $0 + $1.totalPausedSeconds }
+                        if dayPausedSeconds > 0 {
+                            Text("\(dayPauses) pause\(dayPauses == 1 ? "" : "s") · \(dayPausedSeconds.formattedFocusTime) paused")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
 
                     Spacer()

@@ -512,6 +512,14 @@ struct TodayStatsView: View {
                     subtitle: "\(todaySessions.count) focus session\(todaySessions.count == 1 ? "" : "s")"
                 )
 
+                let todayPauses = todaySessions.reduce(0) { $0 + $1.pauseCount }
+                let todayPausedSeconds = todaySessions.reduce(0) { $0 + $1.totalPausedSeconds }
+                if todayPausedSeconds > 0 {
+                    Text("\(todayPauses) pause\(todayPauses == 1 ? "" : "s") · \(todayPausedSeconds.formattedFocusTime) paused")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
                 SessionTimelineView(sessions: todaySessions)
             }
             .padding(16)

@@ -160,6 +160,13 @@ struct SessionEditView: View {
                 .font(.subheadline.weight(.semibold))
                 .monospacedDigit()
 
+            if let pauseLabel = session.pauseLabel {
+                Text(pauseLabel)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
+
             Spacer()
 
             Text("Planned: \(selectedDurationMinutes)m")
