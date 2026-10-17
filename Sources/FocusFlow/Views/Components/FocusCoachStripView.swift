@@ -45,7 +45,7 @@ struct FocusCoachStripView: View {
 
                 if let subtitle = model.subtitle {
                     Text(subtitle)
-                        .font(.system(size: 9, weight: .regular, design: .rounded))
+                        .font(.system(size: 10, weight: .regular, design: .rounded))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                 }
             }
@@ -54,7 +54,7 @@ struct FocusCoachStripView: View {
 
             if model.tone != .green {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     .accessibilityHidden(true)
             }

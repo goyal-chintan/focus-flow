@@ -24,6 +24,19 @@ final class FocusSession {
     /// Default is 0 so existing stored sessions are unaffected.
     var pauseCount: Int = 0
 
+    // Coach v2.1 intent/outcome capture (optional: no migration needed).
+    /// "What will exist at the end of this block?"
+    var intentText: String?
+    /// `SessionOutcome` raw value, set from the post-session check.
+    var outcomeRawValue: String?
+    /// `WeeklyPriority.id` this block served, if any.
+    var priorityID: UUID?
+
+    var outcome: SessionOutcome? {
+        get { outcomeRawValue.flatMap(SessionOutcome.init(rawValue:)) }
+        set { outcomeRawValue = newValue?.rawValue }
+    }
+
     @Relationship(deleteRule: .cascade)
     var splits: [TimeSplit]
 

@@ -16,24 +16,64 @@ enum IdleStarterSuppressionReason: Equatable {
     case antiProcrastinationDisabled
     case idleStarterDisabled
     case cooldownActive
-    case workIntentWindowClosed
-    case plannerThresholdsNotMet
+    case snoozed
+    case quietHours
+    case outsideFocusWindow
+    case onTrack
+    case banditChoseSilent
+    case calendarBusy
+    case dailyPromptCapReached
+    case strongPromptSpacing
 
     var debugLabel: String {
         switch self {
-        case .releaseWindowActive: return "Release window active"
+        case .releaseWindowActive: return "Release window active (Done for today)"
         case .screenShareSuppressed: return "Suppressed by screen-share guard"
         case .antiProcrastinationDisabled: return "Anti-procrastination disabled"
         case .idleStarterDisabled: return "Idle starter disabled"
         case .cooldownActive: return "Cooldown active (<120s since last prompt)"
-        case .workIntentWindowClosed: return "Work-intent window closed"
-        case .plannerThresholdsNotMet: return "Planner thresholds not met"
+        case .snoozed: return "Snoozed (Not now / Planned)"
+        case .quietHours: return "Quiet hours"
+        case .outsideFocusWindow: return "Outside your learned focus windows"
+        case .onTrack: return "On track for today's goal"
+        case .banditChoseSilent: return "Coach chose to stay silent"
+        case .calendarBusy: return "Calendar shows a busy event now"
+        case .dailyPromptCapReached: return "Daily prompt cap reached"
+        case .strongPromptSpacing: return "Panel shown less than 2h ago"
+        }
+    }
+
+    init?(verdict: CoachGuardrails.Verdict) {
+        switch verdict {
+        case .allowed, .sessionActive: return nil
+        case .released: self = .releaseWindowActive
+        case .screenShare: self = .screenShareSuppressed
+        case .calendarBusy: self = .calendarBusy
+        case .quietHours: self = .quietHours
+        case .snoozed: self = .snoozed
+        case .dailyCapReached: self = .dailyPromptCapReached
+        case .panelTooSoon: self = .strongPromptSpacing
         }
     }
 }
 
 #if DEBUG
 extension TimerViewModel {
+    /// Test hook: back-dates the day the view model believes it is on, to simulate a rollover.
+    func testingSetCurrentDay(_ day: Date) {
+        currentDay = Calendar.current.startOfDay(for: day)
+    }
+
+    /// Test hook: lets the next idle evaluation run without the 120 s re-prompt cooldown.
+    func testingResetIdleCooldown() {
+        lastIdleInterventionAt = nil
+    }
+
+    /// Test hook: runs the timer-completion path for the current block now.
+    func testingCompleteCurrentBlock() async {
+        await timerCompleted()
+    }
+
     /// Lightweight setup used by UI evidence/snapshot tests to avoid side effects
     /// from full app configuration (timers, tracker bootstrapping, save observers).
     func configureForEvidence(modelContext: ModelContext, settings: AppSettings) {
@@ -285,8 +325,6 @@ final class TimerViewModel {
             }
         }
     }
-    /// Set by FocusFlowApp to open the strong coach intervention window
-    var openCoachInterventionWindow: (() -> Void)?
     /// Set by FocusFlowApp to request foreground activation based on policy.
     var requestAppActivation: (() -> Void)?
 
@@ -315,31 +353,116 @@ final class TimerViewModel {
     private(set) var coachEngine = FocusCoachEngine()
     private(set) var driftMemoryStore = DriftMemoryStore()
     private let coachPlanner = FocusCoachInterventionPlanner()
-    private let coachOpportunityModel = FocusCoachOpportunityModel()
     private let guardianAdvisor = FocusCoachGuardianAdvisor()
-    private let outsideSessionSignalScorer = OutsideSessionSignalScorer()
     private let earnedBreakSuggestionEngine = EarnedBreakSuggestionEngine()
     private let screenShareGuard: ScreenShareGuard
-    private let workIntentDetector = WorkIntentWindowDetector()
     private var choseSuggestedBreakCurrentEpisode: Bool = false
     private var coachTickCounter: Int = 0
     private var pauseCountThisSession: Int = 0
     private var strongPromptsShownThisSession: Int = 0
     private var lastIdleInterventionAt: Date?
+    /// Debug read-outs for Settings → Coach: window strength (p / best p today) and pacing pressure.
     private(set) var latestWorkIntentScore: Double = 0
     private(set) var latestDriftScore: Double = 0
     private(set) var latestWorkIntentActiveSignals: [String] = []
     private(set) var latestDriftActiveSignals: [String] = []
     private(set) var lastIdleStarterSuppressionReason: IdleStarterSuppressionReason?
-    var pendingNotificationNudgeAt: Date?
-    var outsideSessionNudgeAttemptCount: Int = 0
-    var outsideSessionAwaitingStartFocus: Bool = false
-    var outsideSessionEscalationCooldownUntil: Date?
-    private var outsideSessionNonResponseStreak: Int = 0
-    private var outsideSessionSkipStreak: Int = 0
+    /// Overrides the calendar lookup for the idle path (tests). Nil uses `CalendarService`.
+    var calendarAvailabilityProvider: ((Date) -> CalendarAvailability)?
+    /// Decision behind the last coach check-in notification, shown if the user taps its body.
+    private(set) var pendingCoachNotificationDecision: FocusCoachDecision?
+    private var pendingCoachNotificationPlan: CoachStartTarget?
+
+    // MARK: - Coach v2 (learning coach + on-screen panel)
+    /// Content of the floating coach panel; nil when hidden. The panel view reads this.
+    private(set) var coachPanel: CoachPanelPresentation?
+    /// Shown in the panel when its primary action could not start a block (bug B5).
+    private(set) var coachPanelError: String?
+    /// The menu bar icon pulses while an unanswered prompt waits (panel auto-hid or badge arm).
+    var coachMenuBarPulse: Bool = false
+    /// AppKit host for the panel, set by FocusFlowApp. Nil in tests: state still updates.
+    var coachPanelHost: (any CoachPanelHosting)?
+    /// Opens the Settings scene (weekly priorities invite). Set by FocusFlowApp.
+    var openSettingsScene: (() -> Void)?
+    /// This week's 1–3 personal priorities (refreshed on launch, popover open and each prompt).
+    private(set) var weeklyPriorities: [WeeklyPriority] = []
+    /// Intent typed in the popover: "What will exist at the end of this block?"
+    var pendingIntentText: String = ""
+    /// Weekly priority the next block serves.
+    var pendingPriorityID: UUID?
+    private var lastPrefilledIntent: String?
+    /// "Not now", "Planned, leave me" and "Done for today" keep idle prompts away until then.
+    private(set) var coachQuietUntil: Date?
+    /// The bandit prompt waiting for a session start (rewarded by id within 10 minutes).
+    private(set) var pendingCoachAttemptID: UUID?
+    private var coachPanelAutoHideTask: Task<Void, Never>?
+    private var coachIdleTimer: Timer?
+    private var pseudoContextRunStart: Date?
+    private var pseudoLastAskedAt: Date?
+    private(set) var availabilityModel: CoachAvailabilityModel = .empty
+    private var availabilityComputedDay: Date?
+    /// Test hook: fixes the availability model instead of learning it from the store.
+    var availabilityModelOverride: CoachAvailabilityModel?
+    private(set) var banditModel = CoachBanditModel()
+    private let banditStore: CoachBanditStore
+    private let coachGuardrails = CoachGuardrails()
+    private let banditPolicy = CoachBanditPolicy()
+    /// Test hook: forces the bandit's arm when the guardrails allow its surface.
+    var coachArmOverride: CoachArm?
+    var coachRandom = SplitMix64(seed: UInt64(Date().timeIntervalSince1970 * 1000))
+    static let coachPanelAutoHideSeconds: Double = 20
+    static let weeklyInviteDefaultsKey = "focusflow.coachWeeklyPrioritiesInviteWeek"
+    private let defaults: UserDefaults
+
+    // MARK: - Coach rescue loop (docs/plans/2026-10-17-coach-rescue-loop-design.md)
+    /// Rolling drift detector, fed every tracking tick while no session runs.
+    private(set) var driftMonitor = DriftMonitor()
+    /// Latest drift assessment (refreshed every 15 s). Drives the menu bar counter.
+    private(set) var currentDrift: DriftAssessment?
+    private(set) var currentFocusWindow: CoachFocusWindow?
+    private var lastRescueDecision: CoachRescueCadence.Decision?
+    private var driftRuleKeys: (confirmed: Set<String>, allowed: Set<String>, loadedAt: Date)?
+    /// Contexts the user called a side quest at least half the time (≥ 2 answers): their time is pseudo-work.
+    private(set) var busyworkContexts: Set<String> = []
+    /// The pause screen on screen; nil when hidden.
+    private(set) var pauseScreen: CoachPauseScreenPresentation?
+    /// AppKit host for the pause screen, set by FocusFlowApp. Nil in tests: state still updates.
+    var pauseScreenHost: (any CoachPauseScreenHosting)?
+    /// ⌃⌥Space registrar, set by FocusFlowApp. Nil in tests unless a fake is injected.
+    var hotkeyRegistrar: (any CoachHotkeyRegistering)?
+    /// True while a starter block (no project, no priority) runs.
+    private(set) var isStarterBlock = false
+    /// "What's the very next step?" typed during a starter block.
+    var starterStepText: String = ""
+    private var starterRestore: (project: Project?, customLabel: String, priorityID: UUID?)?
+    /// Overrides `focusDuration` for the next start (starter blocks may be 2 minutes).
+    private var nextStartDurationOverride: TimeInterval?
+    /// The block a rescue started; it gets the momentum ramp once.
+    private(set) var rescueStartedSessionID: UUID?
+    private var momentumOfferedSessionID: UUID?
+    private var coachIdleTickCount = 0
+    private var pauseScreenShutoffLogged = false
+    /// Test hook: seconds since the last keyboard/mouse input. Nil reads the system.
+    var systemIdleSecondsProvider: (() -> TimeInterval)?
+    /// Test hook: overrides the frontmost context the drift monitor samples.
+    var driftFrontmostOverride: DriftFrontmost?
+    #if DEBUG
+    /// FOCUSFLOW_DEBUG_DRIFT_LEVEL: forces the ladder level of the debug coach panel.
+    var debugForcedDriftLevel: DriftLevel?
+    #endif
+
+    /// What the drift monitor samples each tick.
+    struct DriftFrontmost: Equatable {
+        var bundleIdentifier: String?
+        var appName: String?
+        var browserHost: String?
+        var displayName: String?
+        var category: AppUsageEntry.AppCategory
+        var switchesPerMinute: Double = 0
+    }
 
     // MARK: - Work Intent Timestamps
-    /// Time the app was launched — used as a proxy for "opened app recently".
+    /// Time the app was launched.
     var appLaunchTime: Date = Date()
     /// Set when the user selects or changes a project in the picker.
     var lastProjectSelectedAt: Date?
@@ -355,7 +478,11 @@ final class TimerViewModel {
     private var hasPromptedBreakOverrunReasonInCurrentEpisode: Bool = false
     /// Non-blocking inline reason chips shown when resuming from an extended pause (≥2 min).
     var showPauseReasonChips: Bool = false
+    /// True while the coach panel is on screen (kept under its v1 name for callers and tests).
     var showCoachInterventionWindow: Bool = false
+    /// Set when a panel action succeeds, so a later dismiss does not record `.dismissed`.
+    private var interventionActionTaken = false
+    /// Decision behind the coach panel.
     var activeCoachInterventionDecision: FocusCoachDecision?
     var currentCoachQuickPromptDecision: FocusCoachDecision?
     var currentIdleStarterDecision: FocusCoachDecision?
@@ -420,8 +547,12 @@ final class TimerViewModel {
     // MARK: - Setup
     private var isConfigured = false
 
-    init(screenShareGuard: ScreenShareGuard = ScreenShareGuard()) {
+    /// `defaults` backs the coach's persisted state (bandit cache, pseudo-work answer log,
+    /// weekly priorities invite). Tests pass an isolated suite; production uses `.standard`.
+    init(screenShareGuard: ScreenShareGuard = ScreenShareGuard(), defaults: UserDefaults = .standard) {
         self.screenShareGuard = screenShareGuard
+        self.defaults = defaults
+        self.banditStore = CoachBanditStore(defaults: defaults)
     }
 
     func configure(modelContext: ModelContext) {
@@ -436,6 +567,7 @@ final class TimerViewModel {
         checkForRecoverableSession()
         loadWakeRecoveryStateFromDefaults()
         purgeShortFocusSessions()
+        IdleDistractionLegacyCleanup.runOnce(in: modelContext)
         loadTodayStats()
         // Don't call BlockingService.cleanupIfNeeded() here — it prompts for
         // admin password if stale /etc/hosts entries exist, which is jarring on
@@ -461,6 +593,60 @@ final class TimerViewModel {
         AppUsageTracker.shared.start(timerVM: self, modelContext: modelContext)
         // Wire Focus Coach to persistent SwiftData store
         coachEngine.configureStore(SwiftDataCoachStore(modelContext: modelContext))
+        // Actionable coach notifications: Start / Snooze buttons and body taps route back here.
+        NotificationService.shared.onCoachNotificationResponse = { [weak self] response in
+            self?.handleCoachNotificationResponse(response)
+        }
+        NotificationService.shared.registerCoachNotificationHandling()
+        #if DEBUG
+        // Manual check of the actionable check-in: launch with FOCUSFLOW_DEBUG_COACH_CHECKIN=1.
+        if ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_COACH_CHECKIN"] == "1" {
+            log("debug: sending coach check-in notification in 5s")
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                if let self {
+                    let availability = self.currentCalendarAvailability(now: Date())
+                    self.log("debug: calendar auth=\(CalendarService.shared.authStatus) busyNow=\(availability.isBusyNow) nextEventMin=\(availability.minutesUntilNextEvent.map(String.init) ?? "nil")")
+                }
+                NotificationService.shared.sendCoachCheckIn(
+                    title: "Focus check-in",
+                    body: "Debug check-in. Press Start focus to begin a block.",
+                    sound: "Glass"
+                )
+            }
+        }
+        #endif
+        #if DEBUG
+        // Live check of the on-screen coach panel: launch with FOCUSFLOW_DEBUG_COACH_PANEL=1.
+        if ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_COACH_PANEL"] == "1" {
+            log("debug: showing coach panel in 5s")
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.presentDebugCoachPanel()
+            }
+        }
+        #endif
+        #if DEBUG
+        // Rescue loop checks: FOCUSFLOW_DEBUG_PAUSE_SCREEN=1 shows the pause screen in 5 s;
+        // FOCUSFLOW_DEBUG_DRIFT_LEVEL=<1|2|3> sets the ladder level of FOCUSFLOW_DEBUG_COACH_PANEL.
+        if let raw = ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_DRIFT_LEVEL"], let value = Int(raw),
+           let level = DriftLevel(rawValue: value), level > .ok {
+            debugForcedDriftLevel = level
+        }
+        if ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_PAUSE_SCREEN"] == "1" {
+            log("debug: showing pause screen in 5s")
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.presentDebugPauseScreen()
+            }
+        }
+        #endif
+        // Coach v2: learned windows, bandit posteriors (rebuilt from logged rewards), priorities.
+        driftMemoryStore.pruneOldEntries()
+        refreshCoachModelsIfNeeded(now: Date(), force: true)
+        reloadWeeklyPriorities()
+        startCoachIdleTimer()
+        syncGlobalHotkey()
         // Wire drift classification memory and latest observation updates
         coachEngine.configureDriftMemory(driftMemoryStore)
         AppUsageTracker.shared.onSuspiciousObservation = { [weak self] observation in
@@ -498,9 +684,20 @@ final class TimerViewModel {
     }
 
     @MainActor
-    private func handleDayChange() {
+    func checkDayRolloverIfNeeded() {
+        let today = Calendar.current.startOfDay(for: Date())
+        if today != currentDay {
+            log("Day rollover detected (\(currentDay) -> \(today)) — resetting today's stats")
+            handleDayChange()
+        }
+    }
+
+    @MainActor
+    func handleDayChange() {
         currentDay = Calendar.current.startOfDay(for: Date())
         completedFocusSessions = 0
+        todayFocusTime = 0
+        todaySessionCount = 0
         loadTodayStats()
         // Schedule next midnight refresh
         scheduleMidnightRefresh()
@@ -657,6 +854,8 @@ final class TimerViewModel {
         var deletedAny = false
         for session in sessions where session.type == .focus && session.endedAt != nil && session.actualDuration < Self.minimumRetainedFocusSeconds {
             if session.id == recoveryId { continue }
+            // Completed starter blocks (2–10 min) are real wins and stay in history.
+            if session.completed && CoachStarterBlock.isStarter(customLabel: session.customLabel, hasProject: session.project != nil) { continue }
             if lastCompletedSession?.id == session.id {
                 lastCompletedSession = nil
                 lastCompletedDuration = nil
@@ -695,6 +894,14 @@ final class TimerViewModel {
     func loadTodayStats() {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: Date())
+        if startOfDay != currentDay {
+            currentDay = startOfDay
+            completedFocusSessions = 0
+            todayFocusTime = 0
+            todaySessionCount = 0
+            scheduleMidnightRefresh()
+        }
+
         guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: startOfDay),
               let yesterday = calendar.date(byAdding: .day, value: -1, to: startOfDay) else { return }
         var descriptor = FetchDescriptor<FocusSession>(
@@ -723,37 +930,36 @@ final class TimerViewModel {
         }
         // Only update @Observable properties if values actually changed (avoids unnecessary re-renders)
         if todaySessionCount != newCount { todaySessionCount = newCount }
-        // Reconcile with DB — allow up to 60s drift from live tick incrementing
-        if abs(todayFocusTime - newFocusTime) > 60 { todayFocusTime = newFocusTime }
+        // Reconcile with DB: if state is idle or drift > 60s, align todayFocusTime with DB calculation
+        if state == .idle || abs(todayFocusTime - newFocusTime) > 60 { todayFocusTime = newFocusTime }
         if completedFocusSessions != newCount { completedFocusSessions = newCount }
     }
 
     // MARK: - Actions
-    func startFocus() {
+    /// Starts a focus block. Returns false and sets `startError` when the start is refused,
+    /// so callers can keep their surface open and show why (bug B5).
+    @discardableResult
+    func startFocus() -> Bool {
         startError = nil
         guard settings != nil, !isOvertime else {
             log("startFocus: settings nil or overtime, aborting")
             startError = settings == nil ? "Settings not loaded. Please restart the app." : "Complete the current session first."
-            return
+            return false
         }
         guard state == .idle else {
             log("startFocus: not idle (state=\(state)), aborting")
             startError = "A session is already in progress."
-            return
-        }
-        let duration = focusDuration
-        guard duration >= 300 else {
-            log("startFocus: duration \(duration) < 300, aborting")
-            startError = "Minimum session duration is 5 minutes."
-            return
+            return false
         }
         startFocusInternal()
+        return true
     }
 
     /// Core focus-starting logic, callable from any valid pre-focus state.
     /// Callers must validate preconditions (state, duration, settings) before invoking.
     private func startFocusInternal() {
-        let duration = focusDuration
+        let duration = nextStartDurationOverride ?? focusDuration
+        nextStartDurationOverride = nil
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
         totalSeconds = duration
         remainingSeconds = duration
@@ -767,29 +973,42 @@ final class TimerViewModel {
             project: selectedProject,
             customLabel: customLabel.isEmpty ? nil : customLabel
         )
+        // Intent capture (Coach v2 §9 step 2): optional, one line, never blocks the start.
+        let intent = pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        session.intentText = intent.isEmpty ? nil : intent
+        session.priorityID = pendingPriorityID
+        pendingIntentText = ""
+        lastPrefilledIntent = nil
         modelContext?.insert(session)
         currentSession = session
         if let project = selectedProject {
             settings?.lastUsedProjectId = project.id.uuidString
         }
         saveContext() // Persist session immediately — crash safety
+        creditCoachPromptForStart(sessionID: session.id)
         saveCrashRecoveryCheckpoint() // Write initial recovery state to UserDefaults
         startTimer()
         // Focus Coach: start session tracking
         pauseCountThisSession = 0
         strongPromptsShownThisSession = 0
         lastIdleInterventionAt = nil
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
-        currentCoachQuickPromptDecision = nil
-        currentIdleStarterDecision = nil
+        clearCoachPrompts()
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
+        pseudoContextRunStart = nil
+        // Rescue loop: a block ends the drift; the menu bar counter clears.
+        driftMonitor.reset()
+        currentDrift = nil
+        lastRescueDecision = nil
+        if pauseScreen != nil {
+            pauseScreen = nil
+            pauseScreenHost?.hidePauseScreen()
+        }
         // Starting a new focus block is an explicit recommit signal.
         // Clear any prior release window so guardian protections resume immediately.
         suppressionWindow = nil
-        clearOutsideSessionEscalationState(resetStreaks: true)
+        coachQuietUntil = nil
         coachEngine.promptBudget = settings?.coachPromptBudgetPerSession ?? 4
         coachEngine.currentTaskResistance = coachResistance
         coachEngine.startSession(id: session.id)
@@ -1229,6 +1448,7 @@ final class TimerViewModel {
 
     /// Called when the system wakes from sleep. Auto-resumes if the sleep was within the configured threshold.
     func resumeAfterSystemWake() {
+        checkDayRolloverIfNeeded()
         guard let sleepStart = systemSleepStartTime else { return }
         defer {
             systemSleepStartTime = nil
@@ -1361,6 +1581,7 @@ final class TimerViewModel {
     }
 
     func stop() {
+        endStarterState()
         timer?.invalidate()
         timer = nil
         pauseTimer?.invalidate()
@@ -1383,10 +1604,7 @@ final class TimerViewModel {
         pendingReasonKind = .drift
         lastSessionDistractingEntries = []
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
-        currentCoachQuickPromptDecision = nil
-        currentIdleStarterDecision = nil
+        clearCoachPrompts()
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
         strongPromptsShownThisSession = 0
@@ -1470,9 +1688,8 @@ final class TimerViewModel {
         AppUsageTracker.shared.syncCadence(isFocusing: false)
         remainingSeconds = 0
         totalSeconds = 0
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
+        hideCoachPanel()
 
         // Focus Coach: detect mid-session stop anomaly for reason capture
         if settings?.coachReasonPromptsEnabled == true, let lastSession = lastCompletedSession {
@@ -1510,9 +1727,8 @@ final class TimerViewModel {
         showPauseReasonChips = false
         pendingReasonKind = .drift
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
+        hideCoachPanel()
         lastCompletedSession = nil
         lastCompletedFocusSession = nil
         lastCompletionWasBreak = false
@@ -1530,9 +1746,8 @@ final class TimerViewModel {
         showPauseReasonChips = false
         pendingReasonKind = .drift
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
+        hideCoachPanel()
         lastCompletedSession = nil
         lastCompletedFocusSession = nil
         lastCompletionWasBreak = false
@@ -1542,6 +1757,7 @@ final class TimerViewModel {
     }
 
     func abandonSession() {
+        endStarterState()
         timer?.invalidate()
         timer = nil
         pauseTimer?.invalidate()
@@ -1557,10 +1773,7 @@ final class TimerViewModel {
         showPauseReasonChips = false
         pendingReasonKind = .drift
         hasPromptedBreakOverrunReasonInCurrentEpisode = false
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
-        currentCoachQuickPromptDecision = nil
-        currentIdleStarterDecision = nil
+        clearCoachPrompts()
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
         strongPromptsShownThisSession = 0
@@ -1591,9 +1804,8 @@ final class TimerViewModel {
         isOvertime = false
         overtimeSeconds = 0
         showSessionComplete = false
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
         currentCoachQuickPromptDecision = nil
+        hideCoachPanel()
         if currentSession?.type == .shortBreak || currentSession?.type == .longBreak {
             currentSession?.endedAt = Date()
             currentSession?.completed = false
@@ -1837,6 +2049,7 @@ final class TimerViewModel {
         // Increment live focus time during active focus
         if state == .focusing {
             todayFocusTime += 1
+            checkMomentumRamp()
         }
 
         // Checkpoint save every 30s — crash recovery for session progress
@@ -1899,6 +2112,10 @@ final class TimerViewModel {
 
     @MainActor
     private func timerCompleted() async {
+        if isStarterBlock, let session = currentSession, session.type == .focus {
+            completeStarterBlock(session)
+            return
+        }
         // Don't invalidate timer — continues for overtime
         currentSession?.endedAt = Date()
         currentSession?.completed = true
@@ -1915,6 +2132,9 @@ final class TimerViewModel {
             lastCompletedDuration = currentSession?.duration
             lastCompletedLabel = currentSession?.label
             lastCompletedFocusSession = currentSession
+            if let session = currentSession {
+                creditCoachPromptForCompletion(sessionID: session.id)
+            }
             // Build durable earned-block context (replaces prior context for this session)
             if let session = currentSession {
                 completedBlockContext = CompletedBlockContext(
@@ -1979,8 +2199,7 @@ final class TimerViewModel {
             self?.requestAppActivation?()
         }
         currentCoachQuickPromptDecision = nil
-        activeCoachInterventionDecision = nil
-        showCoachInterventionWindow = false
+        hideCoachPanel()
     }
 
     // MARK: - Reflection
@@ -2195,10 +2414,11 @@ final class TimerViewModel {
     /// Reverts a classification made during session review (Undo action).
     /// Clears any DriftMemory planned allowance and removes manual IdleDistractionItems from SwiftData.
     func declassifySessionApp(entry: AppUsageTracker.SessionDistractingEntry) {
-        let targetKey = entry.isBrowserDomain
-            ? "domain:\(entry.domainOrBundleKey)"
-            : "app:\(entry.bundleIdentifier)"
-        
+        // Must match the key classifySessionApp recorded (Target.normalizedKey, no prefix).
+        let targetKey = (entry.isBrowserDomain
+            ? IdleDistractionCatalog.Target.website(entry.domainOrBundleKey)
+            : IdleDistractionCatalog.Target.app(entry.bundleIdentifier)).normalizedKey
+
         coachEngine.driftMemoryStore?.removePlanned(
             projectId: completedBlockContext?.projectId,
             workMode: completedBlockContext?.workMode,
@@ -2220,158 +2440,1700 @@ final class TimerViewModel {
         }
     }
 
-    /// Handles a coach quick action selection.
-    func handleCoachAction(_ action: FocusCoachQuickAction, skipReason: FocusCoachSkipReason? = nil) {
+    /// Handles a coach quick action selection (popover card, notification, panel).
+    /// Returns false when the action could not complete (a refused start); the caller should
+    /// keep its surface open so `startError` stays visible (bug B5).
+    @discardableResult
+    func handleCoachAction(_ action: FocusCoachQuickAction, skipReason: FocusCoachSkipReason? = nil) -> Bool {
+        let fromPanel = showCoachInterventionWindow
+        let panelAttemptID = coachPanel?.attemptID
         switch action {
         case .returnNow:
-            coachEngine.recordInterventionOutcome(.improved)
+            coachEngine.recordInterventionOutcome(.improved, attemptID: panelAttemptID)
             if state == .paused { resume() }
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
+            clearCoachPrompts()
             closePopover()
         case .cleanRestart5m:
-            coachEngine.recordInterventionOutcome(.improved)
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
-            abandonSession()
+            // Never delete the running session (bug B1): save it as incomplete, then start a
+            // 5-minute block without changing the user's chosen duration for later sessions.
+            if state != .idle || isOvertime {
+                stop()
+            }
+            let preferredMinutes = selectedMinutes
             selectedMinutes = 5
-            startFocus()
+            let started = startFocus()
+            selectedMinutes = preferredMinutes
+            guard started else { return false }
+            coachEngine.recordInterventionOutcome(.improved, attemptID: panelAttemptID)
+            clearCoachPrompts()
             closePopover()
-        case .snooze10m:
+        case .snooze10m, .skipCheck:
             applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
-            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
-            registerOutsideSessionDeferral()
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
-            showCoachInterventionWindow = false
-            activeCoachInterventionDecision = nil
+            let minutes = settings?.coachDefaultSnoozeMinutes ?? 10
+            if let panelAttemptID {
+                coachEngine.recordInterventionOutcome(.snoozed, attemptID: panelAttemptID)
+            }
+            coachEngine.snooze(minutes: minutes, skipReason: skipReason)
+            snoozeIdleCoach(minutes: minutes)
+            clearCoachPrompts()
             closePopover()
         case .startFocusNow:
-            coachEngine.recordInterventionOutcome(.improved)
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
-            if let recommended = idleStarterRecommendedMinutes {
-                selectedMinutes = recommended
-            }
-            startFocus()
+            guard startCoachPlan(currentCoachPlan(), attemptID: panelAttemptID) else { return false }
+            clearCoachPrompts()
             closePopover()
         case .blockForProject:
-            coachEngine.recordInterventionOutcome(.improved)
+            coachEngine.recordInterventionOutcome(.improved, attemptID: panelAttemptID)
             applyProjectBlockRecommendation()
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
-            closePopover()
-        case .skipCheck:
-            applyGuardianReleaseIfNeeded(for: action, reason: skipReason)
-            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: skipReason)
-            registerOutsideSessionDeferral()
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
-            showCoachInterventionWindow = false
-            activeCoachInterventionDecision = nil
+            clearCoachPrompts()
             closePopover()
         case .markOffDuty:
+            if let panelAttemptID {
+                coachEngine.recordInterventionOutcome(.snoozed, attemptID: panelAttemptID)
+            }
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
             // Off-duty is an explicit release intent: enter release + clear all pending prompt surfaces.
-            enterRelease(reason: .offDuty)
-            registerOutsideSessionDeferral()
-            showCoachInterventionWindow = false
-            activeCoachInterventionDecision = nil
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
+            enterDoneForToday()
+            clearCoachPrompts()
             closePopover()
         case .isPlanned:
+            if let panelAttemptID {
+                coachEngine.recordInterventionOutcome(.snoozed, attemptID: panelAttemptID)
+            }
             coachEngine.recordOutsideSessionClassification(.plannedResearch)
-            coachEngine.snooze(minutes: settings?.coachDefaultSnoozeMinutes ?? 10, skipReason: nil)
-            registerOutsideSessionDeferral()
-            currentCoachQuickPromptDecision = nil
-            currentIdleStarterDecision = nil
-            showCoachInterventionWindow = false
-            activeCoachInterventionDecision = nil
+            let minutes = settings?.coachDefaultSnoozeMinutes ?? 10
+            coachEngine.snooze(minutes: minutes, skipReason: nil)
+            snoozeIdleCoach(minutes: minutes)
+            clearCoachPrompts()
             closePopover()
         }
-        // NOTE: Do NOT call dismissCoachInterventionWindow() here.
-        // The view's dismiss() is the single owner of window lifecycle.
+        if fromPanel {
+            interventionActionTaken = true
+        }
+        return true
     }
 
-    /// Dismisses the current coach prompt.
-    /// If an idle-starter decision was active, records it as an abandoned start for
-    /// work-intent window detection — the user was shown a start nudge but didn't act.
+    /// Routes an action taken on a coach check-in notification (bug B4).
+    func handleCoachNotificationResponse(_ response: CoachNotificationResponse) {
+        log("coach notification response: \(response), state=\(state)")
+        switch response {
+        case .startFocus:
+            if !handleCoachAction(.startFocusNow) {
+                NotificationService.shared.sendGenericNotification(
+                    title: "Focus didn't start",
+                    body: startError ?? "Open FocusFlow to start a block.",
+                    sound: settings?.completionSound ?? "Glass"
+                )
+            }
+        case .snooze:
+            handleCoachAction(.snooze10m)
+        case .open:
+            // Opening the notification shows its prompt on screen; it is not a new delivery.
+            guard state == .idle, let decision = pendingCoachNotificationDecision else { return }
+            let message = decision.composed ?? CoachMessageComposer.neutralFallback(isInSession: false)
+            presentCoachPanel(
+                CoachPanelPresentation(
+                    kind: .startNudge,
+                    message: message,
+                    plan: pendingCoachNotificationPlan,
+                    attemptID: pendingCoachAttemptID
+                ),
+                decision: decision
+            )
+        }
+        pendingCoachNotificationDecision = nil
+    }
+
+    /// Dismisses the popover prompt card (its X).
     func dismissCoachPrompt() {
-        coachEngine.recordInterventionOutcome(.dismissed)
+        coachEngine.recordInterventionOutcome(.dismissed, attemptID: pendingCoachAttemptID)
         if currentIdleStarterDecision != nil {
             lastAbandonedStartAt = Date()
             coachEngine.recordOutsideSessionMissedStart()
-            registerOutsideSessionDeferral()
         }
         currentCoachQuickPromptDecision = nil
         currentIdleStarterDecision = nil
+        coachMenuBarPulse = false
     }
 
     /// Records that the user explicitly selected a project (user-initiated selection).
-    /// Updates `lastProjectSelectedAt` to support work-intent window detection.
     func noteProjectSelected() {
         lastProjectSelectedAt = Date()
+        prefillIntentForSelectedProject()
     }
 
+    /// Closes the coach panel without an action (its X, or the v1 window API). Records
+    /// `.dismissed` only when no action was taken, so an action's own outcome is kept (B12).
     func dismissCoachInterventionWindow() {
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
+        if (showCoachInterventionWindow || coachPanel != nil) && !interventionActionTaken
+            && Self.panelKindLogsOutcome(coachPanel?.kind) {
+            coachEngine.recordInterventionOutcome(.dismissed, attemptID: coachPanel?.attemptID)
+        }
+        interventionActionTaken = false
+        hideCoachPanel()
         if let prompt = currentCoachQuickPromptDecision, prompt.kind == .quickPrompt {
             currentCoachQuickPromptDecision = nil
         }
     }
 
-    /// Snooze the coach for a user-chosen duration (in minutes). Called by the snooze chip panel.
+    /// Snooze the coach for a user-chosen duration (in minutes).
     func handleSnooze(minutes: Int) {
         coachEngine.snooze(minutes: minutes, skipReason: nil)
-        registerOutsideSessionDeferral()
-        currentCoachQuickPromptDecision = nil
-        currentIdleStarterDecision = nil
-        showCoachInterventionWindow = false
-        activeCoachInterventionDecision = nil
+        snoozeIdleCoach(minutes: minutes)
+        clearCoachPrompts()
         closePopover()
     }
 
-    func outsideSessionEscalationDelaySeconds(
-        now: Date = Date(),
-        nonResponseStreak: Int,
-        skipStreak: Int
-    ) -> TimeInterval {
-        let hour = Calendar.current.component(.hour, from: now)
-        let isNight = hour >= 22 || hour < 7
-        var delay: TimeInterval = 5 * 60
-        if isNight {
-            delay += 7 * 60
-        }
-        delay += TimeInterval(min(nonResponseStreak, 4) * 90)
-        delay += TimeInterval(min(skipStreak, 4) * 90)
-        return delay
+    private func snoozeIdleCoach(minutes: Int, now: Date = Date()) {
+        let until = now.addingTimeInterval(TimeInterval(max(1, minutes) * 60))
+        coachQuietUntil = max(coachQuietUntil ?? until, until)
     }
 
-    private func clearOutsideSessionEscalationState(resetStreaks: Bool) {
-        pendingNotificationNudgeAt = nil
-        outsideSessionNudgeAttemptCount = 0
-        outsideSessionAwaitingStartFocus = false
-        outsideSessionEscalationCooldownUntil = nil
-        if resetStreaks {
-            outsideSessionNonResponseStreak = 0
-            outsideSessionSkipStreak = 0
-        }
+    /// "Done for today": release window plus quiet until tomorrow.
+    private func enterDoneForToday(now: Date = Date()) {
+        enterRelease(reason: .offDuty)
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))
+        coachQuietUntil = tomorrow ?? now.addingTimeInterval(12 * 3600)
     }
 
-    private func registerOutsideSessionDeferral() {
-        guard state == .idle else { return }
-        outsideSessionAwaitingStartFocus = false
-        pendingNotificationNudgeAt = nil
-        outsideSessionSkipStreak = min(outsideSessionSkipStreak + 1, 8)
-        let delay = outsideSessionEscalationDelaySeconds(
-            now: Date(),
-            nonResponseStreak: outsideSessionNonResponseStreak,
-            skipStreak: outsideSessionSkipStreak
+    /// Clears every prompt surface: popover cards, the panel and the menu bar pulse.
+    private func clearCoachPrompts() {
+        currentCoachQuickPromptDecision = nil
+        currentIdleStarterDecision = nil
+        coachMenuBarPulse = false
+        hideCoachPanel()
+    }
+
+    // MARK: - Coach panel
+
+    /// Shows the on-screen panel. One panel at a time: a new one replaces the old.
+    func presentCoachPanel(_ presentation: CoachPanelPresentation, decision: FocusCoachDecision? = nil) {
+        coachPanel = presentation
+        coachPanelError = nil
+        activeCoachInterventionDecision = decision ?? FocusCoachDecision(
+            kind: .strongPrompt,
+            suggestedActions: [],
+            message: nil,
+            composed: presentation.message
         )
-        outsideSessionEscalationCooldownUntil = Date().addingTimeInterval(delay)
+        showCoachInterventionWindow = true
+        interventionActionTaken = false
+        coachPanelHost?.showPanel(presentation)
+        scheduleCoachPanelAutoHide(for: presentation.id, after: presentation.autoHideSeconds)
     }
+
+    func hideCoachPanel() {
+        coachPanelAutoHideTask?.cancel()
+        coachPanelAutoHideTask = nil
+        let wasVisible = coachPanel != nil
+        coachPanel = nil
+        coachPanelError = nil
+        showCoachInterventionWindow = false
+        activeCoachInterventionDecision = nil
+        if wasVisible {
+            coachPanelHost?.hidePanel()
+        }
+    }
+
+    /// The panel's primary button. Returns false when a start was refused; the panel stays
+    /// open and shows `coachPanelError`.
+    @discardableResult
+    func performCoachPanelPrimary() -> Bool {
+        guard let panel = coachPanel else { return false }
+        switch panel.kind {
+        case .startNudge:
+            guard startCoachPlan(panel.plan, attemptID: panel.attemptID) else { return false }
+        case .pseudoProductivity:
+            logPseudoAnswer(.isPriority, panel: panel)
+            guard startCoachPlan(panel.plan, attemptID: panel.attemptID) else { return false }
+        case .inSessionDrift:
+            return handleCoachAction(.returnNow)
+        case .weeklyPriorities:
+            markWeeklyInviteHandled()
+            coachEngine.recordInterventionOutcome(.improved, attemptID: panel.attemptID)
+            hideCoachPanel()
+            UserDefaults.standard.set("coach", forKey: "settingsRequestedTab")
+            openSettingsScene?()
+        case .rescue:
+            guard let ask = panel.ask else { return false }
+            switch ask.kind {
+            case .starter:
+                guard startStarterBlock(attemptID: panel.attemptID) else {
+                    coachPanelError = startError
+                    return false
+                }
+            case .normal:
+                guard startCoachPlan(ask.target ?? panel.plan, attemptID: panel.attemptID) else { return false }
+            }
+            rescueStartedSessionID = currentSession?.id
+        case .keepGoing:
+            guard continueAfterStarter(step: panel.step) else {
+                coachPanelError = startError
+                return false
+            }
+        case .momentum:
+            extendTimer(by: CoachMomentumRamp.extensionSeconds(totalSeconds: totalSeconds))
+            hideCoachPanel()
+        case .notice:
+            hideCoachPanel()
+        }
+        if panel.kind == .pseudoProductivity, panel.level != nil {
+            rescueStartedSessionID = currentSession?.id
+        }
+        interventionActionTaken = true
+        return true
+    }
+
+    /// Esc on a clicked panel: "Not now" (or the panel's own decline).
+    func performCoachPanelEscape() {
+        guard let panel = coachPanel else { return }
+        if let action = panel.escapeAction {
+            performCoachPanelSecondary(action)
+        } else {
+            hideCoachPanel()
+        }
+    }
+
+    /// The panel's "Not now ▾" menu items.
+    func performCoachPanelSecondary(_ action: CoachPanelSecondaryAction, now: Date = Date()) {
+        guard let panel = coachPanel else { return }
+        switch action {
+        case .snooze15, .snooze60:
+            let minutes = action == .snooze15 ? 15 : 60
+            coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
+            if panel.kind == .inSessionDrift {
+                coachEngine.snooze(minutes: minutes)
+            } else {
+                snoozeIdleCoach(minutes: minutes, now: now)
+                currentIdleStarterDecision = nil
+            }
+            interventionActionTaken = true
+            hideCoachPanel()
+        case .doneForToday:
+            coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
+            coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
+            enterDoneForToday(now: now)
+            interventionActionTaken = true
+            clearCoachPrompts()
+        case .sideQuest:
+            logPseudoAnswer(.sideQuest, panel: panel, now: now)
+            if startCoachPlan(panel.plan, attemptID: panel.attemptID) {
+                interventionActionTaken = true
+            }
+        case .planned:
+            logPseudoAnswer(.planned, panel: panel, now: now)
+            coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
+            snoozeIdleCoach(minutes: CoachPseudoProductivityGuard.plannedQuietMinutes, now: now)
+            interventionActionTaken = true
+            hideCoachPanel()
+        case .partOfWork:
+            handleCoachAction(.isPlanned)
+        case .endBlock:
+            coachEngine.recordInterventionOutcome(.dismissed, attemptID: panel.attemptID)
+            interventionActionTaken = true
+            hideCoachPanel()
+            stopForReflection()
+        case .skipWeek:
+            markWeeklyInviteHandled(now: now)
+            coachEngine.recordInterventionOutcome(.dismissed, attemptID: panel.attemptID)
+            interventionActionTaken = true
+            hideCoachPanel()
+        case .finishStarter, .keepShort:
+            // The starter already counted as a completed block; the block keeps its length.
+            interventionActionTaken = true
+            hideCoachPanel()
+        }
+    }
+
+    /// Auto-hide after 20 s without interaction: counts as ignored and leaves a pulse on the
+    /// menu bar icon (the popover keeps the prompt card until opened).
+    func coachPanelTimedOut(id: UUID) {
+        guard let panel = coachPanel, panel.id == id else { return }
+        guard Self.panelKindLogsOutcome(panel.kind) else {
+            // Keep-going: no answer is a decline (the starter still counts). Momentum, notice: nothing to do.
+            hideCoachPanel()
+            return
+        }
+        coachEngine.recordInterventionOutcome(.ignored, attemptID: panel.attemptID)
+        hideCoachPanel()
+        coachMenuBarPulse = true
+    }
+
+    /// Keep-going, momentum and notice panels are not logged prompts: no outcome to record.
+    private static func panelKindLogsOutcome(_ kind: CoachPanelPresentation.Kind?) -> Bool {
+        switch kind {
+        case .keepGoing, .momentum, .notice: false
+        default: true
+        }
+    }
+
+    /// Hovering pauses the auto-hide so the user can read; leaving restarts a shorter timer.
+    func coachPanelHoverChanged(_ hovering: Bool) {
+        guard let panel = coachPanel else { return }
+        if hovering {
+            coachPanelAutoHideTask?.cancel()
+            coachPanelAutoHideTask = nil
+        } else {
+            scheduleCoachPanelAutoHide(for: panel.id, after: 8)
+        }
+    }
+
+    /// Opening the popover answers the pulse and refreshes this week's priorities.
+    func noteCoachPopoverOpened() {
+        coachMenuBarPulse = false
+        reloadWeeklyPriorities()
+        prefillIntentForSelectedProject()
+    }
+
+    private func scheduleCoachPanelAutoHide(for id: UUID, after seconds: Double) {
+        coachPanelAutoHideTask?.cancel()
+        guard !isEvidenceMode else { return }
+        coachPanelAutoHideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            self?.coachPanelTimedOut(id: id)
+        }
+    }
+
+    // MARK: - Coach start plans
+
+    /// Starts `plan` (minutes, project, priority) without changing the user's chosen duration.
+    /// On failure nothing changes, `startError` says why and the panel shows it.
+    @discardableResult
+    func startCoachPlan(_ plan: CoachStartTarget?, attemptID: UUID? = nil) -> Bool {
+        let previousProject = selectedProject
+        let previousPriority = pendingPriorityID
+        let preferredMinutes = selectedMinutes
+        if let projectID = plan?.projectID, let project = historyReader?.project(id: projectID) {
+            selectedProject = project
+        }
+        if let priorityID = plan?.priorityID {
+            pendingPriorityID = priorityID
+        }
+        if let minutes = plan?.minutes ?? idleStarterRecommendedMinutes {
+            selectedMinutes = minutes
+        }
+        let started = startFocus()
+        selectedMinutes = preferredMinutes
+        guard started else {
+            selectedProject = previousProject
+            pendingPriorityID = previousPriority
+            if let panel = coachPanel {
+                coachPanelError = startError
+                scheduleCoachPanelAutoHide(for: panel.id, after: Self.coachPanelAutoHideSeconds)
+            }
+            return false
+        }
+        coachEngine.recordInterventionOutcome(.improved, attemptID: attemptID)
+        return true
+    }
+
+    /// The plan behind whatever prompt is showing (panel first, then the popover card).
+    private func currentCoachPlan() -> CoachStartTarget? {
+        if let plan = coachPanel?.plan { return plan }
+        if let minutes = idleStarterRecommendedMinutes {
+            return CoachStartTarget(minutes: minutes, name: nil, projectID: nil, priorityID: nil)
+        }
+        return nil
+    }
+
+    // MARK: - Intent capture and outcome rating
+
+    /// Prefills the popover intent with the user's last intent for the selected project,
+    /// unless they already typed something of their own.
+    func prefillIntentForSelectedProject() {
+        guard state == .idle, let reader = historyReader else { return }
+        let current = pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard current.isEmpty || current == lastPrefilledIntent else { return }
+        let last = reader.lastIntent(projectID: selectedProject?.id) ?? ""
+        pendingIntentText = last
+        lastPrefilledIntent = last.isEmpty ? nil : last
+        if pendingPriorityID == nil, let projectID = selectedProject?.id {
+            pendingPriorityID = weeklyPriorities.first { $0.projectID == projectID && !$0.isDone }?.id
+        }
+    }
+
+    /// Saves Shipped / Moved it forward / Busywork on the last focus block and feeds the
+    /// rating into the bandit reward of the prompt that led to it.
+    func recordSessionOutcome(_ outcome: SessionOutcome) {
+        guard let session = lastCompletedFocusSession ?? lastCompletedSession, session.type == .focus else { return }
+        let previous = session.outcome
+        guard previous != outcome else { return }
+        session.outcome = outcome
+        saveContext()
+        if rewardLedger?.creditOutcome(sessionID: session.id, outcome: outcome, previous: previous) == true {
+            rebuildBandit()
+        }
+    }
+
+    // MARK: - Coach v2 learning
+
+    private var historyReader: CoachHistoryReader? {
+        modelContext.map { CoachHistoryReader(modelContext: $0) }
+    }
+
+    private var rewardLedger: CoachRewardLedger? {
+        modelContext == nil ? nil : CoachRewardLedger(store: coachEngine.store)
+    }
+
+    func reloadWeeklyPriorities(now: Date = Date()) {
+        weeklyPriorities = historyReader?.weeklyPriorities(now: now) ?? []
+    }
+
+    /// Recomputes the availability model once a day (and on launch), and the bandit on launch.
+    func refreshCoachModelsIfNeeded(now: Date = Date(), force: Bool = false) {
+        if let availabilityModelOverride {
+            availabilityModel = availabilityModelOverride
+        } else {
+            let today = Calendar.current.startOfDay(for: now)
+            if force || availabilityComputedDay != today, let reader = historyReader {
+                let inputs = reader.availabilityInputs(now: now)
+                availabilityModel = CoachAvailabilityModel(sessions: inputs.sessions, activeDays: inputs.activeDays)
+                availabilityComputedDay = today
+            }
+        }
+        if force {
+            resolveExpiredCoachRewards(now: now, rebuild: false)
+            rebuildBandit()
+            refreshBusyworkContexts()
+        }
+    }
+
+    /// Rebuilds the bandit posteriors from the logged rewards (the source of truth) and caches
+    /// them as JSON in UserDefaults for readers such as Insights.
+    private func rebuildBandit() {
+        guard let ledger = rewardLedger else { return }
+        banditModel = CoachBanditModel.rebuild(from: ledger.rewardRecords())
+        if !isEvidenceMode { banditStore.save(banditModel) }
+    }
+
+    private func resolveExpiredCoachRewards(now: Date, rebuild: Bool = true) {
+        guard let ledger = rewardLedger else { return }
+        if ledger.resolveExpired(now: now) > 0 {
+            if let id = pendingCoachAttemptID, ledger.attempt(id: id)?.reward != nil {
+                pendingCoachAttemptID = nil
+            }
+            if rebuild { rebuildBandit() }
+        }
+    }
+
+    private func creditCoachPromptForStart(sessionID: UUID, now: Date = Date()) {
+        guard let attemptID = pendingCoachAttemptID else { return }
+        pendingCoachAttemptID = nil
+        if rewardLedger?.creditStart(attemptID: attemptID, sessionID: sessionID, at: now) == true {
+            rebuildBandit()
+        }
+    }
+
+    private func creditCoachPromptForCompletion(sessionID: UUID) {
+        if rewardLedger?.creditCompletion(sessionID: sessionID) == true {
+            rebuildBandit()
+        }
+    }
+
+    // MARK: - Coach snapshot (facts from data)
+
+    struct CoachSnapshot {
+        let now: Date
+        let inGoodWindow: Bool
+        let tier: CoachAvailabilityModel.Tier
+        let pacing: CoachGoalPacing
+        let facts: CoachFacts
+        let target: CoachStartTarget
+        let topPriority: WeeklyPriority?
+        let frontCategory: AppUsageEntry.AppCategory
+    }
+
+    func coachSnapshot(
+        now: Date = Date(),
+        idleSeconds: Int,
+        frontmostCategory: AppUsageEntry.AppCategory,
+        minutesUntilNextEvent: Int? = nil
+    ) -> CoachSnapshot {
+        refreshCoachModelsIfNeeded(now: now)
+        let model = availabilityModel
+        let reader = historyReader
+        let calendar = Calendar.current
+        let goalMinutes = Int((settings?.dailyFocusGoal ?? 7200) / 60)
+        let doneMinutes = Int(todayFocusTime / 60)
+        let pacing = CoachGoalPacing(
+            goalMinutes: goalMinutes,
+            doneMinutes: doneMinutes,
+            windowMinutesLeft: model.goodWindowMinutesRemainingToday(from: now)
+        )
+        let topPriority = weeklyPriorities.first { !$0.isDone }
+
+        // Block length: max(25, min(remaining, 50)), shortened to end 5 min before a meeting.
+        var minutes = pacing.suggestedBlockMinutes
+        if let nextEvent = minutesUntilNextEvent, nextEvent - 5 < minutes {
+            minutes = max(15, ((nextEvent - 5) / 5) * 5)
+        }
+        let projectID = topPriority?.projectID ?? selectedProject?.id
+        let target = CoachStartTarget(
+            minutes: minutes,
+            name: topPriority?.title ?? selectedProject?.name,
+            projectID: projectID,
+            priorityID: topPriority?.id
+        )
+
+        var facts = CoachFacts()
+        facts.goalMinutes = goalMinutes
+        facts.doneMinutesToday = doneMinutes
+        facts.pacing = pacing
+        if let reader {
+            let streak = reader.streakDays(now: now)
+            facts.streakDays = streak.streak
+            facts.missedYesterday = streak.missedYesterday
+            facts.hasHistory = streak.hasHistory
+            facts.sessionsToday = reader.focusSessions(since: calendar.startOfDay(for: now)).count
+            if let end = reader.lastFocusSessionEnd(before: now) {
+                facts.minutesSinceLastSession = max(0, Int(now.timeIntervalSince(end) / 60))
+            }
+            facts.lastIntent = reader.lastIntent(projectID: projectID)
+            facts.daysWithoutBlock = reader.daysWithoutBlock(now: now)
+            facts.derailer = reader.derailerFact(
+                bundleIdentifier: AppUsageTracker.shared.currentFrontmostBundleId,
+                browserHost: AppUsageTracker.shared.currentFrontmostBrowserHost,
+                displayName: AppUsageTracker.shared.currentFrontmostDisplayLabel,
+                allowDomains: settings?.coachCollectRawDomains == true,
+                catalog: loadIdleDistractionCatalog(),
+                now: now
+            )
+        }
+        let hour = calendar.component(.hour, from: now)
+        if model.usualStartHour(on: now) == hour { facts.usualStartHourNow = hour }
+
+        return CoachSnapshot(
+            now: now,
+            inGoodWindow: model.isGoodWindow(now),
+            tier: model.tier(now),
+            pacing: pacing,
+            facts: facts,
+            target: target,
+            topPriority: topPriority,
+            frontCategory: frontmostCategory
+        )
+    }
+
+    /// `motivation`: the learner's pick. `.some(nil)` means it ran and found nothing it may show
+    /// (everything shown in the last 3 days), so no quote is shown rather than a repeat.
+    private func composeCoachMessage(
+        trigger: CoachTrigger,
+        style: CoachStyle,
+        snapshot: CoachSnapshot,
+        motivation: CoachMotivationItem?? = nil
+    ) -> CoachComposedMessage {
+        let day = Calendar.current.ordinality(of: .day, in: .era, for: snapshot.now) ?? 0
+        let delivered = coachEngine.store.attempts(deliveredSince: Calendar.current.startOfDay(for: snapshot.now)).count
+        var input = CoachComposerInput(
+            style: style,
+            trigger: trigger,
+            facts: snapshot.facts,
+            target: snapshot.target,
+            whyLines: settings?.coachMyWhyLines ?? [],
+            seed: day &+ delivered
+        )
+        input.starterMinutes = CoachStarterBlock.clampedMinutes(settings?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
+        if let motivation {
+            input.pickedDetail = motivation?.detail(starterMinutes: input.starterMinutes)
+            input.pickerExhausted = motivation == nil
+        }
+        return CoachMessageComposer.compose(input)
+    }
+
+    private func coachGuardrailInput(now: Date, calendarBusy: Bool, isIdlePrompt: Bool) -> CoachGuardrails.Input {
+        let since = now.addingTimeInterval(-24 * 3600)
+        return CoachGuardrails.Input(
+            now: now,
+            deliveries: coachEngine.guardrailDeliveries(since: since),
+            maxPromptsPerDay: settings?.coachMaxPromptsPerDay ?? 3,
+            quietStartMinute: settings?.coachQuietStartMinute ?? 30,
+            quietEndMinute: settings?.coachQuietEndMinute ?? 420,
+            calendarBusy: calendarBusy,
+            screenShareActive: settings.map(shouldSuppressGuardianPopups(using:)) ?? false,
+            releaseActive: isInReleaseWindow,
+            snoozedUntil: isIdlePrompt ? coachQuietUntil : coachEngine.promptState.snoozedUntil,
+            sessionActive: state != .idle || isOvertime,
+            isIdlePrompt: isIdlePrompt
+        )
+    }
+
+    /// Surfaces the bandit may pick for an idle prompt, before guardrails.
+    private func candidateIdleSurfaces() -> [CoachSurface] {
+        guard let settings else { return [.silent] }
+        var surfaces: [CoachSurface] = [.silent, .badge]
+        if settings.coachOnScreenPromptsEnabled { surfaces.append(.panel) }
+        if settings.coachNotificationsEnabled && NotificationService.shared.authorizationState == .authorized {
+            surfaces.append(.notification)
+        }
+        return surfaces
+    }
+
+    private func suppressIdlePrompt(_ reason: IdleStarterSuppressionReason) {
+        lastIdleStarterSuppressionReason = reason
+        currentIdleStarterDecision = nil
+        if coachPanel?.kind == .startNudge || coachPanel?.kind == .weeklyPriorities {
+            hideCoachPanel()
+        }
+    }
+
+    // MARK: - Idle start nudge (decision policy)
+
+    /// Decision point for "start a block" prompts. Order: hard guardrails, learned window,
+    /// pacing, then the Thompson-sampling bandit picks surface × style (or silence).
+    func evaluateIdleStarterIntervention(
+        idleSeconds: Int,
+        frontmostCategory: AppUsageEntry.AppCategory
+    ) {
+        guard state == .idle, !isOvertime, let settings else { return }
+        let now = Date()
+        resolveExpiredCoachRewards(now: now)
+        if isInReleaseWindow {
+            suppressIdlePrompt(.releaseWindowActive)
+            return
+        }
+        if shouldSuppressGuardianPopups(using: settings) {
+            suppressIdlePrompt(.screenShareSuppressed)
+            return
+        }
+        guard settings.antiProcrastinationEnabled, settings.coachIdleStarterEnabled else {
+            suppressIdlePrompt(settings.antiProcrastinationEnabled ? .idleStarterDisabled : .antiProcrastinationDisabled)
+            return
+        }
+        if let last = lastIdleInterventionAt, now.timeIntervalSince(last) < 120 {
+            lastIdleStarterSuppressionReason = .cooldownActive
+            return
+        }
+        // Drifting in a focus window: the rescue loop's ladder replaces the plain start nudge.
+        if let drift = currentDrift, drift.isActive, drift.level > .ok {
+            lastIdleStarterSuppressionReason = nil
+            return
+        }
+        let calendarAvailability = currentCalendarAvailability(now: now)
+        log("idle starter calendar: busyNow=\(calendarAvailability.isBusyNow) nextEventMin=\(calendarAvailability.minutesUntilNextEvent.map(String.init) ?? "nil")")
+        let guardrailInput = coachGuardrailInput(now: now, calendarBusy: calendarAvailability.isBusyNow, isIdlePrompt: true)
+        let baseVerdict = coachGuardrails.verdict(for: .badge, input: guardrailInput)
+        if let reason = IdleStarterSuppressionReason(verdict: baseVerdict) {
+            suppressIdlePrompt(reason)
+            return
+        }
+
+        reloadWeeklyPriorities(now: now)
+        let idleTarget = currentIdleDistractionTarget()
+        let idleSeverity = idleTarget.flatMap { loadIdleDistractionCatalog().resolution(for: $0).severity }
+        let effectiveCategory = AppUsageTracker.idleAdjustedCategory(
+            frontmostCategory: frontmostCategory,
+            idleSeverityOverride: idleSeverity
+        )
+        let snapshot = coachSnapshot(
+            now: now,
+            idleSeconds: idleSeconds,
+            frontmostCategory: effectiveCategory,
+            minutesUntilNextEvent: calendarAvailability.minutesUntilNextEvent
+        )
+        updateCoachDebugReadout(snapshot)
+
+        guard snapshot.inGoodWindow else {
+            suppressIdlePrompt(.outsideFocusWindow)
+            return
+        }
+        guard snapshot.pacing.isBehindPace else {
+            suppressIdlePrompt(.onTrack)
+            return
+        }
+
+        let gated = coachGuardrails.allowedSurfaces(from: candidateIdleSurfaces(), input: guardrailInput)
+
+        // First prompt of a week without priorities: invite the user to set 1–3 instead.
+        if shouldInviteWeeklyPriorities(now: now) {
+            if gated.surfaces.contains(.panel) {
+                presentWeeklyPrioritiesInvite(snapshot: snapshot)
+                lastIdleInterventionAt = now
+                lastIdleStarterSuppressionReason = nil
+                return
+            }
+        }
+
+        let contextKey = CoachContextKey(
+            availability: snapshot.tier,
+            idle: .init(idleSeconds: idleSeconds),
+            front: .init(category: effectiveCategory),
+            hasSessionToday: snapshot.facts.sessionsToday > 0
+        )
+        let arm: CoachArm
+        if let forced = coachArmOverride, gated.surfaces.contains(forced.surface) {
+            arm = forced
+        } else {
+            arm = banditPolicy.choose(
+                context: contextKey.rawValue,
+                surfaces: gated.surfaces,
+                preferredStyle: settings.coachStyle,
+                model: banditModel,
+                using: &coachRandom
+            )
+        }
+        guard arm.surface != .silent, let style = arm.style else {
+            // Prefer the guardrail that removed the panel as the explanation, if any.
+            lastIdleStarterSuppressionReason = gated.firstBlock.flatMap(IdleStarterSuppressionReason.init(verdict:))
+                ?? .banditChoseSilent
+            currentIdleStarterDecision = nil
+            return
+        }
+
+        deliverStartNudge(arm: arm, style: style, contextKey: contextKey, snapshot: snapshot, idleSeconds: idleSeconds)
+        lastIdleInterventionAt = now
+        lastIdleStarterSuppressionReason = nil
+    }
+
+    private func deliverStartNudge(
+        arm: CoachArm,
+        style: CoachStyle,
+        contextKey: CoachContextKey,
+        snapshot: CoachSnapshot,
+        idleSeconds: Int
+    ) {
+        let situation = Self.startSituation(facts: snapshot.facts, now: snapshot.now)
+        let motivation = pickMotivation(situation: situation, now: snapshot.now)
+        let message = composeCoachMessage(trigger: .startNudge, style: style, snapshot: snapshot, motivation: motivation)
+        let kind: FocusCoachInterventionKind = switch arm.surface {
+        case .panel, .strongWindow: .strongPrompt
+        case .notification: .softNudge
+        case .badge, .silent: .quickPrompt
+        }
+        let attempt = coachEngine.recordDeliveredIntervention(
+            kind: kind,
+            riskScore: availabilityModel.p(snapshot.now),
+            sessionId: nil,
+            now: snapshot.now,
+            surface: arm.surface,
+            style: style,
+            contextKey: contextKey.rawValue
+        )
+        pendingCoachAttemptID = attempt.id
+        if message.detail != nil { noteMotivationShown(motivation, attemptID: attempt.id, at: snapshot.now) }
+
+        let coachCtx = buildCoachContext(
+            idleSeconds: idleSeconds,
+            frontmostCategory: snapshot.frontCategory,
+            frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
+        )
+        var actions: [FocusCoachQuickAction] = [.startFocusNow, .snooze10m, .markOffDuty]
+        if coachCtx.hasBlockRecommendation { actions.append(.blockForProject) }
+        let decision = FocusCoachDecision(
+            kind: arm.surface == .panel ? .strongPrompt : .quickPrompt,
+            suggestedActions: actions,
+            message: nil,
+            context: coachCtx,
+            composed: message
+        )
+        currentIdleStarterDecision = decision
+        // The card shows the composed detail; no second summary line.
+        idleStarterSummary = nil
+        idleStarterRecommendedMinutes = snapshot.target.minutes
+
+        switch arm.surface {
+        case .panel, .strongWindow:
+            presentCoachPanel(
+                CoachPanelPresentation(kind: .startNudge, message: message, plan: snapshot.target, attemptID: attempt.id),
+                decision: decision
+            )
+        case .notification:
+            NotificationService.shared.sendCoachCheckIn(
+                title: message.hook,
+                body: [message.detail?.text, message.primaryTitle].compactMap { $0 }.joined(separator: " · "),
+                sound: settings?.completionSound ?? "Glass"
+            )
+            pendingCoachNotificationDecision = decision
+            pendingCoachNotificationPlan = snapshot.target
+            coachMenuBarPulse = true
+        case .badge, .silent:
+            coachMenuBarPulse = true
+        }
+    }
+
+    private func updateCoachDebugReadout(_ snapshot: CoachSnapshot) {
+        let p = availabilityModel.p(snapshot.now)
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: snapshot.now)
+        let best = (0..<24).compactMap { calendar.date(byAdding: .hour, value: $0, to: dayStart) }
+            .map(availabilityModel.p).max() ?? p
+        latestWorkIntentScore = best > 0 ? min(1, p / best) : 0
+        latestDriftScore = min(1, snapshot.pacing.pressure ?? 0)
+        latestWorkIntentActiveSignals = [
+            "window: \(snapshot.tier.rawValue)",
+            snapshot.inGoodWindow ? "learned window open" : "outside learned windows",
+        ]
+        latestDriftActiveSignals = [
+            "pacing: \(snapshot.pacing.tier.rawValue)",
+            "\(snapshot.pacing.doneMinutes)m of \(snapshot.pacing.goalMinutes)m",
+        ]
+    }
+
+    // MARK: - Weekly priorities invite
+
+    func shouldInviteWeeklyPriorities(now: Date) -> Bool {
+        guard let reader = historyReader, reader.hasEntity(named: "WeeklyPriority"), weeklyPriorities.isEmpty else {
+            return false
+        }
+        let weekStart = WeeklyPriority.weekStart(for: now)
+        return defaults.double(forKey: Self.weeklyInviteDefaultsKey) != weekStart.timeIntervalSince1970
+    }
+
+    private func markWeeklyInviteHandled(now: Date = Date()) {
+        defaults.set(WeeklyPriority.weekStart(for: now).timeIntervalSince1970, forKey: Self.weeklyInviteDefaultsKey)
+    }
+
+    private func presentWeeklyPrioritiesInvite(snapshot: CoachSnapshot) {
+        let style = settings?.coachStyle ?? .challenger
+        let message = composeCoachMessage(trigger: .weeklyPriorities, style: style, snapshot: snapshot)
+        let attempt = coachEngine.recordDeliveredIntervention(
+            kind: .strongPrompt,
+            riskScore: 0,
+            sessionId: nil,
+            now: snapshot.now,
+            surface: .panel,
+            style: style
+        )
+        markWeeklyInviteHandled(now: snapshot.now)
+        presentCoachPanel(CoachPanelPresentation(kind: .weeklyPriorities, message: message, attemptID: attempt.id))
+    }
+
+    // MARK: - Pseudo-productivity guard (§9 step 4)
+
+    private func startCoachIdleTimer() {
+        guard !isEvidenceMode else { return }
+        coachIdleTimer?.invalidate()
+        let timer = Timer(timeInterval: Self.coachIdleTickSeconds, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.coachIdleTick()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        coachIdleTimer = timer
+    }
+
+    static let coachIdleTickSeconds: TimeInterval = 15
+
+    private func coachIdleTick(now: Date = Date()) {
+        coachIdleTickCount += 1
+        syncGlobalHotkey()
+        evaluateRescueLoop(now: now)
+        // The rest runs once a minute.
+        guard coachIdleTickCount % 4 == 0 else { return }
+        resolveExpiredCoachRewards(now: now)
+        // While the rescue loop owns a drift episode it asks the pseudo-work question itself.
+        if let drift = currentDrift, drift.isActive, drift.level > .ok { return }
+        evaluatePseudoProductivityGuard(
+            now: now,
+            frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory,
+            contextName: AppUsageTracker.shared.currentFrontmostDisplayLabel
+        )
+    }
+
+    /// Runs every minute while idle. Returns true when the question was shown.
+    @discardableResult
+    func evaluatePseudoProductivityGuard(
+        now: Date = Date(),
+        frontmostCategory: AppUsageEntry.AppCategory,
+        contextName: String?
+    ) -> Bool {
+        let sessionActive = state != .idle || isOvertime
+        pseudoContextRunStart = CoachPseudoProductivityGuard.updatedRunStart(
+            previous: pseudoContextRunStart,
+            category: frontmostCategory,
+            sessionActive: sessionActive,
+            now: now
+        )
+        guard let settings, settings.coachIdleStarterEnabled, settings.coachOnScreenPromptsEnabled,
+              coachPanel == nil, !sessionActive,
+              let runStart = pseudoContextRunStart,
+              now.timeIntervalSince(runStart) >= TimeInterval(CoachPseudoProductivityGuard.minimumContextMinutes * 60),
+              pseudoLastAskedAt.map({ now.timeIntervalSince($0) >= CoachPseudoProductivityGuard.askCooldown }) ?? true
+        else { return false }
+        // Cheap checks first: the store is only read after 20 minutes in a work context.
+        reloadWeeklyPriorities(now: now)
+        let snapshot = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: frontmostCategory)
+        let priority = snapshot.topPriority
+        let shouldAsk = CoachPseudoProductivityGuard.shouldAsk(.init(
+            now: now,
+            inGoodWindow: snapshot.inGoodWindow,
+            sessionActive: sessionActive,
+            pacing: snapshot.pacing,
+            contextRunStart: pseudoContextRunStart,
+            lastAskedAt: pseudoLastAskedAt,
+            hasPriority: priority != nil
+        ))
+        guard shouldAsk, let priority else { return false }
+
+        let calendarBusy = currentCalendarAvailability(now: now).isBusyNow
+        let input = coachGuardrailInput(now: now, calendarBusy: calendarBusy, isIdlePrompt: true)
+        guard coachGuardrails.verdict(for: .panel, input: input) == .allowed else { return false }
+
+        var facts = snapshot.facts
+        facts.contextMinutes = pseudoContextRunStart.map { Int(now.timeIntervalSince($0) / 60) }
+        facts.contextAppName = contextName
+        let pseudoSnapshot = CoachSnapshot(
+            now: now,
+            inGoodWindow: snapshot.inGoodWindow,
+            tier: snapshot.tier,
+            pacing: snapshot.pacing,
+            facts: facts,
+            target: snapshot.target,
+            topPriority: priority,
+            frontCategory: frontmostCategory
+        )
+        let style = settings.coachStyle
+        let message = composeCoachMessage(trigger: .pseudoProductivity(priority: priority.title), style: style, snapshot: pseudoSnapshot)
+        let attempt = coachEngine.recordDeliveredIntervention(
+            kind: .quickPrompt,
+            riskScore: 0,
+            sessionId: nil,
+            now: now,
+            surface: .panel,
+            style: style
+        )
+        pseudoLastAskedAt = now
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .pseudoProductivity,
+            message: message,
+            plan: snapshot.target,
+            attemptID: attempt.id,
+            contextName: contextName,
+            createdAt: now
+        ))
+        return true
+    }
+
+    private func logPseudoAnswer(_ answer: CoachPseudoAnswer, panel: CoachPanelPresentation, now: Date = Date()) {
+        guard panel.kind == .pseudoProductivity else { return }
+        CoachPseudoWorkLog(defaults: defaults).append(CoachPseudoWorkEntry(
+            answeredAt: now,
+            answer: answer,
+            contextName: panel.contextName,
+            hourOfDay: Calendar.current.component(.hour, from: panel.createdAt),
+            priorityTitle: panel.plan?.name ?? ""
+        ))
+        refreshBusyworkContexts()
+        if let attemptID = panel.attemptID, let attempt = coachEngine.store.attempt(id: attemptID) {
+            attempt.skipReasonRaw = answer == .sideQuest ? FocusCoachSkipReason.lowPriorityWork.rawValue : nil
+            coachEngine.store.saveChanges()
+        }
+    }
+
+    #if DEBUG
+    /// FOCUSFLOW_DEBUG_COACH_PANEL=1: a real composed start nudge, shown without logging an attempt.
+    func presentDebugCoachPanel() {
+        if let level = debugForcedDriftLevel {
+            presentDebugRescuePanel(level: level)
+            return
+        }
+        reloadWeeklyPriorities()
+        let snapshot = coachSnapshot(idleSeconds: 30 * 60, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+        let message = composeCoachMessage(trigger: .startNudge, style: settings?.coachStyle ?? .challenger, snapshot: snapshot)
+        log("debug: coach panel '\(message.hook)' / '\(message.detail?.text ?? "")' / '\(message.primaryTitle)'")
+        presentCoachPanel(CoachPanelPresentation(kind: .startNudge, message: message, plan: snapshot.target))
+    }
+    #endif
+
+    // MARK: - In-session drift check
+
+    private func routeCoachDecision(_ decision: FocusCoachDecision) {
+        guard let settings else { return }
+        if isInReleaseWindow || shouldSuppressGuardianPopups(using: settings) {
+            currentCoachQuickPromptDecision = nil
+            hideCoachPanel()
+            return
+        }
+        let mode = settings.coachInterventionMode
+        let engagementMode = selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
+        let route = coachPlanner.routeActiveDecision(
+            decision,
+            mode: mode,
+            riskScore: coachEngine.riskScore,
+            strongShownCount: strongPromptsShownThisSession,
+            maxStrongPrompts: settings.coachMaxStrongPromptsPerSession,
+            allowSkipAction: settings.coachAllowSkipAction,
+            engagementMode: engagementMode
+        )
+        guard route.quickPromptDecision != nil || route.strongWindowDecision != nil else { return }
+
+        let now = Date()
+        let input = coachGuardrailInput(now: now, calendarBusy: false, isIdlePrompt: false)
+        guard coachGuardrails.verdict(for: .badge, input: input) == .allowed else {
+            currentCoachQuickPromptDecision = nil
+            return
+        }
+        let panelAllowed = settings.coachOnScreenPromptsEnabled
+            && coachGuardrails.verdict(for: .panel, input: input) == .allowed
+
+        let coachCtx = buildCoachContext(
+            idleSeconds: 0,
+            frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory,
+            frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
+        )
+        let app = AppUsageTracker.shared.currentFrontmostDisplayLabel
+        let appSeconds = AppUsageTracker.shared.sessionDistractingEntries.first { $0.displayLabel == app }?.seconds
+        let style = settings.coachStyle
+        let message = CoachMessageComposer.compose(CoachComposerInput(
+            style: style,
+            trigger: .inSessionDrift(projectName: selectedProject?.name, appName: app, minutesInApp: appSeconds.map { $0 / 60 }),
+            facts: CoachFacts(),
+            target: CoachStartTarget(minutes: selectedMinutes, name: selectedProject?.name),
+            whyLines: settings.coachMyWhyLines
+        ))
+        // Never offer the 5-minute restart inside a session (B1): back to it, or snooze.
+        let base = (route.strongWindowDecision ?? route.quickPromptDecision)?.suggestedActions ?? [.returnNow, .snooze10m]
+        let actions = appendBlockActionIfRecommended(
+            actions: base.filter { $0 != .cleanRestart5m },
+            context: coachCtx
+        )
+
+        if route.strongWindowDecision != nil, panelAllowed {
+            let strong = FocusCoachDecision(kind: .strongPrompt, suggestedActions: actions, message: nil, context: coachCtx, composed: message)
+            let attempt = coachEngine.recordDeliveredIntervention(
+                kind: .strongPrompt,
+                riskScore: coachEngine.riskScore,
+                now: now,
+                surface: .panel,
+                style: style
+            )
+            if route.didConsumeStrongBudget {
+                strongPromptsShownThisSession += 1
+            }
+            currentCoachQuickPromptDecision = nil
+            presentCoachPanel(
+                CoachPanelPresentation(kind: .inSessionDrift, message: message, attemptID: attempt.id),
+                decision: strong
+            )
+        } else {
+            currentCoachQuickPromptDecision = FocusCoachDecision(
+                kind: .quickPrompt,
+                suggestedActions: actions,
+                message: nil,
+                context: coachCtx,
+                composed: message
+            )
+            coachEngine.recordDeliveredIntervention(
+                kind: .quickPrompt,
+                riskScore: coachEngine.riskScore,
+                now: now,
+                surface: .badge,
+                style: style
+            )
+        }
+    }
+
+    // MARK: - Rescue loop: drift sampling
+
+    /// Called by `AppUsageTracker` every tracking tick with the seconds since the last one.
+    func recordDriftTick(elapsedSeconds: Int, now: Date = Date()) {
+        guard state == .idle, !isOvertime, settings != nil else { return }
+        let tracker = AppUsageTracker.shared
+        let frontmost = driftFrontmostOverride ?? DriftFrontmost(
+            bundleIdentifier: tracker.currentFrontmostBundleId,
+            appName: tracker.currentFrontmostAppName,
+            browserHost: tracker.currentFrontmostBrowserHost,
+            displayName: tracker.currentFrontmostDisplayLabel,
+            category: tracker.currentFrontmostCategory,
+            switchesPerMinute: FocusCoachEngine.computeAppSwitchRate(switchTimestamps: tracker.recentAppSwitchTimestamps, windowSeconds: 60)
+        )
+        recordDriftSample(frontmost, seconds: elapsedSeconds, now: now)
+    }
+
+    /// Classifies one tick of `frontmost` and feeds it to the drift monitor.
+    func recordDriftSample(_ frontmost: DriftFrontmost, seconds: Int, now: Date = Date()) {
+        guard state == .idle, !isOvertime else { return }
+        refreshCoachModelsIfNeeded(now: now)
+        let keys = currentDriftRuleKeys(now: now)
+        let kind = DriftMonitor.classify(
+            bundleIdentifier: frontmost.bundleIdentifier,
+            appName: frontmost.appName,
+            browserHost: settings?.coachCollectRawDomains == true ? frontmost.browserHost : nil,
+            displayName: frontmost.displayName,
+            category: frontmost.category,
+            confirmedKeys: keys.confirmed,
+            allowedKeys: keys.allowed,
+            pacingPressure: currentPacing(now: now).pressure,
+            busyworkContexts: busyworkContexts,
+            userAway: systemIdleSeconds() >= 5 * 60
+        )
+        driftMonitor.record(at: now, seconds: seconds, kind: kind, switchesPerMinute: frontmost.switchesPerMinute)
+    }
+
+    private func currentPacing(now: Date) -> CoachGoalPacing {
+        CoachGoalPacing(
+            goalMinutes: Int((settings?.dailyFocusGoal ?? 7200) / 60),
+            doneMinutes: Int(todayFocusTime / 60),
+            windowMinutesLeft: availabilityModel.goodWindowMinutesRemainingToday(from: now)
+        )
+    }
+
+    private func currentDriftRuleKeys(now: Date) -> (confirmed: Set<String>, allowed: Set<String>) {
+        if let cached = driftRuleKeys, now.timeIntervalSince(cached.loadedAt) < 300, cached.loadedAt <= now {
+            return (cached.confirmed, cached.allowed)
+        }
+        var items: [IdleDistractionItem] = []
+        if let modelContext {
+            items = (try? modelContext.fetch(FetchDescriptor<IdleDistractionItem>())) ?? []
+        }
+        let keys = DerailerRuleKeys.from(items)
+        driftRuleKeys = (keys.confirmed, keys.allowed, now)
+        return keys
+    }
+
+    private func refreshBusyworkContexts() {
+        let entries = CoachPseudoWorkLog(defaults: defaults).entries
+        var byContext: [String: (sideQuests: Int, total: Int)] = [:]
+        for entry in entries {
+            guard let name = entry.contextName?.lowercased(), !name.isEmpty else { continue }
+            byContext[name, default: (0, 0)].total += 1
+            if entry.answer == .sideQuest { byContext[name, default: (0, 0)].sideQuests += 1 }
+        }
+        busyworkContexts = Set(byContext.filter { $0.value.total >= 2 && Double($0.value.sideQuests) / Double($0.value.total) >= 0.5 }.keys)
+    }
+
+    private func systemIdleSeconds() -> TimeInterval {
+        if let systemIdleSecondsProvider { return systemIdleSecondsProvider() }
+        guard let anyEvent = CGEventType(rawValue: ~0) else { return 0 }
+        return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyEvent)
+    }
+
+    // MARK: - Rescue loop: decisions
+
+    /// Rescues logged in the last 14 days, read back from their context keys.
+    func rescueRecords(now: Date = Date()) -> [CoachRescueRecord] {
+        coachEngine.store.attempts(deliveredSince: now.addingTimeInterval(-CoachPauseScreenPolicy.escapeLookback))
+            .compactMap(CoachRescueRecord.init(attempt:))
+    }
+
+    /// The ambient menu bar counter: "YouTube 23m" / "Drift 23m" while drifting in a focus window.
+    var driftMenuBarText: String? {
+        guard settings?.coachShowDriftInMenuBar == true, state == .idle, !isOvertime,
+              let drift = currentDrift else { return nil }
+        return CoachDriftCounter.text(for: drift)
+    }
+
+    /// Runs every 15 s. Updates the drift level (menu bar counter) and, when the cadence allows,
+    /// lets the bandit pick the rescue surface the level allows. Returns true when something was shown.
+    @discardableResult
+    func evaluateRescueLoop(now: Date = Date()) -> Bool {
+        guard let settings else { return false }
+        let sessionActive = state != .idle || isOvertime
+        refreshCoachModelsIfNeeded(now: now)
+        let window = CoachFocusWindow.current(now: now, model: availabilityModel)
+        let pacing = currentPacing(now: now)
+        let records = rescueRecords(now: now)
+        let ignored = records.filter { $0.deliveredAt >= window.start && $0.surface != .ambient && $0.wasIgnored }.count
+        let lastEnd = historyReader?.lastFocusSessionEnd(before: now)
+        let assessment = driftMonitor.assess(.init(
+            now: now,
+            sessionActive: sessionActive,
+            inLearnedWindow: availabilityModel.isGoodWindow(now),
+            pacingPressure: pacing.pressure,
+            windowStart: window.start,
+            lastSessionEnd: lastEnd,
+            ignoredRescues: ignored
+        ))
+        if currentDrift != assessment { currentDrift = assessment }
+        currentFocusWindow = window
+
+        guard settings.coachIdleStarterEnabled, assessment.isActive, assessment.level > .ok,
+              coachPanel == nil, pauseScreen == nil,
+              CoachRescueCadence.shouldDecide(level: assessment.level, windowStart: window.start, last: lastRescueDecision, now: now)
+        else { return false }
+
+        let calendarBusy = currentCalendarAvailability(now: now).isBusyNow
+        var input = coachGuardrailInput(now: now, calendarBusy: calendarBusy, isIdlePrompt: true)
+        input.ignorePanelSpacing = true
+        if let reason = IdleStarterSuppressionReason(verdict: coachGuardrails.verdict(for: .badge, input: input)) {
+            lastIdleStarterSuppressionReason = reason
+            return false
+        }
+
+        let pauseVerdict = CoachPauseScreenPolicy.verdict(.init(
+            enabled: settings.coachPauseScreenEnabled,
+            level: assessment.level,
+            windowStart: window.start,
+            now: now,
+            records: records,
+            guardrails: input
+        ))
+        if pauseVerdict == .escapeRateTooHigh, !pauseScreenShutoffLogged {
+            pauseScreenShutoffLogged = true
+            let rate = CoachPauseScreenPolicy.escapeRate(records: records, now: now) ?? 0
+            log("coach: pause screen switched off automatically, escape rate \(Int(rate * 100))% over 14 days (> 80%)")
+        }
+        let candidates = CoachRescueCadence.candidateSurfaces(
+            level: assessment.level,
+            panelEnabled: settings.coachOnScreenPromptsEnabled,
+            pauseScreenAllowed: pauseVerdict == .allowed
+        )
+        let gated = coachGuardrails.allowedSurfaces(from: candidates, input: input)
+
+        reloadWeeklyPriorities(now: now)
+        let category = driftFrontmostOverride?.category ?? AppUsageTracker.shared.currentFrontmostCategory
+        let snapshot = coachSnapshot(now: now, idleSeconds: assessment.ambientMinutes * 60, frontmostCategory: category)
+        let baseKey = CoachContextKey(
+            availability: snapshot.tier,
+            idle: .init(idleSeconds: assessment.ambientMinutes * 60),
+            front: .init(category: category),
+            hasSessionToday: snapshot.facts.sessionsToday > 0
+        )
+        let level = assessment.level
+        let arm: CoachArm
+        if let forced = coachArmOverride, gated.surfaces.contains(forced.surface) {
+            arm = forced
+        } else {
+            arm = banditPolicy.choose(
+                contextFor: { baseKey.rescue(level: level, surface: CoachRescueSurface(coachSurface: $0.surface)).rawValue },
+                surfaces: gated.surfaces,
+                preferredStyle: settings.coachStyle,
+                model: banditModel,
+                using: &coachRandom
+            )
+        }
+        lastRescueDecision = .init(level: level, at: now, windowStart: window.start)
+        let spanLabel: String
+        if let lastEnd, lastEnd > window.start {
+            spanLabel = "since your last block"
+        } else if let hour = window.hourLabel() {
+            spanLabel = "in your \(hour) window"
+        } else {
+            spanLabel = "today"
+        }
+        return deliverRescue(arm: arm, assessment: assessment, snapshot: snapshot, baseKey: baseKey, spanLabel: spanLabel, now: now)
+    }
+
+    private func rescueContext(level: DriftLevel, signal: DriftSignal?, snapshot: CoachSnapshot, spanLabel: String, now: Date) -> CoachRescueContext? {
+        let starterMinutes = CoachStarterBlock.clampedMinutes(settings?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
+        guard let ask = CoachRescueLadder.ask(level: level, target: snapshot.target, starterMinutes: starterMinutes) else { return nil }
+        return CoachRescueContext(
+            level: level,
+            signal: signal,
+            spanLabel: spanLabel,
+            ask: ask,
+            priorityName: snapshot.topPriority?.title ?? snapshot.target.name,
+            lateNight: CoachSituation.isLateNight(now),
+            starterMinutes: starterMinutes
+        )
+    }
+
+    private func rescueSituation(level: DriftLevel, facts: CoachFacts, now: Date) -> CoachSituation {
+        if CoachSituation.isLateNight(now) { return .lateNight }
+        if level == .spiral { return .spiral }
+        if (facts.daysWithoutBlock ?? 0) >= 2 { return .comeback }
+        return .drift
+    }
+
+    @discardableResult
+    private func deliverRescue(
+        arm: CoachArm,
+        assessment: DriftAssessment,
+        snapshot: CoachSnapshot,
+        baseKey: CoachContextKey,
+        spanLabel: String,
+        now: Date
+    ) -> Bool {
+        let level = assessment.level
+        guard let rescue = rescueContext(level: level, signal: assessment.dominantSignal, snapshot: snapshot, spanLabel: spanLabel, now: now) else { return false }
+        let surface = CoachRescueSurface(coachSurface: arm.surface)
+        let contextKey = baseKey.rescue(level: level, surface: surface).rawValue
+
+        switch surface {
+        case .ambient:
+            // Menu bar only: logged once per decision (for "Rescues by level"), never toward the cap.
+            let attempt = coachEngine.recordDeliveredIntervention(
+                kind: .quickPrompt, riskScore: Double(level.rawValue) / 3, sessionId: nil, now: now,
+                surface: .silent, style: nil, contextKey: contextKey
+            )
+            if pendingCoachAttemptID == nil { pendingCoachAttemptID = attempt.id }
+            lastIdleStarterSuppressionReason = .banditChoseSilent
+            return false
+
+        case .panel:
+            guard let style = arm.style else { return false }
+            let motivation = pickMotivation(situation: rescueSituation(level: level, facts: snapshot.facts, now: now), now: now)
+            let usePseudoPanel: Bool = {
+                guard level <= .lost, snapshot.topPriority != nil, case .pseudo = assessment.dominantSignal else { return false }
+                return true
+            }()
+            let trigger: CoachTrigger = usePseudoPanel
+                ? .pseudoProductivity(priority: snapshot.topPriority?.title ?? "")
+                : .rescue(rescue)
+            var facts = snapshot.facts
+            if usePseudoPanel, let pseudo = assessment.topPseudo {
+                facts.contextMinutes = assessment.pseudoMinutes
+                facts.contextAppName = pseudo.name
+            }
+            let factsSnapshot = CoachSnapshot(
+                now: now, inGoodWindow: snapshot.inGoodWindow, tier: snapshot.tier, pacing: snapshot.pacing,
+                facts: facts, target: snapshot.target, topPriority: snapshot.topPriority, frontCategory: snapshot.frontCategory
+            )
+            let message = composeCoachMessage(trigger: trigger, style: style, snapshot: factsSnapshot, motivation: motivation)
+            let attempt = coachEngine.recordDeliveredIntervention(
+                kind: .strongPrompt, riskScore: Double(level.rawValue) / 3, sessionId: nil, now: now,
+                surface: .panel, style: style, contextKey: contextKey
+            )
+            pendingCoachAttemptID = attempt.id
+            if case .why = message.detail { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
+            if case .quote = message.detail { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
+            if case .houseLine = message.detail { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
+            if usePseudoPanel { pseudoLastAskedAt = now }
+            presentCoachPanel(CoachPanelPresentation(
+                kind: usePseudoPanel ? .pseudoProductivity : .rescue,
+                message: message,
+                plan: rescue.ask.target ?? snapshot.target,
+                attemptID: attempt.id,
+                contextName: assessment.topPseudo?.name,
+                createdAt: now,
+                level: level,
+                ask: rescue.ask,
+                footerHint: hotkeyFooterHint
+            ))
+            lastIdleStarterSuppressionReason = nil
+            return true
+
+        case .pauseScreen:
+            guard let style = arm.style else { return false }
+            let motivation = pickMotivation(situation: CoachSituation.isLateNight(now) ? .lateNight : .spiral, now: now)
+            let attempt = coachEngine.recordDeliveredIntervention(
+                kind: .strongPrompt, riskScore: 1, sessionId: nil, now: now,
+                surface: .strongWindow, style: style, contextKey: contextKey
+            )
+            pendingCoachAttemptID = attempt.id
+            noteMotivationShown(motivation ?? nil, attemptID: attempt.id, at: now)
+            presentPauseScreen(CoachPauseScreenPresentation(
+                style: style,
+                headline: motivation ?? nil,
+                fact: rescue.longFact,
+                starterMinutes: rescue.starterMinutes,
+                attemptID: attempt.id,
+                level: level,
+                lateNight: rescue.lateNight,
+                createdAt: now
+            ))
+            lastIdleStarterSuppressionReason = nil
+            return true
+        }
+    }
+
+    /// "⌃⌥Space starts 5 min anytime" while the shortcut is on.
+    private var hotkeyFooterHint: String? {
+        guard let settings, settings.coachGlobalHotkeyEnabled else { return nil }
+        return CoachStarterBlock.hotkeyHint(minutes: CoachStarterBlock.clampedMinutes(settings.coachStarterBlockMinutes))
+    }
+
+    // MARK: - Rescue loop: quotes
+
+    static func startSituation(facts: CoachFacts, now: Date) -> CoachSituation {
+        if CoachSituation.isLateNight(now) { return .lateNight }
+        if facts.missedYesterday && facts.sessionsToday == 0 { return .comeback }
+        if facts.streakDays >= 3 { return .streak }
+        return .start
+    }
+
+    /// The learner's quote or why line for `situation`. `.some(nil)`: everything was shown in the last 3 days.
+    private func pickMotivation(situation: CoachSituation, now: Date) -> CoachMotivationItem?? {
+        let log = CoachQuoteShowLog(defaults: defaults).entries
+        var rewards: [UUID: Double] = [:]
+        let ids = Set(log.compactMap(\.attemptID))
+        if !ids.isEmpty {
+            for attempt in coachEngine.store.attempts(deliveredSince: now.addingTimeInterval(-60 * 24 * 3600)) where ids.contains(attempt.id) {
+                if let reward = attempt.reward { rewards[attempt.id] = reward }
+            }
+        }
+        return .some(CoachQuotePicker.pick(
+            situation: situation,
+            style: settings?.coachStyle ?? .challenger,
+            whyLines: settings?.coachMyWhyLines ?? [],
+            log: log,
+            rewards: rewards,
+            now: now,
+            using: &coachRandom
+        ))
+    }
+
+    private func noteMotivationShown(_ motivation: CoachMotivationItem??, attemptID: UUID?, at now: Date) {
+        guard let item = motivation ?? nil else { return }
+        CoachQuoteShowLog(defaults: defaults).append(CoachQuoteShow(itemID: item.id, shownAt: now, attemptID: attemptID))
+    }
+
+    // MARK: - Rescue loop: pause screen
+
+    private func presentPauseScreen(_ presentation: CoachPauseScreenPresentation) {
+        if coachPanel != nil { hideCoachPanel() }
+        pauseScreen = presentation
+        pauseScreenHost?.showPauseScreen(presentation)
+    }
+
+    /// Leaves the pause screen. Esc and ✕ are dismissals; "Real break · 15m" and "Done for today"
+    /// are respected choices (snoozed). "Start N minutes" starts a starter block.
+    @discardableResult
+    func performPauseScreenExit(_ exit: CoachPauseScreenExit, now: Date = Date()) -> Bool {
+        guard let screen = pauseScreen else { return false }
+        pauseScreen = nil
+        pauseScreenHost?.hidePauseScreen()
+        switch exit {
+        case .startStarter:
+            return startStarterBlock(attemptID: screen.attemptID)
+        case .escape, .close:
+            if let id = screen.attemptID { coachEngine.recordInterventionOutcome(.dismissed, attemptID: id) }
+        case .realBreak:
+            if let id = screen.attemptID { coachEngine.recordInterventionOutcome(.snoozed, attemptID: id) }
+            snoozeIdleCoach(minutes: CoachPauseScreenPresentation.realBreakMinutes, now: now)
+        case .doneForToday:
+            if let id = screen.attemptID { coachEngine.recordInterventionOutcome(.snoozed, attemptID: id) }
+            enterDoneForToday(now: now)
+            clearCoachPrompts()
+        }
+        return true
+    }
+
+    // MARK: - Rescue loop: starter block
+
+    /// Starts a starter block: no project or priority, `coachStarterBlockMinutes` long (2–10),
+    /// labelled "Starter". Returns false (with `startError`) when a session is already running.
+    @discardableResult
+    func startStarterBlock(attemptID: UUID? = nil) -> Bool {
+        guard let settings else {
+            startError = "Settings not loaded. Please restart the app."
+            return false
+        }
+        guard state == .idle, !isOvertime else {
+            startError = isOvertime ? "Complete the current session first." : "A session is already in progress."
+            return false
+        }
+        let minutes = CoachStarterBlock.clampedMinutes(settings.coachStarterBlockMinutes)
+        starterRestore = (selectedProject, customLabel, pendingPriorityID)
+        selectedProject = nil
+        customLabel = CoachStarterBlock.label
+        pendingIntentText = ""
+        pendingPriorityID = nil
+        starterStepText = ""
+        nextStartDurationOverride = TimeInterval(minutes * 60)
+        isStarterBlock = true
+        guard startFocus() else {
+            nextStartDurationOverride = nil
+            endStarterState()
+            return false
+        }
+        if let attemptID { coachEngine.recordInterventionOutcome(.improved, attemptID: attemptID) }
+        return true
+    }
+
+    /// ⌃⌥Space: starts a starter block from anywhere. Does nothing while a session runs.
+    @discardableResult
+    func startStarterFromHotkey() -> Bool {
+        guard state == .idle, !isOvertime, settings != nil else { return false }
+        let attemptID = pauseScreen?.attemptID ?? coachPanel?.attemptID
+        if pauseScreen != nil {
+            pauseScreen = nil
+            pauseScreenHost?.hidePauseScreen()
+        }
+        guard startStarterBlock(attemptID: attemptID) else { return false }
+        let minutes = Int(totalSeconds / 60)
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .notice,
+            message: CoachMessageComposer.compose(CoachComposerInput(
+                style: settings?.coachStyle ?? .challenger,
+                trigger: .starterStarted(minutes: minutes),
+                facts: CoachFacts(),
+                target: CoachStartTarget(minutes: minutes, name: nil)
+            ))
+        ))
+        return true
+    }
+
+    /// Registers or unregisters ⌃⌥Space to match `coachGlobalHotkeyEnabled`.
+    func syncGlobalHotkey() {
+        guard let registrar = hotkeyRegistrar else { return }
+        let wanted = settings?.coachGlobalHotkeyEnabled == true
+        if wanted {
+            registrar.onPress = { [weak self] in self?.startStarterFromHotkey() }
+            if !registrar.isRegistered {
+                let ok = registrar.register()
+                log("coach: global shortcut ⌃⌥Space \(ok ? "registered" : "failed to register")")
+            }
+        } else if registrar.isRegistered {
+            registrar.unregister()
+            log("coach: global shortcut ⌃⌥Space unregistered")
+        }
+    }
+
+    /// Restores the selection the starter block replaced.
+    private func endStarterState() {
+        guard isStarterBlock || starterRestore != nil else { return }
+        isStarterBlock = false
+        if let restore = starterRestore {
+            selectedProject = restore.project
+            customLabel = restore.customLabel == CoachStarterBlock.label ? "" : restore.customLabel
+            pendingPriorityID = restore.priorityID
+        } else if customLabel == CoachStarterBlock.label {
+            customLabel = ""
+        }
+        starterRestore = nil
+    }
+
+    /// A starter block finished: it counts as a completed block, then the panel offers
+    /// "Keep going: 20m on {step}?" (no session-complete window).
+    private func completeStarterBlock(_ session: FocusSession, now: Date = Date()) {
+        timer?.invalidate()
+        timer = nil
+        let step = starterStepText.trimmingCharacters(in: .whitespacesAndNewlines)
+        session.endedAt = now
+        session.completed = true
+        session.pauseCount = pauseCountThisSession
+        session.intentText = step.isEmpty ? nil : step
+        saveContext()
+        clearCrashRecoveryState()
+        creditCoachPromptForCompletion(sessionID: session.id)
+        lastCompletedSession = session
+        lastCompletedFocusSession = session
+        lastCompletionWasBreak = false
+        lastCompletedDuration = session.duration
+        lastCompletedLabel = session.label
+        coachEngine.endSession()
+        currentSession = nil
+        state = .idle
+        isOvertime = false
+        overtimeSeconds = 0
+        remainingSeconds = 0
+        totalSeconds = 0
+        AppUsageTracker.shared.syncCadence(isFocusing: false)
+        deactivateBlocking()
+        endStarterState()
+        starterStepText = ""
+        loadTodayStats()
+        if !isEvidenceMode { NSSound(named: NSSound.Name(settings?.completionSound ?? "Glass"))?.play() }
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .keepGoing,
+            message: keepGoingMessage(step: step.isEmpty ? nil : step, now: now),
+            createdAt: now,
+            step: step.isEmpty ? nil : step
+        ))
+    }
+
+    private func keepGoingMessage(step: String?, now: Date) -> CoachComposedMessage {
+        let motivation = pickMotivation(situation: .keepGoing, now: now)
+        noteMotivationShown(motivation, attemptID: nil, at: now)
+        var input = CoachComposerInput(
+            style: settings?.coachStyle ?? .challenger,
+            trigger: .keepGoing(step: step),
+            facts: CoachFacts(),
+            target: CoachStartTarget(minutes: CoachStarterBlock.keepGoingMinutes, name: step)
+        )
+        input.starterMinutes = CoachStarterBlock.clampedMinutes(settings?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
+        input.pickedDetail = (motivation ?? nil)?.detail(starterMinutes: input.starterMinutes)
+        input.pickerExhausted = (motivation ?? nil) == nil
+        return CoachMessageComposer.compose(input)
+    }
+
+    /// "Keep going": a normal 20-minute block whose intent is the step typed in the starter.
+    @discardableResult
+    func continueAfterStarter(step: String?) -> Bool {
+        let trimmed = step?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        pendingIntentText = trimmed
+        let preferred = selectedMinutes
+        selectedMinutes = CoachStarterBlock.keepGoingMinutes
+        let started = startFocus()
+        selectedMinutes = preferred
+        if !started { pendingIntentText = "" }
+        return started
+    }
+
+    // MARK: - Rescue loop: momentum ramp
+
+    /// Five minutes into a rescue-started block shorter than 25 minutes: "You're in. Make it 25?" once.
+    @discardableResult
+    func checkMomentumRamp() -> Bool {
+        guard let sessionID = currentSession?.id, sessionID == rescueStartedSessionID,
+              coachPanel == nil,
+              CoachMomentumRamp.shouldOffer(
+                isRescueStart: true,
+                isStarter: isStarterBlock,
+                elapsedSeconds: totalSeconds - remainingSeconds,
+                totalSeconds: totalSeconds,
+                alreadyOffered: momentumOfferedSessionID == sessionID
+              ) else { return false }
+        momentumOfferedSessionID = sessionID
+        if let settings, shouldSuppressGuardianPopups(using: settings) { return false }
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .momentum,
+            message: CoachMessageComposer.compose(CoachComposerInput(
+                style: settings?.coachStyle ?? .challenger,
+                trigger: .momentum,
+                facts: CoachFacts(),
+                target: CoachStartTarget(minutes: CoachMomentumRamp.targetMinutes, name: nil)
+            ))
+        ))
+        return true
+    }
+
+    #if DEBUG
+    /// FOCUSFLOW_DEBUG_PAUSE_SCREEN=1: the real composed pause screen, without logging an attempt.
+    func presentDebugPauseScreen() {
+        let now = Date()
+        let drift = currentDrift
+        var signal = drift?.dominantSignal
+        if signal == nil {
+            signal = .derailer(name: AppUsageTracker.shared.currentFrontmostDisplayLabel ?? "YouTube", minutes: drift?.derailerWindowMinutes ?? 0)
+        }
+        let snapshot = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+        let window = CoachFocusWindow.current(now: now, model: availabilityModel)
+        let span = window.hourLabel().map { "in your \($0) window" } ?? "today"
+        guard let rescue = rescueContext(level: .spiral, signal: signal, snapshot: snapshot, spanLabel: span, now: now) else { return }
+        let motivation = pickMotivation(situation: rescue.lateNight ? .lateNight : .spiral, now: now)
+        let presentation = CoachPauseScreenPresentation(
+            style: settings?.coachStyle ?? .challenger,
+            headline: motivation ?? nil,
+            fact: rescue.longFact,
+            starterMinutes: rescue.starterMinutes,
+            attemptID: nil,
+            lateNight: rescue.lateNight,
+            createdAt: now
+        )
+        log("debug: pause screen '\(presentation.accessibilityText)'")
+        presentPauseScreen(presentation)
+    }
+
+    /// FOCUSFLOW_DEBUG_COACH_PANEL=1 with FOCUSFLOW_DEBUG_DRIFT_LEVEL=<1|2|3>: the rescue panel at that level.
+    func presentDebugRescuePanel(level: DriftLevel) {
+        let now = Date()
+        reloadWeeklyPriorities()
+        let snapshot = coachSnapshot(now: now, idleSeconds: 30 * 60, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+        let window = CoachFocusWindow.current(now: now, model: availabilityModel)
+        let span = window.hourLabel().map { "in your \($0) window" } ?? "today"
+        let signal = currentDrift?.dominantSignal ?? .derailer(
+            name: AppUsageTracker.shared.currentFrontmostDisplayLabel ?? "YouTube",
+            minutes: [DriftLevel.drifting: 12, .lost: 24, .spiral: 47][level] ?? 12
+        )
+        guard let rescue = rescueContext(level: level, signal: signal, snapshot: snapshot, spanLabel: span, now: now) else { return }
+        let motivation = pickMotivation(situation: rescueSituation(level: level, facts: snapshot.facts, now: now), now: now)
+        let message = composeCoachMessage(trigger: .rescue(rescue), style: settings?.coachStyle ?? .challenger, snapshot: snapshot, motivation: motivation)
+        log("debug: rescue panel L\(level.rawValue) '\(message.hook)' / '\(message.detail?.text ?? "")' / '\(message.primaryTitle)'")
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .rescue, message: message, plan: rescue.ask.target ?? snapshot.target, createdAt: now,
+            level: level, ask: rescue.ask, footerHint: hotkeyFooterHint
+        ))
+    }
+
+    /// Evidence renders: a running starter block with a typed step, without timers.
+    func seedEvidenceStarterState(step: String, minutes: Int = 5, remaining: TimeInterval = 3 * 60 + 12) {
+        selectedProject = nil
+        customLabel = CoachStarterBlock.label
+        isStarterBlock = true
+        starterStepText = step
+        totalSeconds = TimeInterval(minutes * 60)
+        remainingSeconds = remaining
+        state = .focusing
+    }
+
+    /// Evidence renders and tests: sets the drift assessment directly.
+    func seedDriftAssessment(_ assessment: DriftAssessment?) {
+        currentDrift = assessment
+    }
+    #endif
+
+    // MARK: - Coach helpers
 
     private func currentIdleDistractionTarget() -> IdleDistractionCatalog.Target? {
         if let browserHost = AppUsageTracker.shared.currentFrontmostBrowserHost {
@@ -2392,45 +4154,6 @@ final class TimerViewModel {
         return IdleDistractionCatalog(items: items)
     }
 
-    @discardableResult
-    private func recordIdleDistractionEvidence(
-        target: IdleDistractionCatalog.Target?,
-        displayName: String?,
-        outcome: IdleDistractionEvidenceOutcome
-    ) -> IdleDistractionCatalog.Resolution? {
-        guard let target, let modelContext else { return nil }
-
-        let resolvedDisplayName: String
-        if let displayName, !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            resolvedDisplayName = displayName
-        } else {
-            switch target {
-            case .app(let bundleIdentifier):
-                resolvedDisplayName = AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleIdentifier)")
-            case .website(let host):
-                resolvedDisplayName = AppUsageEntry.domainDisplayName(for: host)
-            }
-        }
-
-        var catalog = loadIdleDistractionCatalog()
-        let insertedItem = catalog.recordIdleEvidence(
-            target: target,
-            displayName: resolvedDisplayName,
-            outcome: outcome
-        )
-        if let insertedItem {
-            modelContext.insert(insertedItem)
-        }
-
-        do {
-            try modelContext.save()
-        } catch {
-            log("Failed to persist idle distraction evidence: \(error)")
-        }
-
-        return catalog.resolution(for: target)
-    }
-
     private func appendBlockActionIfRecommended(
         actions: [FocusCoachQuickAction],
         context: FocusCoachContext
@@ -2438,42 +4161,6 @@ final class TimerViewModel {
         guard context.hasBlockRecommendation else { return actions }
         if actions.contains(.blockForProject) { return actions }
         return actions + [.blockForProject]
-    }
-
-    private func augmentIdlePromptActions(
-        _ actions: [FocusCoachQuickAction],
-        context: FocusCoachContext
-    ) -> [FocusCoachQuickAction] {
-        var result = actions
-        if !result.contains(.snooze10m) {
-            result.append(.snooze10m)
-        }
-        if !result.contains(.skipCheck) {
-            result.append(.skipCheck)
-        }
-        if !result.contains(.isPlanned) {
-            result.append(.isPlanned)
-        }
-        return appendBlockActionIfRecommended(actions: result, context: context)
-    }
-
-    private func contextualMessage(base: String?, context: FocusCoachContext) -> String {
-        if context.inReleaseWindow {
-            return "You marked yourself off-duty. Guardian checks are paused until the release window ends."
-        }
-        if let reason = context.blockRecommendationReason, !reason.isEmpty {
-            return reason
-        }
-        if let label = context.frontmostDisplayLabel, context.frontmostAppCategory == .distracting {
-            return "\(label) looks off-plan for your current focus intent. Planned or drift?"
-        }
-        if let base, !base.isEmpty {
-            return base
-        }
-        if let project = context.selectedProjectName, !project.isEmpty {
-            return "Protect \(project) now with a short focused block."
-        }
-        return "Current context looks off-plan. Choose the next best action."
     }
 
     private func applyGuardianReleaseIfNeeded(for action: FocusCoachQuickAction, reason: FocusCoachSkipReason?) {
@@ -2559,393 +4246,28 @@ final class TimerViewModel {
         }
     }
 
-    private func shouldAutoOpenStrongPromptSurface() -> Bool {
-        settings?.coachAutoOpenPopoverOnStrongPrompt ?? true
+    private func currentCalendarAvailability(now: Date) -> CalendarAvailability {
+        if let calendarAvailabilityProvider {
+            return calendarAvailabilityProvider(now)
+        }
+        return CalendarService.shared.availability(
+            at: now,
+            excludingCalendarId: settings?.selectedCalendarId,
+            excludingCalendarName: settings?.calendarName
+        )
     }
 
-    private func shouldBringAppToFrontForStrongPrompt() -> Bool {
-        settings?.coachBringAppToFrontOnStrongPrompt ?? true
-    }
-
-    private func routeCoachDecision(_ decision: FocusCoachDecision) {
-        guard let settings else { return }
-        if isInReleaseWindow || shouldSuppressGuardianPopups(using: settings) {
-            currentCoachQuickPromptDecision = nil
-            activeCoachInterventionDecision = nil
-            showCoachInterventionWindow = false
-            return
-        }
-        let mode = settings.coachInterventionMode
-        let engagementMode = selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
-        let route = coachPlanner.routeActiveDecision(
-            decision,
-            mode: mode,
-            riskScore: coachEngine.riskScore,
-            strongShownCount: strongPromptsShownThisSession,
-            maxStrongPrompts: settings.coachMaxStrongPromptsPerSession,
-            allowSkipAction: settings.coachAllowSkipAction,
-            engagementMode: engagementMode
+    /// Seconds since the most recent focus session ended, from the store; nil when none.
+    private func secondsSinceLastFocusSessionEnd(now: Date = Date()) -> Int? {
+        guard let modelContext else { return nil }
+        var descriptor = FetchDescriptor<FocusSession>(
+            predicate: #Predicate { $0.endedAt != nil },
+            sortBy: [SortDescriptor(\.endedAt, order: .reverse)]
         )
-
-        if let quick = route.quickPromptDecision {
-            let coachCtx = buildCoachContext(
-                idleSeconds: 0,
-                frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory,
-                frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
-            )
-            let quickActions = appendBlockActionIfRecommended(
-                actions: quick.suggestedActions,
-                context: coachCtx
-            )
-            currentCoachQuickPromptDecision = FocusCoachDecision(
-                kind: quick.kind,
-                suggestedActions: quickActions,
-                message: contextualMessage(base: quick.message, context: coachCtx),
-                context: coachCtx
-            )
-        } else {
-            currentCoachQuickPromptDecision = nil
-        }
-
-        if let strongDecision = route.strongWindowDecision {
-            // Build personalisation context for in-session drift
-            let rawCategory = AppUsageTracker.shared.currentFrontmostCategory
-            let entryCategory: AppUsageEntry.AppCategory
-            switch rawCategory {
-            case .productive:  entryCategory = .productive
-            case .neutral:     entryCategory = .neutral
-            case .distracting: entryCategory = .distracting
-            }
-            let coachCtx = buildCoachContext(
-                idleSeconds: 0,
-                frontmostCategory: entryCategory,
-                frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
-            )
-            let contextualDecision = FocusCoachDecision(
-                kind: strongDecision.kind,
-                suggestedActions: appendBlockActionIfRecommended(
-                    actions: strongDecision.suggestedActions,
-                    context: coachCtx
-                ),
-                message: contextualMessage(base: strongDecision.message, context: coachCtx),
-                context: coachCtx
-            )
-            let shouldAutoOpen = shouldAutoOpenStrongPromptSurface()
-            if shouldAutoOpen {
-                activeCoachInterventionDecision = contextualDecision
-                showCoachInterventionWindow = true
-                // Single-surface orchestration: strong prompt window suppresses popover prompt.
-                currentCoachQuickPromptDecision = nil
-            } else {
-                // Keep intervention inside popover when auto-open is disabled.
-                activeCoachInterventionDecision = nil
-                showCoachInterventionWindow = false
-                currentCoachQuickPromptDecision = contextualDecision
-            }
-            coachEngine.recordDeliveredIntervention(kind: .strongPrompt, riskScore: coachEngine.riskScore)
-            if route.didConsumeStrongBudget {
-                strongPromptsShownThisSession += 1
-            }
-            if shouldAutoOpen {
-                closePopover()
-                DispatchQueue.main.async { [weak self] in
-                    self?.openCoachInterventionWindow?()
-                    if self?.shouldBringAppToFrontForStrongPrompt() == true {
-                        self?.requestAppActivation?()
-                    }
-                }
-            }
-        } else if route.quickPromptDecision != nil {
-            coachEngine.recordDeliveredIntervention(kind: .quickPrompt, riskScore: coachEngine.riskScore)
-        }
-    }
-
-    func evaluateIdleStarterIntervention(
-        idleSeconds: Int,
-        escalationLevel: Int,
-        frontmostCategory: AppUsageEntry.AppCategory,
-        currentHourOverride: Int? = nil
-    ) {
-        guard state == .idle, !isOvertime, let settings else {
-            return
-        }
-        let now = Date()
-        if isInReleaseWindow {
-            lastIdleStarterSuppressionReason = .releaseWindowActive
-            currentIdleStarterDecision = nil
-            activeCoachInterventionDecision = nil
-            showCoachInterventionWindow = false
-            return
-        }
-        if shouldSuppressGuardianPopups(using: settings) {
-            lastIdleStarterSuppressionReason = .screenShareSuppressed
-            outsideSessionAwaitingStartFocus = false
-            pendingNotificationNudgeAt = nil
-            currentIdleStarterDecision = nil
-            activeCoachInterventionDecision = nil
-            showCoachInterventionWindow = false
-            return
-        }
-        guard settings.antiProcrastinationEnabled, settings.coachIdleStarterEnabled else {
-            lastIdleStarterSuppressionReason = settings.antiProcrastinationEnabled ? .idleStarterDisabled : .antiProcrastinationDisabled
-            currentIdleStarterDecision = nil
-            return
-        }
-        if let cooldownUntil = outsideSessionEscalationCooldownUntil,
-           now < cooldownUntil,
-           !outsideSessionAwaitingStartFocus {
-            lastIdleStarterSuppressionReason = .cooldownActive
-            currentIdleStarterDecision = nil
-            activeCoachInterventionDecision = nil
-            showCoachInterventionWindow = false
-            return
-        }
-        let hour = currentHourOverride ?? Calendar.current.component(.hour, from: now)
-        let weekday = Calendar.current.component(.weekday, from: now)
-        let isWeekday = (2...6).contains(weekday)
-        let idleTarget = currentIdleDistractionTarget()
-        let idleSeverity = idleTarget.flatMap { loadIdleDistractionCatalog().resolution(for: $0).severity }
-        let effectiveFrontmostCategory = AppUsageTracker.idleAdjustedCategory(
-            frontmostCategory: frontmostCategory,
-            idleSeverityOverride: idleSeverity
-        )
-        let opportunityContext = coachOpportunityModel.idleStarterContext(
-            idleSeconds: idleSeconds,
-            escalationLevel: escalationLevel,
-            frontmostCategory: effectiveFrontmostCategory,
-            hourOfDay: hour,
-            minutesUntilNextCalendarEvent: nil,
-            defaultMinutes: max(5, selectedMinutes)
-        )
-        let engagementMode = selectedProject?.guardianSensitivity.engagementMode ?? .adaptive
-        let repeatedProjectPattern = coachEngine.hasRepeatedProjectPatternForLatestObservation()
-        let workIntentSignal = workIntentDetector.evaluate(
-            appLastOpenedAt: appLaunchTime,
-            projectLastSelectedAt: lastProjectSelectedAt,
-            lastAbandonedStartAt: lastAbandonedStartAt,
-            matchesHistoricalMissedStart: coachEngine.hasHistoricalMissedStartPatternForLatestObservation(),
-            currentHour: hour
-        )
-        let workIntentScoreResult = outsideSessionSignalScorer.scoreWorkIntent(
-            OutsideSessionWorkIntentSignals(
-                openedAppRecently: workIntentSignal.openedAppRecently,
-                selectedProjectRecently: workIntentSignal.selectedProjectRecently,
-                recentlyAbandonedStart: workIntentSignal.recentlyAbandonedStart,
-                withinTypicalWorkHours: workIntentSignal.withinTypicalWorkHours,
-                isWeekday: isWeekday,
-                preMeetingRunwayMinutes: nil,
-                matchesHistoricalMissedStart: workIntentSignal.matchesHistoricalMissedStart,
-                productiveContinuity: effectiveFrontmostCategory == .productive
-            )
-        )
-        let appSwitchRate = FocusCoachEngine.computeAppSwitchRate(
-            switchTimestamps: AppUsageTracker.shared.recentAppSwitchTimestamps
-        )
-        let driftScoreResult = outsideSessionSignalScorer.scoreDrift(
-            OutsideSessionDriftSignals(
-                frontmostCategory: effectiveFrontmostCategory,
-                appSwitchesPerMinute: appSwitchRate,
-                contextMismatch: coachEngine.hasRepeatedProjectPatternForLatestObservation(),
-                overPlanningLoopDetected: AppUsageTracker.shared.currentFrontmostBundleId?
-                    .lowercased()
-                    .contains("openai") == true
-                    || AppUsageTracker.shared.currentFrontmostBundleId?
-                    .lowercased()
-                    .contains("anthropic") == true,
-                breakOverrunRisk: false,
-                startFrictionRepeats: workIntentSignal.recentlyAbandonedStart ? 2 : 0,
-                fatigueRisk: idleSeconds >= 45 * 60
-            )
-        )
-        latestWorkIntentScore = workIntentScoreResult.score
-        latestDriftScore = driftScoreResult.score
-        latestWorkIntentActiveSignals = workIntentScoreResult.activeSignals
-        latestDriftActiveSignals = driftScoreResult.activeSignals
-
-        let currentGuardianState = guardianAdvisor.guardianState(
-            isInActiveSession: false,
-            inReleaseWindow: isInReleaseWindow,
-            driftConfidence: max(opportunityContext.driftConfidence, driftScoreResult.score),
-            hasRecommendation: false,
-            hasRepeatedProjectPattern: repeatedProjectPattern,
-            engagementMode: engagementMode
-        )
-        let route = coachPlanner.routeIdleStarter(
-            driftConfidence: max(opportunityContext.driftConfidence, driftScoreResult.score),
-            focusOpportunity: max(opportunityContext.focusOpportunity, workIntentScoreResult.score),
-            mode: settings.coachInterventionMode,
-            allowSkipAction: settings.coachAllowSkipAction,
-            engagementMode: engagementMode,
-            guardianState: currentGuardianState,
-            isInReleaseWindow: isInReleaseWindow,
-            // When a notification was already sent and the user hasn't responded, we're already
-            // committed to an escalation sequence. Pass nil so the planner's work-intent gate
-            // (which blocks challenge-state routes when isWorkIntentWindow=false) is bypassed.
-            // The ignored notification IS the work-intent signal.
-            workIntentSignal: outsideSessionAwaitingStartFocus ? nil : workIntentSignal,
-            repeatedProjectPattern: repeatedProjectPattern,
-            distractionSeverity: idleSeverity
-        )
-
-        // Hard-escalation override: 3+ nudges against a productive app forces the strong prompt
-        // regardless of drift score. The route threshold would block low-drift productive apps,
-        // but after escalationLevel >= 2 the user has already been nudged twice with no response.
-        let isHardEscalation = !route.shouldPresent
-            && escalationLevel >= 2
-            && effectiveFrontmostCategory == .productive
-        let routeDecision: FocusCoachDecision? = route.decision ?? {
-            guard isHardEscalation else { return nil }
-            var actions: [FocusCoachQuickAction] = [.startFocusNow, .cleanRestart5m, .snooze10m]
-            if settings.coachAllowSkipAction { actions.append(.skipCheck) }
-            return FocusCoachDecision(kind: .quickPrompt, suggestedActions: actions, message: "")
-        }()
-
-        if (route.shouldPresent || isHardEscalation), var decision = routeDecision {
-            if let last = lastIdleInterventionAt, Date().timeIntervalSince(last) < 120 {
-                lastIdleStarterSuppressionReason = .cooldownActive
-                return
-            }
-            lastIdleStarterSuppressionReason = nil
-            idleStarterSummary = opportunityContext.summary
-            idleStarterRecommendedMinutes = opportunityContext.recommendedDurationMinutes
-
-            // Build personalisation context snapshot
-            let coachCtx = buildCoachContext(
-                idleSeconds: idleSeconds,
-                frontmostCategory: effectiveFrontmostCategory,
-                frontmostDisplayLabel: AppUsageTracker.shared.currentFrontmostDisplayLabel
-            )
-
-            if decision.suggestedActions.contains(.startFocusNow) {
-                decision = FocusCoachDecision(
-                    kind: decision.kind,
-                    suggestedActions: decision.suggestedActions,
-                    message: "\(opportunityContext.summary)",
-                    context: coachCtx
-                )
-            }
-            decision = FocusCoachDecision(
-                kind: decision.kind,
-                suggestedActions: augmentIdlePromptActions(decision.suggestedActions, context: coachCtx),
-                message: contextualMessage(base: decision.message, context: coachCtx),
-                context: coachCtx
-            )
-            let shouldEscalateToStrongPrompt =
-                outsideSessionAwaitingStartFocus
-                || (escalationLevel >= 2 && effectiveFrontmostCategory == .productive)
-                // Without notifications the notification→wait→escalate sequence never runs.
-                // Drive straight to the strong prompt after the first attempt, or immediately
-                // for major distractions so the user is never silently ignored.
-                || (NotificationService.shared.authorizationState != .authorized
-                    && (escalationLevel >= 1 || idleSeverity == .major))
-            if shouldEscalateToStrongPrompt {
-                if outsideSessionAwaitingStartFocus {
-                    let elapsed = now.timeIntervalSince(pendingNotificationNudgeAt ?? now)
-                    let escalationDelay = outsideSessionEscalationDelaySeconds(
-                        now: now,
-                        nonResponseStreak: outsideSessionNonResponseStreak,
-                        skipStreak: outsideSessionSkipStreak
-                    )
-                    if elapsed < escalationDelay {
-                        lastIdleStarterSuppressionReason = .cooldownActive
-                        currentIdleStarterDecision = nil
-                        activeCoachInterventionDecision = nil
-                        showCoachInterventionWindow = false
-                        return
-                    }
-                    _ = recordIdleDistractionEvidence(
-                        target: idleTarget,
-                        displayName: AppUsageTracker.shared.currentFrontmostDisplayLabel,
-                        outcome: .ignoredNudge
-                    )
-                    outsideSessionAwaitingStartFocus = false
-                    pendingNotificationNudgeAt = nil
-                    outsideSessionNonResponseStreak = min(outsideSessionNonResponseStreak + 1, 8)
-                    outsideSessionEscalationCooldownUntil = now.addingTimeInterval(
-                        outsideSessionEscalationDelaySeconds(
-                            now: now,
-                            nonResponseStreak: outsideSessionNonResponseStreak,
-                            skipStreak: outsideSessionSkipStreak
-                        )
-                    )
-                } else {
-                    // Escalation-level based hard prompt (e.g. third nudge) without requiring
-                    // notification-first state from this exact app lifecycle.
-                    outsideSessionAwaitingStartFocus = false
-                    pendingNotificationNudgeAt = nil
-                }
-                let strongDecision = FocusCoachDecision(
-                    kind: .strongPrompt,
-                    suggestedActions: decision.suggestedActions,
-                    message: contextualMessage(base: decision.message, context: coachCtx),
-                    context: coachCtx
-                )
-                let shouldAutoOpen = shouldAutoOpenStrongPromptSurface()
-                if shouldAutoOpen {
-                    activeCoachInterventionDecision = strongDecision
-                    showCoachInterventionWindow = true
-                    // Single-surface orchestration: strong prompt window suppresses popover prompt.
-                    currentIdleStarterDecision = nil
-                } else {
-                    activeCoachInterventionDecision = nil
-                    showCoachInterventionWindow = false
-                    currentIdleStarterDecision = strongDecision
-                }
-                coachEngine.recordDeliveredIntervention(
-                    kind: .strongPrompt,
-                    riskScore: opportunityContext.driftConfidence,
-                    sessionId: nil
-                )
-                if shouldAutoOpen {
-                    closePopover()
-                    DispatchQueue.main.async { [weak self] in
-                        self?.openCoachInterventionWindow?()
-                        if self?.shouldBringAppToFrontForStrongPrompt() == true {
-                            self?.requestAppActivation?()
-                        }
-                    }
-                } else {
-                }
-                lastIdleInterventionAt = now
-            } else {
-                if NotificationService.shared.authorizationState == .authorized {
-                    NotificationService.shared.sendGenericNotification(
-                        title: "Focus check-in",
-                        body: decision.message ?? idleStarterSummary ?? "",
-                        sound: settings.completionSound
-                    )
-                    pendingNotificationNudgeAt = now
-                    outsideSessionAwaitingStartFocus = true
-                    outsideSessionNudgeAttemptCount += 1
-                    outsideSessionEscalationCooldownUntil = nil
-                    currentIdleStarterDecision = nil
-                    activeCoachInterventionDecision = nil
-                    showCoachInterventionWindow = false
-                    lastIdleInterventionAt = now
-                    return
-                }
-
-                pendingNotificationNudgeAt = nil
-                outsideSessionAwaitingStartFocus = false
-                outsideSessionEscalationCooldownUntil = nil
-                currentIdleStarterDecision = decision
-                activeCoachInterventionDecision = nil
-                showCoachInterventionWindow = false
-                coachEngine.recordDeliveredIntervention(
-                    kind: .quickPrompt,
-                    riskScore: opportunityContext.driftConfidence,
-                    sessionId: nil
-                )
-                lastIdleInterventionAt = now
-            }
-        } else {
-            if currentGuardianState == .challenge && !workIntentSignal.isWorkIntentWindow {
-                lastIdleStarterSuppressionReason = .workIntentWindowClosed
-            } else {
-                lastIdleStarterSuppressionReason = .plannerThresholdsNotMet
-            }
-            currentIdleStarterDecision = nil
-        }
+        descriptor.fetchLimit = 20
+        guard let sessions = try? modelContext.fetch(descriptor),
+              let lastEnd = sessions.first(where: { $0.type == .focus })?.endedAt else { return nil }
+        return max(0, Int(now.timeIntervalSince(lastEnd)))
     }
 
     // MARK: - Coach Context Builder
@@ -3034,7 +4356,8 @@ final class TimerViewModel {
             recentLowPriorityWorkCount: coachEngine.recentLowPrioritySkipCount(),
             suggestedBlockTarget: recommendation?.target,
             blockRecommendationReason: recommendation?.reason,
-            inReleaseWindow: isInReleaseWindow
+            inReleaseWindow: isInReleaseWindow,
+            secondsSinceLastFocusSession: secondsSinceLastFocusSessionEnd()
         )
     }
 }

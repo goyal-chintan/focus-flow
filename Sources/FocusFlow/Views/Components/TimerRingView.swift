@@ -201,7 +201,7 @@ struct TimerRingView: View {
 
                     if pauseDuration > 180 {
                         Text("Consider resuming")
-                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
                             .foregroundStyle(pauseRingColor.opacity(0.8))
                             .transition(.opacity)
                     }
@@ -230,7 +230,7 @@ struct TimerRingView: View {
 
                     if case .onBreak = state, overrunSeconds > 0 {
                         Text("+\(Int(overrunSeconds / 60))m over")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(LiquidDesignTokens.Spectral.amber)
                             .transition(.opacity)
                     }
@@ -480,7 +480,7 @@ struct TimerRingView: View {
         case .paused:
             LiquidDesignTokens.Spectral.amberDark
         case .onBreak(let type):
-            type == .longBreak ? .purple : LiquidDesignTokens.Spectral.mintDark
+            type == .longBreak ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.mintDark
         case .idle:
             Color(hex: 0x4C5A80)
         }

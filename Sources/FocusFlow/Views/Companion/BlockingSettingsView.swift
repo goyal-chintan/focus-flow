@@ -1,9 +1,23 @@
 import SwiftUI
 import SwiftData
 
+/// Standalone blocking-profiles list (one grouped Form section).
 struct BlockingSettingsView: View {
+    var body: some View {
+        Form {
+            BlockingProfilesSection()
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// "Blocking profiles" Form section, shared with Settings → Distractions. Rows use the same
+/// rhythm as distraction rules: colour tile, name, "N apps · M sites", default badge, actions.
+struct BlockingProfilesSection: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \BlockProfile.createdAt) private var profiles: [BlockProfile]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Query(sort: \BlockProfile.createdAt, animation: .smooth(duration: 0.25)) private var profiles: [BlockProfile]
+    @Query private var projects: [Project]
 
     @State private var editingProfile: BlockProfile?
     @State private var showNewProfile = false
@@ -11,18 +25,37 @@ struct BlockingSettingsView: View {
     @State private var saveError: String?
 
     var body: some View {
-        VStack(spacing: LiquidDesignTokens.Spacing.large) {
-            header
-
+        Section {
             if profiles.isEmpty {
-                emptyState
-            } else {
-                profileList
+                Text("No blocking profiles yet.")
+                    .foregroundStyle(.secondary)
             }
+            ForEach(profiles) { profile in
+                profileRow(profile)
+                    .transition(.opacity)
+            }
+        } header: {
+            header
+        } footer: {
+            Text("Rules shape coaching between sessions. Profiles block apps and sites during focus.")
+                .foregroundStyle(.secondary)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.ultraThinMaterial)
+    }
+
+    // Presentations hang off the always-present header so they exist exactly once.
+    private var header: some View {
+        HStack {
+            Text("Blocking profiles")
+            Spacer()
+            Button {
+                showNewProfile = true
+            } label: {
+                Label("New Profile…", systemImage: "plus")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .accessibilityLabel("New blocking profile")
+        }
         .saveErrorOverlay($saveError)
         .sheet(isPresented: $showNewProfile) {
             BlockProfileFormView(profile: nil)
@@ -31,7 +64,7 @@ struct BlockingSettingsView: View {
             BlockProfileFormView(profile: profile)
         }
         .confirmationDialog(
-            "Delete Blocking Profile",
+            "Delete this blocking profile?",
             isPresented: Binding(
                 get: { profileToDelete != nil },
                 set: { if !$0 { profileToDelete = nil } }
@@ -40,7 +73,9 @@ struct BlockingSettingsView: View {
         ) {
             Button("Delete", role: .destructive) {
                 if let profile = profileToDelete {
-                    modelContext.delete(profile)
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) {
+                        modelContext.delete(profile)
+                    }
                     saveWithFeedback(modelContext, errorBinding: $saveError)
                 }
                 profileToDelete = nil
@@ -49,193 +84,61 @@ struct BlockingSettingsView: View {
                 profileToDelete = nil
             }
         } message: {
-            Text("This will permanently delete the blocking profile and remove it from any linked projects.")
+            Text("It's removed from any linked projects.")
         }
     }
 
-    private var header: some View {
-        LiquidSectionHeader("Blocking Profiles", subtitle: "\(profiles.count) profile\(profiles.count == 1 ? "" : "s")") {
-            Button {
-                showNewProfile = true
-            } label: {
-                Label("New Profile", systemImage: "plus")
-                    .font(LiquidDesignTokens.Typography.controlLabel)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
+    private func profileRow(_ profile: BlockProfile) -> some View {
+        SettingsListRow(title: profile.name, detail: profileSummary(profile)) {
+            SettingsSymbolTile(systemName: "shield.fill", tint: tileColor(for: profile))
+        } trailing: {
+            if profile.isDefault {
+                SettingsBadge(text: "Default")
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
-            .buttonBorderShape(.capsule)
-        }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 20) {
-            Spacer()
-
-            Image(systemName: "shield.checkered")
-                .font(.system(size: 52, weight: .ultraLight))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 8) {
-                Text("No blocking profiles")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("Create profiles to block distracting\nwebsites and apps during focus sessions.")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
+            Button("Edit…") {
+                editingProfile = profile
             }
+            .accessibilityLabel("Edit \(profile.name)")
 
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var profileList: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                ForEach(profiles) { profile in
-                    profileCard(profile)
+            SettingsRowMenu(accessibilityLabel: "More actions for \(profile.name)") {
+                Button("Make Default") { setDefault(profile) }
+                    .disabled(profile.isDefault)
+                Divider()
+                Button("Delete…", role: .destructive) {
+                    profileToDelete = profile
                 }
             }
         }
     }
 
-    private func profileCard(_ profile: BlockProfile) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header: icon + name + default badge + actions
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(profile.isDefault ? Color.green.opacity(0.12) : Color.secondary.opacity(0.10))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: profile.isDefault ? "shield.checkered" : "shield")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(profile.isDefault ? .green : .secondary)
-                        .accessibilityHidden(true)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(profile.name)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-
-                        if profile.isDefault {
-                            Text("DEFAULT")
-                                .font(.system(size: 10, weight: .bold))
-                                .tracking(1.0)
-                                .foregroundStyle(.green)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.green.opacity(0.12))
-                                )
-                        }
-                    }
-
-                    Text(profileSummary(profile))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                // Actions
-                HStack(spacing: 4) {
-                    if !profile.isDefault {
-                        Button {
-                            setDefault(profile)
-                        } label: {
-                            Image(systemName: "star")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 30, height: 30)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Set as default")
-                        .accessibilityLabel("Set as default profile")
-                    }
-
-                    Button {
-                        editingProfile = profile
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Edit profile")
-                    .accessibilityLabel("Edit profile")
-
-                    Button {
-                        profileToDelete = profile
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(LiquidDesignTokens.Spectral.salmon.opacity(0.6))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Delete profile")
-                    .accessibilityLabel("Delete profile")
-                }
-            }
-
-            // Blocked items preview chips
-            if !profile.blockedWebsites.isEmpty || !profile.blockedApps.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(Array(profile.blockedWebsites.prefix(3)), id: \.self) { website in
-                        Text(website)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(Color.white.opacity(0.06))
-                            )
-                    }
-
-                    let remaining = max(0, profile.blockedWebsites.count + profile.blockedApps.count - 3)
-                    if remaining > 0 {
-                        Text("+\(remaining) more")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
+    /// The first linked project's colour; the accent for the default profile; otherwise grey.
+    private func tileColor(for profile: BlockProfile) -> Color {
+        if let project = projects.first(where: { project in
+            project.effectiveBlockProfiles.contains(where: { $0.id == profile.id })
+        }) {
+            return settingsProjectColor(project.color)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
+        return profile.isDefault ? Color.accentColor : Color.gray
+    }
+
+    static func summary(apps: Int, sites: Int) -> String {
+        if apps == 0 && sites == 0 { return "Nothing blocked yet" }
+        let appsText = "\(apps) app\(apps == 1 ? "" : "s")"
+        let sitesText = "\(sites) site\(sites == 1 ? "" : "s")"
+        return "\(appsText) · \(sitesText)"
     }
 
     private func profileSummary(_ profile: BlockProfile) -> String {
-        var parts: [String] = []
-        let wc = profile.blockedWebsites.count
-        let ac = profile.blockedApps.count
-        if wc > 0 { parts.append("\(wc) website\(wc == 1 ? "" : "s")") }
-        if ac > 0 { parts.append("\(ac) app\(ac == 1 ? "" : "s")") }
-        if parts.isEmpty { return "No blocks configured" }
-        return parts.joined(separator: " · ")
+        Self.summary(apps: profile.blockedApps.count, sites: profile.blockedWebsites.count)
     }
 
     private func setDefault(_ profile: BlockProfile) {
-        for existing in profiles {
-            existing.isDefault = false
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
+            for existing in profiles {
+                existing.isDefault = false
+            }
+            profile.isDefault = true
         }
-        profile.isDefault = true
         saveWithFeedback(modelContext, errorBinding: $saveError)
     }
 }

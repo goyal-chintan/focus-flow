@@ -31,16 +31,19 @@ struct FocusCoachQuickPromptView: View {
                         .font(LiquidDesignTokens.Typography.labelMedium)
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
-                    Text(model.message)
-                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    if !model.message.isEmpty {
+                        Text(model.message)
+                            .font(.system(size: 11, weight: .regular, design: .rounded))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Spacer()
 
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
@@ -86,8 +89,9 @@ struct FocusCoachQuickPromptView: View {
                 Image(systemName: iconName(for: action))
                     .font(.system(size: 10, weight: .semibold))
                     .accessibilityHidden(true)
-                Text(action.displayName)
+                Text(isPrimary ? (model.primaryTitle ?? action.displayName) : action.displayName)
                     .font(LiquidDesignTokens.Typography.labelSmall)
+                    .lineLimit(1)
             }
             .padding(.horizontal, LiquidDesignTokens.Spacing.medium)
             .padding(.vertical, LiquidDesignTokens.Spacing.small)
@@ -112,7 +116,7 @@ struct FocusCoachQuickPromptView: View {
                 hoveredAction = hovering ? action : nil
             }
         }
-        .accessibilityLabel(action.displayName)
+        .accessibilityLabel(isPrimary ? (model.primaryTitle ?? action.displayName) : action.displayName)
     }
 
     private func iconName(for action: FocusCoachQuickAction) -> String {

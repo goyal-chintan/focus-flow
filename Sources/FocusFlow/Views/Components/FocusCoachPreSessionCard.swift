@@ -57,7 +57,7 @@ struct FocusCoachPreSessionCard: View {
                     }
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                         .accessibilityHidden(true)
                 }
@@ -134,11 +134,11 @@ struct FocusCoachPreSessionCard: View {
                     Spacer()
                     Text("High")
                 }
-                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.75))
 
-                Text("Higher effort tells coach to use a gentler ramp-up.")
-                    .font(.system(size: 9, weight: .regular, design: .rounded))
+                Text("Higher effort means the coach checks in sooner if you drift.")
+                    .font(.system(size: 10, weight: .regular, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.6))
             }
         }

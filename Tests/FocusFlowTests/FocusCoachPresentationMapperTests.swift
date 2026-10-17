@@ -52,9 +52,17 @@ final class FocusCoachPresentationMapperTests: XCTestCase {
         XCTAssertNil(model)
     }
 
-    func testSoftStripDecisionReturnsNil() {
-        let decision = FocusCoachDecision(kind: .softStrip, suggestedActions: [], message: nil)
+    func testPromptCopyComesFromComposer() {
+        let composed = CoachMessageComposer.compose(CoachComposerInput(
+            style: .gentle,
+            trigger: .startNudge,
+            facts: CoachFacts(),
+            target: CoachStartTarget(minutes: 25, name: "FocusFlow")
+        ))
+        let decision = FocusCoachDecision(kind: .strongPrompt, suggestedActions: [.startFocusNow], message: nil, composed: composed)
         let model = FocusCoachPresentationMapper.mapDecision(decision)
-        XCTAssertNil(model)
+        XCTAssertEqual(model?.title, "Ready for FocusFlow?")
+        XCTAssertEqual(model?.primaryTitle, "Start 25m on FocusFlow")
+        XCTAssertFalse(model?.title.contains("Guardrail") ?? true, "v1 fallback titles are retired")
     }
 }

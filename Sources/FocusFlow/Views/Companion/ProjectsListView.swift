@@ -1,17 +1,29 @@
 import SwiftUI
 import SwiftData
 
+/// Projects: master list on the left, this week's time, blocks and outcome mix on the right.
 struct ProjectsListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
     private var projects: [Project]
     @Query(filter: #Predicate<Project> { $0.archived }, sort: \Project.createdAt)
     private var archivedProjects: [Project]
+    @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
+    @Query private var allSettings: [AppSettings]
+    @Environment(\.companionNowOverride) private var nowOverride
+    @Query private var priorities: [WeeklyPriority]
 
-    @State private var selectedProject: Project?
-    @State private var showingAddSheet = false
+    @State private var selectedID: UUID?
+    @State private var showingForm = false
     @State private var editingProject: Project?
+    @State private var editingSession: FocusSession?
+    @State private var projectToArchive: Project?
+    @State private var showArchived = false
+    @State private var saveError: String?
+
     @State private var formName = ""
     @State private var formColor = "blue"
     @State private var formIcon = "folder.fill"
@@ -19,326 +31,186 @@ struct ProjectsListView: View {
     @State private var formWorkMode: WorkMode = .deepWork
     @State private var formGuardianSensitivity: GuardianSensitivity = .normal
     @State private var formDifficultyBias: DifficultyBias = .moderate
-    @State private var projectToArchive: Project?
-    @State private var saveError: String?
-    @State private var showArchivedSection = false
-    @State private var toastMessage: String?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private func showToast(_ message: String) {
-        withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { toastMessage = message }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(self.reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { toastMessage = nil }
-        }
+    private var selectedProject: Project? {
+        projects.first { $0.id == selectedID } ?? projects.first
     }
 
     var body: some View {
-        VStack(spacing: LiquidDesignTokens.Spacing.large) {
-            header
+        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, now: nowOverride ?? Date())
+        let weekTotals = snapshot.analytics.projectTotals(snapshot.samples, in: snapshot.thisWeek)
+
+        VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
+            FFPageHeader("Projects", subtitle: projects.isEmpty ? nil : "\(projects.count) active") {
+                Button {
+                    startCreate()
+                } label: {
+                    Label("New project", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+            }
 
             if projects.isEmpty {
-                emptyState
-            } else {
-                projectsContent
-            }
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.ultraThinMaterial)
-        .onAppear { initSelectedProject() }
-        .onChange(of: projects) { initSelectedProject() }
-        .sheet(isPresented: $showingAddSheet) {
-            projectFormSheet
-        }
-        .saveErrorOverlay($saveError)
-        .overlay(alignment: .top) {
-            if let toastMessage {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .accessibilityHidden(true)
-                    Text(toastMessage)
-                        .font(.system(size: 13, weight: .semibold))
+                FFSection {
+                    FFEmptyState(
+                        systemImage: "folder.badge.plus",
+                        message: "No projects yet",
+                        detail: "Projects colour your charts and let you see where the week went."
+                    )
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial, in: Capsule())
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
-                .padding(.top, 12)
-                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                Spacer(minLength: 0)
+            } else {
+                HStack(alignment: .top, spacing: FFSpace.l) {
+                    projectList(weekTotals: weekTotals)
+                        .frame(width: 232)
+                    if let project = selectedProject {
+                        ScrollView {
+                            ProjectDetail(
+                                project: project,
+                                snapshot: snapshot,
+                                sessions: sessions,
+                                priorities: priorities.map(PrioritySample.init),
+                                onEdit: { startEdit(project) },
+                                onArchive: { projectToArchive = project },
+                                onSelectSession: { editingSession = $0 }
+                            )
+                            .id(project.id)
+                            .transition(.opacity)
+                        }
+                        .scrollIndicators(.automatic)
+                    }
+                }
+                .animation(FFAnimation.gated(FFAnimation.page, reduceMotion: reduceMotion), value: selectedProject?.id)
             }
         }
+        .padding(FFSpace.page)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(isPresented: $showingForm) { projectForm }
+        .sheet(item: $editingSession) { SessionEditView(session: $0) }
+        .saveErrorOverlay($saveError)
         .confirmationDialog(
-            "Archive Project",
-            isPresented: Binding(
-                get: { projectToArchive != nil },
-                set: { if !$0 { projectToArchive = nil } }
-            ),
+            "Archive \(projectToArchive?.name ?? "project")?",
+            isPresented: Binding(get: { projectToArchive != nil }, set: { if !$0 { projectToArchive = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Archive", role: .destructive) {
-                if let project = projectToArchive {
-                    let name = project.name
-                    withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
-                        project.archived = true
-                        if timerVM.selectedProject?.id == project.id {
-                            timerVM.selectedProject = nil
-                        }
-                        if selectedProject?.id == project.id {
-                            selectedProject = projects.first(where: { $0.id != project.id })
-                        }
-                        saveWithFeedback(modelContext, errorBinding: $saveError)
-                    }
-                    projectToArchive = nil
-                    showToast("\(name) archived")
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                projectToArchive = nil
-            }
+            Button("Archive", role: .destructive) { archive() }
+            Button("Cancel", role: .cancel) { projectToArchive = nil }
         } message: {
-            Text("This will hide the project from active views. You can restore it from the Archived Projects section below.")
+            Text("It disappears from pickers and charts. Its sessions are kept and you can restore it below the list.")
         }
     }
 
-    // MARK: - Header
+    // MARK: - List
 
-    private var header: some View {
-        LiquidSectionHeader("Projects", subtitle: "\(projects.count) active") {
-            Button {
-                resetForm()
-                editingProject = nil
-                showingAddSheet = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
+    private func projectList(weekTotals: [FocusAnalytics.ProjectTotal]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(projects) { project in
+                let seconds = weekTotals.first { $0.project.projectUUID == project.id }?.seconds ?? 0
+                Button {
+                    selectedID = project.id
+                } label: {
+                    HStack(spacing: FFSpace.s) {
+                        Image(systemName: project.icon ?? "folder.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(FFPalette.project(project.color))
+                            .frame(width: 20)
+                            .accessibilityHidden(true)
+                        Text(project.name).ffText(.body).lineLimit(1)
+                        Spacer(minLength: FFSpace.xs)
+                        Text(seconds > 0 ? FFFormat.duration(seconds) : "—")
+                            .ffText(.caption)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, FFSpace.s)
+                    .frame(height: 30)
+                    .ffHoverRow(isSelected: project.id == selectedProject?.id)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(project.name), \(FFFormat.duration(seconds)) this week")
+                .accessibilityAddTraits(project.id == selectedProject?.id ? .isSelected : [])
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .help("Add project")
-            .accessibilityLabel("Add project")
-        }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-
-            Image(systemName: "folder.badge.plus")
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-
-            Text("No projects yet")
-                .font(.headline)
-            Text("Create your first project to organize your focus sessions")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Button {
-                resetForm()
-                editingProject = nil
-                showingAddSheet = true
-            } label: {
-                Label("Create Project", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: 200)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-            .padding(.top, 4)
-
-            Spacer()
-        }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Projects Content
-
-    private var projectsContent: some View {
-        VStack(spacing: LiquidDesignTokens.Spacing.large) {
-            if let selected = selectedProject {
-                heroCard(selected)
-                    .animation(reduceMotion ? nil : FFMotion.section, value: selected.id)
-            }
-
-            rosterSection
 
             if !archivedProjects.isEmpty {
-                archivedSection
-            }
-        }
-    }
-
-    // MARK: - Hero Card
-
-    private func heroCard(_ project: Project) -> some View {
-        LiquidGlassPanel(cornerRadius: 16) {
-            HStack(spacing: 18) {
-                heroIcon(project)
-                heroDetails(project)
-                Spacer(minLength: 0)
-                heroActions(project)
-            }
-            .padding(20)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(colorFromName(project.color).opacity(0.08))
-            )
-        }
-    }
-
-    private func heroIcon(_ project: Project) -> some View {
-        ZStack {
-            Circle()
-                .fill(colorFromName(project.color).opacity(0.2))
-                .frame(width: 64, height: 64)
-            Image(systemName: project.icon ?? "folder.fill")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(colorFromName(project.color))
-                .accessibilityHidden(true)
-        }
-    }
-
-    private func heroDetails(_ project: Project) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(project.name)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                .lineLimit(1)
-
-            Text(heroStatsText(for: project))
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            if project.effectiveBlockProfiles.isEmpty == false {
-                Text(blockProfileSummary(for: project))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.06))
-                    )
-            }
-        }
-    }
-
-    private func heroActions(_ project: Project) -> some View {
-        VStack(spacing: 6) {
-            Button {
-                formName = project.name
-                formColor = project.color
-                formIcon = project.icon ?? "folder.fill"
-                formBlockProfiles = project.effectiveBlockProfiles
-                formWorkMode = project.workMode
-                formGuardianSensitivity = project.guardianSensitivity
-                formDifficultyBias = project.difficultyBias
-                editingProject = project
-                showingAddSheet = true
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Edit project")
-            .accessibilityLabel("Edit \(project.name)")
-
-            Button {
-                projectToArchive = project
-            } label: {
-                Image(systemName: "archivebox")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Archive project")
-            .accessibilityLabel("Archive \(project.name)")
-        }
-    }
-
-    // MARK: - Roster
-
-    private var rosterSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            if projects.count > 1 {
-                Text("All Projects")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 4)
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(projects) { project in
-                        rosterCard(project)
+                Divider().padding(.vertical, FFSpace.s)
+                Button {
+                    withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { showArchived.toggle() }
+                } label: {
+                    HStack {
+                        Text("Archived (\(archivedProjects.count))").ffText(.callout)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showArchived ? 90 : 0))
                     }
+                    .padding(.horizontal, FFSpace.s)
+                    .frame(height: 30)
+                    .ffHoverRow()
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 4)
-            }
-            .scrollTargetBehavior(.viewAligned)
-        }
-    }
+                .buttonStyle(.plain)
 
-    private func rosterCard(_ project: Project) -> some View {
-        let isSelected = selectedProject?.id == project.id
-        let sessionCount = project.sessions.filter { $0.type == .focus && $0.completed }.count
-
-        return VStack(spacing: 8) {
-            Image(systemName: project.icon ?? "folder.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(colorFromName(project.color))
-                .accessibilityHidden(true)
-
-            Text(project.name)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                .lineLimit(1)
-
-            Text("\(sessionCount)")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: 120, height: 90)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(
-                    isSelected ? LiquidDesignTokens.Spectral.primaryContainer.opacity(0.5) : Color.white.opacity(0.06),
-                    lineWidth: isSelected ? 2 : 0.5
-                )
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 12))
-        .onTapGesture {
-            withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
-                selectedProject = project
-                timerVM.selectedProject = project
-                timerVM.noteProjectSelected()
+                if showArchived {
+                    ForEach(archivedProjects) { project in
+                        HStack(spacing: FFSpace.s) {
+                            Text(project.name).ffText(.callout).lineLimit(1)
+                            Spacer()
+                            Button("Restore") { restore(project) }
+                                .buttonStyle(.link)
+                                .font(FFTextStyle.caption.font)
+                        }
+                        .padding(.horizontal, FFSpace.s)
+                        .frame(height: 28)
+                    }
+                    .transition(.opacity)
+                }
             }
         }
-        .accessibilityLabel("\(project.name), \(sessionCount) sessions")
-        .accessibilityAddTraits(.isButton)
+        .padding(FFSpace.s - 2)
+        .ffSurface()
     }
 
-    // MARK: - Form Sheet
+    // MARK: - Actions
 
-    private var projectFormSheet: some View {
+    private func startCreate() {
+        formName = ""
+        formColor = "blue"
+        formIcon = "folder.fill"
+        formBlockProfiles = []
+        formWorkMode = .deepWork
+        formGuardianSensitivity = .normal
+        formDifficultyBias = .moderate
+        editingProject = nil
+        showingForm = true
+    }
+
+    private func startEdit(_ project: Project) {
+        formName = project.name
+        formColor = project.color
+        formIcon = project.icon ?? "folder.fill"
+        formBlockProfiles = project.effectiveBlockProfiles
+        formWorkMode = project.workMode
+        formGuardianSensitivity = project.guardianSensitivity
+        formDifficultyBias = project.difficultyBias
+        editingProject = project
+        showingForm = true
+    }
+
+    private func archive() {
+        guard let project = projectToArchive else { return }
+        project.archived = true
+        if timerVM.selectedProject?.id == project.id { timerVM.selectedProject = nil }
+        if selectedID == project.id { selectedID = projects.first { $0.id != project.id }?.id }
+        saveWithFeedback(modelContext, errorBinding: $saveError)
+        projectToArchive = nil
+    }
+
+    private func restore(_ project: Project) {
+        project.archived = false
+        saveWithFeedback(modelContext, errorBinding: $saveError)
+        selectedID = project.id
+    }
+
+    private var projectForm: some View {
         ProjectFormView(
             name: $formName,
             color: $formColor,
@@ -349,187 +221,158 @@ struct ProjectsListView: View {
             difficultyBias: $formDifficultyBias,
             title: editingProject == nil ? "New Project" : "Edit Project"
         ) {
-            var savedProject: Project?
-            let isNew = editingProject == nil
+            let profiles = deduplicated(formBlockProfiles)
+            let target: Project
             if let editing = editingProject {
-                editing.name = formName.trimmingCharacters(in: .whitespaces)
-                editing.color = formColor
-                editing.icon = formIcon
-                editing.blockProfiles = deduplicatedProfiles(formBlockProfiles)
-                editing.blockProfile = editing.blockProfiles.first
-                editing.workMode = formWorkMode
-                editing.guardianSensitivity = formGuardianSensitivity
-                editing.difficultyBias = formDifficultyBias
-                savedProject = editing
+                target = editing
             } else {
-                let project = Project(
-                    name: formName.trimmingCharacters(in: .whitespaces),
-                    color: formColor,
-                    icon: formIcon
-                )
-                project.blockProfiles = deduplicatedProfiles(formBlockProfiles)
-                project.blockProfile = project.blockProfiles.first
-                project.workMode = formWorkMode
-                project.guardianSensitivity = formGuardianSensitivity
-                project.difficultyBias = formDifficultyBias
-                modelContext.insert(project)
-                savedProject = project
+                target = Project(name: "", color: formColor, icon: formIcon)
+                modelContext.insert(target)
             }
+            target.name = formName.trimmingCharacters(in: .whitespaces)
+            target.color = formColor
+            target.icon = formIcon
+            target.blockProfiles = profiles
+            target.blockProfile = profiles.first
+            target.workMode = formWorkMode
+            target.guardianSensitivity = formGuardianSensitivity
+            target.difficultyBias = formDifficultyBias
             saveWithFeedback(modelContext, errorBinding: $saveError)
-            if let savedProject {
-                timerVM.selectedProject = savedProject
+            if editingProject == nil {
+                timerVM.selectedProject = target
                 timerVM.noteProjectSelected()
-                selectedProject = savedProject
-                showToast(isNew ? "\(savedProject.name) created" : "\(savedProject.name) updated")
             }
+            selectedID = target.id
         }
     }
 
-    // MARK: - Archived Projects
+    private func deduplicated(_ profiles: [BlockProfile]) -> [BlockProfile] {
+        var seen = Set<UUID>()
+        return profiles.filter { seen.insert($0.id).inserted }
+    }
+}
 
-    private var archivedSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { showArchivedSection.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "archivebox")
-                        .font(.system(size: 11, weight: .medium))
-                    Text("Archived Projects (\(archivedProjects.count))")
-                        .font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Image(systemName: showArchivedSection ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
+// MARK: - Detail
+
+private struct ProjectDetail: View {
+    let project: Project
+    let snapshot: CompanionSnapshot
+    let sessions: [FocusSession]
+    let priorities: [PrioritySample]
+    let onEdit: () -> Void
+    let onArchive: () -> Void
+    let onSelectSession: (FocusSession) -> Void
+
+    @State private var selectedDay: Date?
+
+    private var key: AnalyticsProjectKey { AnalyticsProjectKey(project: project, customLabel: nil) }
+    private var color: Color { FFPalette.project(project.color) }
+
+    var body: some View {
+        let analytics = snapshot.analytics
+        let projectSamples = snapshot.samples.filter { sample in sample.normalisedShares.contains { $0.project == key } }
+        let weekDays = weekDays(analytics)
+        let weekSeconds = weekDays.reduce(0) { $0 + $1.seconds }
+        let weekSessions = sessions
+            .filter { $0.type == .focus && $0.actualDuration >= 60 && $0.effectiveEnd > snapshot.thisWeek.start && $0.startedAt < snapshot.thisWeek.end }
+            .filter { session in FocusSample(session).normalisedShares.contains { $0.project == key } }
+            .sorted { $0.startedAt > $1.startedAt }
+        let allTime = projectSamples.reduce(0) { total, sample in
+            total + sample.activeSeconds * (sample.normalisedShares.first { $0.project == key }?.fraction ?? 0)
+        }
+        let mix = analytics.outcomeMix(projectSamples.filter { $0.project == key })
+        let linked = priorities.filter { $0.projectID == project.id && snapshot.thisWeek.contains($0.weekStart) }
+
+        VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
+            header(linked: linked)
+
+            HStack(alignment: .top, spacing: FFSpace.l) {
+                FFStat(label: "This week", value: FFFormat.duration(weekSeconds), caption: "\(weekSessions.count) block\(weekSessions.count == 1 ? "" : "s")")
+                Divider()
+                FFStat(
+                    label: "Daily average",
+                    value: FFFormat.duration(weekSeconds / Double(max(1, daysElapsedThisWeek(analytics)))),
+                    caption: "This week so far"
+                )
+                Divider()
+                FFStat(label: "All time", value: FFFormat.duration(allTime), caption: "\(projectSamples.count) blocks")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Toggle archived projects")
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(FFSpace.l)
+            .ffSurface()
 
-            if showArchivedSection {
-                LiquidGlassPanel(cornerRadius: 12) {
-                    VStack(spacing: 0) {
-                        ForEach(archivedProjects) { project in
-                            archivedRow(project)
-                            if project.id != archivedProjects.last?.id {
-                                Divider().opacity(0.3)
-                            }
+            FFSection("This week", subtitle: "Daily focus on \(project.name)") {
+                DailyFocusChart(
+                    days: weekDays,
+                    goal: snapshot.goal,
+                    colors: ProjectColorScale([key]),
+                    singleColor: color,
+                    showGoal: false,
+                    selectedDay: $selectedDay,
+                    height: 170
+                )
+            }
+
+            FFSection("Real work vs busywork", subtitle: mix.ratedCount > 0 ? "\(mix.ratedCount) rated blocks, all time" : nil) {
+                if mix.ratedCount == 0 {
+                    FFEmptyState(systemImage: "checklist", message: "Rate your sessions after each block to see this")
+                } else {
+                    OutcomeMixBar(mix: mix)
+                }
+            }
+
+            FFSection("Blocks this week") {
+                if weekSessions.isEmpty {
+                    FFEmptyState(systemImage: "tray", message: "No blocks on \(project.name) this week")
+                } else {
+                    VStack(spacing: 2) {
+                        ForEach(weekSessions) { session in
+                            SessionRow(session: session) { onSelectSession(session) }
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, -FFSpace.s)
                 }
-                .transition(.opacity)
             }
         }
     }
 
-    private func archivedRow(_ project: Project) -> some View {
-        HStack(spacing: 12) {
+    private func header(linked: [PrioritySample]) -> some View {
+        HStack(alignment: .center, spacing: FFSpace.m) {
             Image(systemName: project.icon ?? "folder.fill")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(colorFromName(project.color).opacity(0.7))
-                .frame(width: 28, height: 28)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(color.opacity(0.16)))
                 .accessibilityHidden(true)
-
-            Text(project.name)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Spacer()
-
-            Button {
-                let name = project.name
-                withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) {
-                    project.archived = false
-                    saveWithFeedback(modelContext, errorBinding: $saveError)
-                    if selectedProject == nil {
-                        selectedProject = project
-                    }
-                }
-                showToast("\(name) restored")
-            } label: {
-                Label("Restore", systemImage: "arrow.uturn.backward")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(project.name).ffText(.title3).lineLimit(1)
+                Text(headerCaption(linked: linked)).ffText(.caption).lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Restore \(project.name)")
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    // MARK: - Helpers
-
-    private func initSelectedProject() {
-        if selectedProject == nil || !(projects.contains(where: { $0.id == selectedProject?.id })) {
-            selectedProject = projects.first
+            Spacer(minLength: FFSpace.s)
+            Button("Edit", action: onEdit).buttonStyle(.bordered)
+            Button("Archive", action: onArchive).buttonStyle(.bordered)
         }
     }
 
-    private func heroStatsText(for project: Project) -> String {
-        let focusSessions = project.sessions.filter { $0.type == .focus && $0.completed }
-        let count = focusSessions.count
-
-        let calendar = Calendar.current
-        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
-        let weekSeconds = focusSessions
-            .filter { $0.startedAt >= startOfWeek }
-            .reduce(0.0) { $0 + ($1.endedAt?.timeIntervalSince($1.startedAt) ?? $1.duration) }
-        let hours = weekSeconds / 3600.0
-
-        if count == 0 { return "No sessions yet" }
-        let sessionLabel = "\(count) session\(count == 1 ? "" : "s")"
-        let hourLabel = String(format: "%.1f hr\(hours >= 2 ? "s" : "") this week", hours)
-        return "\(sessionLabel) · \(hourLabel)"
+    private func headerCaption(linked: [PrioritySample]) -> String {
+        var parts: [String] = []
+        if !linked.isEmpty { parts.append("Serves " + linked.map(\.title).joined(separator: ", ")) }
+        let profiles = project.effectiveBlockProfiles.map(\.name)
+        if !profiles.isEmpty { parts.append("Blocks with " + profiles.joined(separator: ", ")) }
+        if parts.isEmpty { parts.append("No blocking profile") }
+        return parts.joined(separator: " · ")
     }
 
-    private func resetForm() {
-        formName = ""
-        formColor = "blue"
-        formIcon = "folder.fill"
-        formBlockProfiles = []
-        formWorkMode = .deepWork
-        formGuardianSensitivity = .normal
-        formDifficultyBias = .moderate
-    }
-
-    private func blockProfileSummary(for project: Project) -> String {
-        let names = project.effectiveBlockProfiles.map(\.name)
-        if names.count == 1 {
-            return "🛡️ \(names[0])"
+    private func weekDays(_ analytics: FocusAnalytics) -> [FocusAnalytics.DayTotal] {
+        let start = snapshot.thisWeek.start
+        let days = (0..<7).compactMap { analytics.calendar.date(byAdding: .day, value: $0, to: start) }
+        return analytics.dailyTotals(snapshot.samples, days: days).map { day in
+            let slice = day.byProject.first { $0.project == key }
+            return FocusAnalytics.DayTotal(day: day.day, seconds: slice?.seconds ?? 0, blocks: slice == nil ? 0 : 1, byProject: slice.map { [$0] } ?? [])
         }
-        return "🛡️ \(names.count) profiles"
     }
 
-    private func deduplicatedProfiles(_ profiles: [BlockProfile]) -> [BlockProfile] {
-        var seen = Set<UUID>()
-        var unique: [BlockProfile] = []
-        for profile in profiles {
-            if seen.insert(profile.id).inserted {
-                unique.append(profile)
-            }
-        }
-        return unique
-    }
-
-    private func colorFromName(_ name: String) -> Color {
-        switch name {
-        case "blue": return .blue
-        case "indigo": return .indigo
-        case "purple": return .purple
-        case "pink": return .pink
-        case "red": return .red
-        case "orange": return .orange
-        case "yellow": return .yellow
-        case "green": return .green
-        case "teal": return .teal
-        case "mint": return .mint
-        default: return .blue
-        }
+    private func daysElapsedThisWeek(_ analytics: FocusAnalytics) -> Int {
+        (analytics.calendar.dateComponents([.day], from: snapshot.thisWeek.start, to: snapshot.now).day ?? 0) + 1
     }
 }

@@ -38,24 +38,6 @@ final class FocusCoachInterventionPlannerTests: XCTestCase {
         XCTAssertEqual(surface, .quickPrompt)
     }
 
-    func testIdleStarterRequiresBothConfidenceAndOpportunity() {
-        XCTAssertTrue(planner.shouldShowIdleStarter(
-            driftConfidence: 0.78,
-            focusOpportunity: 0.72,
-            mode: .balanced
-        ))
-        XCTAssertFalse(planner.shouldShowIdleStarter(
-            driftConfidence: 0.78,
-            focusOpportunity: 0.3,
-            mode: .balanced
-        ))
-        XCTAssertFalse(planner.shouldShowIdleStarter(
-            driftConfidence: 0.4,
-            focusOpportunity: 0.8,
-            mode: .balanced
-        ))
-    }
-
     func testRouteStrongDecisionToStrongWindow() {
         let routing = planner.routeActiveDecision(
             FocusCoachDecision(
@@ -90,94 +72,6 @@ final class FocusCoachInterventionPlannerTests: XCTestCase {
         XCTAssertEqual(routing.quickPromptDecision?.kind, .quickPrompt)
         XCTAssertNil(routing.strongWindowDecision)
         XCTAssertFalse(routing.didConsumeStrongBudget)
-    }
-
-    func testRouteIdleStarterIncludesStartAndSkipActionsWhenEnabled() {
-        let route = planner.routeIdleStarter(
-            driftConfidence: 0.82,
-            focusOpportunity: 0.78,
-            mode: .balanced,
-            allowSkipAction: true
-        )
-
-        XCTAssertTrue(route.shouldPresent)
-        XCTAssertEqual(route.decision?.kind, .quickPrompt)
-        XCTAssertTrue(route.decision?.suggestedActions.contains(.startFocusNow) == true)
-        XCTAssertTrue(route.decision?.suggestedActions.contains(.skipCheck) == true)
-    }
-
-    func testRouteIdleStarterChallengeSuppressesWithoutConfidenceOrPattern() {
-        let route = planner.routeIdleStarter(
-            driftConfidence: 0.72,
-            focusOpportunity: 0.78,
-            mode: .balanced,
-            allowSkipAction: true,
-            engagementMode: .adaptive,
-            guardianState: .challenge,
-            isInReleaseWindow: false,
-            workIntentSignal: WorkIntentSignal(
-                openedAppRecently: true,
-                selectedProjectRecently: true,
-                recentlyAbandonedStart: false,
-                withinTypicalWorkHours: false,
-                matchesHistoricalMissedStart: false
-            ),
-            repeatedProjectPattern: false
-        )
-
-        XCTAssertFalse(route.shouldPresent)
-        XCTAssertNil(route.decision)
-    }
-
-    func testRouteIdleStarterChallengeAllowsRepeatedPatternEvenWithoutHighDrift() {
-        let route = planner.routeIdleStarter(
-            driftConfidence: 0.72,
-            focusOpportunity: 0.78,
-            mode: .balanced,
-            allowSkipAction: true,
-            engagementMode: .adaptive,
-            guardianState: .challenge,
-            isInReleaseWindow: false,
-            workIntentSignal: WorkIntentSignal(
-                openedAppRecently: true,
-                selectedProjectRecently: true,
-                recentlyAbandonedStart: false,
-                withinTypicalWorkHours: false,
-                matchesHistoricalMissedStart: false
-            ),
-            repeatedProjectPattern: true
-        )
-
-        XCTAssertTrue(route.shouldPresent)
-        XCTAssertEqual(route.decision?.kind, .quickPrompt)
-    }
-
-    func testRouteIdleStarterLowersThresholdForMajorDistraction() {
-        // At 5 minutes (driftConfidence ≈ 0.467) the normal balanced threshold (0.55) blocks
-        // the alert. When distractionSeverity is .major the threshold must drop to ~0.35 so
-        // the user gets an alert at the first nudge instead of waiting ~10 minutes.
-        let route = planner.routeIdleStarter(
-            driftConfidence: 0.467,
-            focusOpportunity: 0.65,
-            mode: .balanced,
-            allowSkipAction: true,
-            distractionSeverity: .major
-        )
-
-        XCTAssertTrue(route.shouldPresent, "Major distraction should fire at 5-min drift confidence (0.467).")
-        XCTAssertNotNil(route.decision)
-    }
-
-    func testRouteIdleStarterNormalThresholdWithoutSeverity() {
-        // Without a severity override, 0.467 drift confidence stays below 0.55 → suppressed.
-        let route = planner.routeIdleStarter(
-            driftConfidence: 0.467,
-            focusOpportunity: 0.65,
-            mode: .balanced,
-            allowSkipAction: true
-        )
-
-        XCTAssertFalse(route.shouldPresent, "Without severity override, 0.467 drift must not fire.")
     }
 
     func testRouteActiveDecisionAddsSkipActionWhenEnabled() {

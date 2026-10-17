@@ -52,12 +52,14 @@ final class AppUsageEntryClassificationTests: XCTestCase {
         XCTAssertNil(target)
     }
 
-    func testRecommendedBlockTargetFallsBackToBundleForDerailerCandidate() {
+    /// Coach v2 W2: AI and chat tools are work tools for many users, so there is no hardcoded
+    /// app derailer fallback any more.
+    func testRecommendedBlockTargetHasNoHardcodedAppDerailerFallback() {
         let target = AppUsageEntry.recommendedBlockTarget(
             bundleIdentifier: "com.openai.chatgpt",
             appName: "ChatGPT"
         )
-        XCTAssertEqual(target, "app:com.openai.chatgpt")
+        XCTAssertNil(target)
     }
 
     func testRecommendedBlockTargetDoesNotFallbackToBrowserAppTarget() {

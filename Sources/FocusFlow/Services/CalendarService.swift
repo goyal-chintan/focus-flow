@@ -161,7 +161,72 @@ final class CalendarService {
         }
     }
 
+    // MARK: - Availability (coach input)
+
+    private var cachedAvailability: (computedAt: Date, value: CalendarAvailability)?
+
+    /// Busy state and next event start from the user's calendars, for the coach idle path.
+    /// Skips all-day, free, cancelled and declined events, and FocusFlow's own session log.
+    /// Returns `.unknown` without calendar access. Cached for 60 s because the idle path runs often.
+    func availability(
+        at now: Date = Date(),
+        excludingCalendarId: String? = nil,
+        excludingCalendarName: String? = nil
+    ) -> CalendarAvailability {
+        guard authStatus == .authorized else { return .unknown }
+        if let cached = cachedAvailability, abs(now.timeIntervalSince(cached.computedAt)) < 60 {
+            return cached.value
+        }
+        let lookahead = CalendarAvailability.lookaheadSeconds
+        let predicate = store.predicateForEvents(
+            withStart: now.addingTimeInterval(-lookahead),
+            end: now.addingTimeInterval(lookahead),
+            calendars: nil
+        )
+        let busyIntervals = store.events(matching: predicate).compactMap { event -> DateInterval? in
+            guard !event.isAllDay,
+                  event.availability != .free,
+                  event.status != .canceled,
+                  let start = event.startDate,
+                  let end = event.endDate,
+                  end > start else { return nil }
+            if let calendar = event.calendar {
+                if let excludingCalendarId, !excludingCalendarId.isEmpty,
+                   calendar.calendarIdentifier == excludingCalendarId { return nil }
+                if let excludingCalendarName, calendar.title == excludingCalendarName { return nil }
+            }
+            if event.attendees?.first(where: { $0.isCurrentUser })?.participantStatus == .declined {
+                return nil
+            }
+            return DateInterval(start: start, end: end)
+        }
+        let value = CalendarAvailability.compute(busyIntervals: busyIntervals, now: now)
+        cachedAvailability = (now, value)
+        return value
+    }
+
     private func log(_ message: String) {
         print("[CalendarService] \(message)")
+    }
+}
+
+/// Calendar state at one moment, as the coach needs it.
+struct CalendarAvailability: Equatable, Sendable {
+    /// True when a busy event covers `now`.
+    let isBusyNow: Bool
+    /// Whole minutes until the next busy event starts, within the lookahead; nil when none.
+    let minutesUntilNextEvent: Int?
+
+    static let unknown = CalendarAvailability(isBusyNow: false, minutesUntilNextEvent: nil)
+    static let lookaheadSeconds: TimeInterval = 12 * 60 * 60
+
+    static func compute(busyIntervals: [DateInterval], now: Date) -> CalendarAvailability {
+        let isBusyNow = busyIntervals.contains { $0.start <= now && now < $0.end }
+        let nextStart = busyIntervals
+            .map(\.start)
+            .filter { $0 > now && $0.timeIntervalSince(now) <= lookaheadSeconds }
+            .min()
+        let minutes = nextStart.map { Int($0.timeIntervalSince(now) / 60) }
+        return CalendarAvailability(isBusyNow: isBusyNow, minutesUntilNextEvent: minutes)
     }
 }

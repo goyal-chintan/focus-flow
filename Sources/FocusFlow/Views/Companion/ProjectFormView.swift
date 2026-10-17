@@ -231,7 +231,7 @@ struct ProjectFormView: View {
 
     private var guardianSensitivitySection: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Guardian Sensitivity")
+            sectionLabel("Coach Sensitivity")
 
             Menu {
                 ForEach(GuardianSensitivity.allCases, id: \.self) { sensitivity in

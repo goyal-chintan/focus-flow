@@ -3,70 +3,493 @@ import SwiftData
 import ServiceManagement
 import CoreGraphics
 
+// MARK: - Settings scene root
+
+/// Tabs of the Settings scene (⌘,), shown in FocusFlow's own toolbar tab bar.
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general
+    case timer
+    case coach
+    case distractions
+    /// Shown as "Permissions". The raw value stays "integrations" so stored selections and
+    /// `settingsRequestedTab` values from earlier builds still resolve.
+    case integrations
+
+    /// UserDefaults key that remembers the last selected tab.
+    static let storageKey = "settingsSelectedTab"
+    /// One-shot UserDefaults key: a raw tab value that opens Settings on that tab, then is cleared.
+    static let requestedTabKey = "settingsRequestedTab"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .timer: "Timer"
+        case .coach: "Coach"
+        case .distractions: "Distractions"
+        case .integrations: "Permissions"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: "gearshape"
+        case .timer: "timer"
+        case .coach: "brain.head.profile"
+        case .distractions: "hand.raised"
+        case .integrations: "lock.shield"
+        }
+    }
+
+    /// Position in the tab bar (0-based). Drives the slide direction and the ⌘1–⌘5 shortcuts.
+    var order: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+
+    /// Reads and clears the one-shot `settingsRequestedTab` request. Returns nil when there is
+    /// no request or the value is not a known tab (an unknown value is cleared as well).
+    static func consumeRequestedTab(from defaults: UserDefaults = .standard) -> SettingsTab? {
+        guard let raw = defaults.string(forKey: requestedTabKey) else { return nil }
+        defaults.removeObject(forKey: requestedTabKey)
+        return SettingsTab(rawValue: raw)
+    }
+}
+
+/// Root of the `Settings` scene: a custom toolbar tab bar plus one content container keyed by
+/// the selected tab, so tab switches cross-fade with a short directional slide. The native
+/// `TabView` swaps hosting controllers and cannot animate, which is why it is not used here.
 struct SettingsView: View {
     enum ScrollTarget {
         case integrations
         case domainTracking
     }
 
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.openWindow) private var openWindow
-    @Environment(TimerViewModel.self) private var timerVM
-    @Query private var allSettings: [AppSettings]
-    @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
-    @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
-    @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
-    @State private var isLoadingCalendars = false
-    @State private var calendarLoadError: String?
-    @State private var isLoadingReminderLists = false
-    @State private var reminderLoadError: String?
-    @State private var reminderAuthError: String?
-    @State private var isRequestingNotificationPermission = false
+    /// The persisted selection. Tab bar clicks, ⌘1–⌘5, `settingsRequestedTab` and other views
+    /// (Distractions links here) all write this; `shownTab` follows it with animation.
+    @AppStorage(SettingsTab.storageKey) private var selectedTab: SettingsTab = .general
+    /// The tab on screen. Changes one update after `slideDirection`, so the outgoing page
+    /// already carries the new direction when it is removed.
+    @State private var shownTab: SettingsTab
+    @State private var pendingTab: SettingsTab?
+    @State private var slideDirection: SettingsTabSlideDirection = .forward
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var saveError: String?
-    @State private var isEnablingCalendar = false
-    @State private var isEnablingReminders = false
-    @State private var showBlockingSheet = false
-    @State private var permissionHealthRows: [PermissionHealthRow] = []
-    @State private var permissionHealthRefreshToken = 0
-    @StateObject private var notificationService = NotificationService.shared
+
     private let initialScrollTarget: ScrollTarget?
-    private let permissionHealthExpectedTitles = [
-        "Notifications",
-        "Calendar",
-        "Reminders",
-        "Browser Automation",
-        "Screen Recording"
-    ]
 
     init(initialScrollTarget: ScrollTarget? = nil) {
         self.initialScrollTarget = initialScrollTarget
+        let stored = UserDefaults.standard.string(forKey: SettingsTab.storageKey).flatMap(SettingsTab.init(rawValue:))
+        _shownTab = State(initialValue: initialScrollTarget != nil ? .integrations : (stored ?? .general))
     }
 
-    private var settings: AppSettings {
-        allSettings.first ?? AppSettings()
+    var body: some View {
+        SettingsTabContainer(
+            tab: shownTab,
+            direction: slideDirection,
+            reduceMotion: reduceMotion,
+            initialScrollTarget: initialScrollTarget
+        )
+        .background {
+            SettingsTabShortcuts(selection: $selectedTab)
+        }
+        .navigationTitle(shownTab.title)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                SettingsTabBar(selection: shownTab) { selectedTab = $0 }
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+        .onChange(of: selectedTab) { _, newValue in
+            requestShow(newValue)
+        }
+        .onChange(of: pendingTab) { _, newValue in
+            // Second step: the direction is already applied to the outgoing page.
+            guard let newValue else { return }
+            pendingTab = nil
+            shownTab = newValue
+        }
+        .onAppear {
+            if initialScrollTarget != nil {
+                selectedTab = .integrations
+            } else if selectedTab != shownTab {
+                shownTab = selectedTab
+            }
+            applyRequestedTabIfNeeded()
+        }
+        // Settings may already be open when the weekly-priorities invite writes the request.
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            applyRequestedTabIfNeeded()
+        }
+    }
+
+    /// First step of a tab switch: set the slide direction, then show the tab on the next update.
+    private func requestShow(_ tab: SettingsTab) {
+        guard tab != shownTab else { return }
+        slideDirection = SettingsTabSlideDirection(from: shownTab, to: tab)
+        pendingTab = tab
+    }
+
+    /// Opens the tab a caller requested through `settingsRequestedTab` (the weekly-priorities
+    /// invite writes "coach"), then clears the key so the request happens once. The switch goes
+    /// through `selectedTab`, so it animates like a click.
+    private func applyRequestedTabIfNeeded() {
+        guard let requested = SettingsTab.consumeRequestedTab() else { return }
+        selectedTab = requested
+    }
+
+    // MARK: Domain tracking recovery (pure logic, unit tested)
+
+    static func hasValidCapturedBrowserDomains(in entries: [AppUsageEntry]) -> Bool {
+        entries.contains { entry in
+            CompanionAnalyticsBuilder.validPersistedDomainHost(for: entry.bundleIdentifier) != nil
+            && (entry.duringFocusSeconds > 0 || entry.outsideFocusSeconds > 0)
+        }
+    }
+
+    static func domainTrackingRecoveryState(
+        collectRawDomains: Bool,
+        hasCapturedBrowserDomains: Bool,
+        frontmostBundleIdentifier: String?,
+        screenRecordingAccess: Bool,
+        automationStatusProvider: (String?) -> PermissionHealthStatus?
+    ) -> DomainTrackingRecoveryState? {
+        if collectRawDomains == false {
+            return .disabled
+        }
+
+        guard !hasCapturedBrowserDomains else { return nil }
+
+        if let frontmostBundleId = frontmostBundleIdentifier,
+           AppUsageEntry.isBrowserBundleIdentifier(frontmostBundleId) {
+            if BrowserDomainResolver.supports(bundleIdentifier: frontmostBundleId) {
+                if automationStatusProvider(frontmostBundleId) != .ready {
+                    return .automationUnavailable
+                }
+            } else if !screenRecordingAccess {
+                return .screenRecordingUnavailable
+            }
+        }
+
+        return .awaitingFirstCapture
+    }
+}
+
+// MARK: - Tab content
+
+/// The content of one Settings tab. Used by the scene and by the evidence renders.
+struct SettingsTabContent: View {
+    let tab: SettingsTab
+    var initialScrollTarget: SettingsView.ScrollTarget? = nil
+
+    var body: some View {
+        switch tab {
+        case .general: GeneralSettingsTab()
+        case .timer: TimerSettingsTab()
+        case .coach: CoachSettingsTab()
+        case .distractions: DistractionsView()
+        case .integrations: IntegrationsSettingsTab(initialScrollTarget: initialScrollTarget)
+        }
+    }
+}
+
+// MARK: - Shared helpers
+
+enum SystemSettingsLink {
+    static func open(_ urlString: String) {
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    static func notifications() { open("x-apple.systempreferences:com.apple.Notifications-Settings") }
+    static func calendars() { open("x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") }
+    static func reminders() { open("x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders") }
+    static func automation() { open("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") }
+    static func screenRecording() { open("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") }
+}
+
+/// Brings the Settings window back to the front after a system permission prompt took focus.
+@MainActor
+func restoreSettingsWindow() {
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        if let window = NSApp.windows.first(where: {
+            $0.isVisible && ($0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true)
+        }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+}
+
+// MARK: - General
+
+private struct GeneralSettingsTab: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allSettings: [AppSettings]
+    @State private var saveError: String?
+    @State private var loginItemStatus: SMAppService.Status = SMAppService.mainApp.status
+    @State private var loginItemError: String?
+
+    private var settings: AppSettings { allSettings.first ?? AppSettings() }
+    private var bind: SettingsBinder {
+        SettingsBinder(settings: settings) { saveWithFeedback(modelContext, errorBinding: $saveError) }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Open FocusFlow at login", isOn: Binding(
+                    get: { loginItemStatus == .enabled || loginItemStatus == .requiresApproval },
+                    set: { setLaunchAtLogin($0) }
+                ))
+
+                if loginItemStatus == .requiresApproval {
+                    LabeledContent("macOS needs your approval in Login Items.") {
+                        Button("Open Login Items") {
+                            SMAppService.openSystemSettingsLoginItems()
+                        }
+                    }
+                }
+
+                if let loginItemError {
+                    Text(loginItemError)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Startup")
+            }
+
+            Section {
+                SettingsStepperRow(
+                    title: "Personal focus goal",
+                    valueText: settingsGoalText(minutes: focusGoalMinutes),
+                    value: Binding(
+                        get: { focusGoalMinutes },
+                        set: { newValue in
+                            settings.dailyFocusGoal = TimeInterval(newValue * 60)
+                            // Stretch always sits at or above the personal goal.
+                            if settings.dailyStretchGoal < settings.dailyFocusGoal {
+                                settings.dailyStretchGoal = settings.dailyFocusGoal
+                            }
+                            save()
+                        }
+                    ),
+                    range: 30...480,
+                    step: 15
+                )
+                SettingsStepperRow(
+                    title: "Stretch goal",
+                    valueText: settingsGoalText(minutes: stretchGoalMinutes),
+                    value: Binding(
+                        get: { stretchGoalMinutes },
+                        set: { settings.dailyStretchGoal = TimeInterval($0 * 60); save() }
+                    ),
+                    range: max(30, focusGoalMinutes)...600,
+                    step: 15
+                )
+            } header: {
+                Text("Daily goals")
+            } footer: {
+                Text("Stretch is the bonus target once the personal goal is met.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Resume after a short sleep", isOn: bind(\.autoResumeOnWake))
+
+                if settings.autoResumeOnWake {
+                    SettingsStepperRow(
+                        title: "Short sleep is under",
+                        valueText: settingsMinutesText(settings.autoResumeThresholdSeconds / 60),
+                        value: Binding(
+                            get: { settings.autoResumeThresholdSeconds / 60 },
+                            set: { settings.autoResumeThresholdSeconds = $0 * 60; save() }
+                        ),
+                        range: 1...10
+                    )
+                }
+
+                SettingsStepperRow(
+                    title: "End the session after sleeping",
+                    valueText: settingsMinutesText(settings.autoStopOnSleepThresholdMinutes),
+                    value: bind(\.autoStopOnSleepThresholdMinutes),
+                    range: 5...240,
+                    step: 5
+                )
+            } header: {
+                Text("Sleep")
+            } footer: {
+                Text(sleepFooter)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .saveErrorOverlay($saveError)
+        .onAppear(perform: refreshLoginItemStatus)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshLoginItemStatus()
+        }
+    }
+
+    private var focusGoalMinutes: Int { Int(settings.dailyFocusGoal / 60) }
+    private var stretchGoalMinutes: Int { max(Int(settings.dailyStretchGoal / 60), focusGoalMinutes) }
+
+    private var sleepFooter: String {
+        if settings.autoResumeOnWake {
+            return "Sessions pause while your Mac sleeps, resume after a short sleep and end after a long one."
+        }
+        return "Sessions pause while your Mac sleeps and end after a long sleep."
+    }
+
+    private func save() {
+        saveWithFeedback(modelContext, errorBinding: $saveError)
+    }
+
+    private func refreshLoginItemStatus() {
+        loginItemStatus = SMAppService.mainApp.status
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            loginItemError = nil
+        } catch {
+            loginItemError = "Couldn't change the login item: \(error.localizedDescription)"
+        }
+        refreshLoginItemStatus()
+        settings.launchAtLogin = loginItemStatus == .enabled || loginItemStatus == .requiresApproval
+        save()
+    }
+}
+
+// MARK: - Timer
+
+private struct TimerSettingsTab: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allSettings: [AppSettings]
+    @State private var saveError: String?
+
+    private var settings: AppSettings { allSettings.first ?? AppSettings() }
+    private var bind: SettingsBinder {
+        SettingsBinder(settings: settings) { saveWithFeedback(modelContext, errorBinding: $saveError) }
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                durationRow("Focus", keyPath: \.focusDuration, range: 5...120, step: 5)
+                durationRow("Short break", keyPath: \.shortBreakDuration, range: 1...30, step: 1)
+                durationRow("Long break", keyPath: \.longBreakDuration, range: 5...60, step: 5)
+                SettingsStepperRow(
+                    title: "Sessions before a long break",
+                    valueText: "\(settings.sessionsBeforeLongBreak)",
+                    value: bind(\.sessionsBeforeLongBreak),
+                    range: 2...8
+                )
+            } header: {
+                Text("Durations")
+            }
+
+            Section {
+                LabeledContent("Completion sound") {
+                    HStack(spacing: 6) {
+                        Picker("Completion sound", selection: bind(\.completionSound, onSet: playSound)) {
+                            ForEach(Self.systemSounds, id: \.self) { sound in
+                                Text(sound).tag(sound)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+
+                        Button {
+                            playSound(settings.completionSound)
+                        } label: {
+                            Image(systemName: "play.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Play sound")
+                        .accessibilityLabel("Play completion sound")
+                    }
+                }
+            } header: {
+                Text("Sound")
+            }
+        }
+        .formStyle(.grouped)
+        .saveErrorOverlay($saveError)
+    }
+
+    private func durationRow(
+        _ title: String,
+        keyPath: ReferenceWritableKeyPath<AppSettings, TimeInterval>,
+        range: ClosedRange<Int>,
+        step: Int
+    ) -> some View {
+        let minutes = Int(settings[keyPath: keyPath] / 60)
+        return SettingsStepperRow(
+            title: title,
+            valueText: settingsMinutesText(minutes),
+            value: Binding(
+                get: { Int(settings[keyPath: keyPath] / 60) },
+                set: { settings[keyPath: keyPath] = TimeInterval($0 * 60); saveWithFeedback(modelContext, errorBinding: $saveError) }
+            ),
+            range: range,
+            step: step
+        )
+    }
+
+    private func playSound(_ name: String) {
+        NSSound(named: NSSound.Name(name))?.play()
+    }
+
+    static let systemSounds = [
+        "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero",
+        "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"
+    ]
+}
+
+// MARK: - Permissions (calendar, reminders, browser domains)
+
+private struct IntegrationsSettingsTab: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allSettings: [AppSettings]
+    @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
+    @StateObject private var notificationService = NotificationService.shared
+
+    @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
+    @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
+    @State private var calendarLoadError: String?
+    @State private var reminderLoadError: String?
+    @State private var reminderAuthError: String?
+    @State private var isRequestingNotificationPermission = false
+    @State private var isEnablingCalendar = false
+    @State private var isEnablingReminders = false
+    @State private var saveError: String?
+    @State private var permissionHealthRows: [PermissionHealthRow] = []
+    @State private var permissionHealthRefreshToken = 0
+
+    let initialScrollTarget: SettingsView.ScrollTarget?
+
+    private var settings: AppSettings { allSettings.first ?? AppSettings() }
+    private var bind: SettingsBinder {
+        SettingsBinder(settings: settings) { saveWithFeedback(modelContext, errorBinding: $saveError) }
     }
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: LiquidDesignTokens.Spacing.large) {
-                    durationsSection
-                        .id("durations")
-                    behaviorSection
-                    soundSection
-                    goalsSection
-                    blockingSection
-                    integrationsSection
-                        .id("integrations")
-                    focusCoachSection
-                    aboutSection
-                    permissionHealthSection(proxy: proxy)
-                }
-                .padding(24)
+            Form {
+                permissionsSection
+                calendarSection
+                    .id("calendar")
+                remindersSection
+                    .id("reminders")
+                browserDomainsSection
+                    .id("domainTracking")
             }
-            .background(.clear)
-            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+            .formStyle(.grouped)
             .saveErrorOverlay($saveError)
             .onAppear {
                 refreshPermissionHealth()
@@ -76,14 +499,9 @@ struct SettingsView: View {
                 if settings.remindersIntegrationEnabled {
                     loadReminderLists()
                 }
-                if let initialScrollTarget {
+                if initialScrollTarget == .domainTracking {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        switch initialScrollTarget {
-                        case .integrations:
-                            proxy.scrollTo("integrations", anchor: .top)
-                        case .domainTracking:
-                            proxy.scrollTo("domainTracking", anchor: .top)
-                        }
+                        proxy.scrollTo("domainTracking", anchor: .top)
                     }
                 }
             }
@@ -104,502 +522,72 @@ struct SettingsView: View {
         }
     }
 
-    private var durationsSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Durations", subtitle: "Session lengths and long-break cadence")
+    // MARK: Permissions
 
-                VStack(spacing: 10) {
-                    DurationRow(
-                        label: "Focus",
-                        icon: "timer",
-                        color: .blue,
-                        minutes: Binding(
-                            get: { Int(settings.focusDuration / 60) },
-                            set: { settings.focusDuration = TimeInterval($0 * 60); save() }
-                        ),
-                        range: 5...120,
-                        step: 5
-                    )
-
-                    Divider()
-
-                    DurationRow(
-                        label: "Short Break",
-                        icon: "cup.and.saucer.fill",
-                        color: .green,
-                        minutes: Binding(
-                            get: { Int(settings.shortBreakDuration / 60) },
-                            set: { settings.shortBreakDuration = TimeInterval($0 * 60); save() }
-                        ),
-                        range: 1...30,
-                        step: 1
-                    )
-
-                    Divider()
-
-                    DurationRow(
-                        label: "Long Break",
-                        icon: "figure.walk",
-                        color: .purple,
-                        minutes: Binding(
-                            get: { Int(settings.longBreakDuration / 60) },
-                            set: { settings.longBreakDuration = TimeInterval($0 * 60); save() }
-                        ),
-                        range: 5...60,
-                        step: 5
-                    )
-
-                    Divider()
-
-                    HStack {
-                        Label("Sessions before long break", systemImage: "repeat.circle.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        Stepper(
-                            "\(settings.sessionsBeforeLongBreak)",
-                            value: Binding(
-                                get: { settings.sessionsBeforeLongBreak },
-                                set: { settings.sessionsBeforeLongBreak = $0; save() }
-                            ),
-                            in: 2...8
-                        )
-                        .frame(width: 110)
-                        .font(.subheadline)
-                    }
-                }
+    /// Calendar and Reminders permissions are shown inside their own sections, so each
+    /// permission appears exactly once on this tab.
+    private var permissionsSection: some View {
+        Section {
+            ForEach(permissionHealthRows.filter { $0.kind != .calendar && $0.kind != .reminders }) { row in
+                permissionRow(row)
             }
-            .padding(16)
+        } header: {
+            Text("Permissions")
         }
     }
 
-    private var behaviorSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Behavior", subtitle: "Startup preferences and guardrails")
-
-                VStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.bubble")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(LiquidDesignTokens.Spectral.amber)
-                            .accessibilityHidden(true)
-                        Text("Break/session auto-start controls are hidden until full lifecycle support is complete.")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(LiquidDesignTokens.Spectral.amber.opacity(0.10))
-                    )
-
-                    Divider()
-
-                    ToggleRow(
-                        label: "Launch at login",
-                        icon: "power.circle.fill",
-                        color: .orange,
-                        isOn: Binding(
-                            get: { settings.launchAtLogin },
-                            set: {
-                                settings.launchAtLogin = $0
-                                save()
-                                setLaunchAtLogin($0)
-                            }
-                        )
-                    )
-
-                    Divider()
-
-                    ToggleRow(
-                        label: "Auto-resume on wake",
-                        icon: "moon.circle.fill",
-                        color: .cyan,
-                        isOn: Binding(
-                            get: { settings.autoResumeOnWake },
-                            set: { settings.autoResumeOnWake = $0; save() }
-                        )
-                    )
-
-                    if settings.autoResumeOnWake {
-                        HStack {
-                            HStack(spacing: 8) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .foregroundStyle(.cyan)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .accessibilityHidden(true)
-                                Text("Resume if asleep less than")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Stepper(
-                                "\(settings.autoResumeThresholdSeconds / 60) min",
-                                value: Binding(
-                                    get: { settings.autoResumeThresholdSeconds / 60 },
-                                    set: { settings.autoResumeThresholdSeconds = $0 * 60; save() }
-                                ),
-                                in: 1...10,
-                                step: 1
-                            )
-                            .frame(width: 145)
-                            .font(.subheadline)
-                            .accessibilityLabel("Auto-resume threshold")
-                            .accessibilityValue("\(settings.autoResumeThresholdSeconds / 60) minutes")
-                        }
-                    }
-
-                    Divider()
-
-                    HStack(alignment: .center) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "bed.double.fill")
-                                .foregroundStyle(.indigo)
-                                .font(.system(size: 13, weight: .semibold))
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Wake recovery threshold")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-                                Text("Auto-stops and prompts on wake if asleep longer than this")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        Spacer()
-
-                        Stepper(
-                            "\(settings.autoStopOnSleepThresholdMinutes) min",
-                            value: Binding(
-                                get: { settings.autoStopOnSleepThresholdMinutes },
-                                set: { settings.autoStopOnSleepThresholdMinutes = $0; save() }
-                            ),
-                            in: 5...240,
-                            step: 5
-                        )
-                        .frame(width: 145)
-                        .font(.subheadline)
-                        .accessibilityLabel("Wake recovery threshold")
-                        .accessibilityValue("\(settings.autoStopOnSleepThresholdMinutes) minutes")
-                    }
-                }
+    private func permissionRow(_ row: PermissionHealthRow) -> some View {
+        LabeledContent {
+            Button(row.actionTitle) {
+                handlePermissionAction(row.action)
             }
-            .padding(16)
-        }
-    }
-
-    private var soundSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Sound & Notifications", subtitle: "Completion chime and system alerts")
-
-                HStack {
-                    Label("Completion sound", systemImage: "speaker.wave.2.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Picker("", selection: Binding(
-                        get: { settings.completionSound },
-                        set: {
-                            settings.completionSound = $0
-                            save()
-                            NSSound(named: NSSound.Name($0))?.play()
-                        }
-                    )) {
-                        ForEach(systemSounds, id: \.self) { sound in
-                            Text(sound).tag(sound)
-                        }
-                    }
-                    .frame(width: 150)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-
-                if notificationService.authorizationState != .authorized {
-                    HStack(spacing: 8) {
-                        Image(systemName: "bell.slash.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.orange)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(notificationBannerTitle)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.primary)
-                            Text(notificationBannerMessage)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button {
-                            handleNotificationBannerAction()
-                        } label: {
-                            Label(notificationBannerButtonTitle, systemImage: notificationBannerButtonIcon)
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .buttonStyle(.glass)
-                        .buttonBorderShape(.capsule)
-                        .disabled(isRequestingNotificationPermission)
-                    }
-                    .padding(10)
-                    .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                }
+            .disabled(row.action == .requestNotifications && isRequestingNotificationPermission)
+            .accessibilityIdentifier(permissionActionIdentifier(for: row.kind))
+            .accessibilityLabel(permissionActionLabel(for: row.kind))
+        } label: {
+            Text("\(Text(Image(systemName: "circle.fill")).foregroundStyle(permissionTint(for: row.status)).font(.system(size: 8))) \(row.title)")
+                .accessibilityLabel("\(row.title), \(row.status.title)")
+            Text(row.message)
+            ForEach(row.detailLines, id: \.self) { detail in
+                Text(detail)
             }
-            .padding(16)
-        }
-        .onAppear { notificationService.refreshAuthorizationStatus() }
-    }
-
-    private var notificationBannerTitle: String {
-        switch notificationService.authorizationState {
-        case .authorized:
-            return ""
-        case .notDetermined:
-            return "Enable notifications"
-        case .denied:
-            return "Notifications are disabled"
         }
     }
 
-    private var notificationBannerMessage: String {
-        switch notificationService.authorizationState {
-        case .authorized:
-            return ""
-        case .notDetermined:
-            return "FocusFlow hasn't asked for notification permission yet. Enable it to receive session alerts."
-        case .denied:
-            return "FocusFlow can't alert you when sessions complete. Enable in System Settings → Notifications."
-        }
+    private func permissionRow(kind: PermissionHealthRow.Kind) -> PermissionHealthRow? {
+        permissionHealthRows.first { $0.kind == kind }
     }
 
-    private var notificationBannerButtonTitle: String {
-        switch notificationService.authorizationState {
-        case .authorized:
-            return ""
-        case .notDetermined:
-            return "Enable Notifications"
-        case .denied:
-            return "Open Notification Settings"
-        }
-    }
-
-    private var notificationBannerButtonIcon: String {
-        switch notificationService.authorizationState {
-        case .authorized:
-            return "checkmark.circle"
-        case .notDetermined:
-            return "bell.badge"
-        case .denied:
-            return "arrow.up.forward.app"
-        }
-    }
-
-    private func handleNotificationBannerAction() {
-        switch notificationService.authorizationState {
-        case .authorized:
-            return
-        case .notDetermined:
-            guard !isRequestingNotificationPermission else { return }
-            isRequestingNotificationPermission = true
-            Task { @MainActor in
-                _ = await notificationService.requestPermission()
-                isRequestingNotificationPermission = false
-                refreshPermissionHealth()
-                restoreCompanionWindow()
-            }
-        case .denied:
-            openNotificationSettings()
-        }
-    }
-
-    private var aboutSection: some View {
-        LiquidGlassPanel {
-            VStack(spacing: 12) {
-                LiquidSectionHeader("About", subtitle: "FocusFlow companion app")
-
-                Image(systemName: "timer")
-                    .font(.system(size: 36, weight: .light))
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-
-                VStack(spacing: 6) {
-                    Text("FocusFlow")
-                        .font(.system(size: 18, weight: .bold))
-
-                    TrackedLabel(
-                        text: "Tahoe Edition",
-                        font: .system(size: 10, weight: .semibold),
-                        color: LiquidDesignTokens.Spectral.electricBlue,
-                        tracking: 2.0
-                    )
-
-                    Text("Pomodoro focus timer for macOS")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text("v1.0")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .padding(16)
-        }
-    }
-
-    private func permissionHealthSection(proxy: ScrollViewProxy) -> some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Permission & Integration Health", subtitle: "See what FocusFlow can access and recover blocked permissions fast")
-
-                VStack(spacing: 10) {
-                    ForEach(permissionHealthRows.sorted(by: permissionHealthRowComesFirst)) { row in
-                        permissionHealthRow(row, proxy: proxy)
-                    }
-                }
-            }
-            .padding(16)
-        }
-    }
-
-    private func permissionHealthRow(_ row: PermissionHealthRow, proxy: ScrollViewProxy) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: row.icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(permissionHealthTint(for: row.status))
-                    .frame(width: 20)
-                    .padding(.top, 1)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(row.title)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.primary)
-
-                        permissionHealthStatusBadge(for: row.status)
-                    }
-
-                    Text(row.message)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if !row.detailLines.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(row.detailLines, id: \.self) { detail in
-                                Text(detail)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Button {
-                handlePermissionHealthAction(row.action, proxy: proxy)
-            } label: {
-                Label(row.actionTitle, systemImage: "gearshape")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-            .accessibilityIdentifier(permissionHealthActionIdentifier(for: row.kind))
-            .accessibilityLabel(permissionHealthActionLabel(for: row.kind))
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
-    }
-
-    @ViewBuilder
-    private func permissionHealthStatusBadge(for status: PermissionHealthStatus) -> some View {
-        Label(status.title, systemImage: permissionHealthStatusIcon(for: status))
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(permissionHealthTint(for: status))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(permissionHealthTint(for: status).opacity(0.10), in: Capsule())
-    }
-
-    private func permissionHealthStatusIcon(for status: PermissionHealthStatus) -> String {
+    private func permissionTint(for status: PermissionHealthStatus) -> Color {
         switch status {
-        case .ready:
-            return "checkmark.circle.fill"
-        case .needsAction:
-            return "exclamationmark.triangle.fill"
-        case .notRequested:
-            return "clock.badge.questionmark.fill"
-        case .unavailable:
-            return "minus.circle.fill"
+        case .ready: .green
+        case .needsAction: .orange
+        case .notRequested: .secondary
+        case .unavailable: .secondary
         }
     }
 
-    private func permissionHealthTint(for status: PermissionHealthStatus) -> Color {
-        switch status {
-        case .ready:
-            return .green
-        case .needsAction:
-            return .orange
-        case .notRequested:
-            return LiquidDesignTokens.Spectral.electricBlue
-        case .unavailable:
-            return .secondary
-        }
-    }
-
-    private func permissionHealthActionIdentifier(for kind: PermissionHealthRow.Kind) -> String {
+    private func permissionActionIdentifier(for kind: PermissionHealthRow.Kind) -> String {
         switch kind {
-        case .notifications:
-            return "settings.permissionHealth.notifications.action"
-        case .calendar:
-            return "settings.permissionHealth.calendar.action"
-        case .reminders:
-            return "settings.permissionHealth.reminders.action"
-        case .automation:
-            return "settings.permissionHealth.automation.action"
-        case .screenRecording:
-            return "settings.permissionHealth.screenRecording.action"
+        case .notifications: "settings.permissionHealth.notifications.action"
+        case .calendar: "settings.permissionHealth.calendar.action"
+        case .reminders: "settings.permissionHealth.reminders.action"
+        case .automation: "settings.permissionHealth.automation.action"
+        case .screenRecording: "settings.permissionHealth.screenRecording.action"
         }
     }
 
-    private func permissionHealthActionLabel(for kind: PermissionHealthRow.Kind) -> String {
+    private func permissionActionLabel(for kind: PermissionHealthRow.Kind) -> String {
         switch kind {
-        case .notifications:
-            return "Review notification permission"
-        case .calendar:
-            return "Review Calendar permission"
-        case .reminders:
-            return "Review Reminders permission"
-        case .automation:
-            return "Review browser Automation permission"
-        case .screenRecording:
-            return "Review Screen Recording permission"
+        case .notifications: "Review notification permission"
+        case .calendar: "Review Calendar permission"
+        case .reminders: "Review Reminders permission"
+        case .automation: "Review browser Automation permission"
+        case .screenRecording: "Review Screen Recording permission"
         }
     }
 
-    private func permissionHealthRowComesFirst(_ lhs: PermissionHealthRow, _ rhs: PermissionHealthRow) -> Bool {
-        let lhsIndex = permissionHealthExpectedTitles.firstIndex(of: lhs.title) ?? .max
-        let rhsIndex = permissionHealthExpectedTitles.firstIndex(of: rhs.title) ?? .max
-        return lhsIndex < rhsIndex
-    }
-
-    private func handlePermissionHealthAction(_ action: PermissionHealthAction, proxy: ScrollViewProxy) {
+    private func handlePermissionAction(_ action: PermissionHealthAction) {
         switch action {
         case .requestNotifications:
             guard !isRequestingNotificationPermission else { return }
@@ -608,575 +596,45 @@ struct SettingsView: View {
                 _ = await notificationService.requestPermission()
                 isRequestingNotificationPermission = false
                 refreshPermissionHealth()
-                restoreCompanionWindow()
+                restoreSettingsWindow()
             }
         case .openNotificationSettings:
-            openNotificationSettings()
+            SystemSettingsLink.notifications()
         case .requestCalendarPermission:
             Task { @MainActor in
-                _ = await requestCalendarPermissionFromHealthPanel()
+                _ = await CalendarService.shared.requestAccess()
+                refreshPermissionHealth()
+                restoreSettingsWindow()
             }
         case .openCalendarSettings:
-            openCalendarSettings()
+            SystemSettingsLink.calendars()
         case .requestRemindersPermission:
             Task { @MainActor in
-                _ = await requestRemindersPermissionFromHealthPanel()
+                _ = await RemindersService.shared.requestAccess()
+                refreshPermissionHealth()
+                restoreSettingsWindow()
             }
         case .openRemindersSettings:
-            openRemindersSettings()
+            SystemSettingsLink.reminders()
         case .openIntegrationsSection:
-            withAnimation(reduceMotion ? nil : FFMotion.section) {
-                proxy.scrollTo("integrations", anchor: .top)
-            }
+            // The Calendar and Reminders sections are on this tab already.
+            break
         case .openAutomationSettings:
-            openAutomationSettings()
+            SystemSettingsLink.automation()
         case .openScreenRecordingSettings:
-            openScreenRecordingSettings()
+            SystemSettingsLink.screenRecording()
         }
     }
 
-    // MARK: - Goals
-
-    private var goalsSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Goals", subtitle: "Daily focus targets")
-
-                VStack(spacing: 10) {
-                    HStack {
-                        HStack(spacing: 8) {
-                            Image(systemName: "target")
-                                .foregroundStyle(.indigo)
-                                .font(.system(size: 13, weight: .semibold))
-                                .accessibilityHidden(true)
-                            Text("Daily Focus Goal")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        Text("\(Int(settings.dailyFocusGoal / 60)) min")
-                            .font(.subheadline.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(.primary)
-                            .frame(width: 60, alignment: .trailing)
-                    }
-
-                    Slider(
-                        value: Binding(
-                            get: { settings.dailyFocusGoal / 60 },
-                            set: { settings.dailyFocusGoal = $0 * 60; save() }
-                        ),
-                        in: 30...480,
-                        step: 15
-                    )
-                    .tint(LiquidDesignTokens.Spectral.primaryContainer)
-                    .accessibilityLabel("Daily focus goal")
-                    .accessibilityValue("\(Int(settings.dailyFocusGoal / 60)) minutes")
-
-                    HStack {
-                        Text("30m")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Spacer()
-                        Text("8h")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            .padding(16)
-        }
-    }
-
-    // MARK: - Blocking
-
-    private var blockingSection: some View {
-        LiquidGlassPanel {
-            VStack(spacing: 14) {
-                LiquidSectionHeader("Blocking", subtitle: "Block distracting apps and websites during focus")
-
-                Button { showBlockingSheet = true } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "shield.checkered")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.blue)
-                            .accessibilityHidden(true)
-                        Text("Manage Blocking Profiles")
-                            .font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                    }
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                Text("Websites are blocked via system DNS. Apps are quit when a focus session starts.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(16)
-        }
-        .sheet(isPresented: $showBlockingSheet) {
-            BlockingSettingsView()
-        }
-    }
-
-    // MARK: - Integrations
-
-    private var integrationsSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Integrations", subtitle: "Connect with Apple apps")
-
-                // Calendar toggle with auth flow
-                HStack(spacing: 12) {
-                    Image(systemName: "calendar.badge.clock")
-                        .foregroundStyle(.red)
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 20)
-                        .accessibilityHidden(true)
-
-                    Text("Record to Calendar")
-                        .font(.subheadline)
-
-                    Spacer()
-
-                    calendarStatusBadge
-
-                    Toggle("", isOn: Binding(
-                        get: { settings.calendarIntegrationEnabled },
-                        set: { newValue in
-                            if newValue {
-                                Task { @MainActor in await enableCalendarIntegration() }
-                            } else {
-                                settings.calendarIntegrationEnabled = false
-                                settings.selectedCalendarId = ""
-                                save()
-                            }
-                        }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .frame(width: 44)
-                    .accessibilityLabel("Record to Calendar")
-                }
-
-                if settings.calendarIntegrationEnabled {
-                    calendarPickerSection
-
-                    // Sync scope explainer
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 1)
-                            .accessibilityHidden(true)
-                        Text("Calendar events are created when you complete or save a focus session. Sessions logged before enabling this integration are not retroactively synced.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 4)
-                }
-
-                remindersIntegrationSection
-            }
-            .padding(16)
-            .animation(reduceMotion ? nil : FFMotion.section, value: settings.calendarIntegrationEnabled)
-        }
-    }
-
+    /// Shows the Calendar/Reminders permission row inside its integration section
+    /// when access is missing. When access is granted the toggle alone is enough.
     @ViewBuilder
-    private var calendarStatusBadge: some View {
-        let status = CalendarService.shared.authStatus
-        switch status {
-        case .authorized:
-            HStack(spacing: 4) {
-                Circle().fill(.green).frame(width: 6, height: 6)
-                Text("Connected")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.green)
-            }
-        case .denied:
-            HStack(spacing: 4) {
-                Circle().fill(.red).frame(width: 6, height: 6)
-                Text("Denied")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.red)
-            }
-        case .notDetermined:
-            EmptyView()
+    private func inlinePermissionRow(kind: PermissionHealthRow.Kind) -> some View {
+        if let row = permissionRow(kind: kind),
+           row.status != .ready,
+           row.action != .openIntegrationsSection {
+            permissionRow(row)
         }
-    }
-
-    private var calendarPickerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-
-            if isLoadingCalendars {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text("Loading calendars...")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                }
-            } else if let calendarLoadError {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(calendarLoadError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.orange)
-
-                    if calendarLoadError.contains("permission") || calendarLoadError.contains("access") {
-                        Button("Open System Settings") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.blue)
-                    } else {
-                        Button("Retry Calendar Sync") {
-                            loadCalendars()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .semibold))
-                    }
-                }
-            } else if availableCalendars.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("No calendars found.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.tertiary)
-
-                    Button("Reload Calendars") {
-                        loadCalendars()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                }
-            } else {
-                HStack {
-                    Label("Record sessions to", systemImage: "calendar")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Picker("", selection: Binding(
-                        get: { settings.selectedCalendarId.isEmpty ? "__create_new__" : settings.selectedCalendarId },
-                        set: { newValue in
-                            if newValue == "__create_new__" {
-                                settings.selectedCalendarId = ""
-                                settings.calendarName = "FocusFlow"
-                            } else {
-                                settings.selectedCalendarId = newValue
-                                // Find the title for this calendar
-                                for group in availableCalendars {
-                                    if let cal = group.calendars.first(where: { $0.id == newValue }) {
-                                        settings.calendarName = cal.title
-                                        break
-                                    }
-                                }
-                            }
-                            save()
-                        }
-                    )) {
-                        ForEach(availableCalendars, id: \.source) { group in
-                            Section(group.source) {
-                                ForEach(group.calendars, id: \.id) { cal in
-                                    Text(cal.title).tag(cal.id)
-                                }
-                            }
-                        }
-                        Divider()
-                        Text("Create \"FocusFlow\" Calendar").tag("__create_new__")
-                    }
-                    .frame(maxWidth: 220)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-            }
-
-            // Discoverability hint — where to find events
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 1)
-                    .accessibilityHidden(true)
-                Text("Sessions appear with a 🎯 prefix in your selected calendar. Open Apple Calendar and make sure your calendar is checked in the sidebar.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.top, 4)
-        }
-        .transition(.opacity)
-    }
-
-    @ViewBuilder
-    private var remindersStatusBadge: some View {
-        let status = RemindersService.shared.authStatus
-        switch status {
-        case .authorized:
-            HStack(spacing: 4) {
-                Circle().fill(.green).frame(width: 6, height: 6)
-                Text("Connected")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.green)
-            }
-        case .denied:
-            HStack(spacing: 4) {
-                Circle().fill(.red).frame(width: 6, height: 6)
-                Text("Denied")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.red)
-            }
-        case .notDetermined:
-            EmptyView()
-        }
-    }
-
-    private var remindersIntegrationSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-
-            HStack(spacing: 12) {
-                Image(systemName: "checklist")
-                    .foregroundStyle(.blue)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 20)
-                    .accessibilityHidden(true)
-
-                Text("Sync Reminders")
-                    .font(.subheadline)
-
-                Spacer()
-
-                remindersStatusBadge
-
-                Toggle("", isOn: Binding(
-                    get: { settings.remindersIntegrationEnabled },
-                    set: { newValue in
-                        if newValue {
-                            Task { @MainActor in await enableRemindersIntegration() }
-                        } else {
-                            settings.remindersIntegrationEnabled = false
-                            settings.selectedReminderListId = ""
-                            reminderAuthError = nil
-                            save()
-                        }
-                    }
-                ))
-                .toggleStyle(.switch)
-                .labelsHidden()
-                .frame(width: 44)
-                .accessibilityLabel("Sync Reminders")
-            }
-
-            if settings.remindersIntegrationEnabled {
-                reminderPickerSection
-            }
-
-            if let reminderAuthError {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(reminderAuthError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.orange)
-
-                    Button("Open System Settings") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.blue)
-                }
-            }
-
-            if let reminderLoadError {
-                Label(reminderLoadError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.orange)
-            }
-        }
-        .transition(.opacity)
-    }
-
-    private var reminderPickerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if isLoadingReminderLists {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text("Loading reminder lists...")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                }
-            } else if availableReminderLists.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("No reminder lists found.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.tertiary)
-
-                    Button("Reload Reminder Lists") {
-                        loadReminderLists()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                }
-            } else {
-                HStack {
-                    Label("Default list for new reminders", systemImage: "list.bullet")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Picker("", selection: Binding(
-                        get: { settings.selectedReminderListId },
-                        set: {
-                            settings.selectedReminderListId = $0
-                            save()
-                        }
-                    )) {
-                        ForEach(availableReminderLists, id: \.id) { list in
-                            Text(list.title).tag(list.id)
-                        }
-                    }
-                    .frame(maxWidth: 200)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-
-                Text("All incomplete reminders from every list are shown in the Calendar tab.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 4)
-            }
-        }
-    }
-
-    @MainActor private func enableCalendarIntegration() async {
-        guard !isEnablingCalendar else { return }
-        isEnablingCalendar = true
-        defer { isEnablingCalendar = false }
-        _ = await CalendarService.shared.requestAccess()
-        let isAuthorized = CalendarService.shared.authStatus == .authorized
-        if isAuthorized {
-            settings.calendarIntegrationEnabled = true
-            calendarLoadError = nil
-            save()
-            loadCalendars()
-        } else {
-            settings.calendarIntegrationEnabled = false
-            availableCalendars = []
-            calendarLoadError = "FocusFlow needs Calendar access. Enable it in System Settings → Privacy & Security → Calendars."
-            save()
-        }
-        refreshPermissionHealth()
-        restoreCompanionWindow()
-    }
-
-    private func loadCalendars() {
-        guard settings.calendarIntegrationEnabled else {
-            isLoadingCalendars = false
-            calendarLoadError = nil
-            availableCalendars = []
-            return
-        }
-        guard CalendarService.shared.authStatus == .authorized else {
-            isLoadingCalendars = false
-            availableCalendars = []
-            calendarLoadError = "Calendar permission is not granted."
-            return
-        }
-        isLoadingCalendars = true
-        calendarLoadError = nil
-        availableCalendars = CalendarService.shared.availableCalendars()
-        isLoadingCalendars = false
-        if availableCalendars.isEmpty {
-            calendarLoadError = "No writable calendars found in your connected accounts."
-        }
-    }
-
-    private func loadReminderLists() {
-        guard settings.remindersIntegrationEnabled else {
-            isLoadingReminderLists = false
-            reminderLoadError = nil
-            availableReminderLists = []
-            return
-        }
-        guard RemindersService.shared.authStatus == .authorized else {
-            isLoadingReminderLists = false
-            availableReminderLists = []
-            reminderLoadError = "Reminders permission is not granted."
-            return
-        }
-        isLoadingReminderLists = true
-        reminderLoadError = nil
-        availableReminderLists = RemindersService.shared.reminderLists()
-        isLoadingReminderLists = false
-        if availableReminderLists.isEmpty {
-            reminderLoadError = "No reminder lists are available for this account."
-            return
-        }
-
-        let selectedId = settings.selectedReminderListId
-        let isSelectedListValid = !selectedId.isEmpty && availableReminderLists.contains(where: { $0.id == selectedId })
-        if !isSelectedListValid, let first = availableReminderLists.first {
-            settings.selectedReminderListId = first.id
-            save()
-        }
-    }
-
-    @MainActor private func enableRemindersIntegration() async {
-        guard !isEnablingReminders else { return }
-        isEnablingReminders = true
-        defer { isEnablingReminders = false }
-        _ = await RemindersService.shared.requestAccess()
-        let isAuthorized = RemindersService.shared.authStatus == .authorized
-        if isAuthorized {
-            settings.remindersIntegrationEnabled = true
-            reminderAuthError = nil
-            reminderLoadError = nil
-            save()
-            loadReminderLists()
-        } else {
-            reminderAuthError = "FocusFlow needs Reminders access. Enable it in System Settings → Privacy & Security → Reminders."
-            settings.remindersIntegrationEnabled = false
-            availableReminderLists = []
-            save()
-        }
-        refreshPermissionHealth()
-        restoreCompanionWindow()
-    }
-
-    @MainActor
-    private func requestCalendarPermissionFromHealthPanel() async -> Bool {
-        let granted = await CalendarService.shared.requestAccess()
-        refreshPermissionHealth()
-        restoreCompanionWindow()
-        return granted
-    }
-
-    @MainActor
-    private func requestRemindersPermissionFromHealthPanel() async -> Bool {
-        let granted = await RemindersService.shared.requestAccess()
-        refreshPermissionHealth()
-        restoreCompanionWindow()
-        return granted
     }
 
     private func refreshPermissionHealth() {
@@ -1209,372 +667,215 @@ struct SettingsView: View {
         }
     }
 
-    @MainActor
-    private func restoreCompanionWindow() {
-        // Activate the entire app first (brings all windows forward)
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        
-        // Then make the stats window key after a brief delay for window ordering
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            if let statsWindow = NSApp.windows.first(where: {
-                $0.identifier?.rawValue == "stats"
-            }) {
-                statsWindow.makeKeyAndOrderFront(nil)
-            }
-        }
-    }
+    // MARK: Calendar
 
-    // MARK: - Focus Coach
-
-    private var focusCoachSection: some View {
-        LiquidGlassPanel {
-            VStack(alignment: .leading, spacing: 12) {
-                LiquidSectionHeader("Focus Coach", subtitle: "Personalized coaching and nudges to stay productive")
-
-                // What it does — clear explanation before controls
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "brain.head.profile.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.indigo.opacity(0.8))
-                        .padding(.top, 1)
-                        .accessibilityHidden(true)
-                    Text("FocusFlow's coach monitors your focus patterns in real-time — detecting drift, app switching, and break overruns — then intervenes with evidence-based prompts to help you recover. All data stays on-device.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 4)
-
-                ToggleRow(
-                    label: "Idle nudge notifications",
-                    icon: "brain.head.profile.fill",
-                    color: .indigo,
-                    isOn: Binding(
-                        get: { settings.antiProcrastinationEnabled },
-                        set: { settings.antiProcrastinationEnabled = $0; save() }
-                    )
-                )
-
-                if settings.antiProcrastinationEnabled {
-                    HStack {
-                        HStack(spacing: 8) {
-                            Image(systemName: "clock.badge.exclamationmark")
-                                .foregroundStyle(.indigo)
-                                .font(.system(size: 13, weight: .semibold))
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("First nudge after")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Text("Escalates with follow-ups at longer intervals")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-
-                        Spacer()
-
-                        Stepper(
-                            "\(settings.antiProcrastinationThresholdMinutes) min",
-                            value: Binding(
-                                get: { settings.antiProcrastinationThresholdMinutes },
-                                set: { settings.antiProcrastinationThresholdMinutes = $0; save() }
-                            ),
-                            in: 2...15
-                        )
-                        .frame(width: 145)
-                        .font(.subheadline)
+    private var calendarSection: some View {
+        Section {
+            Toggle("Record sessions to Calendar", isOn: Binding(
+                get: { settings.calendarIntegrationEnabled },
+                set: { newValue in
+                    if newValue {
+                        Task { @MainActor in await enableCalendarIntegration() }
+                    } else {
+                        settings.calendarIntegrationEnabled = false
+                        settings.selectedCalendarId = ""
+                        save()
+                        refreshPermissionHealth()
                     }
-                    .transition(.opacity)
                 }
+            ))
+            .disabled(isEnablingCalendar)
 
-                if settings.antiProcrastinationEnabled {
-                    Divider().opacity(0.2)
+            inlinePermissionRow(kind: .calendar)
 
-                    ToggleRow(
-                        label: "Idle starter intervention card",
-                        icon: "sparkles.rectangle.stack.fill",
-                        color: LiquidDesignTokens.Spectral.electricBlue,
-                        isOn: Binding(
-                            get: { settings.coachIdleStarterEnabled },
-                            set: { settings.coachIdleStarterEnabled = $0; save() }
-                        )
-                    )
-                }
-
-                Divider().opacity(0.3)
-
-                // MARK: - Real-time Coach Controls
-
-                ToggleRow(
-                    label: "Real-time focus coaching",
-                    icon: "waveform.path.ecg",
-                    color: LiquidDesignTokens.Spectral.electricBlue,
-                    isOn: Binding(
-                        get: { settings.coachRealtimeEnabled },
-                        set: { settings.coachRealtimeEnabled = $0; save() }
-                    )
-                )
-
-                if settings.coachRealtimeEnabled {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            HStack(spacing: 8) {
-                                Image(systemName: "dial.high.fill")
-                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("Intervention mode")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Text("Balanced is calmer, Adaptive Strict escalates faster, Session Rescue prioritizes re-entry")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            Spacer()
-                            Picker("", selection: Binding(
-                                get: { settings.coachInterventionMode },
-                                set: {
-                                    settings.coachInterventionMode = $0
-                                    save()
-                                }
-                            )) {
-                                ForEach(FocusCoachInterventionMode.allCases, id: \.rawValue) { mode in
-                                    Text(mode.displayName).tag(mode)
-                                }
-                            }
-                            .frame(width: 170)
-                        }
-
-                        // Prompt budget
-                        HStack {
-                            HStack(spacing: 8) {
-                                Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
-                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("Max prompts per session")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Text("Limits how often the coach interrupts you")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            Spacer()
-                            Stepper(
-                                "\(settings.coachPromptBudgetPerSession)",
-                                value: Binding(
-                                    get: { settings.coachPromptBudgetPerSession },
-                                    set: {
-                                        settings.coachPromptBudgetPerSession = $0
-                                        save()
-                                    }
-                                ),
-                                in: 1...8
-                            )
-                            .frame(width: 120)
-                            .font(.subheadline)
-                        }
-
-                        HStack {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.bubble.fill")
-                                    .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("Strong prompts per session")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Text("Caps front-and-center interventions to avoid fatigue")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            Spacer()
-                            Stepper(
-                                "\(settings.coachMaxStrongPromptsPerSession)",
-                                value: Binding(
-                                    get: { settings.coachMaxStrongPromptsPerSession },
-                                    set: {
-                                        settings.coachMaxStrongPromptsPerSession = $0
-                                        save()
-                                    }
-                                ),
-                                in: 1...6
-                            )
-                            .frame(width: 120)
-                            .font(.subheadline)
-                        }
-
-                        ToggleRow(
-                            label: "Bring app to front on strong prompt",
-                            icon: "macwindow.on.rectangle",
-                            color: LiquidDesignTokens.Spectral.salmon,
-                            isOn: Binding(
-                                get: { settings.coachBringAppToFrontOnStrongPrompt },
-                                set: { settings.coachBringAppToFrontOnStrongPrompt = $0; save() }
-                            )
-                        )
-
-                        ToggleRow(
-                            label: "Allow “Skip this check” action",
-                            icon: "forward.frame.fill",
-                            color: LiquidDesignTokens.Spectral.amber,
-                            isOn: Binding(
-                                get: { settings.coachAllowSkipAction },
-                                set: { settings.coachAllowSkipAction = $0; save() }
-                            )
-                        )
-
-                        ToggleRow(
-                            label: "Open popover with strong prompt",
-                            icon: "menubar.rectangle",
-                            color: LiquidDesignTokens.Spectral.electricBlue,
-                            isOn: Binding(
-                                get: { settings.coachAutoOpenPopoverOnStrongPrompt },
-                                set: { settings.coachAutoOpenPopoverOnStrongPrompt = $0; save() }
-                            )
-                        )
-
-                        // Reason prompts toggle
-                        ToggleRow(
-                            label: "Ask why I stopped / drifted",
-                            icon: "questionmark.bubble",
-                            color: LiquidDesignTokens.Spectral.amber,
-                            isOn: Binding(
-                                get: { settings.coachReasonPromptsEnabled },
-                                set: { settings.coachReasonPromptsEnabled = $0; save() }
-                            )
-                        )
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Divider().opacity(0.2)
-                            Text("Outside-session signal debug")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text("Work-intent score: \(Int(timerVM.latestWorkIntentScore * 100))%")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            Text("Drift score: \(Int(timerVM.latestDriftScore * 100))%")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            Text("Work-intent signals: \(joinedSignals(timerVM.latestWorkIntentActiveSignals))")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(2)
-                            Text("Drift signals: \(joinedSignals(timerVM.latestDriftActiveSignals))")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(2)
-                            if let suppression = timerVM.lastIdleStarterSuppressionReason {
-                                Text("Last suppression: \(suppression.debugLabel)")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.orange)
-                                    .lineLimit(2)
+            if settings.calendarIntegrationEnabled {
+                if let calendarLoadError {
+                    LabeledContent(calendarLoadError) {
+                        Button("Reload") { loadCalendars() }
+                    }
+                } else {
+                    Picker("Calendar", selection: Binding(
+                        get: { settings.selectedCalendarId.isEmpty ? "__create_new__" : settings.selectedCalendarId },
+                        set: { newValue in
+                            if newValue == "__create_new__" {
+                                settings.selectedCalendarId = ""
+                                settings.calendarName = "FocusFlow"
                             } else {
-                                Text("Last suppression: none")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
+                                settings.selectedCalendarId = newValue
+                                for group in availableCalendars {
+                                    if let cal = group.calendars.first(where: { $0.id == newValue }) {
+                                        settings.calendarName = cal.title
+                                        break
+                                    }
+                                }
+                            }
+                            save()
+                        }
+                    )) {
+                        ForEach(availableCalendars, id: \.source) { group in
+                            Section(group.source) {
+                                ForEach(group.calendars, id: \.id) { cal in
+                                    Text(cal.title).tag(cal.id)
+                                }
                             }
                         }
+                        Divider()
+                        Text("New “FocusFlow” calendar").tag("__create_new__")
+                    }
+                }
+            }
+        } header: {
+            Text("Calendar")
+        } footer: {
+            if settings.calendarIntegrationEnabled {
+                Text("Completed and saved sessions appear with a 🎯 prefix. Earlier sessions aren't added.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
 
-                        // Default snooze duration
-                        HStack {
-                            HStack(spacing: 8) {
-                                Image(systemName: "moon.zzz")
-                                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .accessibilityHidden(true)
-                                Text("Default snooze")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Stepper(
-                                "\(settings.coachDefaultSnoozeMinutes) min",
-                                value: Binding(
-                                    get: { settings.coachDefaultSnoozeMinutes },
-                                    set: {
-                                        settings.coachDefaultSnoozeMinutes = $0
-                                        save()
-                                    }
-                                ),
-                                in: 5...30,
-                                step: 5
-                            )
-                            .frame(width: 145)
-                            .font(.subheadline)
+    @MainActor private func enableCalendarIntegration() async {
+        guard !isEnablingCalendar else { return }
+        isEnablingCalendar = true
+        defer { isEnablingCalendar = false }
+        _ = await CalendarService.shared.requestAccess()
+        if CalendarService.shared.authStatus == .authorized {
+            settings.calendarIntegrationEnabled = true
+            calendarLoadError = nil
+            save()
+            loadCalendars()
+        } else {
+            settings.calendarIntegrationEnabled = false
+            availableCalendars = []
+            save()
+        }
+        refreshPermissionHealth()
+        restoreSettingsWindow()
+    }
+
+    private func loadCalendars() {
+        guard settings.calendarIntegrationEnabled else {
+            calendarLoadError = nil
+            availableCalendars = []
+            return
+        }
+        guard CalendarService.shared.authStatus == .authorized else {
+            availableCalendars = []
+            calendarLoadError = "Calendar permission is not granted."
+            return
+        }
+        calendarLoadError = nil
+        availableCalendars = CalendarService.shared.availableCalendars()
+        if availableCalendars.isEmpty {
+            calendarLoadError = "No writable calendars found."
+        }
+    }
+
+    // MARK: Reminders
+
+    private var remindersSection: some View {
+        Section {
+            Toggle("Sync Reminders", isOn: Binding(
+                get: { settings.remindersIntegrationEnabled },
+                set: { newValue in
+                    if newValue {
+                        Task { @MainActor in await enableRemindersIntegration() }
+                    } else {
+                        settings.remindersIntegrationEnabled = false
+                        settings.selectedReminderListId = ""
+                        reminderAuthError = nil
+                        save()
+                        refreshPermissionHealth()
+                    }
+                }
+            ))
+            .disabled(isEnablingReminders)
+
+            inlinePermissionRow(kind: .reminders)
+
+            if let reminderAuthError {
+                Text(reminderAuthError)
+                    .foregroundStyle(.secondary)
+            }
+
+            if settings.remindersIntegrationEnabled {
+                if let reminderLoadError {
+                    LabeledContent(reminderLoadError) {
+                        Button("Reload") { loadReminderLists() }
+                    }
+                } else {
+                    Picker("List for new reminders", selection: bind(\.selectedReminderListId)) {
+                        ForEach(availableReminderLists, id: \.id) { list in
+                            Text(list.title).tag(list.id)
                         }
                     }
-                    .transition(.opacity)
                 }
-
-                Divider().opacity(0.3)
-
-                // MARK: - Privacy
-
-                ToggleRow(
-                    label: "Collect detailed app domains",
-                    icon: "lock.shield",
-                    color: .gray,
-                    isOn: Binding(
-                        get: { settings.coachCollectRawDomains },
-                        set: { settings.coachCollectRawDomains = $0; save() }
-                    )
-                )
-                .id("domainTracking")
-
-                Text("When off, FocusFlow still tracks frontmost apps and categories. Existing saved domain history stays on this device, but FocusFlow stops collecting and using website domains for new labels and coaching.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .padding(.leading, 28)
-
-                if let domainTrackingRecoveryState {
-                    domainTrackingRecoveryView(for: domainTrackingRecoveryState)
-                        .padding(.leading, 28)
-                }
-
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "checkmark.shield")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 1)
-                        .accessibilityHidden(true)
-                    Text("FocusFlow can track frontmost apps without extra permission. FocusFlow reads supported browsers through macOS Automation first. If a browser does not expose a tab URL, Screen Recording lets FocusFlow fall back to browser titles.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.leading, 28)
             }
-            .padding(16)
-            .animation(reduceMotion ? nil : FFMotion.section, value: settings.antiProcrastinationEnabled)
-            .animation(reduceMotion ? nil : FFMotion.section, value: settings.coachRealtimeEnabled)
+        } header: {
+            Text("Reminders")
+        } footer: {
+            if settings.remindersIntegrationEnabled {
+                Text("The Calendar tab shows incomplete reminders from every list.")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
-    private func save() {
-        saveWithFeedback(modelContext, errorBinding: $saveError)
-    }
+    private func loadReminderLists() {
+        guard settings.remindersIntegrationEnabled else {
+            reminderLoadError = nil
+            availableReminderLists = []
+            return
+        }
+        guard RemindersService.shared.authStatus == .authorized else {
+            availableReminderLists = []
+            reminderLoadError = "Reminders permission is not granted."
+            return
+        }
+        reminderLoadError = nil
+        availableReminderLists = RemindersService.shared.reminderLists()
+        if availableReminderLists.isEmpty {
+            reminderLoadError = "No reminder lists found."
+            return
+        }
 
-    static func hasValidCapturedBrowserDomains(in entries: [AppUsageEntry]) -> Bool {
-        entries.contains { entry in
-            CompanionAnalyticsBuilder.validPersistedDomainHost(for: entry.bundleIdentifier) != nil
-            && (entry.duringFocusSeconds > 0 || entry.outsideFocusSeconds > 0)
+        let selectedId = settings.selectedReminderListId
+        let isSelectedListValid = !selectedId.isEmpty && availableReminderLists.contains(where: { $0.id == selectedId })
+        if !isSelectedListValid, let first = availableReminderLists.first {
+            settings.selectedReminderListId = first.id
+            save()
         }
     }
+
+    @MainActor private func enableRemindersIntegration() async {
+        guard !isEnablingReminders else { return }
+        isEnablingReminders = true
+        defer { isEnablingReminders = false }
+        _ = await RemindersService.shared.requestAccess()
+        if RemindersService.shared.authStatus == .authorized {
+            settings.remindersIntegrationEnabled = true
+            reminderAuthError = nil
+            reminderLoadError = nil
+            save()
+            loadReminderLists()
+        } else {
+            reminderAuthError = "FocusFlow needs Reminders access."
+            settings.remindersIntegrationEnabled = false
+            availableReminderLists = []
+            save()
+        }
+        refreshPermissionHealth()
+        restoreSettingsWindow()
+    }
+
+    // MARK: Browser domains
 
     private var hasCapturedBrowserDomains: Bool {
-        Self.hasValidCapturedBrowserDomains(in: appUsageEntries)
+        SettingsView.hasValidCapturedBrowserDomains(in: appUsageEntries)
     }
 
     private var domainTrackingRecoveryState: DomainTrackingRecoveryState? {
-        Self.domainTrackingRecoveryState(
+        SettingsView.domainTrackingRecoveryState(
             collectRawDomains: settings.coachCollectRawDomains,
             hasCapturedBrowserDomains: hasCapturedBrowserDomains,
             frontmostBundleIdentifier: AppUsageTracker.shared.currentFrontmostBundleId,
@@ -1583,143 +884,52 @@ struct SettingsView: View {
         )
     }
 
-    static func domainTrackingRecoveryState(
-        collectRawDomains: Bool,
-        hasCapturedBrowserDomains: Bool,
-        frontmostBundleIdentifier: String?,
-        screenRecordingAccess: Bool,
-        automationStatusProvider: (String?) -> PermissionHealthStatus?
-    ) -> DomainTrackingRecoveryState? {
-        if collectRawDomains == false {
-            return .disabled
-        }
+    private var browserDomainsSection: some View {
+        Section {
+            Toggle("Collect website domains", isOn: bind(\.coachCollectRawDomains))
 
-        guard !hasCapturedBrowserDomains else { return nil }
-
-        if let frontmostBundleId = frontmostBundleIdentifier,
-           AppUsageEntry.isBrowserBundleIdentifier(frontmostBundleId) {
-            if BrowserDomainResolver.supports(bundleIdentifier: frontmostBundleId) {
-                if automationStatusProvider(frontmostBundleId) != .ready {
-                    return .automationUnavailable
-                }
-            } else if !screenRecordingAccess {
-                return .screenRecordingUnavailable
+            if let state = domainTrackingRecoveryState, state != .disabled {
+                domainTrackingRecoveryRow(for: state)
             }
+        } header: {
+            Text("Browser domains")
+        } footer: {
+            Text("When off, FocusFlow still tracks frontmost apps and categories. Existing saved domain history stays on this device, but FocusFlow stops collecting and using website domains for new labels and coaching.")
+                .foregroundStyle(.secondary)
         }
-
-        return .awaitingFirstCapture
     }
 
-    private func domainTrackingRecoveryView(for state: DomainTrackingRecoveryState) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: state.icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(state.tint)
-                    .frame(width: 16)
-                    .padding(.top, 1)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(state.title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-
-                    Text(state.message)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder
+    private func domainTrackingRecoveryRow(for state: DomainTrackingRecoveryState) -> some View {
+        LabeledContent {
+            switch state {
+            case .automationUnavailable:
+                Button("Open Automation Settings") {
+                    SystemSettingsLink.automation()
                 }
-            }
-
-            if state == .automationUnavailable {
-                Button {
-                    openAutomationSettings()
-                } label: {
-                    Label("Open Automation Settings", systemImage: "gearshape")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 44)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
                 .accessibilityIdentifier("settings.domainTracking.openAutomationSettings")
                 .accessibilityLabel("Open Automation privacy settings")
-            }
-
-            if state == .screenRecordingUnavailable {
-                Button {
-                    openScreenRecordingSettings()
-                } label: {
-                    Label("Open Screen Recording Settings", systemImage: "gearshape")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 44)
+            case .screenRecordingUnavailable:
+                Button("Open Screen Recording Settings") {
+                    SystemSettingsLink.screenRecording()
                 }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
                 .accessibilityIdentifier("settings.domainTracking.openScreenRecordingSettings")
                 .accessibilityLabel("Open Screen Recording privacy settings")
+            case .disabled, .awaitingFirstCapture:
+                EmptyView()
             }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(LiquidDesignTokens.Surface.materialOverlay)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(LiquidDesignTokens.Surface.glassStroke, lineWidth: 0.5)
-        )
-    }
-
-    private func joinedSignals(_ signals: [String]) -> String {
-        signals.isEmpty ? "none" : signals.joined(separator: ", ")
-    }
-
-    private func openNotificationSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings") {
-            NSWorkspace.shared.open(url)
+        } label: {
+            Text(state.title)
+            Text(state.message)
         }
     }
 
-    private func openCalendarSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-            NSWorkspace.shared.open(url)
-        }
+    private func save() {
+        saveWithFeedback(modelContext, errorBinding: $saveError)
     }
-
-    private func openRemindersSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    private func openAutomationSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    private func openScreenRecordingSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
-    private func setLaunchAtLogin(_ enabled: Bool) {
-        if enabled {
-            try? SMAppService.mainApp.register()
-        } else {
-            try? SMAppService.mainApp.unregister()
-        }
-    }
-
-    private let systemSounds = [
-        "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero",
-        "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"
-    ]
 }
+
+// MARK: - Domain tracking recovery copy
 
 enum DomainTrackingRecoveryState: Equatable {
     private static let supportedBrowserList = "Safari, Chrome, Arc, Edge, Brave, or Opera"
@@ -1728,32 +938,6 @@ enum DomainTrackingRecoveryState: Equatable {
     case automationUnavailable
     case awaitingFirstCapture
     case screenRecordingUnavailable
-
-    var icon: String {
-        switch self {
-        case .disabled:
-            return "eye.slash"
-        case .automationUnavailable:
-            return "hand.raised.app"
-        case .awaitingFirstCapture:
-            return "safari"
-        case .screenRecordingUnavailable:
-            return "rectangle.badge.exclamationmark"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .disabled:
-            return .secondary
-        case .automationUnavailable:
-            return .orange
-        case .awaitingFirstCapture:
-            return LiquidDesignTokens.Spectral.electricBlue
-        case .screenRecordingUnavailable:
-            return .orange
-        }
-    }
 
     var title: String {
         switch self {
@@ -1779,61 +963,5 @@ enum DomainTrackingRecoveryState: Equatable {
         case .screenRecordingUnavailable:
             return "Screen Recording is off, so FocusFlow can't recover domains from browser title fallback when a browser doesn't expose a tab URL. Enable it, then revisit the site."
         }
-    }
-}
-
-private struct DurationRow: View {
-    let label: String
-    let icon: String
-    let color: Color
-    @Binding var minutes: Int
-    let range: ClosedRange<Int>
-    let step: Int
-
-    var body: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundStyle(color)
-                    .font(.system(size: 13, weight: .semibold))
-                    .accessibilityHidden(true)
-                Text(label)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Stepper(
-                "\(minutes) min",
-                value: $minutes,
-                in: range,
-                step: step
-            )
-                            .frame(width: 145)
-                            .font(.subheadline)
-                        }
-                    }
-}
-
-private struct ToggleRow: View {
-    let label: String
-    let icon: String
-    let color: Color
-    @Binding var isOn: Bool
-
-    var body: some View {
-        Toggle(isOn: $isOn) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundStyle(color)
-                    .font(.system(size: 13, weight: .semibold))
-                    .accessibilityHidden(true)
-                Text(label)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .toggleStyle(.switch)
     }
 }

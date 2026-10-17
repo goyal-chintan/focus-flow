@@ -6,6 +6,24 @@ protocol FocusCoachPersisting: AnyObject {
     func saveInterventionAttempt(_ attempt: InterventionAttempt)
     var interruptions: [CoachInterruption] { get }
     var attempts: [InterventionAttempt] { get }
+    /// Attempts delivered at or after `date`. Stores with a query engine should override this.
+    func attempts(deliveredSince date: Date) -> [InterventionAttempt]
+    /// Persists in-place mutations (outcome, skip reason) of already-saved attempts.
+    func saveChanges()
+    /// The attempt with this id, if stored.
+    func attempt(id: UUID) -> InterventionAttempt?
+}
+
+extension FocusCoachPersisting {
+    func attempts(deliveredSince date: Date) -> [InterventionAttempt] {
+        attempts.filter { $0.deliveredAt >= date }
+    }
+
+    func attempt(id: UUID) -> InterventionAttempt? {
+        attempts.first { $0.id == id }
+    }
+
+    func saveChanges() {}
 }
 
 /// In-memory store for unit testing without SwiftData.
@@ -51,9 +69,6 @@ final class FocusCoachEngine {
     /// Blocking recommendation engine — generates project-scoped block/allow suggestions.
     let blockingRecommendationEngine = FocusCoachBlockingRecommendationEngine()
 
-    /// Pending blocking recommendation to surface to the user (set after evidence threshold met).
-    var pendingBlockingRecommendation: BlockingRecommendation?
-
     /// Latest suspicious-context observation from AppUsageTracker (updated each foreground change).
     var latestObservation: SuspiciousContextObservation?
 
@@ -83,6 +98,9 @@ final class FocusCoachEngine {
     var pendingAnomalyKind: FocusCoachInterruptionKind?
     /// Prevents repeated drift reason prompts while the same high-risk streak is still active.
     private var hasPromptedDriftReasonInCurrentStreak = false
+    /// The attempt most recently delivered by this engine. Outcomes resolve against it so they
+    /// never depend on the store's sort order (bug B3: SwiftData returns newest-first).
+    private(set) var lastDeliveredAttempt: InterventionAttempt?
 
     init(store: FocusCoachPersisting = InMemoryCoachStore()) {
         self.store = store
@@ -225,11 +243,6 @@ final class FocusCoachEngine {
         currentSignals = signals
     }
 
-    /// Updates a single signal dimension (for incremental updates from different sources).
-    func updateStartDelay(_ seconds: Double) {
-        currentSignals.startDelaySeconds = seconds
-    }
-
     func updatePauseCount(_ count: Int) {
         currentSignals.pauseCount = count
     }
@@ -282,22 +295,38 @@ final class FocusCoachEngine {
         return decision.kind == .none ? nil : decision
     }
 
-    /// Records a concrete intervention actually delivered to the user.
-    /// This is called by presentation-routing code so analytics reflect the shown surface.
+    /// Records a concrete intervention actually delivered to the user and returns its row.
+    /// `surface`, `style` and `contextKey` are the Coach v2.1 learning fields; a non-nil
+    /// `contextKey` marks the attempt as a bandit decision that will receive a reward.
+    @discardableResult
     func recordDeliveredIntervention(
         kind: FocusCoachInterventionKind,
         riskScore: Double? = nil,
         sessionId: UUID? = nil,
-        now: Date = Date()
-    ) {
+        now: Date = Date(),
+        surface: CoachSurface? = nil,
+        style: CoachStyle? = nil,
+        contextKey: String? = nil
+    ) -> InterventionAttempt {
         let attempt = InterventionAttempt(
             kind: kind,
             riskScore: riskScore ?? lastRiskResult.score,
             sessionId: sessionId ?? currentSessionId
         )
+        attempt.deliveredAt = now
+        attempt.surfaceRawValue = surface?.rawValue
+        attempt.styleRawValue = style?.rawValue
+        attempt.contextKey = contextKey
         store.saveInterventionAttempt(attempt)
+        lastDeliveredAttempt = attempt
         promptState.promptCountThisSession += 1
         promptState.lastPromptAt = now
+        return attempt
+    }
+
+    /// Prompts shown since `date` (any surface), for the non-learnable guardrails.
+    func guardrailDeliveries(since date: Date) -> [CoachGuardrails.Delivery] {
+        store.attempts(deliveredSince: date).map(CoachGuardrails.Delivery.init(attempt:))
     }
 
     // MARK: - Anomaly Reason Recording
@@ -326,19 +355,25 @@ final class FocusCoachEngine {
     // MARK: - Intervention Outcome
 
     /// Records user response to an intervention prompt.
-    func recordInterventionOutcome(_ outcome: FocusCoachOutcome, skipReason: FocusCoachSkipReason? = nil) {
-        if let lastAttempt = store.attempts.last {
-            lastAttempt.outcome = outcome
-            lastAttempt.resolvedAt = Date()
+    /// Snooze duration is owned by `snooze(minutes:)`; this only labels the attempt (bug B2).
+    func recordInterventionOutcome(
+        _ outcome: FocusCoachOutcome,
+        skipReason: FocusCoachSkipReason? = nil,
+        attemptID: UUID? = nil
+    ) {
+        // Resolve by id when the caller knows which prompt it answered. Otherwise use the attempt
+        // this engine delivered; after a relaunch fall back to the newest persisted one. Never use
+        // positional `.first`/`.last`: store sort order varies (bug B3).
+        let target = attemptID.flatMap { store.attempt(id: $0) }
+            ?? lastDeliveredAttempt
+            ?? store.attempts.max { $0.deliveredAt < $1.deliveredAt }
+        if let target, target.outcome == nil {
+            target.outcome = outcome
+            target.resolvedAt = Date()
             if let reason = skipReason {
-                lastAttempt.skipReasonRaw = reason.rawValue
+                target.skipReasonRaw = reason.rawValue
             }
-
-            if outcome == .snoozed {
-                // Extend snooze duration for legitimate skip reasons — don't re-interrupt mid-meeting
-                let snoozeMinutes: TimeInterval = skipReason?.isLegitimate == true ? 20 : 10
-                promptState.snoozedUntil = Date().addingTimeInterval(snoozeMinutes * 60)
-            }
+            store.saveChanges()
         }
 
         if outcome == .snoozed, let skipReason {
@@ -398,7 +433,6 @@ final class FocusCoachEngine {
         let contextKey = observation.normalizedContextKey
         let projectId = observation.selectedProjectId
         let workMode = observation.selectedWorkMode
-        let projectName = observation.selectedProjectName
         let displayName = observation.normalizedContextDisplayName
 
         if let store = driftMemoryStore {
@@ -418,20 +452,6 @@ final class FocusCoachEngine {
                 contextKey: contextKey,
                 displayName: displayName
             )
-
-            if let rec = blockingRecommendationEngine.blockRecommendation(
-                for: contextKey,
-                projectId: projectId,
-                workMode: workMode,
-                projectName: projectName
-            ) {
-                pendingBlockingRecommendation = rec
-                blockingRecommendationEngine.markRecommendationSurfaced(
-                    projectId: projectId,
-                    workMode: workMode,
-                    contextKey: contextKey
-                )
-            }
         } else if disposition.isLegitimate {
             blockingRecommendationEngine.recordPlanned(
                 projectId: projectId,

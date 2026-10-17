@@ -132,7 +132,6 @@ final class TimerCompletionFlowTests: XCTestCase {
 
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
-            escalationLevel: 2,
             frontmostCategory: .productive
         )
 
@@ -158,7 +157,6 @@ final class TimerCompletionFlowTests: XCTestCase {
         vm.lastProjectSelectedAt = Date()
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
-            escalationLevel: 2,
             frontmostCategory: .productive
         )
 
@@ -180,159 +178,44 @@ final class TimerCompletionFlowTests: XCTestCase {
         vm.lastProjectSelectedAt = Date()
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
-            escalationLevel: 2,
             frontmostCategory: .productive
         )
 
         XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .releaseWindowActive)
     }
 
-    func testStartFocusClearsOutsideSessionEscalationState() throws {
+    func testStartFocusClearsCoachPromptsAndQuietWindow() throws {
         let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
+        let vm = try makeCoachReadyViewModel(container: container)
         defer { AppUsageTracker.shared.stop() }
 
-        vm.outsideSessionAwaitingStartFocus = true
-        vm.outsideSessionNudgeAttemptCount = 3
-        vm.pendingNotificationNudgeAt = Date()
-        vm.outsideSessionEscalationCooldownUntil = Date().addingTimeInterval(600)
+        vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .productive)
+        XCTAssertNotNil(vm.coachPanel)
+        vm.coachMenuBarPulse = true
 
-        vm.startFocus()
+        XCTAssertTrue(vm.startFocus())
 
-        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus)
-        XCTAssertEqual(vm.outsideSessionNudgeAttemptCount, 0)
-        XCTAssertNil(vm.pendingNotificationNudgeAt)
-        XCTAssertNil(vm.outsideSessionEscalationCooldownUntil)
+        XCTAssertNil(vm.coachPanel)
+        XCTAssertNil(vm.currentIdleStarterDecision)
+        XCTAssertFalse(vm.coachMenuBarPulse)
+        XCTAssertNil(vm.coachQuietUntil)
     }
 
-    func testNonStartActionsDoNotClearOutsideSessionEscalationState() throws {
+    func testIdlePromptIsOnScreenAndNeverANotificationWhenNotificationsAreOff() throws {
         let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
+        let vm = try makeCoachReadyViewModel(container: container)
         defer { AppUsageTracker.shared.stop() }
-
-        vm.outsideSessionAwaitingStartFocus = true
-        vm.outsideSessionNudgeAttemptCount = 2
-        vm.pendingNotificationNudgeAt = Date()
-        vm.outsideSessionEscalationCooldownUntil = Date().addingTimeInterval(300)
-
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 0,
-            frontmostCategory: .productive
-        )
-
-        XCTAssertTrue(vm.outsideSessionAwaitingStartFocus)
-        XCTAssertEqual(vm.outsideSessionNudgeAttemptCount, 2)
-        XCTAssertNotNil(vm.pendingNotificationNudgeAt)
-    }
-
-    func testIdleInterventionEscalatesToStrongPromptWithoutNotificationsAfterRepeatedNudges() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachSuppressPopupsDuringScreenShare = false
-        settings.coachInterventionMode = .balanced
-        // Keep auto-open off so the decision lands in currentIdleStarterDecision for inspection.
-        settings.coachAutoOpenPopoverOnStrongPrompt = false
-        try container.mainContext.save()
+        vm.coachArmOverride = nil
+        vm.coachRandom = SplitMix64(seed: 7)
 
         NotificationService.shared.refreshAuthorizationStatus()
         XCTAssertEqual(NotificationService.shared.authorizationState, .denied)
 
-        vm.lastProjectSelectedAt = Date()
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .distracting
-        )
+        vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .distracting)
 
-        // After 2 prior nudges without notifications, the coach must escalate to a strong prompt
-        // rather than silently setting popover content that the user never sees.
-        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus)
-        XCTAssertNil(vm.pendingNotificationNudgeAt)
-        XCTAssertEqual(vm.currentIdleStarterDecision?.kind, .strongPrompt)
-    }
-
-    func testMissedNotificationEscalatesToStrongPrompt() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachSuppressPopupsDuringScreenShare = false
-        settings.coachInterventionMode = .balanced
-        settings.coachAutoOpenPopoverOnStrongPrompt = true
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        try container.mainContext.save()
-
-        vm.lastProjectSelectedAt = Date()
-        vm.pendingNotificationNudgeAt = Date().addingTimeInterval(-2000)
-        vm.outsideSessionAwaitingStartFocus = true
-        vm.outsideSessionNudgeAttemptCount = 1
-
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .distracting
-        )
-
-        XCTAssertTrue(vm.showCoachInterventionWindow || vm.currentIdleStarterDecision?.kind == .strongPrompt || vm.activeCoachInterventionDecision?.kind == .strongPrompt)
-    }
-
-    /// Regression test: strong prompt must fire when a notification was sent and ignored,
-    /// even when all work-intent recency signals are stale AND it's outside typical work hours.
-    /// Root cause: `shouldEscalateToStrongPrompt` was inside `if route.shouldPresent`, and
-    /// routeIdleStarter's work-intent gate (guardian=.challenge) blocked shouldPresent=true
-    /// when isWorkIntentWindow=false (hour=22, no recent project/app interaction).
-    func testIdleEscalationFiringOutsideWorkHoursWhenNotificationWasIgnored() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachSuppressPopupsDuringScreenShare = false
-        settings.coachInterventionMode = .balanced
-        settings.coachAutoOpenPopoverOnStrongPrompt = true
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        try container.mainContext.save()
-
-        // Notification was sent long enough ago to exceed the escalation delay even during the
-        // night-time backoff window. This keeps the test focused on the work-intent gate.
-        vm.pendingNotificationNudgeAt = Date().addingTimeInterval(-(20 * 60))
-        vm.outsideSessionAwaitingStartFocus = true
-        vm.outsideSessionNudgeAttemptCount = 1
-        // App opened and project selected a LONG time ago — no recency signals
-        vm.appLaunchTime = Date().addingTimeInterval(-3600)
-        vm.lastProjectSelectedAt = Date().addingTimeInterval(-3600)
-
-        // Force hour=22 (10pm) — withinTypicalWorkHours=false → isWorkIntentWindow=false without fix
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 20 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .distracting,
-            currentHourOverride: 22
-        )
-
-        XCTAssertTrue(
-            vm.showCoachInterventionWindow
-                || vm.currentIdleStarterDecision?.kind == .strongPrompt
-                || vm.activeCoachInterventionDecision?.kind == .strongPrompt,
-            "Strong prompt must fire when notification was ignored, regardless of work hours"
-        )
-        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus, "Flag must clear after escalation")
+        let surface = vm.coachEngine.store.attempts.first?.surfaceRawValue
+        XCTAssertNotEqual(surface, CoachSurface.notification.rawValue)
+        XCTAssertNotNil(vm.currentIdleStarterDecision, "A start prompt must land on screen (panel) or in the popover (badge)")
     }
 
     func testScreenShareHardPassSuppressesNotificationAndPrompt() throws {
@@ -350,147 +233,57 @@ final class TimerCompletionFlowTests: XCTestCase {
         vm.lastProjectSelectedAt = Date()
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
-            escalationLevel: 1,
             frontmostCategory: .productive
         )
 
-        XCTAssertFalse(vm.outsideSessionAwaitingStartFocus)
         XCTAssertFalse(vm.showCoachInterventionWindow)
+        XCTAssertNil(vm.coachPanel)
         XCTAssertNil(vm.currentIdleStarterDecision)
         XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .screenShareSuppressed)
     }
 
-    func testOutsideSessionCooldownIncreasesAtNight() throws {
-        let vm = TimerViewModel()
-        let calendar = Calendar.current
-        let baseDate = Date()
-        let day = try XCTUnwrap(calendar.date(bySettingHour: 13, minute: 0, second: 0, of: baseDate))
-        let night = try XCTUnwrap(calendar.date(bySettingHour: 23, minute: 0, second: 0, of: baseDate))
-        let dayDelay = vm.outsideSessionEscalationDelaySeconds(now: day, nonResponseStreak: 0, skipStreak: 0)
-        let nightDelay = vm.outsideSessionEscalationDelaySeconds(now: night, nonResponseStreak: 0, skipStreak: 0)
-        XCTAssertGreaterThan(nightDelay, dayDelay)
-    }
-
-    func testOutsideSessionCooldownIncreasesWithRepeatedNonResponse() throws {
-        let vm = TimerViewModel()
-        let base = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 0, skipStreak: 0)
-        let increased = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 3, skipStreak: 0)
-        XCTAssertGreaterThan(increased, base)
-    }
-
-    func testOutsideSessionCooldownIncreasesWithRepeatedSkipOrSnooze() throws {
-        let vm = TimerViewModel()
-        let base = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 0, skipStreak: 0)
-        let increased = vm.outsideSessionEscalationDelaySeconds(now: Date(timeIntervalSince1970: 13 * 60 * 60), nonResponseStreak: 0, skipStreak: 3)
-        XCTAssertGreaterThan(increased, base)
-    }
-
-    func testIdleEscalationShowsStrongCoachWindowAtThirdNudgeForProductiveApp() throws {
+    func testIdlePanelShowsOnScreenWithoutActivatingTheApp() throws {
         let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
+        let vm = try makeCoachReadyViewModel(container: container)
         defer { AppUsageTracker.shared.stop() }
+        let host = RecordingPanelHost()
+        vm.coachPanelHost = host
+        var activationRequests = 0
+        vm.requestAppActivation = { activationRequests += 1 }
 
-        let settingsDescriptor = FetchDescriptor<AppSettings>()
-        let settings = try XCTUnwrap(container.mainContext.fetch(settingsDescriptor).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachAutoOpenPopoverOnStrongPrompt = true
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        settings.coachAllowSkipAction = true
-        settings.coachInterventionMode = .balanced
-        try container.mainContext.save()
-
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .productive
-        )
-
-        XCTAssertTrue(vm.showCoachInterventionWindow)
-        XCTAssertEqual(vm.activeCoachInterventionDecision?.kind, .strongPrompt)
-    }
-
-    func testStrongPromptWindowDoesNotAutoOpenWhenSettingIsDisabled() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settingsDescriptor = FetchDescriptor<AppSettings>()
-        let settings = try XCTUnwrap(container.mainContext.fetch(settingsDescriptor).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachAutoOpenPopoverOnStrongPrompt = false
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        settings.coachAllowSkipAction = true
-        settings.coachInterventionMode = .balanced
-        try container.mainContext.save()
-
-        var coachWindowOpenRequests = 0
-        var appActivationRequests = 0
-        vm.openCoachInterventionWindow = {
-            coachWindowOpenRequests += 1
-        }
-        vm.requestAppActivation = {
-            appActivationRequests += 1
-        }
-
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .productive
-        )
-
+        vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .productive)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
 
-        XCTAssertFalse(vm.showCoachInterventionWindow)
-        XCTAssertNil(vm.activeCoachInterventionDecision)
-        XCTAssertEqual(vm.currentIdleStarterDecision?.kind, .strongPrompt)
-        XCTAssertEqual(coachWindowOpenRequests, 0)
-        XCTAssertEqual(appActivationRequests, 0)
+        XCTAssertTrue(vm.showCoachInterventionWindow)
+        XCTAssertEqual(vm.coachPanel?.kind, .startNudge)
+        XCTAssertEqual(host.shown.count, 1)
+        XCTAssertEqual(activationRequests, 0, "Idle prompts never steal focus (requestAppActivation is retired for them)")
+        // The popover keeps the same prompt as a card for when the panel auto-hides.
+        XCTAssertEqual(vm.currentIdleStarterDecision?.composed, vm.coachPanel?.message)
     }
 
-    func testStrongPromptSuppressesPopoverCardWhenEscalatingToWindow() throws {
+    func testIdlePanelDoesNotStack() throws {
         let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
+        let vm = try makeCoachReadyViewModel(container: container)
         defer { AppUsageTracker.shared.stop() }
+        let host = RecordingPanelHost()
+        vm.coachPanelHost = host
 
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachAutoOpenPopoverOnStrongPrompt = true
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        settings.coachAllowSkipAction = true
-        settings.coachInterventionMode = .balanced
-        try container.mainContext.save()
+        vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .productive)
+        let first = try XCTUnwrap(vm.coachPanel)
+        vm.evaluateIdleStarterIntervention(idleSeconds: 20 * 60, frontmostCategory: .productive)
 
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .productive
-        )
-
-        XCTAssertTrue(vm.showCoachInterventionWindow)
-        XCTAssertEqual(vm.activeCoachInterventionDecision?.kind, .strongPrompt)
-        XCTAssertNil(vm.currentIdleStarterDecision)
+        XCTAssertEqual(vm.coachPanel?.id, first.id, "A second prompt within the cooldown/2h spacing must not stack")
+        XCTAssertEqual(host.shown.count, 1)
     }
 
     func testIdleStarterContextSuppressesPersistedDomainEntriesWhenRawDomainCaptureDisabled() throws {
         let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
+        let vm = try makeCoachReadyViewModel(container: container)
         defer { AppUsageTracker.shared.stop() }
 
         let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachAutoOpenPopoverOnStrongPrompt = false
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        settings.coachInterventionMode = .balanced
         settings.coachCollectRawDomains = false
-
         container.mainContext.insert(
             AppUsageEntry(
                 date: Calendar.current.startOfDay(for: Date()),
@@ -502,10 +295,8 @@ final class TimerCompletionFlowTests: XCTestCase {
         )
         try container.mainContext.save()
 
-        vm.lastProjectSelectedAt = Date()
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
-            escalationLevel: 2,
             frontmostCategory: .productive
         )
 
@@ -519,18 +310,11 @@ final class TimerCompletionFlowTests: XCTestCase {
 
     func testIdleStarterContextUsesPersistedDomainEntriesWhenRawDomainCaptureEnabled() throws {
         let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
+        let vm = try makeCoachReadyViewModel(container: container)
         defer { AppUsageTracker.shared.stop() }
 
         let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachAutoOpenPopoverOnStrongPrompt = false
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        settings.coachInterventionMode = .balanced
         settings.coachCollectRawDomains = true
-
         container.mainContext.insert(
             AppUsageEntry(
                 date: Calendar.current.startOfDay(for: Date()),
@@ -542,19 +326,18 @@ final class TimerCompletionFlowTests: XCTestCase {
         )
         try container.mainContext.save()
 
-        vm.lastProjectSelectedAt = Date()
         vm.evaluateIdleStarterIntervention(
             idleSeconds: 10 * 60,
-            escalationLevel: 2,
             frontmostCategory: .productive
         )
 
-        let context = try XCTUnwrap(vm.currentIdleStarterDecision?.context)
+        let decision = try XCTUnwrap(vm.currentIdleStarterDecision)
+        let context = try XCTUnwrap(decision.context)
         XCTAssertEqual(context.suggestedBlockTarget, "youtube.com")
         XCTAssertEqual(context.topDistractingAppName, "YouTube")
         XCTAssertEqual(context.topDistractingAppMinutes, 30)
         XCTAssertTrue(context.blockRecommendationReason?.contains("YouTube") ?? false)
-        XCTAssertTrue(vm.currentIdleStarterDecision?.message?.contains("YouTube") ?? false)
+        XCTAssertTrue(decision.suggestedActions.contains(.blockForProject))
     }
 
     func testStartFocusRequestsPopoverCloseOnCommit() throws {
@@ -588,82 +371,6 @@ final class TimerCompletionFlowTests: XCTestCase {
         vm.continueAfterCompletion(action: .endSession)
 
         XCTAssertEqual(closeRequests, 3) // startFocus + stopForReflection + continueAfterCompletion
-    }
-
-    func testStrongPromptRequestsSingleSurfacePresentationWithForeground() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachAutoOpenPopoverOnStrongPrompt = true
-        settings.coachBringAppToFrontOnStrongPrompt = true
-        settings.coachAllowSkipAction = true
-        settings.coachInterventionMode = .balanced
-        try container.mainContext.save()
-
-        var coachWindowOpenRequests = 0
-        var appActivationRequests = 0
-        vm.openCoachInterventionWindow = {
-            coachWindowOpenRequests += 1
-        }
-        vm.requestAppActivation = {
-            appActivationRequests += 1
-        }
-
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .productive
-        )
-
-        // openCoachInterventionWindow & requestAppActivation are now dispatched async
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-
-        XCTAssertTrue(vm.showCoachInterventionWindow)
-        XCTAssertEqual(coachWindowOpenRequests, 1)
-        XCTAssertEqual(appActivationRequests, 1)
-        XCTAssertNil(vm.currentIdleStarterDecision)
-    }
-
-    func testStrongPromptDoesNotRequestActivationWhenBringToFrontSettingIsDisabled() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.antiProcrastinationEnabled = true
-        settings.coachIdleStarterEnabled = true
-        settings.coachAutoOpenPopoverOnStrongPrompt = true
-        settings.coachBringAppToFrontOnStrongPrompt = false
-        settings.coachAllowSkipAction = true
-        settings.coachInterventionMode = .balanced
-        try container.mainContext.save()
-
-        var coachWindowOpenRequests = 0
-        var appActivationRequests = 0
-        vm.openCoachInterventionWindow = {
-            coachWindowOpenRequests += 1
-        }
-        vm.requestAppActivation = {
-            appActivationRequests += 1
-        }
-
-        vm.evaluateIdleStarterIntervention(
-            idleSeconds: 10 * 60,
-            escalationLevel: 2,
-            frontmostCategory: .productive
-        )
-
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-
-        XCTAssertTrue(vm.showCoachInterventionWindow)
-        XCTAssertEqual(coachWindowOpenRequests, 1)
-        XCTAssertEqual(appActivationRequests, 0)
     }
 
     func testBreakOverrunReasonPromptActivatesDuringOvertime() throws {
@@ -1170,6 +877,44 @@ final class TimerCompletionFlowTests: XCTestCase {
                        "loadTodayStats should exclude paused seconds from the daily focus total")
     }
 
+    /// Regression: checkDayRolloverIfNeeded() must reset stats and todayFocusTime on a new calendar day
+    func testCheckDayRolloverResetsStatsOnNewDay() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        // Simulate stale yesterday state
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.startOfDay(for: Date()))!
+        vm.todayFocusTime = 18900 // 5h 15m from yesterday
+        vm.completedFocusSessions = 4
+        vm.todaySessionCount = 4
+        // Back-date currentDay to simulate the app running across midnight or waking from sleep
+        vm.testingSetCurrentDay(yesterday)
+        vm.checkDayRolloverIfNeeded()
+
+        // Expect currentDay to be updated to today and stats reset
+        XCTAssertEqual(vm.todayFocusTime, 0, "todayFocusTime must reset to 0 on a new day")
+        XCTAssertEqual(vm.completedFocusSessions, 0, "completedFocusSessions must reset to 0 on a new day")
+        XCTAssertEqual(vm.todaySessionCount, 0, "todaySessionCount must reset to 0 on a new day")
+    }
+
+    /// Regression: loadTodayStats() must reconcile todayFocusTime when idle even if difference <= 60s
+    func testLoadTodayStatsReconcilesWhenIdleEvenIfDifferenceUnder60Seconds() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.todayFocusTime = 45 // 45 seconds stale value (< 60s difference from 0)
+        vm.state = .idle
+
+        vm.loadTodayStats()
+
+        XCTAssertEqual(vm.todayFocusTime, 0, "loadTodayStats must reconcile todayFocusTime when idle even if difference is under 60 seconds")
+    }
+
+
     // MARK: - Bug regression: switchProject while paused commits pause to correct session
 
     /// Regression: switchProject() must commit in-flight pause time to the OLD session,
@@ -1378,6 +1123,24 @@ final class TimerCompletionFlowTests: XCTestCase {
                        "New session must not inherit pause count from old session")
     }
 
+    /// Idle-coach-ready view model: idle starter on, quiet hours off, no learned windows yet,
+    /// and the bandit forced to the panel × challenger arm so assertions are deterministic.
+    private func makeCoachReadyViewModel(container: ModelContainer) throws -> TimerViewModel {
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        vm.calendarAvailabilityProvider = { _ in .unknown }
+        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
+        settings.antiProcrastinationEnabled = true
+        settings.coachIdleStarterEnabled = true
+        settings.coachSuppressPopupsDuringScreenShare = false
+        settings.coachQuietStartMinute = 0
+        settings.coachQuietEndMinute = 0
+        try container.mainContext.save()
+        vm.availabilityModelOverride = .empty
+        vm.coachArmOverride = CoachArm(surface: .panel, style: .challenger)
+        return vm
+    }
+
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             Project.self,
@@ -1396,4 +1159,13 @@ final class TimerCompletionFlowTests: XCTestCase {
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: config)
     }
+}
+
+@MainActor
+final class RecordingPanelHost: CoachPanelHosting {
+    private(set) var shown: [CoachPanelPresentation] = []
+    private(set) var hideCount = 0
+
+    func showPanel(_ presentation: CoachPanelPresentation) { shown.append(presentation) }
+    func hidePanel() { hideCount += 1 }
 }

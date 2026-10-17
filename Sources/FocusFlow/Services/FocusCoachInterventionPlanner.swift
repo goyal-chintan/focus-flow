@@ -1,63 +1,5 @@
 import Foundation
 
-// MARK: - Work Intent Window
-
-/// Signals that indicate the user is in an active work context (not off-duty).
-struct WorkIntentSignal: Sendable {
-    /// User opened FocusFlow within the last 15 minutes.
-    var openedAppRecently: Bool
-    /// User selected or viewed a project within the last 15 minutes.
-    var selectedProjectRecently: Bool
-    /// User had a session start attempt that was abandoned or delayed.
-    var recentlyAbandonedStart: Bool
-    /// Current time falls within the user's typical work hours pattern.
-    var withinTypicalWorkHours: Bool
-    /// Current context matches a repeated historical missed-start pattern.
-    var matchesHistoricalMissedStart: Bool
-
-    /// Returns true when enough signals indicate user is in a work-intent context.
-    var isWorkIntentWindow: Bool {
-        let score = [
-            openedAppRecently,
-            selectedProjectRecently,
-            recentlyAbandonedStart,
-            withinTypicalWorkHours,
-            matchesHistoricalMissedStart
-        ].filter { $0 }.count
-        // Require at least 1 signal so outside-session prompts don't stay silent for hours.
-        return score >= 1
-    }
-}
-
-/// Evaluates whether the current moment is a "work intent window" for outside-session challenges.
-struct WorkIntentWindowDetector: Sendable {
-    /// Evaluate work intent signals from available context.
-    func evaluate(
-        appLastOpenedAt: Date?,
-        projectLastSelectedAt: Date?,
-        lastAbandonedStartAt: Date?,
-        matchesHistoricalMissedStart: Bool,
-        currentHour: Int = Calendar.current.component(.hour, from: Date()),
-        historicalWorkHours: ClosedRange<Int> = 9...18
-    ) -> WorkIntentSignal {
-        let now = Date()
-        let fifteenMinutes: TimeInterval = 15 * 60
-
-        let openedRecently = appLastOpenedAt.map { now.timeIntervalSince($0) < fifteenMinutes } ?? false
-        let selectedRecently = projectLastSelectedAt.map { now.timeIntervalSince($0) < fifteenMinutes } ?? false
-        let abandonedRecently = lastAbandonedStartAt.map { now.timeIntervalSince($0) < fifteenMinutes } ?? false
-        let withinWorkHours = historicalWorkHours.contains(currentHour)
-
-        return WorkIntentSignal(
-            openedAppRecently: openedRecently,
-            selectedProjectRecently: selectedRecently,
-            recentlyAbandonedStart: abandonedRecently,
-            withinTypicalWorkHours: withinWorkHours,
-            matchesHistoricalMissedStart: matchesHistoricalMissedStart
-        )
-    }
-}
-
 /// Decides which UI surface should present a coach intervention.
 /// Keeps presentation-routing policy pure and testable.
 struct FocusCoachInterventionPlanner: Sendable {
@@ -73,11 +15,6 @@ struct FocusCoachInterventionPlanner: Sendable {
         let didConsumeStrongBudget: Bool
     }
 
-    struct IdleStarterRoute {
-        let shouldPresent: Bool
-        let decision: FocusCoachDecision?
-    }
-
     func surfaceForActiveDecision(
         decisionKind: FocusCoachDecisionKind,
         mode: FocusCoachInterventionMode,
@@ -86,7 +23,7 @@ struct FocusCoachInterventionPlanner: Sendable {
         maxStrongPrompts: Int
     ) -> Surface {
         switch decisionKind {
-        case .none, .softStrip:
+        case .none:
             return .none
         case .quickPrompt:
             if mode == .adaptiveStrict && riskScore >= 0.75 && strongShownCount < maxStrongPrompts {
@@ -99,32 +36,6 @@ struct FocusCoachInterventionPlanner: Sendable {
             }
             return .quickPrompt
         }
-    }
-
-    func shouldShowIdleStarter(
-        driftConfidence: Double,
-        focusOpportunity: Double,
-        mode: FocusCoachInterventionMode,
-        distractionSeverity: IdleDistractionSeverity? = nil
-    ) -> Bool {
-        let confidenceThreshold: Double
-        let opportunityThreshold: Double
-
-        switch mode {
-        case .balanced:
-            // Known major distractions (e.g. Ghostty flagged as vibe-coding) lower the
-            // confidence bar so the first nudge fires at ~5 min instead of ~10 min.
-            confidenceThreshold = distractionSeverity == .major ? 0.35 : 0.55
-            opportunityThreshold = 0.45
-        case .adaptiveStrict:
-            confidenceThreshold = distractionSeverity == .major ? 0.40 : 0.60
-            opportunityThreshold = 0.50
-        case .sessionRescue:
-            confidenceThreshold = distractionSeverity == .major ? 0.45 : 0.65
-            opportunityThreshold = 0.40
-        }
-
-        return driftConfidence >= confidenceThreshold && focusOpportunity >= opportunityThreshold
     }
 
     func routeActiveDecision(
@@ -190,82 +101,6 @@ struct FocusCoachInterventionPlanner: Sendable {
                 didConsumeStrongBudget: true
             )
         }
-    }
-
-    /// Returns true when an outside-session hard challenge should fire.
-    /// All three gates must pass: not in release window, not passive, guardian is in challenge
-    /// state, and a work-intent window is detected.
-    func shouldTriggerOutsideSessionChallenge(
-        guardianState: FocusCoachGuardianState,
-        isInReleaseWindow: Bool,
-        workIntentSignal: WorkIntentSignal,
-        hasHighConfidenceDrift: Bool,
-        repeatedProjectPattern: Bool,
-        engagementMode: GuardianEngagementMode
-    ) -> Bool {
-        guard !isInReleaseWindow else { return false }
-        guard engagementMode != .passive else { return false }
-        guard guardianState == .challenge else { return false }
-        guard hasHighConfidenceDrift || repeatedProjectPattern else { return false }
-        guard workIntentSignal.isWorkIntentWindow else { return false }
-        return true
-    }
-
-    func routeIdleStarter(
-        driftConfidence: Double,
-        focusOpportunity: Double,
-        mode: FocusCoachInterventionMode,
-        allowSkipAction: Bool,
-        engagementMode: GuardianEngagementMode = .adaptive,
-        guardianState: FocusCoachGuardianState = .observe,
-        isInReleaseWindow: Bool = false,
-        workIntentSignal: WorkIntentSignal? = nil,
-        repeatedProjectPattern: Bool = false,
-        distractionSeverity: IdleDistractionSeverity? = nil
-    ) -> IdleStarterRoute {
-        // Passive mode: suppress idle starter — ambient ring only
-        if engagementMode == .passive {
-            return IdleStarterRoute(shouldPresent: false, decision: nil)
-        }
-
-        guard shouldShowIdleStarter(
-            driftConfidence: driftConfidence,
-            focusOpportunity: focusOpportunity,
-            mode: mode,
-            distractionSeverity: distractionSeverity
-        ) else {
-            return IdleStarterRoute(shouldPresent: false, decision: nil)
-        }
-
-        // Work-intent gate: when guardian is in challenge state, require an active work-intent
-        // window before firing the hard dialog. If signals are absent, downgrade to watchful
-        // (ambient ring only — no popover or dialog).
-        if let signal = workIntentSignal,
-           guardianState == .challenge,
-           !shouldTriggerOutsideSessionChallenge(
-                guardianState: guardianState,
-                isInReleaseWindow: isInReleaseWindow,
-                workIntentSignal: signal,
-                hasHighConfidenceDrift: driftConfidence >= engagementMode.outsideSessionChallengeThreshold,
-                repeatedProjectPattern: repeatedProjectPattern,
-                engagementMode: engagementMode
-            ) {
-            return IdleStarterRoute(shouldPresent: false, decision: nil)
-        }
-
-        var actions: [FocusCoachQuickAction] = [.startFocusNow, .cleanRestart5m, .snooze10m]
-        if allowSkipAction {
-            actions.append(.skipCheck)
-        }
-
-        return IdleStarterRoute(
-            shouldPresent: true,
-            decision: FocusCoachDecision(
-                kind: .quickPrompt,
-                suggestedActions: actions,
-                message: "Good window to start focus now."
-            )
-        )
     }
 
     private func withOptionalSkip(

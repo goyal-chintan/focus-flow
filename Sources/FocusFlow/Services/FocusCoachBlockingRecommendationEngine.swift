@@ -63,19 +63,6 @@ final class FocusCoachBlockingRecommendationEngine {
         persist()
     }
 
-    func recordBreakOverrunCorrelation(projectId: UUID, workMode: WorkMode, contextKey: String, displayName: String) {
-        let key = scopedKey(projectId: projectId, workMode: workMode, contextKey: contextKey)
-        var risk = risks[key] ?? ProjectContextRisk(
-            projectId: projectId,
-            workMode: workMode,
-            contextKey: normalizedContextKey(contextKey),
-            contextDisplayName: displayName
-        )
-        risk.breakOverrunCorrelationCount += 1
-        risks[key] = risk
-        persist()
-    }
-
     // MARK: - Recommendations
 
     /// Returns a block recommendation if evidence threshold is met, nil otherwise.
@@ -187,14 +174,6 @@ final class FocusCoachBlockingRecommendationEngine {
         }
         guard matchingKeys.count == 1 else { return nil }
         return matchingKeys.first
-    }
-
-    func hasRisk(for contextKey: String, projectId: UUID?, workMode: WorkMode?) -> Bool {
-        riskFor(contextKey: contextKey, projectId: projectId, workMode: workMode) != nil
-    }
-
-    func projectScopedRisk(for contextKey: String, projectId: UUID?, workMode: WorkMode?) -> ProjectContextRisk? {
-        riskFor(contextKey: contextKey, projectId: projectId, workMode: workMode)
     }
 
     // MARK: - Copy Generation

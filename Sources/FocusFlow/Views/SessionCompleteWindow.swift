@@ -24,6 +24,7 @@ struct SessionCompleteWindowView: View {
     @State private var hasHandledAction = false
     @State private var capturedReason: FocusCoachReason? = nil
     @State private var depositPulse: Bool = false
+    @State private var selectedOutcome: SessionOutcome? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
 
@@ -68,6 +69,7 @@ struct SessionCompleteWindowView: View {
             selectedReminderItems = []
             showReminderPicker = false
             capturedReason = nil
+            selectedOutcome = timerVM.lastCompletedFocusSession?.outcome
             appeared = disableMotionForEvidence
             depositPulse = false
             if !timerVM.isEvidenceMode {
@@ -175,6 +177,10 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 20) {
             earnedBadge
 
+            if timerVM.lastCompletedFocusSession != nil {
+                outcomeSection
+            }
+
             // Session app distraction review — shown first when we have detected apps.
             // Suppresses the generic coach reason sheet so user sees concrete context instead.
             if !timerVM.lastSessionDistractingEntries.isEmpty, !timerVM.lastCompletionWasBreak {
@@ -205,6 +211,78 @@ struct SessionCompleteWindowView: View {
         }
         .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.showCoachReasonSheet)
         .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.lastSessionDistractingEntries.isEmpty)
+    }
+
+    // MARK: Outcome (Coach v2 §9 step 3)
+
+    /// Shipped / Moved it forward / Busywork. Saved on the session and used as the coach's
+    /// learning signal: real progress counts, busywork counts against the prompt that led here.
+    private var outcomeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TrackedLabel(
+                text: "How did this block go?",
+                font: .system(size: 11, weight: .semibold),
+                tracking: 1.8
+            )
+            HStack(spacing: 8) {
+                ForEach(SessionOutcome.allCases, id: \.self) { outcome in
+                    outcomeChip(outcome)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func outcomeChip(_ outcome: SessionOutcome) -> some View {
+        let isSelected = selectedOutcome == outcome
+        let tint = outcomeTint(outcome)
+        return Button {
+            withAnimation(disableMotionForEvidence ? nil : FFMotion.control) {
+                selectedOutcome = outcome
+            }
+            timerVM.recordSessionOutcome(outcome)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: outcomeSymbol(outcome))
+                    .font(.system(size: 12, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text(outcome.displayName)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .foregroundStyle(isSelected ? tint : LiquidDesignTokens.Surface.onSurface.opacity(0.8))
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 34)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isSelected ? tint.opacity(0.16) : LiquidDesignTokens.Surface.onSurface.opacity(0.05))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(isSelected ? tint.opacity(0.55) : LiquidDesignTokens.Surface.onSurface.opacity(0.10), lineWidth: isSelected ? 1 : 0.5)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Rate this block: \(outcome.displayName)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func outcomeSymbol(_ outcome: SessionOutcome) -> String {
+        switch outcome {
+        case .shipped: "shippingbox.fill"
+        case .movedForward: "arrow.forward.circle.fill"
+        case .busywork: "tray.full.fill"
+        }
+    }
+
+    private func outcomeTint(_ outcome: SessionOutcome) -> Color {
+        switch outcome {
+        case .shipped: LiquidDesignTokens.Spectral.mintDark
+        case .movedForward: LiquidDesignTokens.Spectral.primaryContainer
+        case .busywork: LiquidDesignTokens.Spectral.amberDark
+        }
     }
 
     /// Inline distraction review section — shows apps seen during the session.
@@ -519,6 +597,7 @@ struct SessionCompleteWindowView: View {
                 },
                 onSnooze: {
                     timerVM.showCoachReasonSheet = false
+                    timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
                 },
                 onDismiss: {
                     timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: nil)
@@ -858,6 +937,7 @@ struct SessionCompleteWindowView: View {
                 },
                 onSnooze: {
                     timerVM.showCoachReasonSheet = false
+                    timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
                 },
                 onDismiss: {
                     timerVM.recordCoachReason(kind: .breakOverrun, reason: nil)

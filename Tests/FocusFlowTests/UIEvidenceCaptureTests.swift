@@ -132,8 +132,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
         XCTAssertTrue(report.today.domainRows.contains { $0.bundleIdentifier == "domain:reddit.com" })
         XCTAssertFalse(report.today.domainRows.contains { $0.bundleIdentifier == "domain:news.ycombinator.com" })
         XCTAssertTrue(
-            flowPurpose(for: "today_stats_view").contains("Domain Signals"),
-            "Today evidence description should mention the Domain Signals panel."
+            flowPurpose(for: "today_stats_view").contains("Distractions today"),
+            "Today evidence description should mention the Distractions today section."
         )
     }
 
@@ -164,8 +164,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
             ["domain:youtube.com", "domain:reddit.com", "domain:claude.ai"]
         )
         XCTAssertTrue(
-            flowPurpose(for: "weekly_stats_view").contains("Domain Patterns"),
-            "Weekly evidence description should mention the Domain Patterns panel."
+            flowPurpose(for: "weekly_stats_view").contains("History"),
+            "History evidence description should mention the History screen."
         )
 
         let fixtures = FixturePool(owner: self)
@@ -192,8 +192,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
         XCTAssertTrue(report.trailing7Days.domainRows.contains { $0.bundleIdentifier == "domain:youtube.com" })
         XCTAssertTrue(report.today.rows.contains { $0.bundleIdentifier == "domain:youtube.com" })
         XCTAssertTrue(
-            flowPurpose(for: "insights_view_domains").contains("Guardian Recommendations"),
-            "Insights evidence description should mention the domain-backed Guardian Recommendations surface."
+            flowPurpose(for: "insights_view_domains").contains("What derails you"),
+            "Insights evidence description should mention the domain-backed derailers section."
         )
 
         let fixtures = FixturePool(owner: self)
@@ -279,15 +279,16 @@ final class UIEvidenceCaptureTests: XCTestCase {
             fixtures: fixtures
         )
 
-        // Continue button region — capsule centered around y≈0.62-0.66
+        // Continue button region — capsule centered around y≈0.70-0.74
+        // (below the Coach v2 "How did this block go?" outcome chips).
         let continueStats = try luminanceStats(
             in: image,
-            normalizedRect: CGRect(x: 0.15, y: 0.62, width: 0.70, height: 0.04)
+            normalizedRect: CGRect(x: 0.15, y: 0.70, width: 0.70, height: 0.04)
         )
-        // Carry-forward text editor region — glass panel at y≈0.35-0.44
+        // Carry-forward text editor region — glass panel at y≈0.41-0.48
         let textFieldStats = try luminanceStats(
             in: image,
-            normalizedRect: CGRect(x: 0.10, y: 0.35, width: 0.80, height: 0.09)
+            normalizedRect: CGRect(x: 0.10, y: 0.41, width: 0.80, height: 0.07)
         )
         // Footer bar — evidence-safe material at bottom
         let footerStats = try luminanceStats(
@@ -398,6 +399,533 @@ final class UIEvidenceCaptureTests: XCTestCase {
             0.005,
             "Expanded break reason sheet should retain visible chip and surface details in evidence captures."
         )
+    }
+
+    // MARK: - Companion Window Capture
+
+    /// Renders every CompanionWindowView tab, SettingsView at full content height,
+    /// and BlockingSettingsView in both appearances. Output directory is taken from
+    /// FOCUSFLOW_CAPTURE_OUTPUT_DIR when set, otherwise the repo Artifacts folder.
+    func testCaptureCompanionWindowTabsAndSettingsInBothAppearances() throws {
+        let runID = ProcessInfo.processInfo.environment["FOCUSFLOW_REVIEW_RUN_ID"] ?? Self.defaultRunID()
+        let outputRoot: URL
+        if let override = ProcessInfo.processInfo.environment["FOCUSFLOW_CAPTURE_OUTPUT_DIR"], !override.isEmpty {
+            outputRoot = URL(fileURLWithPath: override, isDirectory: true)
+        } else {
+            outputRoot = repoRootURL
+                .appendingPathComponent("Artifacts", isDirectory: true)
+                .appendingPathComponent("review", isDirectory: true)
+                .appendingPathComponent(runID, isDirectory: true)
+                .appendingPathComponent("companion", isDirectory: true)
+        }
+        try makeDirectory(outputRoot)
+
+        let tabs: [CompanionTab] = CompanionTab.allCases
+
+        for appearance in ReviewArtifactAppearance.allCases {
+            let appearanceDirectory = outputRoot.appendingPathComponent(appearance.rawValue, isDirectory: true)
+            try makeDirectory(appearanceDirectory)
+            let fixtures = FixturePool(owner: self)
+            defer { fixtures.cleanup() }
+
+            for tab in tabs {
+                let fixture = try companionFixture(for: tab, fixtures: fixtures)
+                let image = try renderCompanionWindow(fixture, tab: tab, appearance: appearance)
+                try writePNG(image, to: appearanceDirectory.appendingPathComponent("companion_\(Self.fileSlug(tab.rawValue)).png"))
+            }
+
+            let settingsFixture = try fixtures.settingsDomainTrackingFixture()
+            let settingsImage = try renderSettingsFullHeight(settingsFixture, appearance: appearance)
+            try writePNG(settingsImage, to: appearanceDirectory.appendingPathComponent("settings_full_height.png"))
+
+            let blockingFixture = try fixtures.baseFixture()
+            try seedBlockProfiles(in: blockingFixture.context)
+            let blockingImage = try renderBlockingSettings(blockingFixture, appearance: appearance)
+            try writePNG(blockingImage, to: appearanceDirectory.appendingPathComponent("blocking_settings.png"))
+        }
+    }
+
+    // MARK: - Redesigned Companion Screens Capture
+
+    /// Renders the redesigned companion screens (Today, History per range, Insights at full height,
+    /// Projects, plus empty-store states) in light and dark from a seeded, realistic 13-week history:
+    /// blocks at 11–12 and 22–00, outcome ratings, weekly priorities, derailers vs work tools and
+    /// coach prompts. Output goes to FOCUSFLOW_CAPTURE_OUTPUT_DIR when set.
+    func testCaptureRedesignedCompanionScreensInBothAppearances() throws {
+        let runID = ProcessInfo.processInfo.environment["FOCUSFLOW_REVIEW_RUN_ID"] ?? Self.defaultRunID()
+        let outputRoot: URL
+        if let override = ProcessInfo.processInfo.environment["FOCUSFLOW_CAPTURE_OUTPUT_DIR"], !override.isEmpty {
+            outputRoot = URL(fileURLWithPath: override, isDirectory: true)
+        } else {
+            outputRoot = repoRootURL
+                .appendingPathComponent("Artifacts", isDirectory: true)
+                .appendingPathComponent("review", isDirectory: true)
+                .appendingPathComponent(runID, isDirectory: true)
+                .appendingPathComponent("companion", isDirectory: true)
+        }
+        try makeDirectory(outputRoot)
+
+        let now = Self.companionFixtureNow
+        let fixture = try makeCompanionRedesignFixture(now: now)
+        defer { cleanup(fixture) }
+        let empty = try makeFixture()
+        defer { cleanup(empty) }
+
+        // The seeded store must exercise every analytics path the screens show.
+        let samples = try fixture.context.fetch(FetchDescriptor<FocusSession>()).map(FocusSample.init)
+        let analytics = FocusAnalytics()
+        let windows = analytics.bestWindows(analytics.hourOfWeek(samples, weeks: 8, now: now))
+        XCTAssertEqual(Set(windows.map(\.startHour)).isSuperset(of: [11, 22]), true, "Fixture should produce 11–12 and 22–00 windows")
+        XCTAssertGreaterThan(analytics.outcomeMix(samples).ratedCount, 0)
+
+        let width: CGFloat = 770 // detail column at the 960pt default window size
+        for appearance in ReviewArtifactAppearance.allCases {
+            let directory = outputRoot.appendingPathComponent(appearance.rawValue, isDirectory: true)
+            try makeDirectory(directory)
+
+            UserDefaults.standard.set(CompanionTab.today.rawValue, forKey: "companionRequestedTab")
+            let window = CompanionWindowView()
+                .frame(width: 960, height: 640)
+                .environment(\.companionNowOverride, now)
+            try writePNG(
+                try renderCompanionScreen(window, fixture: fixture, appearance: appearance, size: CGSize(width: 960, height: 640), trim: false),
+                to: directory.appendingPathComponent("window_today.png")
+            )
+            UserDefaults.standard.removeObject(forKey: "companionRequestedTab")
+
+            let screens: [(String, AnyView)] = [
+                ("today", AnyView(TodayView())),
+                ("history_week", AnyView(HistoryView(initialRange: .week))),
+                ("history_month", AnyView(HistoryView(initialRange: .month))),
+                ("history_3_months", AnyView(HistoryView(initialRange: .quarter))),
+                ("insights_full", AnyView(InsightsView())),
+                ("projects", AnyView(ProjectsListView())),
+            ]
+            for (name, screen) in screens {
+                let image = try renderCompanionScreen(
+                    screen.environment(\.companionNowOverride, now),
+                    fixture: fixture,
+                    appearance: appearance,
+                    size: CGSize(width: width, height: name == "projects" ? 900 : 2400),
+                    trim: name != "projects"
+                )
+                XCTAssertGreaterThan(image.height, 300, "\(name) rendered empty")
+                try writePNG(image, to: directory.appendingPathComponent("\(name).png"))
+            }
+
+            for (name, screen) in [("today_empty", AnyView(TodayView())), ("insights_empty", AnyView(InsightsView()))] {
+                let image = try renderCompanionScreen(
+                    screen.environment(\.companionNowOverride, now),
+                    fixture: empty,
+                    appearance: appearance,
+                    size: CGSize(width: width, height: 1800),
+                    trim: true
+                )
+                try writePNG(image, to: directory.appendingPathComponent("\(name).png"))
+            }
+        }
+    }
+
+    /// A fixed Wednesday afternoon so renders are stable: today's 11:00 block is done, 22:00 is ahead.
+    private static var companionFixtureNow: Date {
+        let calendar = Calendar.current
+        let wednesday = calendar.nextDate(
+            after: calendar.date(byAdding: .day, value: -7, to: Date())!,
+            matching: DateComponents(hour: 15, minute: 30, weekday: 4),
+            matchingPolicy: .nextTime
+        )!
+        return wednesday
+    }
+
+    private func renderCompanionScreen<V: View>(
+        _ view: V,
+        fixture: Fixture,
+        appearance: ReviewArtifactAppearance,
+        size: CGSize,
+        trim: Bool
+    ) throws -> CGImage {
+        let hosted = view
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: size.width, height: size.height, alignment: .top)
+            .background(Color(nsColor: .windowBackgroundColor))
+        let image = try render(hosted, appearance: appearance, size: size)
+        return trim ? try trimmedBottomPadding(image) : image
+    }
+
+    private func makeCompanionRedesignFixture(now: Date) throws -> Fixture {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let calendar = Calendar.current
+
+        let settings = AppSettings()
+        settings.coachCollectRawDomains = true
+        settings.dailyFocusGoal = 2 * 3600
+        settings.dailyStretchGoal = 2 * 3600 + 30 * 60
+        context.insert(settings)
+
+        let sideApp = Project(name: "Side App", color: "mint", icon: "hammer.fill")
+        let novel = Project(name: "Novel", color: "purple", icon: "book.fill")
+        let interview = Project(name: "Interview Prep", color: "blue", icon: "brain.head.profile")
+        let ops = Project(name: "Ops Dashboard", color: "orange", icon: "gauge.with.dots.needle.67percent")
+        [sideApp, novel, interview, ops].forEach { context.insert($0) }
+
+        let weekStart = WeeklyPriority.weekStart(for: now, calendar: calendar)
+        let shipPriority = WeeklyPriority(title: "Ship Side App v1 onboarding", weekStart: weekStart, order: 0, projectID: sideApp.id)
+        let chapterPriority = WeeklyPriority(title: "Finish chapter 3 draft", weekStart: weekStart, order: 1, projectID: novel.id)
+        [shipPriority, chapterPriority].forEach { context.insert($0) }
+
+        var rng = SeededGenerator(seed: 20261017)
+        let today = calendar.startOfDay(for: now)
+
+        func addSession(_ project: Project, start: Date, minutes: Int, paused: Int = 0, outcome: SessionOutcome? = nil, intent: String? = nil) {
+            let session = FocusSession(type: .focus, duration: TimeInterval(minutes * 60), project: project)
+            session.startedAt = start
+            session.endedAt = start.addingTimeInterval(TimeInterval((minutes + paused) * 60))
+            session.totalPausedSeconds = TimeInterval(paused * 60)
+            session.pauseCount = paused > 0 ? 1 : 0
+            session.completed = true
+            session.outcome = outcome
+            session.intentText = intent
+            if calendar.isDate(start, equalTo: now, toGranularity: .weekOfYear) {
+                if project === sideApp { session.priorityID = shipPriority.id }
+                if project === novel { session.priorityID = chapterPriority.id }
+            }
+            context.insert(session)
+        }
+
+        func outcome(for project: Project, daysAgo: Int) -> SessionOutcome? {
+            guard daysAgo <= 28, rng.next(100) < 75 else { return nil }
+            let roll = rng.next(100)
+            if project === ops { return roll < 80 ? .busywork : .movedForward }
+            return roll < 30 ? .shipped : (roll < 85 ? .movedForward : .busywork)
+        }
+
+        var nightStarts: [Int: Date] = [:]
+        for daysAgo in 1...91 {
+            let day = calendar.date(byAdding: .day, value: -daysAgo, to: today)!
+            let weekday = calendar.component(.weekday, from: day) // 1 = Sun
+            let isWeekend = weekday == 1 || weekday == 7
+            // Consistency improves over the quarter.
+            let bias = daysAgo < 30 ? 12 : (daysAgo < 60 ? 0 : -15)
+            if !isWeekend && rng.next(100) < 62 + bias {
+                let project = [interview, interview, ops, sideApp][rng.next(4)]
+                let start = calendar.date(bySettingHour: 11, minute: rng.next(10), second: 0, of: day)!
+                addSession(project, start: start, minutes: 40 + rng.next(20), paused: rng.next(4) == 0 ? 6 : 0, outcome: outcome(for: project, daysAgo: daysAgo))
+            }
+            if !isWeekend && rng.next(100) < 70 + bias {
+                let project = rng.next(10) < 6 ? sideApp : novel
+                let start = calendar.date(bySettingHour: 22, minute: rng.next(16), second: 0, of: day)!
+                nightStarts[daysAgo] = start
+                addSession(project, start: start, minutes: 70 + rng.next(55), outcome: outcome(for: project, daysAgo: daysAgo))
+            }
+            if isWeekend && rng.next(100) < 35 {
+                let start = calendar.date(bySettingHour: 16, minute: 0, second: 0, of: day)!
+                addSession(novel, start: start, minutes: 60 + rng.next(30), outcome: outcome(for: novel, daysAgo: daysAgo))
+            }
+        }
+
+        // Today: a morning block and an early-afternoon one, 1h 41m of 2h so far.
+        addSession(interview, start: calendar.date(bySettingHour: 11, minute: 2, second: 0, of: today)!, minutes: 56,
+                   outcome: .movedForward, intent: "Two system design mocks")
+        addSession(sideApp, start: calendar.date(bySettingHour: 13, minute: 40, second: 0, of: today)!, minutes: 45,
+                   paused: 5, outcome: .shipped, intent: "Onboarding empty states")
+
+        // App usage: derailers outside focus, plus heavy work tools that must never show up.
+        let thisWeekDays = (0..<7).compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
+            .filter { calendar.isDate($0, equalTo: now, toGranularity: .weekOfYear) }
+        let lastWeekDays = (7..<14).compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
+        let derailers: [(String, String, Int, Int)] = [
+            ("YouTube", "domain:youtube.com", 55, 70),
+            ("X", "domain:x.com", 28, 22),
+            ("Netflix", "com.netflix.Netflix", 35, 50),
+            ("ZEE5", "com.zee5.app", 10, 25),
+            ("Reddit", "domain:reddit.com", 4, 3),
+            ("Slack", "com.tinyspeck.slackmacgap", 180, 170),
+            ("Cursor", "com.todesktop.230313mzl4w4u92", 150, 160),
+            ("Claude", "com.anthropic.claudefordesktop", 120, 110),
+            ("Arc", "company.thebrowser.Browser", 200, 210),
+            ("loginwindow", "com.apple.loginwindow", 90, 90),
+        ]
+        for (name, bundle, thisWeekMinutes, lastWeekMinutes) in derailers {
+            for day in thisWeekDays {
+                let minutes = calendar.isDate(day, inSameDayAs: today) ? (name == "YouTube" ? 26 : (name == "X" ? 14 : 3)) : thisWeekMinutes
+                context.insert(AppUsageEntry(date: day, appName: name, bundleIdentifier: bundle, duringFocusSeconds: 120, outsideFocusSeconds: minutes * 60))
+            }
+            for day in lastWeekDays {
+                context.insert(AppUsageEntry(date: day, appName: name, bundleIdentifier: bundle, duringFocusSeconds: 60, outsideFocusSeconds: lastWeekMinutes * 60))
+            }
+        }
+
+        // Coach prompts over 4 weeks: evening panels sometimes lead to a start, daytime ones rarely.
+        let styles: [CoachStyle] = [.challenger, .data, .gentle]
+        for daysAgo in 1...27 {
+            let day = calendar.date(byAdding: .day, value: -daysAgo, to: today)!
+            for (hour, minute, surface) in [(10, 40, CoachSurface.notification), (16, 5, .strongWindow), (21, 52, .panel)] {
+                let attempt = InterventionAttempt(kind: .softNudge, riskScore: 0.5)
+                attempt.deliveredAt = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day)!
+                // Some evening panels land a few minutes before that night's block (a real prompt → start).
+                if hour == 21, let night = nightStarts[daysAgo], daysAgo % 3 == 0 {
+                    attempt.deliveredAt = night.addingTimeInterval(-6 * 60)
+                }
+                attempt.surfaceRawValue = (daysAgo % 5 == 0 && hour == 21) ? CoachSurface.silent.rawValue : surface.rawValue
+                attempt.styleRawValue = styles[(daysAgo + hour) % 3].rawValue
+                context.insert(attempt)
+            }
+        }
+
+        try context.save()
+        let vm = TimerViewModel()
+        vm.configureForEvidence(modelContext: context, settings: settings)
+        return Fixture(container: container, context: context, vm: vm)
+    }
+
+    /// Deterministic LCG so fixture data is identical on every run.
+    private struct SeededGenerator {
+        private var state: UInt64
+        init(seed: UInt64) { state = seed }
+        mutating func next(_ upperBound: Int) -> Int {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return Int((state >> 33) % UInt64(max(1, upperBound)))
+        }
+    }
+
+    // MARK: - Settings Tabs Capture
+
+    /// Renders every Settings tab (light and dark, full content height) with seeded
+    /// suggestions, rules, blocking profiles and weekly priorities. Output goes to
+    /// FOCUSFLOW_CAPTURE_OUTPUT_DIR when set, otherwise the repo Artifacts folder.
+    func testCaptureSettingsTabsInBothAppearances() throws {
+        let runID = ProcessInfo.processInfo.environment["FOCUSFLOW_REVIEW_RUN_ID"] ?? Self.defaultRunID()
+        let outputRoot: URL
+        if let override = ProcessInfo.processInfo.environment["FOCUSFLOW_CAPTURE_OUTPUT_DIR"], !override.isEmpty {
+            outputRoot = URL(fileURLWithPath: override, isDirectory: true)
+        } else {
+            outputRoot = repoRootURL
+                .appendingPathComponent("Artifacts", isDirectory: true)
+                .appendingPathComponent("review", isDirectory: true)
+                .appendingPathComponent(runID, isDirectory: true)
+                .appendingPathComponent("settings", isDirectory: true)
+        }
+        try makeDirectory(outputRoot)
+
+        let fixture = try makeSettingsTabsFixture()
+        for appearance in ReviewArtifactAppearance.allCases {
+            let appearanceDirectory = outputRoot.appendingPathComponent(appearance.rawValue, isDirectory: true)
+            try makeDirectory(appearanceDirectory)
+            for (index, tab) in SettingsTab.allCases.enumerated() {
+                let image = try renderSettingsTab(tab, fixture: fixture, appearance: appearance)
+                XCTAssertGreaterThan(image.height, 200, "Settings tab \(tab.rawValue) rendered empty")
+                let name = String(format: "settings_%02d_%@.png", index + 1, tab.rawValue)
+                try writePNG(image, to: appearanceDirectory.appendingPathComponent(name))
+            }
+            // The toolbar tab bar, once per selection, and a window mock-up (bar over the
+            // fixed-size container). The real bar lives in the window toolbar, which
+            // off-screen renders cannot draw.
+            try writePNG(
+                try renderSettingsTabBarStrip(appearance: appearance),
+                to: appearanceDirectory.appendingPathComponent("settings_00_tabbar.png")
+            )
+            try writePNG(
+                try renderSettingsWindowMockup(.coach, fixture: fixture, appearance: appearance),
+                to: appearanceDirectory.appendingPathComponent("settings_00_window_coach.png")
+            )
+        }
+    }
+
+    private func renderSettingsTabBarStrip(appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let width = SettingsLayout.width
+        let rowHeight = SettingsTabBar.itemHeight + 16
+        let view = VStack(spacing: 0) {
+            ForEach(SettingsTab.allCases) { tab in
+                SettingsTabBar(selection: tab) { _ in }
+                    .frame(width: width, height: rowHeight)
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        return try render(view, appearance: appearance, size: CGSize(width: width, height: rowHeight * CGFloat(SettingsTab.allCases.count)))
+    }
+
+    private func renderSettingsWindowMockup(_ tab: SettingsTab, fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let titleHeight: CGFloat = 28
+        let barHeight = SettingsTabBar.itemHeight + 12
+        let view = VStack(spacing: 0) {
+            Text(tab.title)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: SettingsLayout.width, height: titleHeight)
+            SettingsTabBar(selection: tab) { _ in }
+                .frame(width: SettingsLayout.width, height: barHeight)
+            SettingsTabContainer(tab: tab, direction: .forward, reduceMotion: false)
+        }
+        .environment(fixture.vm)
+        .modelContainer(fixture.container)
+        .environment(\.modelContext, fixture.context)
+        .background(Color(nsColor: .windowBackgroundColor))
+        return try render(
+            view,
+            appearance: appearance,
+            size: CGSize(width: SettingsLayout.width, height: titleHeight + barHeight + SettingsLayout.height)
+        )
+    }
+
+    private func renderSettingsTab(_ tab: SettingsTab, fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let contentHeight: CGFloat = 2000
+        let view = SettingsTabContent(tab: tab)
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: SettingsLayout.width, height: contentHeight)
+            .background(Color(nsColor: .windowBackgroundColor))
+        let image = try render(view, appearance: appearance, size: CGSize(width: SettingsLayout.width, height: contentHeight))
+        return try trimmedBottomPadding(image)
+    }
+
+    private func makeSettingsTabsFixture() throws -> Fixture {
+        let schema = Schema([
+            Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
+            AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self
+        ])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        )
+        let context = container.mainContext
+
+        let settings = AppSettings()
+        settings.coachCollectRawDomains = false
+        settings.coachStyle = .challenger
+        settings.coachNotificationsEnabled = false
+        settings.coachMaxPromptsPerDay = 3
+        settings.coachQuietStartMinute = 23 * 60
+        settings.coachQuietEndMinute = 7 * 60
+        settings.coachMyWhyText = "Ship the side project by December\nBe the engineer who finishes things\nEvenings are for building"
+        settings.dailyFocusGoal = 2 * 3600
+        settings.dailyStretchGoal = 2 * 3600 + 30 * 60
+        context.insert(settings)
+
+        let sideProject = Project(name: "Side Project", color: "indigo", icon: "hammer")
+        let writing = Project(name: "Writing", color: "teal", icon: "pencil")
+        context.insert(sideProject)
+        context.insert(writing)
+
+        let items: [IdleDistractionItem] = [
+            IdleDistractionItem(key: "com.todesktop.230313mzl4w4u92", displayName: "230313mzl4w4u92", targetKind: .app,
+                                severity: .minor, source: .suggested, status: .pending, evidenceCount: 12),
+            IdleDistractionItem(key: "reddit.com", displayName: "Reddit", targetKind: .website,
+                                severity: .minor, source: .suggested, status: .pending, evidenceCount: 3),
+            IdleDistractionItem(key: "com.mitchellh.ghostty", displayName: "Ghostty", targetKind: .app,
+                                severity: .major, source: .manual, status: .active),
+            IdleDistractionItem(key: "youtube.com", displayName: "YouTube", targetKind: .website,
+                                severity: .minor, source: .suggested, status: .active, evidenceCount: 5),
+            IdleDistractionItem(key: "news.ycombinator.com", displayName: "Hacker News", targetKind: .website,
+                                severity: .major, source: .manual, status: .active),
+            IdleDistractionItem(key: "com.apple.safari", displayName: "Safari", targetKind: .app,
+                                severity: .allowed, source: .manual, status: .active),
+            IdleDistractionItem(key: "github.com", displayName: "GitHub", targetKind: .website,
+                                severity: .allowed, source: .manual, status: .active)
+        ]
+        items.forEach { context.insert($0) }
+
+        let deepWork = BlockProfile(name: "Deep Work", websites: ["youtube.com", "reddit.com", "x.com"], apps: ["com.apple.Music"], isDefault: true)
+        let evenings = BlockProfile(name: "Evenings", websites: ["netflix.com"], apps: [])
+        context.insert(deepWork)
+        context.insert(evenings)
+        sideProject.blockProfiles = [evenings]
+
+        let weekStart = WeeklyPriority.weekStart(for: Date())
+        let first = WeeklyPriority(title: "Ship FocusFlow coach v2 beta", weekStart: weekStart, order: 0, projectID: sideProject.id)
+        let second = WeeklyPriority(title: "Finish chapter 3 draft", weekStart: weekStart, order: 1, projectID: writing.id)
+        let third = WeeklyPriority(title: "Plan next week's experiments", weekStart: weekStart, order: 2)
+        third.isDone = true
+        [first, second, third].forEach { context.insert($0) }
+        try context.save()
+
+        let vm = TimerViewModel()
+        vm.configureForEvidence(modelContext: context, settings: settings)
+        return Fixture(container: container, context: context, vm: vm)
+    }
+
+    private func companionFixture(for tab: CompanionTab, fixtures: FixturePool) throws -> Fixture {
+        switch tab {
+        case .today: return try fixtures.todayStatsFixture()
+        case .history, .projects: return try fixtures.weeklyStatsFixture()
+        case .insights: return try fixtures.insightsDomainsFixture()
+        }
+    }
+
+    private func seedBlockProfiles(in context: ModelContext) throws {
+        context.insert(BlockProfile(name: "Deep Work", websites: ["youtube.com", "reddit.com", "x.com"], apps: ["Slack"], isDefault: true))
+        context.insert(BlockProfile(name: "Evenings", websites: ["netflix.com"], apps: ["Steam"]))
+        try context.save()
+    }
+
+    private func renderCompanionWindow(_ fixture: Fixture, tab: CompanionTab, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        // CompanionWindowView reads this key in onAppear and selects the tab.
+        UserDefaults.standard.set(tab.rawValue, forKey: "companionRequestedTab")
+        defer { UserDefaults.standard.removeObject(forKey: "companionRequestedTab") }
+        let view = CompanionWindowView()
+            .frame(minWidth: 780, minHeight: 540)
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .preferredColorScheme(appearance == .dark ? .dark : .light)
+        return try render(view, appearance: appearance, size: CGSize(width: 960, height: 640))
+    }
+
+    private func renderSettingsFullHeight(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let contentHeight: CGFloat = 4200
+        let view = SettingsView()
+            .environment(fixture.vm)
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: 720, height: contentHeight)
+            .padding(16)
+            .background(backgroundColor(for: appearance))
+        let image = try render(view, appearance: appearance, size: CGSize(width: 752, height: contentHeight + 32))
+        return try trimmedBottomPadding(image)
+    }
+
+    private func renderBlockingSettings(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
+        let view = BlockingSettingsView()
+            .modelContainer(fixture.container)
+            .environment(\.modelContext, fixture.context)
+            .frame(width: 720, height: 520)
+            .padding(16)
+            .background(backgroundColor(for: appearance))
+        return try render(view, appearance: appearance, size: CGSize(width: 752, height: 552))
+    }
+
+    /// Crops trailing rows that match the top-left background pixel, keeping a 24px margin.
+    private func trimmedBottomPadding(_ image: CGImage) throws -> CGImage {
+        let data = try normalizedRGBAData(from: image)
+        let width = image.width
+        let height = image.height
+        let bytesPerRow = width * 4
+        let bgR = Int(data[0]), bgG = Int(data[1]), bgB = Int(data[2])
+
+        func rowHasContent(_ y: Int) -> Bool {
+            let base = y * bytesPerRow
+            for x in 0..<width {
+                let i = base + x * 4
+                if abs(Int(data[i]) - bgR) > 6 || abs(Int(data[i + 1]) - bgG) > 6 || abs(Int(data[i + 2]) - bgB) > 6 {
+                    return true
+                }
+            }
+            return false
+        }
+
+        var lastContentRow = height - 1
+        while lastContentRow > 0 && !rowHasContent(lastContentRow) {
+            lastContentRow -= 1
+        }
+        let cropHeight = min(height, lastContentRow + 1 + 24)
+        return image.cropping(to: CGRect(x: 0, y: 0, width: width, height: cropHeight)) ?? image
+    }
+
+    private static func fileSlug(_ raw: String) -> String {
+        raw.lowercased().replacingOccurrences(of: " ", with: "_")
     }
 
     // MARK: - Flow Capture
@@ -543,17 +1071,17 @@ final class UIEvidenceCaptureTests: XCTestCase {
             return try renderCoachWindow(fixture, appearance: appearance)
 
         case "today_stats_view":
-            // Captures the Today companion window behavioral metrics row.
+            // Captures the Today screen (goal hero, stats, timeline).
             let fixture = try fixtures.todayStatsFixture()
             return try renderTodayStats(fixture, appearance: appearance)
 
         case "weekly_stats_view":
-            // Captures the Weekly companion window with the Domain Patterns panel visible.
+            // Captures the History screen (daily focus chart, goal line, day detail).
             let fixture = try fixtures.weeklyStatsFixture()
             return try renderWeeklyStats(fixture, appearance: appearance)
 
         case "insights_view_domains":
-            // Captures the Insights window with domain-backed Guardian Recommendations and App Usage visible.
+            // Captures the Insights screen with domain-backed derailers visible.
             let fixture = try fixtures.insightsDomainsFixture()
             return try renderInsights(fixture, appearance: appearance)
 
@@ -616,7 +1144,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
     }
 
     private func renderTodayStats(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
-        let view = TodayStatsView()
+        let view = TodayView()
             .environment(fixture.vm)
             .modelContainer(fixture.container)
             .environment(\.modelContext, fixture.context)
@@ -627,7 +1155,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
     }
 
     private func renderWeeklyStats(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {
-        let view = WeeklyStatsView()
+        let view = HistoryView()
             .environment(fixture.vm)
             .modelContainer(fixture.container)
             .environment(\.modelContext, fixture.context)
@@ -1504,7 +2032,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         settings.coachAllowSkipAction = true
         settings.coachInterventionMode = .balanced
         try context.save()
-        vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, escalationLevel: 2, frontmostCategory: .productive)
+        vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .productive)
         let idleFlow = CanonicalFlowProof(
             id: "idle_escalation_to_strong_prompt",
             beforeState: [
@@ -1649,9 +2177,9 @@ final class UIEvidenceCaptureTests: XCTestCase {
         case "coach_window_dismiss": return "Coach window X dismiss button evidence"
         case "settings_calendar_permissions": return "Calendar integration permission surface"
         case "settings_reminders_permissions": return "Reminders integration permission surface"
-        case "today_stats_view": return "Today companion behavioral metrics (Earned Blocks, Guardian Learned, Domain Signals)"
-        case "weekly_stats_view": return "Weekly companion trends and Domain Patterns panel"
-        case "insights_view_domains": return "Insights Guardian Recommendations and App Usage domain analytics"
+        case "today_stats_view": return "Today goal hero, Focus blocks / Personal work / Streak, timeline and Distractions today"
+        case "weekly_stats_view": return "History daily focus chart with goal line, consistency and day detail"
+        case "insights_view_domains": return "Insights focus windows, What derails you, outcomes, priorities and coach effectiveness"
         case "distractions_view": return "Companion Distractions tab with active rules, learned suggestions, and manual add"
         case "settings_domain_tracking": return "Settings domain tracking toggle and recovery guidance"
         case "break_complete_reason_sheet_hidden": return "Break-complete window with reason sheet collapsed"
@@ -1693,7 +2221,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
             CoachInterruption.self,
             InterventionAttempt.self,
             BreakLearningEvent.self,
-            IdleDistractionItem.self
+            IdleDistractionItem.self,
+            WeeklyPriority.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: configuration)
