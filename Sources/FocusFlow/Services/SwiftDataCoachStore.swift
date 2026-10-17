@@ -37,6 +37,23 @@ final class SwiftDataCoachStore: @preconcurrency FocusCoachPersisting {
         return (try? modelContext.fetch(descriptor)) ?? []
     }
 
+    func attempts(deliveredSince date: Date) -> [InterventionAttempt] {
+        let descriptor = FetchDescriptor<InterventionAttempt>(
+            predicate: #Predicate { $0.deliveredAt >= date },
+            sortBy: [SortDescriptor(\.deliveredAt, order: .reverse)]
+        )
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    func saveChanges() {
+        guard modelContext.hasChanges else { return }
+        do {
+            try modelContext.save()
+        } catch {
+            print("[SwiftDataCoachStore] Failed to save coach changes: \(error.localizedDescription)")
+        }
+    }
+
     var attempts: [InterventionAttempt] {
         let descriptor = FetchDescriptor<InterventionAttempt>(
             sortBy: [SortDescriptor(\.deliveredAt, order: .reverse)]

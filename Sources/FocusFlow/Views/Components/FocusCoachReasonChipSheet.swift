@@ -52,7 +52,7 @@ struct FocusCoachReasonChipSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle")
-                            .font(.system(size: 9))
+                            .font(.system(size: 10))
                             .accessibilityHidden(true)
                         Text("Legitimate")
                             .font(.system(size: 11, weight: .semibold))
@@ -71,7 +71,7 @@ struct FocusCoachReasonChipSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 9))
+                            .font(.system(size: 10))
                             .accessibilityHidden(true)
                         Text("Avoidant")
                             .font(.system(size: 11, weight: .semibold))

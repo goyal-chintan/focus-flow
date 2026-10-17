@@ -17,7 +17,11 @@ cp -R .build/debug/FocusFlow.app /Applications/
 
 The app cannot run via bare `swift run` — it needs a proper .app bundle for Liquid Glass compositing and UNUserNotificationCenter. `Scripts/run.sh` handles this by creating the bundle structure with Info.plist at `.build/debug/FocusFlow.app`.
 
-**No test target exists.** No external dependencies — pure SwiftUI + SwiftData.
+Tests: `swift test` (XCTest + Swift Testing in `Tests/FocusFlowTests`). If `xcode-select` points at CommandLineTools, prefix commands with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the build needs `actool`). No external dependencies — pure SwiftUI + SwiftData + Swift Charts.
+
+Visual QA: off-screen renders (`UIEvidenceCaptureTests`, output dir via `FOCUSFLOW_CAPTURE_OUTPUT_DIR`) and in-app `cacheDisplay` captures draw AppKit controls and glass in the wrong appearance. Judge layout from them; judge colour only from real screenshots.
+
+Coach v2 design: `docs/plans/2026-10-17-coach-v2-learning-motivation-design.md`. Companion/Settings design: `docs/plans/2026-10-17-companion-window-redesign.md`. Debug hooks (DEBUG builds, env vars): `FOCUSFLOW_DEBUG_COACH_PANEL=1` shows the on-screen coach panel 5s after launch; add `FOCUSFLOW_DEBUG_DRIFT_LEVEL=<1|2|3>` to show the rescue-ladder panel at that level; `FOCUSFLOW_DEBUG_PAUSE_SCREEN=1` shows the rescue pause screen 5s after launch (rescue loop: `docs/plans/2026-10-17-coach-rescue-loop-design.md`; starter blocks are sessions with `customLabel == "Starter"` and no project); `FOCUSFLOW_DEBUG_CAPTURE_DIR=<dir>` captures every companion tab from inside the app.
 
 ## Platform
 
@@ -59,7 +63,7 @@ IDLE → startFocus() → FOCUSING → timerCompleted() → OVERTIME (idle + com
 - Focus completion always shows `SessionCompleteWindowView` (the `autoStartBreak` setting is intentionally unused)
 - `stop()` saves session as incomplete; `abandonSession()` deletes it entirely
 - Sessions under 1 minute are auto-deleted (in `stop()` and `cleanupOrphanedSessions()`)
-- Minimum session duration: 5 minutes (300 seconds guard in `startFocus()`)
+- Minimum session duration: 5 minutes (`focusDuration` clamps `selectedMinutes` to ≥5)
 
 ### Timers & RunLoop
 - Main timer and pause timer run on `RunLoop.main` with `.common` mode (fires during menu tracking)

@@ -191,6 +191,22 @@ final class AppUsageTracker {
         }
     }
 
+    /// macOS system processes that can be frontmost (screen lock, screensaver, notification
+    /// center, auth prompts, Dock). Never recorded as app usage, distraction suggestions or coach targets.
+    nonisolated static let ignoredSystemBundleIdentifiers: Set<String> = [
+        "com.apple.loginwindow",
+        "com.apple.ScreenSaver.Engine",
+        "com.apple.UserNotificationCenter",
+        "com.apple.SecurityAgent",
+        "com.apple.dock",
+    ]
+
+    nonisolated static func isIgnoredSystemBundleIdentifier(_ bundleIdentifier: String) -> Bool {
+        ignoredSystemBundleIdentifiers.contains {
+            $0.caseInsensitiveCompare(bundleIdentifier) == .orderedSame
+        }
+    }
+
     static func frontmostContextPresentation(
         bundleIdentifier: String,
         appName: String,
@@ -405,6 +421,9 @@ final class AppUsageTracker {
         trackingTimer?.invalidate()
         trackingTimer = nil
         isTracking = false
+        // ModelContext does not retain its container. Holding the context after stop() lets a
+        // later flush save into a deallocated container (fatal in SwiftData). start() sets it again.
+        modelContext = nil
         lastSampleAt = nil
         sampleRemainder = 0
         idleSeconds = 0
@@ -493,6 +512,8 @@ final class AppUsageTracker {
 
         let elapsedSeconds = consumeElapsedSeconds(now: now)
         trackFrontmostApp(isFocusing: isFocusing, elapsedSeconds: elapsedSeconds, now: now)
+        // Rescue loop: feed the drift monitor (it ignores ticks during a session).
+        vm.recordDriftTick(elapsedSeconds: elapsedSeconds, now: now)
 
         // Feed coach signals every 30 seconds during focus
         if isFocusing, vm.settings?.coachRealtimeEnabled == true, tickCount % 30 == 0 {
@@ -512,7 +533,6 @@ final class AppUsageTracker {
                 if idleSeconds >= nextNudgeSeconds {
                     vm.evaluateIdleStarterIntervention(
                         idleSeconds: idleSeconds,
-                        escalationLevel: nudgeCount,
                         frontmostCategory: lastFrontmostCategory
                     )
                     let presentedInAppPrompt = vm.showCoachInterventionWindow
@@ -552,6 +572,14 @@ final class AppUsageTracker {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
         let bundleId = frontApp.bundleIdentifier ?? "unknown"
         let appName = frontApp.localizedName ?? "Unknown"
+
+        // Screen lock, screensaver, auth prompts and Dock are not app usage. Clear the tracked app so
+        // the time spent there is not credited to whichever app was frontmost before.
+        if Self.isIgnoredSystemBundleIdentifier(bundleId) {
+            lastFrontmostBundleId = ""
+            lastFrontmostCategory = .neutral
+            return
+        }
         let windowTitle: String
         let resolvedBrowserHost: String?
         let shouldCollectRawDomains = timerVM?.settings?.coachCollectRawDomains == true

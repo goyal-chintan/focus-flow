@@ -15,6 +15,16 @@ final class InterventionAttempt {
     var deliveredAt: Date
     var resolvedAt: Date?
 
+    // Coach v2.1 learning fields (optional: no migration needed).
+    /// `CoachSurface` raw value.
+    var surfaceRawValue: String?
+    /// `CoachStyle` raw value of the message shown.
+    var styleRawValue: String?
+    /// Bandit context bucket, e.g. "avail:high|idle:30-90|front:work|today:0".
+    var contextKey: String?
+    /// Learned reward once resolved: +1 start, +0.5 completed, ±0.5 outcome rating.
+    var reward: Double?
+
     var kind: FocusCoachInterventionKind {
         get { FocusCoachInterventionKind(rawValue: kindRawValue) ?? .softNudge }
         set { kindRawValue = newValue.rawValue }

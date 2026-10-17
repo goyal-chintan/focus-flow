@@ -21,6 +21,8 @@ struct FocusCoachPresentationMapper {
         let message: String
         let actions: [FocusCoachQuickAction]
         let isStrong: Bool
+        /// Composed label for the primary action ("Start 25m on X", "Back to it").
+        var primaryTitle: String? = nil
     }
 
     // MARK: - Risk → Strip
@@ -39,7 +41,7 @@ struct FocusCoachPresentationMapper {
             return StripModel(
                 tone: .amber,
                 title: "Drift Detected",
-                subtitle: "Context mismatch spotted",
+                subtitle: "Looks off-plan",
                 color: LiquidDesignTokens.Spectral.amber,
                 iconName: "exclamationmark.triangle.fill"
             )
@@ -47,7 +49,7 @@ struct FocusCoachPresentationMapper {
             return StripModel(
                 tone: .red,
                 title: "Drift Alert",
-                subtitle: score > 0.85 ? "Sustained mismatch — decide now" : "Repeated mismatch detected",
+                subtitle: score > 0.85 ? "Off-plan for a while" : "Off-plan again",
                 color: LiquidDesignTokens.Spectral.salmon,
                 iconName: "exclamationmark.octagon.fill"
             )
@@ -56,23 +58,21 @@ struct FocusCoachPresentationMapper {
 
     // MARK: - Decision → Prompt
 
+    /// Popover card for a decision. The words come from `CoachMessageComposer` via
+    /// `decision.composed`; this mapper only picks the visual intensity.
     static func mapDecision(_ decision: FocusCoachDecision) -> PromptModel? {
         switch decision.kind {
-        case .none, .softStrip:
+        case .none:
             return nil
-        case .quickPrompt:
+        case .quickPrompt, .strongPrompt:
+            let copy = decision.composed
+                ?? CoachMessageComposer.neutralFallback(isInSession: decision.context?.isInActiveSession ?? false)
             return PromptModel(
-                title: "Planned or Drift?",
-                message: decision.message ?? "Current context looks off-plan. Choose the next step.",
+                title: copy.hook,
+                message: copy.detail?.text ?? "",
                 actions: decision.suggestedActions,
-                isStrong: false
-            )
-        case .strongPrompt:
-            return PromptModel(
-                title: "Guardrail Check",
-                message: decision.message ?? "Sustained off-plan behavior detected. Choose a corrective action.",
-                actions: decision.suggestedActions,
-                isStrong: true
+                isStrong: decision.kind == .strongPrompt,
+                primaryTitle: copy.primaryTitle
             )
         }
     }

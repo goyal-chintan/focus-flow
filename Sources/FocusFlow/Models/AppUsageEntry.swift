@@ -195,18 +195,8 @@ final class AppUsageEntry {
             return hit.target
         }
 
-        // Non-web derailer fallback for repeat candidates.
-        let derailerNeedles = [
-            "anthropic", "claude",
-            "openai", "chatgpt",
-            "slack", "discord",
-            "telegram", "whatsapp"
-        ]
-        if !bundleIdentifier.isEmpty,
-           !isBrowserBundleIdentifier(bundleIdentifier),
-           derailerNeedles.contains(where: { id.contains($0) || name.contains($0) }) {
-            return "app:\(id)"
-        }
+        // No hardcoded app derailers: chat and AI tools (Slack, Claude, ChatGPT, Discord, …) are
+        // work tools for many users (Coach v2 design W2). App targets need an explicit user label.
         return nil
     }
 
@@ -320,6 +310,11 @@ final class AppUsageEntry {
         if bundleId.contains("brave") { return "Brave" }
         if bundleId.contains("firefox") { return "Firefox" }
         if bundleId.contains("edge") { return "Edge" }
+
+        // Installed app name (e.g. "Cursor" for com.todesktop.230313mzl4w4u92) before the raw-token fallback.
+        if let installedName = AppDisplayNameResolver.displayName(forBundleIdentifier: bundleId) {
+            return installedName
+        }
 
         let lastToken = bundleId.split(separator: ".").last.map(String.init) ?? bundleId
         let cleaned = prettifyToken(lastToken)

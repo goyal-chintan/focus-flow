@@ -31,14 +31,14 @@ final class FocusCoachInterventionPolicyTests: XCTestCase {
 
     // MARK: - Budget Gate
 
-    func testBudgetExhaustedOnlyAllowsSoftStrip() {
+    func testBudgetExhaustedReturnsNoneEvenAtHighRisk() {
         let state = FocusCoachPromptState(
             promptCountThisSession: 4,
             consecutiveHighRiskWindows: 3,
             snoozedUntil: nil
         )
         let decision = policy.decide(now: Date(), risk: .highRisk, state: state, promptBudget: 4)
-        XCTAssertEqual(decision.kind, .softStrip)
+        XCTAssertEqual(decision.kind, .none)
     }
 
     func testBudgetExhaustedStableReturnsNone() {
@@ -53,7 +53,7 @@ final class FocusCoachInterventionPolicyTests: XCTestCase {
 
     // MARK: - Cooldown Gate
 
-    func testCooldownSuppressesPromptReturnsStripForHighRisk() {
+    func testCooldownSuppressesPromptForHighRisk() {
         let now = Date()
         let state = FocusCoachPromptState(
             promptCountThisSession: 1,
@@ -62,7 +62,7 @@ final class FocusCoachInterventionPolicyTests: XCTestCase {
             lastPromptAt: now.addingTimeInterval(-30) // 30s ago, within 90s cooldown
         )
         let decision = policy.decide(now: now, risk: .highRisk, state: state, promptBudget: 4)
-        XCTAssertEqual(decision.kind, .softStrip)
+        XCTAssertEqual(decision.kind, .none)
     }
 
     func testCooldownExpiredAllowsPrompt() {
@@ -74,7 +74,6 @@ final class FocusCoachInterventionPolicyTests: XCTestCase {
             lastPromptAt: now.addingTimeInterval(-100) // 100s ago, past 90s cooldown
         )
         let decision = policy.decide(now: now, risk: .highRisk, state: state, promptBudget: 4)
-        XCTAssertNotEqual(decision.kind, .softStrip)
         XCTAssertNotEqual(decision.kind, .none)
     }
 

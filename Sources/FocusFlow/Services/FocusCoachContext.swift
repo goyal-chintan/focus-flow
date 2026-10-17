@@ -34,6 +34,9 @@ struct FocusCoachContext: Sendable {
     let suggestedBlockTarget: String?
     let blockRecommendationReason: String?
     let inReleaseWindow: Bool
+    /// Seconds since the end of the user's most recent focus session; nil when unknown.
+    /// Copy that says "since your last focused block" must use this, never `idleSeconds`.
+    let secondsSinceLastFocusSession: Int?
 
     init(
         idleSeconds: Int,
@@ -54,7 +57,8 @@ struct FocusCoachContext: Sendable {
         recentLowPriorityWorkCount: Int,
         suggestedBlockTarget: String?,
         blockRecommendationReason: String?,
-        inReleaseWindow: Bool
+        inReleaseWindow: Bool,
+        secondsSinceLastFocusSession: Int? = nil
     ) {
         self.idleSeconds = idleSeconds
         self.frontmostAppName = frontmostAppName
@@ -75,6 +79,7 @@ struct FocusCoachContext: Sendable {
         self.suggestedBlockTarget = suggestedBlockTarget
         self.blockRecommendationReason = blockRecommendationReason
         self.inReleaseWindow = inReleaseWindow
+        self.secondsSinceLastFocusSession = secondsSinceLastFocusSession
     }
 
     // MARK: - Derived helpers
@@ -99,7 +104,11 @@ struct FocusCoachContext: Sendable {
 
     /// Formatted idle duration for display (e.g. "23m" or "1h 4m").
     var formattedIdle: String {
-        let minutes = idleSeconds / 60
+        Self.formatDuration(seconds: idleSeconds)
+    }
+
+    static func formatDuration(seconds: Int) -> String {
+        let minutes = seconds / 60
         if minutes < 60 { return "\(minutes)m" }
         let h = minutes / 60; let m = minutes % 60
         return m == 0 ? "\(h)h" : "\(h)h \(m)m"

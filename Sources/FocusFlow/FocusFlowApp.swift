@@ -6,7 +6,7 @@ struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self])
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self])
         let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("FocusFlow", isDirectory: true)
@@ -43,7 +43,21 @@ struct FocusFlowApp: App {
             HStack(spacing: 5) {
                 Image(systemName: menuBarIconName)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .symbolEffect(.pulse, options: .repeating, isActive: timerVM.coachMenuBarPulse)
                     .accessibilityHidden(true)
+
+                // A coach prompt is waiting (panel auto-hid or a badge prompt): clears on open.
+                if timerVM.coachMenuBarPulse {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 5, height: 5)
+                        .accessibilityLabel("Focus coach prompt waiting")
+                }
+
+                // Rescue loop: ambient drift counter while drifting in a focus window.
+                if let driftText = timerVM.driftMenuBarText {
+                    DriftMenuBarCounter(text: driftText)
+                }
 
                 if timerVM.isBlockingActive {
                     Image(systemName: "shield.checkered")
@@ -71,7 +85,10 @@ struct FocusFlowApp: App {
                 }
             }
             .font(.system(size: 12, weight: .medium, design: .rounded))
-            .background(AppLaunchBridge(timerVM: timerVM, modelContext: container.mainContext))
+            .background(AppLaunchBridge(timerVM: timerVM, modelContext: container.mainContext).modelContainer(container))
+            #if DEBUG
+            .background(DebugWindowCaptureBridge())
+            #endif
         }
         .menuBarExtraStyle(.window)
         .modelContainer(container)
@@ -79,44 +96,35 @@ struct FocusFlowApp: App {
         Window("FocusFlow", id: "stats") {
             CompanionWindowView()
                 // Minimum frame gives AppKit's constraint engine a concrete lower bound
-                // during the initial layout pass. Sidebar min is 180pt, so 600pt total width
-                // (180 sidebar + 420 detail) is a safe floor for Tahoe's first window layout.
-                .frame(minWidth: 600, minHeight: 400)
+                // during the initial layout pass and, with .contentMinSize, the window's min size.
+                .frame(minWidth: 780, minHeight: 540)
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
-                .preferredColorScheme(.dark)
         }
-        .defaultSize(width: 720, height: 520)
-        .windowResizability(.contentSize)
+        .defaultSize(width: 960, height: 640)
+        .windowResizability(.contentMinSize)
         .modelContainer(container)
 
         Window("Session Complete", id: "session-complete") {
             SessionCompleteWindowView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
-                .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
 
-        Window("Focus Coach", id: "coach-intervention") {
-            CoachInterventionWindowView()
-                .environment(timerVM)
-                .environment(\.modelContext, container.mainContext)
-                .preferredColorScheme(.dark)
-        }
-        .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
-        .modelContainer(container)
-
-        // Keyboard shortcuts
+        // Settings window (⌘, and the popover gear). SettingsView owns its toolbar tab bar;
+        // the expanded toolbar style puts the tab title above the centred bar, like the
+        // native Settings layout, and the fixed content size keeps the window from jumping.
         Settings {
-            CompanionWindowView()
+            SettingsView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
-                .preferredColorScheme(.dark)
         }
+        .windowToolbarStyle(.expanded)
+        .windowResizability(.contentSize)
+        .modelContainer(container)
     }
 
     private var liveStatusText: String? {
@@ -145,7 +153,7 @@ struct FocusFlowApp: App {
     private var menuBarIconName: String {
         switch timerVM.state {
         case .idle:
-            return "bolt.circle"
+            return timerVM.coachMenuBarPulse ? "bolt.circle.fill" : "bolt.circle"
         case .focusing, .paused:
             return timerVM.selectedProject?.icon ?? "scope"
         case .onBreak(let type):
@@ -164,13 +172,35 @@ struct FocusFlowApp: App {
 private struct AppLaunchBridge: View {
     let timerVM: TimerViewModel
     let modelContext: ModelContext
+    @Environment(\.openSettings) private var openSettings
+    @Query private var rescueSettings: [AppSettings]
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
             .task {
+                // On-screen coach panel (non-activating NSPanel) and the Settings opener for the
+                // weekly-priorities invite. Wired before configure so launch prompts can show.
+                if timerVM.coachPanelHost == nil {
+                    timerVM.coachPanelHost = CoachPanelController(timerVM: timerVM, modelContainer: modelContext.container)
+                }
+                timerVM.openSettingsScene = {
+                    WindowPolicyManager.shared.prepareToOpen()
+                    openSettings()
+                }
+                // Rescue loop: full-screen pause screen host and the ⌃⌥Space starter shortcut.
+                if timerVM.pauseScreenHost == nil {
+                    timerVM.pauseScreenHost = PauseScreenController(timerVM: timerVM, modelContainer: modelContext.container)
+                }
+                if timerVM.hotkeyRegistrar == nil {
+                    timerVM.hotkeyRegistrar = CoachGlobalHotkey.shared
+                }
                 timerVM.ensureConfigured(modelContext: modelContext)
+                timerVM.syncGlobalHotkey()
                 WindowPolicyManager.shared.start()
+            }
+            .onChange(of: rescueSettings.first?.coachGlobalHotkeyEnabled) { _, _ in
+                timerVM.syncGlobalHotkey()
             }
     }
 }
@@ -192,10 +222,6 @@ private struct WindowLauncherBridge: View {
                 timerVM.openCompletionWindow = {
                     WindowPolicyManager.shared.prepareToOpen()
                     openWindow(id: "session-complete")
-                }
-                timerVM.openCoachInterventionWindow = {
-                    WindowPolicyManager.shared.prepareToOpen()
-                    openWindow(id: "coach-intervention")
                 }
                 timerVM.requestAppActivation = {
                     WindowPolicyManager.shared.prepareToOpen()
@@ -239,6 +265,7 @@ private struct WindowLauncherBridge: View {
             // between launches after a rebuild with a new signature.
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 reconcilePermissionsIfNeeded()
+                timerVM.checkDayRolloverIfNeeded()
             }
             // Also reconcile when EventKit reports store changes (permission
             // grants/revocations trigger this notification).

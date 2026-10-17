@@ -216,4 +216,112 @@ final class NotificationService: ObservableObject {
     func sendGenericNotification(title: String, body: String, sound: String) {
         send(title: title, body: body, sound: sound)
     }
+
+    // MARK: - Actionable coach check-in (B4)
+
+    /// Called on the main actor when the user acts on a coach notification. Wired by TimerViewModel.
+    var onCoachNotificationResponse: ((CoachNotificationResponse) -> Void)?
+
+    /// Installs the notification delegate and the coach category with Start / Snooze actions.
+    /// Safe to call more than once.
+    func registerCoachNotificationHandling() {
+        guard canUseUserNotificationsAPI else { return }
+        let center = UNUserNotificationCenter.current()
+        center.delegate = CoachNotificationDelegate.shared
+        center.setNotificationCategories([Self.coachCheckInCategory])
+    }
+
+    nonisolated static var coachCheckInCategory: UNNotificationCategory {
+        let start = UNNotificationAction(
+            identifier: CoachNotificationResponse.startActionIdentifier,
+            title: "Start focus",
+            options: []
+        )
+        let snooze = UNNotificationAction(
+            identifier: CoachNotificationResponse.snoozeActionIdentifier,
+            title: "Snooze",
+            options: []
+        )
+        return UNNotificationCategory(
+            identifier: CoachNotificationResponse.categoryIdentifier,
+            actions: [start, snooze],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
+    /// Sends the idle-starter check-in with actionable Start / Snooze buttons.
+    func sendCoachCheckIn(title: String, body: String, sound: String) {
+        NSSound(named: NSSound.Name(sound))?.play()
+        guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = CoachNotificationResponse.categoryIdentifier
+        let request = UNNotificationRequest(identifier: "focus-coach-checkin", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func handleCoachNotificationResponse(_ response: CoachNotificationResponse) {
+        onCoachNotificationResponse?(response)
+    }
+}
+
+/// What the user did with a coach check-in notification.
+enum CoachNotificationResponse: Equatable, Sendable {
+    case startFocus
+    case snooze
+    /// Default tap on the notification body.
+    case open
+
+    static let categoryIdentifier = "FOCUS_COACH_CHECKIN"
+    static let startActionIdentifier = "FOCUS_COACH_START"
+    static let snoozeActionIdentifier = "FOCUS_COACH_SNOOZE"
+
+    /// Maps a delivered response to a coach response. Returns nil for other notifications and
+    /// for the system dismiss action.
+    init?(categoryIdentifier: String, actionIdentifier: String) {
+        guard categoryIdentifier == Self.categoryIdentifier else { return nil }
+        switch actionIdentifier {
+        case Self.startActionIdentifier:
+            self = .startFocus
+        case Self.snoozeActionIdentifier:
+            self = .snooze
+        case UNNotificationDefaultActionIdentifier:
+            self = .open
+        default:
+            return nil
+        }
+    }
+}
+
+/// Routes notification responses to `NotificationService` and shows banners while the app is
+/// frontmost. Without a delegate macOS drops action taps (bug B4).
+final class CoachNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+    static let shared = CoachNotificationDelegate()
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard let mapped = CoachNotificationResponse(
+            categoryIdentifier: response.notification.request.content.categoryIdentifier,
+            actionIdentifier: response.actionIdentifier
+        ) else { return }
+        await MainActor.run {
+            NotificationService.shared.handleCoachNotificationResponse(mapped)
+        }
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
+    }
 }

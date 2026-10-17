@@ -9,7 +9,7 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
             AppUsageEntry(
                 date: Date(),
                 appName: "YouTube",
-                bundleIdentifier: "com.apple.Safari",
+                bundleIdentifier: "domain:youtube.com",
                 duringFocusSeconds: 600,
                 outsideFocusSeconds: 900
             )
@@ -55,9 +55,9 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
             AppUsageEntry(
                 date: Date(),
                 appName: "YouTube",
-                bundleIdentifier: "com.apple.Safari",
+                bundleIdentifier: "domain:youtube.com",
                 duringFocusSeconds: 120,
-                outsideFocusSeconds: 600
+                outsideFocusSeconds: 1800
             )
         ]
         let project = Project(name: "Interview Prep")
@@ -105,32 +105,9 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
         XCTAssertEqual(state, .challenge)
     }
 
-    func testRecommendationReasonUsesFriendlyLabelForAppContextTarget() {
-        let entries = [
-            AppUsageEntry(
-                date: Date(),
-                appName: "ChatGPT",
-                bundleIdentifier: "com.openai.chatgpt",
-                duringFocusSeconds: 0,
-                outsideFocusSeconds: 600
-            )
-        ]
-        let project = Project(name: "Write RFC")
-
-        let recommendation = advisor.recommendation(
-            frontmostBundleId: "com.openai.chatgpt",
-            frontmostAppName: "ChatGPT",
-            entries: entries,
-            selectedProject: project
-        )
-
-        XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
-        XCTAssertFalse(recommendation?.reason.contains("app:") ?? true)
-        XCTAssertFalse(recommendation?.reason.contains("com.openai.chatgpt") ?? true)
-        XCTAssertTrue(recommendation?.reason.contains("ChatGPT") ?? false)
-    }
-
-    func testRecommendationFallsBackToNonWebAppContextFromEntries() {
+    /// Coach v2 W1/W2: ChatGPT is not a hardcoded derailer, so neither the frontmost app nor
+    /// heavy use today produces a block recommendation for it.
+    func testRecommendationNeverTargetsAIChatAppWithoutUserLabel() {
         let entries = [
             AppUsageEntry(
                 date: Date(),
@@ -140,16 +117,20 @@ final class FocusCoachGuardianAdvisorTests: XCTestCase {
                 outsideFocusSeconds: 1800
             )
         ]
-        let project = Project(name: "Deep Work")
+        let project = Project(name: "Write RFC")
 
-        let recommendation = advisor.recommendation(
+        XCTAssertNil(advisor.recommendation(
+            frontmostBundleId: "com.openai.chatgpt",
+            frontmostAppName: "ChatGPT",
+            entries: entries,
+            selectedProject: project
+        ))
+        XCTAssertNil(advisor.recommendation(
             frontmostBundleId: nil,
             frontmostAppName: nil,
             entries: entries,
             selectedProject: project
-        )
-
-        XCTAssertEqual(recommendation?.target, "app:com.openai.chatgpt")
+        ))
     }
 
     func testRecommendationSkipsBrowserEntryFallbackWithoutDomainKey() {

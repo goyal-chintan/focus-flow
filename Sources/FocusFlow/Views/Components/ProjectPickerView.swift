@@ -54,25 +54,40 @@ struct ProjectPickerView: View {
                     Label("New Project...", systemImage: "plus.circle")
                 }
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Circle()
                         .fill(projectColor)
                         .frame(width: 7, height: 7)
 
                     Text(selectedProject?.name ?? "No Project")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                         .lineLimit(1)
 
-                    Spacer()
+                    Spacer(minLength: 0)
+
+                    // Explicit indicator (system one hidden below) so the capsule reads as a menu.
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .accessibilityHidden(true)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                .padding(.horizontal, 12)
+                .background {
+                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                        )
+                }
+                .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton)
-            .buttonStyle(.glass)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
             .accessibilityLabel("Project: \(selectedProject?.name ?? "No Project")")
         }
         .popover(isPresented: $showCreateSheet) {

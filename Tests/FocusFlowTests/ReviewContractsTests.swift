@@ -144,7 +144,7 @@ final class ReviewContractsTests: XCTestCase {
             .appendingPathComponent("FocusFlowApp.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        XCTAssertTrue(source.contains(".background(AppLaunchBridge(timerVM: timerVM, modelContext: container.mainContext))"))
+        XCTAssertTrue(source.contains(".background(AppLaunchBridge(timerVM: timerVM, modelContext: container.mainContext)"))
         XCTAssertTrue(source.contains("private struct AppLaunchBridge: View"))
         XCTAssertTrue(source.contains("timerVM.ensureConfigured(modelContext: modelContext)"))
     }
@@ -183,14 +183,8 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"settings.domainTracking.openScreenRecordingSettings\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Open Screen Recording privacy settings\")"))
 
-        let hitTargetPattern = try NSRegularExpression(
-            pattern: #"Open Screen Recording Settings[\s\S]*?\.frame\(minHeight:\s*44\)"#
-        )
-        XCTAssertEqual(
-            hitTargetPattern.numberOfMatches(in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)),
-            1,
-            "Open Screen Recording Settings CTA should keep a 44pt hit target."
-        )
+        // Native bordered Form buttons supply the macOS hit target; no custom 44pt frame.
+        XCTAssertTrue(source.contains("Button(\"Open Screen Recording Settings\")"))
     }
 
     func testFocusFlowBundlesDeclareAppleEventsUsageDescriptionEverywhere() throws {
@@ -245,17 +239,11 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityIdentifier(\"settings.domainTracking.openAutomationSettings\")"))
         XCTAssertTrue(source.contains(".accessibilityLabel(\"Open Automation privacy settings\")"))
 
-        let hitTargetPattern = try NSRegularExpression(
-            pattern: #"Open Automation Settings[\s\S]*?\.frame\(minHeight:\s*44\)"#
-        )
-        XCTAssertEqual(
-            hitTargetPattern.numberOfMatches(in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)),
-            1,
-            "Open Automation Settings CTA should keep a 44pt hit target."
-        )
+        // Native bordered Form buttons supply the macOS hit target; no custom 44pt frame.
+        XCTAssertTrue(source.contains("Button(\"Open Automation Settings\")"))
     }
 
-    func testSettingsViewAddsPermissionHealthSectionAsFinalSurface() throws {
+    func testSettingsSceneUsesNativeFormsWithSinglePermissionSurface() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
         let sourceURL = repoRoot
@@ -266,17 +254,78 @@ final class ReviewContractsTests: XCTestCase {
             .appendingPathComponent("SettingsView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("permissionHealthSection"))
-        XCTAssertTrue(source.contains("LiquidSectionHeader(\"Permission & Integration Health\""))
-        XCTAssertTrue(source.contains("Notifications"))
-        XCTAssertTrue(source.contains("Calendar"))
-        XCTAssertTrue(source.contains("Reminders"))
-        XCTAssertTrue(source.contains("Browser Automation"))
-        XCTAssertTrue(source.contains("Screen Recording"))
+        // Settings is a native Settings scene: one Permissions tab (raw value still
+        // "integrations") holds every permission surface, and About lives in the app menu.
+        XCTAssertTrue(source.contains("case integrations"))
+        XCTAssertTrue(source.contains("case .integrations: \"Permissions\""))
+        XCTAssertTrue(source.contains("case .integrations: \"lock.shield\""))
+        XCTAssertFalse(source.contains("\"Integrations & Permissions\""))
+        XCTAssertTrue(source.contains("permissionsSection"))
+        XCTAssertTrue(source.contains(".formStyle(.grouped)"))
+        XCTAssertFalse(source.contains("aboutSection"))
+        XCTAssertFalse(source.contains("LiquidGlassPanel"))
+        XCTAssertFalse(source.contains("ToggleRow"))
+    }
 
-        let aboutRange = try XCTUnwrap(source.range(of: "aboutSection"))
-        let healthRange = try XCTUnwrap(source.range(of: "permissionHealthSection"))
-        XCTAssertLessThan(aboutRange.lowerBound, healthRange.lowerBound)
+    /// The native Settings `TabView` swaps hosting controllers and cannot animate. The scene
+    /// now uses its own toolbar tab bar and one container whose page is keyed by the tab.
+    func testSettingsTabSwitchUsesSelectionKeyedTransitionContainer() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let viewsRoot = repoRoot.appendingPathComponent("Sources/FocusFlow/Views")
+        let settingsSource = try String(contentsOf: viewsRoot.appendingPathComponent("Companion/SettingsView.swift"), encoding: .utf8)
+        let barSource = try String(contentsOf: viewsRoot.appendingPathComponent("Settings/SettingsTabBar.swift"), encoding: .utf8)
+        let appSource = try String(contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/FocusFlowApp.swift"), encoding: .utf8)
+
+        // No native TabView: the root is the custom container plus a principal toolbar bar.
+        XCTAssertFalse(settingsSource.contains("TabView(selection:"))
+        XCTAssertFalse(settingsSource.contains(".tabItem"))
+        XCTAssertTrue(settingsSource.contains("SettingsTabContainer("))
+        XCTAssertTrue(settingsSource.contains("ToolbarItem(placement: .principal)"))
+        XCTAssertTrue(settingsSource.contains("SettingsTabBar(selection: shownTab)"))
+        XCTAssertTrue(settingsSource.contains(".navigationTitle(shownTab.title)"))
+        XCTAssertTrue(settingsSource.contains("SettingsTabShortcuts(selection: $selectedTab)"))
+        // settingsRequestedTab goes through the animated selection path.
+        XCTAssertTrue(settingsSource.contains("SettingsTab.consumeRequestedTab()"))
+        XCTAssertTrue(settingsSource.contains("selectedTab = requested"))
+
+        // The page is keyed by the tab and carries the directional transition; the container
+        // animates on the same value and keeps one fixed size.
+        XCTAssertTrue(barSource.contains(".id(tab)"))
+        XCTAssertTrue(barSource.contains(".transition(SettingsTabMotion.transition(direction: direction, reduceMotion: reduceMotion))"))
+        XCTAssertTrue(barSource.contains("value: tab"))
+        XCTAssertTrue(barSource.contains(".frame(width: SettingsLayout.width, height: SettingsLayout.height)"))
+        // Highlight slides between items; no glass on content.
+        XCTAssertTrue(barSource.contains(".matchedGeometryEffect(id: \"settings.tabBar.highlight\""))
+        XCTAssertTrue(barSource.contains("value: selection"))
+        XCTAssertTrue(barSource.contains(".accessibilityAddTraits(isSelected ? [.isSelected] : [])"))
+        XCTAssertFalse(barSource.contains(".glassEffect("))
+
+        // The Settings scene keeps a fixed content size.
+        let settingsRange = try XCTUnwrap(appSource.range(of: "Settings {"))
+        let settingsScene = String(appSource[settingsRange.lowerBound...].prefix(600))
+        XCTAssertTrue(settingsScene.contains(".windowResizability(.contentSize)"))
+    }
+
+    func testCoachSettingsHasRescueSectionBoundToRescueFields() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/Views/Settings/CoachSettingsTab.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("Text(\"Rescue\")"))
+        XCTAssertTrue(source.contains("Toggle(\"Show drift time in the menu bar\", isOn: bind(\\.coachShowDriftInMenuBar))"))
+        XCTAssertTrue(source.contains("settings.coachPauseScreenEnabled = newValue"))
+        XCTAssertTrue(source.contains("Text(\"Pause screen when I spiral in a focus window\")"))
+        XCTAssertTrue(source.contains("A calm full-screen pause with one button to start 5 minutes. Never a lock."))
+        XCTAssertTrue(source.contains("Picker(\"Starter block\""))
+        XCTAssertTrue(source.contains("settings.coachStarterBlockMinutes = $0"))
+        XCTAssertTrue(source.contains("Toggle(\"⌃⌥Space starts a starter block\", isOn: bind(\\.coachGlobalHotkeyEnabled))"))
+        // Offer, don't force: the style change only shows the row.
+        XCTAssertTrue(source.contains("Pause screen is on. Turn off for this style?"))
+        XCTAssertTrue(source.contains("bind(\\.coachStyle, onSet: styleDidChange)"))
     }
 
     func testCompanionWindowUsesProminentDetailSplitViewStyleToAvoidTahoeLayoutLoop() throws {
@@ -300,7 +349,7 @@ final class ReviewContractsTests: XCTestCase {
         )
     }
 
-    func testStatsWindowUsesContentSizeResizabilityForTahoeLayoutStability() throws {
+    func testStatsWindowUsesResizableMinSizeAndFollowsSystemAppearance() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
         let sourceURL = repoRoot
@@ -313,26 +362,45 @@ final class ReviewContractsTests: XCTestCase {
         let nextWindowRange = try XCTUnwrap(source.range(of: "Window(\"Session Complete\", id: \"session-complete\")"))
         let statsWindowSource = String(source[statsWindowRange.lowerBound..<nextWindowRange.lowerBound])
 
-        XCTAssertTrue(
-            statsWindowSource.contains(".windowResizability(.contentSize)"),
-            "The stats window scene must opt into content-size resizability so Tahoe applies the companion min size before initial window layout."
-        )
+        XCTAssertTrue(statsWindowSource.contains(".windowResizability(.contentMinSize)"))
+        XCTAssertTrue(statsWindowSource.contains(".defaultSize(width: 960, height: 640)"))
+        XCTAssertTrue(statsWindowSource.contains(".frame(minWidth: 780, minHeight: 540)"))
+        XCTAssertFalse(statsWindowSource.contains(".preferredColorScheme(.dark)"), "The companion window follows the system appearance.")
     }
 
-    func testCompanionWindowIncludesDistractionsTabAndView() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("CompanionWindowView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    func testCompanionWindowHasFourDestinationsAndMapsRetiredTabs() {
+        XCTAssertEqual(CompanionTab.allCases.map(\.rawValue), ["Today", "History", "Insights", "Projects"])
+        XCTAssertEqual(CompanionTab.resolve("Calendar"), .history)
+        XCTAssertEqual(CompanionTab.resolve("Week"), .history)
+        XCTAssertEqual(CompanionTab.resolve("Distractions"), .today)
+        XCTAssertEqual(CompanionTab.resolve("Settings"), .today)
+        XCTAssertEqual(CompanionTab.resolve("Insights"), .insights)
+        XCTAssertNil(CompanionTab.resolve(""))
+    }
 
-        XCTAssertTrue(source.contains("case distractions = \"Distractions\""))
-        XCTAssertTrue(source.contains("case .distractions:"))
-        XCTAssertTrue(source.contains("DistractionsView()"))
+    func testCompanionScreensUsePlainSurfacesSwiftChartsAndNoUnsourcedClaims() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let companion = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FocusFlow/Views/Companion")
+        let files = ["CompanionWindowView", "TodayView", "HistoryView", "InsightsView", "ProjectsListView", "CompanionCharts", "CompanionComponents"]
+        let sources = try files.map { try String(contentsOf: companion.appendingPathComponent("\($0).swift"), encoding: .utf8) }
+        let all = sources.joined(separator: "\n")
+
+        XCTAssertFalse(all.contains("LiquidGlassPanel"), "Content sits on plain sections, not glass panels.")
+        XCTAssertFalse(all.contains(".glassEffect("), "No glass on companion content.")
+        XCTAssertTrue(all.contains("import Charts"))
+        XCTAssertFalse(all.contains("BarChartView("))
+        XCTAssertFalse(all.contains("HeatmapView("))
+        // User-visible copy only: look inside string literals so identifiers like guardianSensitivity don't count.
+        let literals = try NSRegularExpression(pattern: #""[^"\n]*""#)
+            .matches(in: all, range: NSRange(all.startIndex..., in: all))
+            .compactMap { Range($0.range, in: all).map { String(all[$0]) } }
+            .joined(separator: "\n")
+        for banned in ["FRAGILE", "25%", "Earned blocks", "Recovered", "Goal runway", "Domain Signals", "Guardian", "Focus Science", "alertness"] {
+            XCTAssertFalse(literals.localizedCaseInsensitiveContains(banned), "Companion screens must not show \"\(banned)\".")
+        }
+        XCTAssertTrue(all.contains("accessibilityReduceMotion"), "Motion must respect Reduce Motion.")
+        XCTAssertTrue(all.contains("Rate your sessions after each block to see this"))
     }
 
     func testDistractionsViewExposesSuggestionsRulesAndManualAdd() throws {
@@ -346,12 +414,16 @@ final class ReviewContractsTests: XCTestCase {
             .appendingPathComponent("DistractionsView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
+        // Settings → Distractions is a native grouped Form (2026-10-17 settings polish).
         XCTAssertTrue(source.contains("Suggestions"))
-        XCTAssertTrue(source.contains("Active Rules"))
+        XCTAssertTrue(source.contains("Distraction rules"))
+        XCTAssertTrue(source.contains("Allowed (work)"))
         XCTAssertTrue(source.contains("Add Distraction"))
-        XCTAssertTrue(source.contains("LiquidActionButton("))
+        XCTAssertTrue(source.contains("Dismiss All"))
+        XCTAssertTrue(source.contains("Form {"))
+        XCTAssertFalse(source.contains("LiquidActionButton("))
+        XCTAssertFalse(source.contains("LiquidGlassPanel"))
         XCTAssertFalse(source.contains("Color.white.opacity("))
-        XCTAssertFalse(source.contains("Form {"))
     }
 
     func testDistractionsViewUsesHeaderLevelQuickAddInsteadOfStandaloneAddPanel() throws {
@@ -365,8 +437,9 @@ final class ReviewContractsTests: XCTestCase {
             .appendingPathComponent("DistractionsView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("pageHeaderSection"))
-        XCTAssertTrue(source.contains("quickAddButton"))
+        // Add lives in the compact summary row at the top of the Form.
+        XCTAssertTrue(source.contains("summarySection"))
+        XCTAssertTrue(source.contains("Add Rule…"))
         XCTAssertFalse(source.contains("private var addDistractionSection"))
     }
 
@@ -383,8 +456,8 @@ final class ReviewContractsTests: XCTestCase {
 
         XCTAssertFalse(source.contains("Add First Rule"))
         XCTAssertFalse(source.contains(".frame(width: 132)"))
-        XCTAssertTrue(source.contains("role: .secondary"))
-        XCTAssertTrue(source.contains("fillsWidth: false"))
+        XCTAssertFalse(source.contains("role: .primary"))
+        XCTAssertFalse(source.contains(".glassProminent"))
     }
 
     func testDistractionsEditorExposesExplicitClearPathsForAppAndWebsiteTargets() throws {
@@ -548,7 +621,7 @@ final class ReviewContractsTests: XCTestCase {
                 .appendingPathComponent("FocusFlow")
                 .appendingPathComponent("Views")
                 .appendingPathComponent("Companion")
-                .appendingPathComponent("TodayStatsView.swift"),
+                .appendingPathComponent("TodayView.swift"),
             encoding: .utf8
         )
         let weeklySource = try String(
@@ -557,7 +630,7 @@ final class ReviewContractsTests: XCTestCase {
                 .appendingPathComponent("FocusFlow")
                 .appendingPathComponent("Views")
                 .appendingPathComponent("Companion")
-                .appendingPathComponent("WeeklyStatsView.swift"),
+                .appendingPathComponent("HistoryView.swift"),
             encoding: .utf8
         )
         let settingsSource = try String(
@@ -589,7 +662,7 @@ final class ReviewContractsTests: XCTestCase {
                 .appendingPathComponent("FocusFlow")
                 .appendingPathComponent("Views")
                 .appendingPathComponent("Companion")
-                .appendingPathComponent("TodayStatsView.swift"),
+                .appendingPathComponent("TodayView.swift"),
             encoding: .utf8
         )
         let weeklySource = try String(
@@ -598,7 +671,7 @@ final class ReviewContractsTests: XCTestCase {
                 .appendingPathComponent("FocusFlow")
                 .appendingPathComponent("Views")
                 .appendingPathComponent("Companion")
-                .appendingPathComponent("WeeklyStatsView.swift"),
+                .appendingPathComponent("HistoryView.swift"),
             encoding: .utf8
         )
 
@@ -609,62 +682,6 @@ final class ReviewContractsTests: XCTestCase {
     }
 
 
-
-    func testTodayStatsViewPlacesDomainSignalsAfterSummaryAndBeforeProjects() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("TodayStatsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        let summaryIndex = try XCTUnwrap(source.range(of: "summarySection")?.lowerBound)
-        let domainSignalsIndex = try XCTUnwrap(source.range(of: "domainSignalsSection")?.lowerBound)
-        let projectsIndex = try XCTUnwrap(source.range(of: "projectsSection")?.lowerBound)
-
-        XCTAssertLessThan(summaryIndex, domainSignalsIndex, "Domain Signals should appear after the summary section.")
-        XCTAssertLessThan(domainSignalsIndex, projectsIndex, "Domain Signals should appear before Projects.")
-        XCTAssertTrue(source.contains("\"Domain Signals\""))
-        XCTAssertTrue(source.contains("CompanionAnalyticsBuilder().build("))
-        XCTAssertTrue(source.contains("analyticsReport.today"))
-        XCTAssertFalse(source.contains("captureAvailability:"))
-        XCTAssertTrue(source.contains("DomainSignalRow("))
-        XCTAssertTrue(source.contains("case .trackingDisabled"))
-        XCTAssertTrue(source.contains("case .noValidDomainsYet"))
-    }
-
-    func testWeeklyStatsViewPlacesDomainPatternsAfterSummaryAndBeforeStreakWithPeriodAwareAnalytics() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("WeeklyStatsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        let summaryIndex = try XCTUnwrap(source.range(of: "summarySection")?.lowerBound)
-        let domainPatternsIndex = try XCTUnwrap(source.range(of: "domainPatternsSection")?.lowerBound)
-        let streakIndex = try XCTUnwrap(source.range(of: "streakSection")?.lowerBound)
-
-        XCTAssertLessThan(summaryIndex, domainPatternsIndex, "Domain Patterns should appear after the summary section.")
-        XCTAssertLessThan(domainPatternsIndex, streakIndex, "Domain Patterns should appear before Streak.")
-        XCTAssertTrue(source.contains("\"Domain Patterns\""))
-        XCTAssertTrue(source.contains("CompanionAnalyticsBuilder().build("))
-        XCTAssertFalse(source.contains("captureAvailability:"))
-        XCTAssertTrue(source.contains("selectedPeriod == .week ? \"7 Days\" : \"30 Days\""))
-        XCTAssertTrue(source.contains("analyticsReport.trailing7Days.domainRows"))
-        XCTAssertTrue(source.contains("analyticsReport.trailing30Days.domainRows"))
-        XCTAssertTrue(source.contains("private var periodInterval: DateInterval?"))
-        XCTAssertTrue(source.contains("InsightsWindowing.overlappingFocusSessions("))
-        XCTAssertTrue(source.contains("DomainSignalRow("))
-        XCTAssertTrue(source.contains("case .trackingDisabled"))
-        XCTAssertTrue(source.contains("case .noValidDomainsYet"))
-    }
 
     func testDomainSignalRowUsesNonGlassRowsAndExplicitStateLabel() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -686,145 +703,6 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(source.contains(".accessibilityLabel("))
         XCTAssertFalse(source.contains("LiquidGlassPanel"), "Only the section container should use LiquidGlassPanel.")
         XCTAssertFalse(source.contains(".buttonStyle(.glass)"), "Rows should not render as glass controls.")
-    }
-
-    func testInsightsViewUsesSharedAnalyticsSnapshotsForGuardianCoachAndAppUsage() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("InsightsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(
-            source.contains("private var analyticsReport: CompanionAnalyticsReport"),
-            "InsightsView should build a shared analytics report instead of recomputing ad hoc windows."
-        )
-        XCTAssertTrue(
-            source.contains("CompanionAnalyticsBuilder().build("),
-            "InsightsView should source app usage windows from CompanionAnalyticsBuilder."
-        )
-        XCTAssertTrue(
-            source.contains("analyticsReport.trailing7Days.rows.map"),
-            "Coach Report top distractions should use the shared trailing 7-day analytics window."
-        )
-        XCTAssertTrue(
-            source.contains("analyticsReport.today.rows"),
-            "Insights app usage should use the shared today snapshot rather than raw entries."
-        )
-    }
-
-    func testInsightsViewScopesCoachReasonBreakdownToTrailingSevenDaysAndRemovesDeadUsageRecordQuery() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("InsightsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(
-            source.contains("InsightsWindowing.trailing7DayInterval"),
-            "InsightsView should use the shared explicit trailing 7-day helper for coach report inputs."
-        )
-        XCTAssertTrue(
-            source.contains("InsightsWindowing.overlappingFocusSessions"),
-            "InsightsView should reuse the shared overlap helper for coach session windowing."
-        )
-        XCTAssertTrue(
-            source.contains("InsightsWindowing.completionRate"),
-            "InsightsView should reuse the shared overlap helper for completion-rate math."
-        )
-        XCTAssertTrue(
-            source.contains("coachWindowInterruptions"),
-            "Self-reported reasons should come from the coach report window, not all-time interruptions."
-        )
-        XCTAssertFalse(
-            source.contains("@Query(sort: \\AppUsageRecord.date) private var usageRecords: [AppUsageRecord]"),
-            "InsightsView should remove the unused usageRecords query after switching to shared analytics snapshots."
-        )
-    }
-
-    func testInsightsViewScopesHighResistanceScienceTipToCoachWindowTaskIntents() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("InsightsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        let contextualTipsPattern = try NSRegularExpression(
-            pattern: #"private var contextualTips: \[ScienceTip\] \{[\s\S]*?let highResistanceIntents = coachWindowTaskIntents\.filter \{ \$0\.expectedResistance >= 4 \}"#
-        )
-
-        XCTAssertEqual(
-            contextualTipsPattern.numberOfMatches(in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)),
-            1,
-            "The Focus Science high-resistance tip should use the trailing 7-day coachWindowTaskIntents scope."
-        )
-    }
-
-    func testInsightsViewSharesStableNowSnapshotAcrossAnalyticsAndCoachWindows() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("InsightsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(
-            source.contains("private let analyticsSnapshotNow = Date()"),
-            "InsightsView should capture one shared now snapshot for the current render."
-        )
-        XCTAssertTrue(
-            source.contains("now: analyticsSnapshotNow"),
-            "InsightsView should pass the shared now snapshot into CompanionAnalyticsBuilder."
-        )
-        XCTAssertTrue(
-            source.contains("relativeTo: analyticsSnapshotNow"),
-            "Coach report windows should use the same shared now snapshot as analyticsReport."
-        )
-    }
-
-    func testInsightsViewScopesCompletionMessagingToCoachWindowSessions() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("Companion")
-            .appendingPathComponent("InsightsView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        let behavioralInsightsPattern = try NSRegularExpression(
-            pattern: #"private var behavioralInsights: \[BehavioralInsight\] \{[\s\S]*?let coachCompletionSessions = coachWindowSessions[\s\S]*?let completedSessions = coachCompletionSessions\.filter\(\\\.completed\)[\s\S]*?let abandonedSessions = coachCompletionSessions\.filter \{ !\$0\.completed \}"#
-        )
-        XCTAssertEqual(
-            behavioralInsightsPattern.numberOfMatches(in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)),
-            1,
-            "Focus momentum messaging should use the trailing 7-day coachWindowSessions scope."
-        )
-
-        let contextualTipsPattern = try NSRegularExpression(
-            pattern: #"private var contextualTips: \[ScienceTip\] \{[\s\S]*?let coachCompletionSessions = coachWindowSessions[\s\S]*?let completionRate = coachCompletionSessions\.isEmpty[\s\S]*?if completionRate < 0\.4 && coachCompletionSessions\.count >= 5"#
-        )
-        XCTAssertEqual(
-            contextualTipsPattern.numberOfMatches(in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)),
-            1,
-            "Completion challenge coaching should use the trailing 7-day coachWindowSessions scope."
-        )
     }
 
     func testReviewArtifactContractCoversAllCriticalFlows() {
@@ -1007,108 +885,55 @@ final class ReviewContractsTests: XCTestCase {
         )
     }
 
-    func testRouteIdleStarterAcceptsMajorDistractionSeverityToLowerThreshold() throws {
+    func testIdlePromptsAreOnScreenAndNeverStealFocus() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(
-            contentsOf: repoRoot
-                .appendingPathComponent("Sources")
-                .appendingPathComponent("FocusFlow")
-                .appendingPathComponent("Services")
-                .appendingPathComponent("FocusCoachInterventionPlanner.swift"),
+            contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/ViewModels/TimerViewModel.swift"),
             encoding: .utf8
         )
-
-        // routeIdleStarter must accept a distraction severity parameter so that known major
-        // distractions lower the confidence threshold — firing the first alert at 5 minutes
-        // instead of requiring ~10 minutes of accumulated drift.
-        XCTAssertTrue(
-            source.contains("distractionSeverity"),
-            "FocusCoachInterventionPlanner.routeIdleStarter must accept distractionSeverity to lower threshold for flagged major distractions."
-        )
+        // Coach v2 (companion redesign §5): the on-screen panel is the primary idle surface and
+        // notifications are opt-in. The idle path must not depend on notification permission
+        // and must not open the retired coach window or activate the app.
+        let idleRange = try XCTUnwrap(source.range(of: "func evaluateIdleStarterIntervention("))
+        let deliverEnd = try XCTUnwrap(source.range(of: "private func updateCoachDebugReadout("))
+        let idleSource = String(source[idleRange.lowerBound..<deliverEnd.lowerBound])
+        XCTAssertTrue(idleSource.contains("coachNotificationsEnabled") || source.contains("settings.coachNotificationsEnabled && NotificationService.shared.authorizationState == .authorized"))
+        XCTAssertFalse(idleSource.contains("requestAppActivation"))
+        XCTAssertFalse(source.contains("openCoachInterventionWindow"))
+        XCTAssertTrue(idleSource.contains("presentCoachPanel("))
     }
 
-    func testStrongPromptFiresWithoutNotificationsForDistractions() throws {
+    func testCoachPanelIsNonActivatingFloatingAndJoinsAllSpaces() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(
-            contentsOf: repoRoot
-                .appendingPathComponent("Sources")
-                .appendingPathComponent("FocusFlow")
-                .appendingPathComponent("ViewModels")
-                .appendingPathComponent("TimerViewModel.swift"),
+            contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/Views/CoachPanel/CoachPanelController.swift"),
             encoding: .utf8
         )
-
-        // Without notification authorization, the notification→wait→escalate path never runs.
-        // shouldEscalateToStrongPrompt must have a condition that fires the intervention window
-        // directly when notifications are not authorized — otherwise users without notifications
-        // will NEVER see a strong prompt no matter how long they spend in a distracting app.
-        XCTAssertTrue(
-            source.contains("authorizationState != .authorized"),
-            "shouldEscalateToStrongPrompt must include a non-notification path so the strong prompt window opens for users without notification permission."
-        )
-        // And it must cover major-severity distractions immediately (escalationLevel 0)
-        XCTAssertTrue(
-            source.contains("idleSeverity == .major"),
-            "Non-notification escalation path must check idleSeverity == .major to fire at the first nudge for explicitly flagged distractions."
-        )
+        XCTAssertTrue(source.contains(".nonactivatingPanel"), "The coach panel must not activate FocusFlow.")
+        // Typing in the current app continues: the panel is shown with orderFrontRegardless and
+        // only becomes key when the user clicks it (then ⏎ = primary, Esc = Not now).
+        XCTAssertTrue(source.contains("panel.orderFrontRegardless()"), "Typing in the current app must continue.")
+        XCTAssertFalse(source.contains("makeKeyAndOrderFront"), "Showing the panel must not take focus.")
+        XCTAssertTrue(source.contains("override var canBecomeMain: Bool { false }"))
+        XCTAssertTrue(source.contains("override func cancelOperation"), "Esc = Not now once clicked.")
+        XCTAssertTrue(source.contains("panel.level = .floating"))
+        XCTAssertTrue(source.contains(".canJoinAllSpaces") && source.contains(".fullScreenAuxiliary"),
+                      "The panel must appear above full-screen apps on other Spaces.")
+        XCTAssertTrue(source.contains("accessibilityDisplayShouldReduceMotion"), "Reduce Motion: fade only.")
     }
 
-    func testCoachWindowUsesWindowLevelSetterForReliableFrontmostPresentation() throws {
+    func testCoachPanelNotNowOffersFifteenMinutesHourAndDoneForToday() throws {
+        XCTAssertEqual(
+            CoachPanelPresentation(kind: .startNudge, message: CoachMessageComposer.neutralFallback(isInSession: false)).secondaryActions,
+            [.snooze15, .snooze60, .doneForToday]
+        )
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repoRoot
-                .appendingPathComponent("Sources")
-                .appendingPathComponent("FocusFlow")
-                .appendingPathComponent("Views")
-                .appendingPathComponent("CoachInterventionWindowView.swift"),
-            encoding: .utf8
-        )
-        // On macOS 26 Tahoe, activate(ignoringOtherApps:) is a no-op.
-        // WindowLevelSetter uses viewDidMoveToWindow to reliably set .floating level
-        // so the coach window is always visible above other apps.
-        XCTAssertTrue(
-            source.contains("WindowLevelSetter"),
-            "CoachInterventionWindowView must use WindowLevelSetter to promote the window to .floating level on macOS 26 where NSApp.activate() is a no-op."
-        )
-        XCTAssertTrue(
-            source.contains("viewDidMoveToWindow"),
-            "WindowLevelSetter must override viewDidMoveToWindow to set floating level the moment the view is attached to a window."
-        )
-        // canJoinAllSpaces ensures the window appears even when the user is in a full-screen
-        // space (e.g. Ghostty running full-screen on its own Space).
-        XCTAssertTrue(
-            source.contains("canJoinAllSpaces"),
-            "WindowLevelSetter must set collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary] so the coach window appears above full-screen apps on separate Spaces."
-        )
-    }
-
-    func testCoachWindowSnoozePanelOffersMultipleDurations() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let viewSource = try String(
-            contentsOf: repoRoot
-                .appendingPathComponent("Sources")
-                .appendingPathComponent("FocusFlow")
-                .appendingPathComponent("Views")
-                .appendingPathComponent("CoachInterventionWindowView.swift"),
-            encoding: .utf8
-        )
         let vmSource = try String(
-            contentsOf: repoRoot
-                .appendingPathComponent("Sources")
-                .appendingPathComponent("FocusFlow")
-                .appendingPathComponent("ViewModels")
-                .appendingPathComponent("TimerViewModel.swift"),
+            contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/ViewModels/TimerViewModel.swift"),
             encoding: .utf8
-        )
-        // Snooze must offer multiple durations (10m, 30m, 1h, 2h, off for today)
-        // not just the hardcoded 10-minute snooze.
-        XCTAssertTrue(
-            viewSource.contains("snoozeDurationPanel"),
-            "CoachInterventionWindowView must have a snoozeDurationPanel for multi-duration snooze selection."
         )
         XCTAssertTrue(
             vmSource.contains("func handleSnooze(minutes:"),

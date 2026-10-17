@@ -28,53 +28,47 @@ struct FocusCoachGuardianAdvisor: Sendable {
         "twitch.tv"
     ]
 
+    /// Minimum usage today before a target may be recommended for blocking (Coach v2 design W1).
+    static let minimumDailySecondsForBlockRecommendation = 20 * 60
+
+    /// Recommends a block only for a target that is classified as distracting **and** has at
+    /// least `minimumDailySecondsForBlockRecommendation` of use today. Work tools and short
+    /// visits are never recommended.
     func recommendation(
         frontmostBundleId: String?,
         frontmostAppName: String?,
         entries: [AppUsageEntry],
         selectedProject: Project?
     ) -> FocusCoachGuardianRecommendation? {
-        let frontmostIsBrowser = AppUsageEntry.isBrowserBundleIdentifier(frontmostBundleId)
-        let likelyTarget = AppUsageEntry.recommendedBlockTarget(
+        var secondsByTarget: [String: Int] = [:]
+        var riskByTarget: [String: Double] = [:]
+        // A browser's own app entry is not a precise target; only domain-keyed entries are.
+        let candidates = entries.filter {
+            !AppUsageEntry.isBrowserBundleIdentifier($0.bundleIdentifier) && Self.isDistracting($0)
+        }
+        for entry in candidates {
+            guard let target = AppUsageEntry.recommendedBlockTarget(
+                bundleIdentifier: entry.bundleIdentifier,
+                appName: entry.appName
+            ) else { continue }
+            secondsByTarget[target, default: 0] += entry.duringFocusSeconds + entry.outsideFocusSeconds
+            riskByTarget[target, default: 0] += riskScore(for: entry)
+        }
+        let qualifying = secondsByTarget.filter { $0.value >= Self.minimumDailySecondsForBlockRecommendation }
+        guard !qualifying.isEmpty else { return nil }
+
+        let frontmostTarget = AppUsageEntry.recommendedBlockTarget(
             bundleIdentifier: frontmostBundleId ?? "",
             appName: frontmostAppName ?? ""
         )
-
-        let topRiskEntry = entries
-            .filter { entry in
-                AppUsageEntry.recommendedBlockTarget(
-                    bundleIdentifier: entry.bundleIdentifier,
-                    appName: entry.appName
-                ) != nil
-            }
-            .max { riskScore(for: $0) < riskScore(for: $1) }
-
-        let fallbackTarget: String? = if frontmostIsBrowser {
-            entries
-                .filter { entry in
-                    entry.bundleIdentifier.lowercased().hasPrefix("domain:")
-                    && AppUsageEntry.recommendedBlockTarget(
-                        bundleIdentifier: entry.bundleIdentifier,
-                        appName: entry.appName
-                    ) != nil
-                }
-                .max { riskScore(for: $0) < riskScore(for: $1) }
-                .flatMap {
-                    AppUsageEntry.recommendedBlockTarget(
-                        bundleIdentifier: $0.bundleIdentifier,
-                        appName: $0.appName
-                    )
-                }
+        let target: String
+        if let frontmostTarget, qualifying[frontmostTarget] != nil {
+            target = frontmostTarget
+        } else if let top = qualifying.keys.sorted().max(by: { (riskByTarget[$0] ?? 0) < (riskByTarget[$1] ?? 0) }) {
+            target = top
         } else {
-            topRiskEntry.flatMap {
-                AppUsageEntry.recommendedBlockTarget(
-                    bundleIdentifier: $0.bundleIdentifier,
-                    appName: $0.appName
-                )
-            }
+            return nil
         }
-
-        guard let target = likelyTarget ?? fallbackTarget else { return nil }
 
         if let selectedProject {
             if target.lowercased().hasPrefix("app:") {
@@ -88,15 +82,24 @@ struct FocusCoachGuardianAdvisor: Sendable {
         }
 
         let displayTarget = AppUsageEntry.recommendationDisplayLabel(for: target)
-        let minutes = max(1, Int((topRiskEntry?.outsideFocusSeconds ?? 0) / 60))
+        let seconds = qualifying[target] ?? 0
+        let minutes = seconds / 60
         let reason: String
         if let projectName = selectedProject?.name, !projectName.isEmpty {
             reason = "\(displayTarget) keeps pulling time away from \(projectName) (\(minutes)m today)."
         } else {
             reason = "\(displayTarget) has been a repeated distraction (\(minutes)m today)."
         }
-        let confidence = confidenceFor(target: target, source: topRiskEntry)
+        let confidence = confidenceFor(target: target, totalSeconds: seconds)
         return FocusCoachGuardianRecommendation(target: target, reason: reason, confidence: confidence)
+    }
+
+    private static func isDistracting(_ entry: AppUsageEntry) -> Bool {
+        AppUsageEntry.classify(
+            bundleIdentifier: entry.bundleIdentifier,
+            appName: entry.appName,
+            browserHost: CompanionAnalyticsBuilder.validPersistedDomainHost(for: entry.bundleIdentifier)
+        ) == .distracting
     }
 
     func guardianState(
@@ -145,10 +148,8 @@ struct FocusCoachGuardianAdvisor: Sendable {
         return focusWeight + outsideWeight
     }
 
-    private func confidenceFor(target: String, source: AppUsageEntry?) -> Double {
+    private func confidenceFor(target: String, totalSeconds seconds: Int) -> Double {
         let base: Double = Self.blockableWebTargets.contains(target) ? 0.85 : 0.65
-        guard let source else { return base }
-        let seconds = source.duringFocusSeconds + source.outsideFocusSeconds
         if seconds >= 1800 { return min(0.98, base + 0.1) }
         if seconds >= 900 { return min(0.95, base + 0.05) }
         return base

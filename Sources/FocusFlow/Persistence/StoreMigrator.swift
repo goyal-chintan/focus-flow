@@ -222,6 +222,20 @@ enum StoreMigrator {
             sqlType: "INTEGER",
             defaultSQLValue: "60"
         ),
+        // Coach v2.1 (Models/CoachV2Models.swift)
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHSTYLERAWVALUE", sqlType: "VARCHAR", defaultSQLValue: "'challenger'"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHONSCREENPROMPTSENABLED", sqlType: "INTEGER", defaultSQLValue: "1"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHNOTIFICATIONSENABLED", sqlType: "INTEGER", defaultSQLValue: "0"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHMAXPROMPTSPERDAY", sqlType: "INTEGER", defaultSQLValue: "3"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHQUIETSTARTMINUTE", sqlType: "INTEGER", defaultSQLValue: "30"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHQUIETENDMINUTE", sqlType: "INTEGER", defaultSQLValue: "420"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHMYWHYTEXT", sqlType: "VARCHAR", defaultSQLValue: "''"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZDAILYSTRETCHGOAL", sqlType: "FLOAT", defaultSQLValue: "9000"),
+        // Rescue loop
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHSHOWDRIFTINMENUBAR", sqlType: "INTEGER", defaultSQLValue: "1"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHPAUSESCREENENABLED", sqlType: "INTEGER", defaultSQLValue: "1"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHSTARTERBLOCKMINUTES", sqlType: "INTEGER", defaultSQLValue: "5"),
+        ColumnMigration(table: "ZAPPSETTINGS", column: "ZCOACHGLOBALHOTKEYENABLED", sqlType: "INTEGER", defaultSQLValue: "1"),
     ]
 
     static func migrateStoreIfNeeded(at storeURL: URL) throws {

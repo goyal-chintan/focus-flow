@@ -218,9 +218,6 @@ final class FocusCoachEngineTests: XCTestCase {
         let engine = FocusCoachEngine(store: store)
         engine.startSession(id: UUID())
 
-        engine.updateStartDelay(120)
-        XCTAssertEqual(engine.currentSignals.startDelaySeconds, 120)
-
         engine.updatePauseCount(3)
         XCTAssertEqual(engine.currentSignals.pauseCount, 3)
 

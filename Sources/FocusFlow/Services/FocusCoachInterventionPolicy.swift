@@ -28,14 +28,14 @@ enum FocusCoachQuickAction: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .returnNow: "Return Now"
-        case .startFocusNow: "Start Focus Now"
-        case .cleanRestart5m: "Start 5m rescue block"
-        case .snooze10m: "Snooze 10m"
+        case .returnNow: "Back to it"
+        case .startFocusNow: "Start focus"
+        case .cleanRestart5m: "Start 5m block"
+        case .snooze10m: "Not now"
         case .skipCheck: "Skip this check"
-        case .blockForProject: "Block these for this project"
-        case .markOffDuty: "Mark off-duty for now"
-        case .isPlanned: "This is planned"
+        case .blockForProject: "Block for this project"
+        case .markOffDuty: "Done for today"
+        case .isPlanned: "It's part of the work"
         }
     }
 }
@@ -43,7 +43,6 @@ enum FocusCoachQuickAction: String, Codable, CaseIterable {
 /// The decision kinds: none means no intervention needed
 enum FocusCoachDecisionKind: String, Sendable {
     case none
-    case softStrip
     case quickPrompt
     case strongPrompt
 }
@@ -55,17 +54,21 @@ struct FocusCoachDecision: Sendable {
     let message: String?
     /// Optional personalisation snapshot — populated when the intervention window is shown.
     let context: FocusCoachContext?
+    /// Copy from `CoachMessageComposer`, the single source of coach words (Coach v2 §3 [4]).
+    let composed: CoachComposedMessage?
 
     init(
         kind: FocusCoachDecisionKind,
         suggestedActions: [FocusCoachQuickAction],
         message: String?,
-        context: FocusCoachContext? = nil
+        context: FocusCoachContext? = nil,
+        composed: CoachComposedMessage? = nil
     ) {
         self.kind = kind
         self.suggestedActions = suggestedActions
-        self.message = message
+        self.message = message ?? composed?.accessibilityText
         self.context = context
+        self.composed = composed
     }
 
     static let none = FocusCoachDecision(kind: .none, suggestedActions: [], message: nil)
@@ -95,28 +98,14 @@ struct FocusCoachInterventionPolicy: Sendable {
             return .none
         }
 
-        // Gate 2: budget exhausted — only allow soft strip (non-prompt)
+        // Gate 2: budget exhausted. The live strip in the popover already shows the risk.
         if state.promptCountThisSession >= promptBudget {
-            if risk == .highRisk {
-                return FocusCoachDecision(
-                    kind: .softStrip,
-                    suggestedActions: [],
-                    message: "You've used all coach prompts this session."
-                )
-            }
             return .none
         }
 
         // Gate 3: cooldown — too soon since last prompt
         if let lastPrompt = state.lastPromptAt,
            now.timeIntervalSince(lastPrompt) < cooldownSeconds {
-            if risk == .highRisk {
-                return FocusCoachDecision(
-                    kind: .softStrip,
-                    suggestedActions: [],
-                    message: nil
-                )
-            }
             return .none
         }
 
@@ -129,7 +118,7 @@ struct FocusCoachInterventionPolicy: Sendable {
             return FocusCoachDecision(
                 kind: .quickPrompt,
                 suggestedActions: [.returnNow, .snooze10m],
-                message: "Context looks off-plan. Choose your next move."
+                message: nil
             )
 
         case .highRisk:
@@ -137,13 +126,13 @@ struct FocusCoachInterventionPolicy: Sendable {
                 return FocusCoachDecision(
                     kind: .strongPrompt,
                     suggestedActions: [.returnNow, .cleanRestart5m, .snooze10m],
-                    message: "Sustained mismatch detected. Recover now or take an intentional pause."
+                    message: nil
                 )
             }
             return FocusCoachDecision(
                 kind: .quickPrompt,
                 suggestedActions: [.returnNow, .cleanRestart5m, .snooze10m],
-                message: "Repeated mismatch detected. Recover now before momentum drops."
+                message: nil
             )
         }
     }

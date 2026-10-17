@@ -49,6 +49,40 @@ final class AppSettings {
     var coachStrictPromptSeconds: Int = 60
     var coachStrictEscalationSeconds: Int = 120
 
+    // Focus Coach v2.1 — learning coach (see Models/CoachV2Models.swift)
+    var coachStyleRawValue: String = CoachStyle.challenger.rawValue
+    /// On-screen floating panel is the primary prompt surface.
+    var coachOnScreenPromptsEnabled: Bool = true
+    /// Notifications are opt-in; most users disable them.
+    var coachNotificationsEnabled: Bool = false
+    var coachMaxPromptsPerDay: Int = 3
+    /// Quiet hours as minutes after midnight (local). Default 00:30–07:00.
+    var coachQuietStartMinute: Int = 30
+    var coachQuietEndMinute: Int = 420
+    /// Up to 5 user-written "why" lines, newline-separated.
+    var coachMyWhyText: String = ""
+    /// Stretch target on top of dailyFocusGoal (personal work), seconds.
+    var dailyStretchGoal: TimeInterval = 9000
+
+    // Rescue loop (docs/plans/2026-10-17-coach-rescue-loop-design.md)
+    var coachShowDriftInMenuBar: Bool = true
+    var coachPauseScreenEnabled: Bool = true
+    var coachStarterBlockMinutes: Int = 5
+    var coachGlobalHotkeyEnabled: Bool = true
+
+    var coachStyle: CoachStyle {
+        get { CoachStyle(rawValue: coachStyleRawValue) ?? .challenger }
+        set { coachStyleRawValue = newValue.rawValue }
+    }
+
+    var coachMyWhyLines: [String] {
+        let lines: [String] = coachMyWhyText
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return Array(lines.prefix(5))
+    }
+
     var coachInterventionMode: FocusCoachInterventionMode {
         get { FocusCoachInterventionMode(rawValue: coachInterventionModeRawValue) ?? .balanced }
         set { coachInterventionModeRawValue = newValue.rawValue }
@@ -95,5 +129,17 @@ final class AppSettings {
         self.coachAdaptiveEscalationSeconds = 180
         self.coachStrictPromptSeconds = 60
         self.coachStrictEscalationSeconds = 120
+        self.coachStyleRawValue = CoachStyle.challenger.rawValue
+        self.coachOnScreenPromptsEnabled = true
+        self.coachNotificationsEnabled = false
+        self.coachMaxPromptsPerDay = 3
+        self.coachQuietStartMinute = 30
+        self.coachQuietEndMinute = 420
+        self.coachMyWhyText = ""
+        self.dailyStretchGoal = 9000
+        self.coachShowDriftInMenuBar = true
+        self.coachPauseScreenEnabled = true
+        self.coachStarterBlockMinutes = 5
+        self.coachGlobalHotkeyEnabled = true
     }
 }
