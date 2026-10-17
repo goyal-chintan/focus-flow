@@ -7,28 +7,34 @@ struct DurationPresetRow: View {
     var showCustom: Bool = false
     @Binding var isCustomActive: Bool
 
+    var minHeight: CGFloat = 30
+
     init(
         presets: [Int],
         selectedMinutes: Binding<Int>,
         showCustom: Bool = false,
-        isCustomActive: Binding<Bool> = .constant(false)
+        isCustomActive: Binding<Bool> = .constant(false),
+        minHeight: CGFloat = 30
     ) {
         self.presets = presets
         self._selectedMinutes = selectedMinutes
         self.showCustom = showCustom
         self._isCustomActive = isCustomActive
+        self.minHeight = minHeight
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(presets, id: \.self) { mins in
-                presetPill(mins)
-            }
+        GlassEffectContainer {
+            HStack(spacing: 6) {
+                ForEach(presets, id: \.self) { mins in
+                    presetPill(mins)
+                }
 
-            if showCustom {
-                customPill
+                if showCustom {
+                    customPill
+                }
             }
         }
     }
@@ -41,7 +47,7 @@ struct DurationPresetRow: View {
         } label: {
             Text("\(mins)")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: minHeight)
         }
         .buttonBorderShape(.capsule)
         .if(isSelected) { view in
@@ -59,8 +65,10 @@ struct DurationPresetRow: View {
             withAnimation(reduceMotion ? .linear(duration: 0.01) : FFMotion.section) { isCustomActive = true }
         } label: {
             Text("Custom")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .frame(minWidth: 68, minHeight: 44)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, minHeight: minHeight)
         }
         .buttonBorderShape(.capsule)
         .if(isCustomActive) { view in

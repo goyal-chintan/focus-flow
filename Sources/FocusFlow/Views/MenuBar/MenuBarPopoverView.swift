@@ -580,10 +580,12 @@ private struct IdlePopoverContent: View {
                 }
             }
 
-            DurationSegmentedControl(
+            DurationPresetRow(
                 presets: Self.presetMinutes,
                 selectedMinutes: $selectedMinutes,
-                isCustomActive: $showCustomSlider
+                showCustom: true,
+                isCustomActive: $showCustomSlider,
+                minHeight: 30
             )
 
             if showCustomSlider {
@@ -817,117 +819,7 @@ private struct SessionIntentField: View {
 
 // MARK: - Duration control
 
-private enum DurationSegment: Hashable {
-    case minutes(Int)
-    case custom
 
-    var title: String {
-        switch self {
-        case .minutes(let minutes): return "\(minutes)"
-        case .custom: return "Custom"
-        }
-    }
-
-    var accessibilityName: String {
-        switch self {
-        case .minutes(let minutes): return "\(minutes) minutes"
-        case .custom: return "Custom duration"
-        }
-    }
-}
-
-/// One segmented track for the idle duration: equal full-height segments and a single accent
-/// selection that slides between them. Custom reveals the slider in the parent.
-private struct DurationSegmentedControl: View {
-    let presets: [Int]
-    @Binding var selectedMinutes: Int
-    @Binding var isCustomActive: Bool
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var selectionNamespace
-    @State private var hoveredSegment: DurationSegment?
-
-    private var segments: [DurationSegment] {
-        presets.map { DurationSegment.minutes($0) } + [.custom]
-    }
-
-    private var motion: Animation? {
-        reduceMotion ? nil : .snappy(duration: 0.25)
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(segments, id: \.self) { segment in
-                segmentButton(segment)
-            }
-        }
-        .padding(2)
-        .frame(height: 32)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private func segmentButton(_ segment: DurationSegment) -> some View {
-        let isSelected = segmentIsSelected(segment)
-        let isHovered = hoveredSegment == segment && !isSelected
-        return Button {
-            select(segment)
-        } label: {
-            Text(segment.title)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
-                .foregroundStyle(isSelected ? Color.white : Color.primary.opacity(0.85))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(LiquidDesignTokens.Spectral.primaryContainer)
-                            .matchedGeometryEffect(id: "durationSelection", in: selectionNamespace)
-                    } else if isHovered {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.06))
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { inside in
-            if inside {
-                hoveredSegment = segment
-            } else if hoveredSegment == segment {
-                hoveredSegment = nil
-            }
-        }
-        .accessibilityLabel(segment.accessibilityName)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private func segmentIsSelected(_ segment: DurationSegment) -> Bool {
-        switch segment {
-        case .minutes(let minutes): return !isCustomActive && selectedMinutes == minutes
-        case .custom: return isCustomActive
-        }
-    }
-
-    private func select(_ segment: DurationSegment) {
-        withAnimation(motion) {
-            switch segment {
-            case .minutes(let minutes):
-                selectedMinutes = minutes
-                isCustomActive = false
-            case .custom:
-                isCustomActive = true
-            }
-        }
-    }
-}
 
 // MARK: - Starter block
 
