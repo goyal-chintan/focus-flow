@@ -19,11 +19,14 @@ struct CoachPanelView: View {
     var onSecondary: (CoachPanelSecondaryAction) -> Void = { _ in }
     var onClose: () -> Void = {}
     var onHover: (Bool) -> Void = { _ in }
+    /// Daily plan card: a time chip was clicked.
+    var onPlanSlot: (CoachPlanSlot) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
     @State private var closeHovered = false
     @State private var primaryHovered = false
+    @State private var hoveredSlot: Date?
 
     private var message: CoachComposedMessage { presentation.message }
     private var palette: CoachPanelPalette { CoachPanelPalette(style: message.style) }
@@ -40,6 +43,14 @@ struct CoachPanelView: View {
                 if let detail = message.detail {
                     detailView(detail)
                         .padding(.top, 3)
+                }
+                if let motivation = message.motivation {
+                    motivationView(motivation)
+                        .padding(.top, 8)
+                }
+                if presentation.kind == .dailyPlan, !presentation.planSlots.isEmpty {
+                    planChips
+                        .padding(.top, 10)
                 }
                 if let errorText, !errorText.isEmpty {
                     Label(errorText, systemImage: "exclamationmark.triangle.fill")
@@ -152,6 +163,57 @@ struct CoachPanelView: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// The quote, house line or "my why" line, set off by a thin accent rule (v3 §3.4).
+    private func motivationView(_ motivation: CoachDetail) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Capsule(style: .continuous)
+                .fill(LinearGradient(colors: palette.gradient, startPoint: .top, endPoint: .bottom))
+                .frame(width: 2.5)
+                .accessibilityHidden(true)
+            detailView(motivation)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.trailing, 8)
+    }
+
+    /// Daily plan card: one click commits a start time (an implementation intention).
+    private var planChips: some View {
+        HStack(spacing: 6) {
+            ForEach(presentation.planSlots) { slot in
+                Button {
+                    onPlanSlot(slot)
+                } label: {
+                    VStack(spacing: 1) {
+                        Text(slot.label())
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.primary)
+                        Text(slot.caption)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(hoveredSlot == slot.start ? palette.gradient[0].opacity(0.22) : Color.primary.opacity(0.06))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(hoveredSlot == slot.start ? palette.gradient[0].opacity(0.6) : Color.primary.opacity(0.10), lineWidth: 1)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .onHover { hoveredSlot = $0 ? slot.start : (hoveredSlot == slot.start ? nil : hoveredSlot) }
+                .animation(.easeOut(duration: 0.12), value: hoveredSlot)
+                .accessibilityLabel("Plan today's block at \(slot.label()), \(slot.caption)")
+            }
+        }
+        .padding(.trailing, 8)
     }
 
     /// Three small pips: how deep the drift is (L1–L3).
@@ -291,6 +353,8 @@ struct CoachPanelView: View {
         case .keepGoing: "STARTER BLOCK · DONE"
         case .momentum: "FOCUS COACH · MOMENTUM"
         case .notice: "FOCUS COACH"
+        case .plannedStart: "YOUR PLAN · NOW"
+        case .dailyPlan: "FOCUS COACH · PLAN TODAY"
         }
     }
 
@@ -302,6 +366,8 @@ struct CoachPanelView: View {
         case .keepGoing: return "checkmark"
         case .momentum: return "bolt.fill"
         case .notice: return "play.fill"
+        case .plannedStart: return "alarm.fill"
+        case .dailyPlan: return "calendar.badge.clock"
         case .rescue:
             switch presentation.level ?? .drifting {
             case .ok, .drifting: return "arrow.uturn.backward"
@@ -319,7 +385,7 @@ struct CoachPanelView: View {
 
     private var primarySymbol: String {
         switch presentation.kind {
-        case .startNudge, .pseudoProductivity, .rescue, .notice: "play.fill"
+        case .startNudge, .pseudoProductivity, .rescue, .notice, .plannedStart, .dailyPlan: "play.fill"
         case .inSessionDrift: "arrow.uturn.backward"
         case .weeklyPriorities: "list.bullet"
         case .keepGoing: "forward.fill"
@@ -356,7 +422,8 @@ struct CoachPanelHostView: View {
                 onPrimary: { timerVM.performCoachPanelPrimary() },
                 onSecondary: { timerVM.performCoachPanelSecondary($0) },
                 onClose: { timerVM.dismissCoachInterventionWindow() },
-                onHover: { timerVM.coachPanelHoverChanged($0) }
+                onHover: { timerVM.coachPanelHoverChanged($0) },
+                onPlanSlot: { timerVM.commitDailyPlan($0) }
             )
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { onSizeChange($0) }

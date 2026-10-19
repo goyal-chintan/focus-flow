@@ -19,6 +19,7 @@ struct InsightsView: View {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
                 FFPageHeader("Insights", subtitle: "From your sessions and app usage over the last 8 weeks")
                 weekSummary(snapshot)
+                CoachLearnedSection(now: snapshot.now)
                 whenYouFocus(snapshot)
                 derailers(snapshot)
                 realWork(snapshot)
@@ -69,7 +70,7 @@ struct InsightsView: View {
                 FFEmptyState(systemImage: "clock", message: "No focus blocks in the last 8 weeks", detail: "Your usual focus hours appear here once you've logged a few blocks.")
             } else {
                 HourOfWeekHeatmap(matrix: matrix, windows: windows)
-                Text("Averaged over \(matrix.weeksObserved) week\(matrix.weeksObserved == 1 ? "" : "s"). The coach uses these windows to time its prompts.")
+                Text("Minutes focused, averaged over \(matrix.weeksObserved) week\(matrix.weeksObserved == 1 ? "" : "s"). The coach's own start model is above.")
                     .ffText(.caption)
             }
         }

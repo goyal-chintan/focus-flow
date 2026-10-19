@@ -118,6 +118,17 @@ enum DebugWindowCapture {
         }
     }
 
+    /// Snapshots the floating coach panel (its window title is "Focus Coach").
+    static func snapshotCoachPanel(directory: String, name: String) {
+        let dirURL = URL(fileURLWithPath: directory, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+        guard let panel = NSApp.windows.first(where: { $0.title == "Focus Coach" && $0.isVisible }) else {
+            log("capture: no visible coach panel for \(name)")
+            return
+        }
+        snapshot(panel, name: name, directory: dirURL)
+    }
+
     private static func findWindow() -> NSWindow? {
         // Title follows the selected tab (navigationTitle), so match the scene id "stats".
         NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("stats") == true && $0.contentView != nil }

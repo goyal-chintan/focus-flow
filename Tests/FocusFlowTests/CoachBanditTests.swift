@@ -119,20 +119,21 @@ final class CoachBanditTests: XCTestCase {
         XCTAssertGreaterThan(silent, 150, "At ~0% response the silent arm should win most draws")
     }
 
-    func testLearnsThatAnotherStyleWorksBetter() {
+    /// v3 R7: the user chose Challenger, so Gentle never shows even when its evidence is better.
+    /// The bandit still learns the surface (and silence).
+    func testOnlyUsesTheChosenStyle() {
         var model = CoachBanditModel()
         for _ in 0..<40 {
-            model.record(context: context, arm: panelChallenger, reward: 0)
+            model.record(context: context, arm: panelChallenger, reward: 0.5)
             model.record(context: context, arm: panelGentle, reward: 1.5)
         }
         let policy = CoachBanditPolicy()
         var rng = SplitMix64(seed: 11)
         let picks = (0..<200).map { _ in
-            policy.choose(context: context, surfaces: [.panel], preferredStyle: .challenger, model: model, using: &rng)
+            policy.choose(context: context, surfaces: [.silent, .panel], preferredStyle: .challenger, model: model, using: &rng)
         }
-        // The untried Data arm (Beta(1,1)) still gets explored; Challenger's stated preference loses to the data.
-        XCTAssertGreaterThan(picks.filter { $0 == panelGentle }.count, 120)
-        XCTAssertLessThan(picks.filter { $0 == panelChallenger }.count, 10)
+        XCTAssertTrue(picks.allSatisfy { $0 == .silent || $0.style == .challenger })
+        XCTAssertGreaterThan(picks.filter { $0 == panelChallenger }.count, 100)
     }
 
     func testNeverChoosesASurfaceThatWasNotOffered() {
@@ -200,8 +201,13 @@ final class CoachBanditTests: XCTestCase {
         XCTAssertEqual(guardrails.verdict(for: .silent, input: input { $0.calendarBusy = true }), .allowed)
         XCTAssertEqual(guardrails.verdict(for: .badge, input: input {
             $0.maxPromptsPerDay = 1
-            $0.deliveries = [.init(surface: .badge, deliveredAt: now.addingTimeInterval(-60))]
+            $0.deliveries = [.init(surface: .panel, deliveredAt: now.addingTimeInterval(-60))]
         }), .dailyCapReached)
+        // v3 R1: a menu-bar badge is ambient and never uses up the cap.
+        XCTAssertEqual(guardrails.verdict(for: .badge, input: input {
+            $0.maxPromptsPerDay = 1
+            $0.deliveries = [.init(surface: .badge, deliveredAt: now.addingTimeInterval(-60))]
+        }), .allowed)
     }
 
     func testAllowedSurfacesDropsPanelWithinTwoHours() {

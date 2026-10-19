@@ -218,6 +218,10 @@ enum FocusCoachOutcome: String, Codable, CaseIterable {
     case ignored
     case snoozed
     case dismissed
+    /// The panel hid itself while the user had no keyboard or mouse input the whole time
+    /// (away from the desk). Not an ignore: it never counts toward the cap, the drift level or
+    /// the bandit (v3 §3.3, R3).
+    case unseen
 
     var displayName: String {
         switch self {
@@ -225,6 +229,7 @@ enum FocusCoachOutcome: String, Codable, CaseIterable {
         case .ignored: "Ignored"
         case .snoozed: "Snoozed"
         case .dismissed: "Dismissed"
+        case .unseen: "Not seen"
         }
     }
 }

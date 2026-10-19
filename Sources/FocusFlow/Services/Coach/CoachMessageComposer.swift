@@ -106,6 +106,22 @@ enum CoachTrigger: Sendable, Equatable {
     case momentum
     /// Feedback after the global shortcut started a starter block.
     case starterStarted(minutes: Int)
+    /// v3 §3.2: the user's own planned start time has come.
+    case plannedStart(CoachPlannedCueContext)
+    /// v3 §3.1: once a day, "when is today's block?" with suggested times.
+    case dailyPlan(goalMinutes: Int, firstSuggestion: String?)
+}
+
+/// What a planned-start cue says (v3 §3.2).
+struct CoachPlannedCueContext: Sendable, Equatable {
+    /// "22:00"
+    var timeLabel: String
+    var minutes: Int
+    var priorityName: String?
+    /// Times the user already pushed this block today.
+    var pushes: Int = 0
+    var missedYesterday: Bool = false
+    var starterMinutes: Int = CoachStarterBlock.defaultMinutes
 }
 
 struct CoachComposerInput: Sendable {
@@ -156,9 +172,21 @@ struct CoachComposedMessage: Sendable, Equatable {
     let primaryTitle: String
     /// True when the hook itself states a fact from the user's data.
     let hookIsFact: Bool
+    /// A quote, house line or "my why" line shown under the fact (v3 §3.4, R6). Before v3 a
+    /// quote had to win the single detail slot against facts and almost never did.
+    var motivation: CoachDetail? = nil
 
     var accessibilityText: String {
-        [hook, detail?.text].compactMap { $0 }.joined(separator: ". ")
+        [hook, detail?.text, motivation?.text].compactMap { $0 }.joined(separator: ". ")
+    }
+
+    /// The picked quote, house line or why line is actually on screen (log it as shown).
+    var showsMotivation: Bool {
+        if motivation != nil { return true }
+        switch detail {
+        case .quote, .why, .houseLine: return true
+        case .fact, .line, nil: return false
+        }
     }
 
     /// Number of statements drawn from user data (hook + detail). Always ≤ 1.
@@ -196,16 +224,61 @@ enum CoachMessageComposer {
             hook = (CoachMomentumRamp.hook, false)
         case .starterStarted(let minutes):
             hook = (CoachStarterBlock.startedNotice(minutes: minutes), false)
+        case .plannedStart(let cue):
+            hook = plannedHook(input, cue)
+        case .dailyPlan(let goal, let first):
+            hook = dailyPlanHook(input.style, goalMinutes: goal, firstSuggestion: first)
         }
 
+        let detail = detail(input, hookIsFact: hook.isFact)
         return CoachComposedMessage(
             style: input.style,
             trigger: input.trigger,
             hook: hook.text,
-            detail: detail(input, hookIsFact: hook.isFact),
+            detail: detail,
             primaryTitle: primaryTitle(input),
-            hookIsFact: hook.isFact
+            hookIsFact: hook.isFact,
+            motivation: motivationLine(input, detail: detail)
         )
+    }
+
+    /// Challenger and Gentle prompts that ask for a start always carry a quote, house line or
+    /// "my why" line, unless the detail already is one. Data style stays numbers-only.
+    private static func motivationLine(_ input: CoachComposerInput, detail: CoachDetail?) -> CoachDetail? {
+        guard input.style != .data else { return nil }
+        switch detail {
+        case .quote, .why, .houseLine: return nil
+        case .fact, .line, nil: break
+        }
+        switch input.trigger {
+        case .startNudge, .rescue, .pseudoProductivity, .plannedStart, .dailyPlan:
+            return rotation(input)
+        case .inSessionDrift, .weeklyPriorities, .keepGoing, .momentum, .starterStarted:
+            return nil
+        }
+    }
+
+    private static func plannedHook(_ input: CoachComposerInput, _ cue: CoachPlannedCueContext) -> (String, Bool) {
+        switch input.style {
+        case .challenger:
+            if cue.missedYesterday && cue.pushes == 0 { return ("\(cue.timeLabel). Missed yesterday. Never miss twice.", true) }
+            if cue.pushes >= 2 { return ("Pushed \(cue.pushes) times. Start small. Start now.", true) }
+            if cue.pushes == 1 { return ("\(cue.timeLabel). No more pushing. Begin.", false) }
+            return ("\(cue.timeLabel). You said you'd start now.", false)
+        case .data:
+            return ("Planned: \(cue.timeLabel) · \(cue.minutes)m.", true)
+        case .gentle:
+            return ("It's \(cue.timeLabel), your planned block.", false)
+        }
+    }
+
+    private static func dailyPlanHook(_ style: CoachStyle, goalMinutes: Int, firstSuggestion: String?) -> (String, Bool) {
+        let goal = goalMinutes > 0 ? duration(goalMinutes) : "focus"
+        switch style {
+        case .challenger: return ("When is today's \(goal)? Decide now.", false)
+        case .data: return (firstSuggestion.map { "Best time left today: \($0)." } ?? "Pick today's start time.", firstSuggestion != nil)
+        case .gentle: return ("When would you like to focus today?", false)
+        }
     }
 
     /// Copy for a decision that arrived without composed copy (should not happen in v2).
@@ -348,6 +421,19 @@ enum CoachMessageComposer {
             return .line("Starting was the hard part. That part is done.")
         case .starterStarted:
             return .line("What's the very next step? Type it in the menu bar.")
+        case .plannedStart(let cue):
+            if !hookIsFact, input.style != .gentle || facts.doneMinutesToday > 0,
+               facts.goalMinutes > 0 {
+                return .fact("\(facts.doneMinutesToday)m of \(facts.goalMinutes)m today.")
+            }
+            if input.style == .data { return nil }
+            return .line("Too much? \(cue.starterMinutes) minutes still counts.")
+        case .dailyPlan:
+            switch input.style {
+            case .challenger: return .line("Pick a time. People who decide when are far likelier to start.")
+            case .data: return .line("Planning when has a medium-to-large effect on follow-through (d = 0.65).")
+            case .gentle: return .line("One click. I'll remind you on screen at that time.")
+            }
         case .weeklyPriorities:
             switch input.style {
             case .challenger: return .line("What will you finish by Sunday?")
@@ -433,8 +519,13 @@ enum CoachMessageComposer {
             return "Keep going · \(CoachStarterBlock.keepGoingMinutes)m"
         case .momentum:
             return "Make it \(CoachMomentumRamp.targetMinutes)"
-        case .starterStarted:
+        case .starterStarted, .dailyPlan:
             return ""
+        case .plannedStart(let cue):
+            var target = input.target
+            target.minutes = cue.minutes
+            if let name = cue.priorityName { target.name = name }
+            return startTitle(target)
         }
     }
 

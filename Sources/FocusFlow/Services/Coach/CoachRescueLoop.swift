@@ -145,22 +145,32 @@ enum CoachRescueSurface: String, CaseIterable, Sendable {
     }
 }
 
-/// When the rescue loop makes a new decision: on a level rise, in a new window, or after
-/// 20 minutes at the same level.
+/// When the rescue loop makes a new decision: in a new window, after 20 minutes, or sooner
+/// when usage itself got worse (v3 §3.3, R2).
+///
+/// An ignored rescue raises the level of the *next* decision but never triggers one: before
+/// v3 an L1 panel that timed out became L2 at once and a second panel showed 30 s later.
 enum CoachRescueCadence {
     struct Decision: Equatable, Sendable {
         let level: DriftLevel
         let at: Date
         let windowStart: Date
+        /// Level from usage alone at the time of the decision.
+        var baseLevel: DriftLevel? = nil
     }
 
     static let repeatAfter: TimeInterval = 20 * 60
+    /// A rise in usage-based level may decide early, but never within this of the last decision.
+    static let minimumGap: TimeInterval = 5 * 60
 
-    static func shouldDecide(level: DriftLevel, windowStart: Date, last: Decision?, now: Date) -> Bool {
+    static func shouldDecide(level: DriftLevel, baseLevel: DriftLevel? = nil, windowStart: Date, last: Decision?, now: Date) -> Bool {
         guard level > .ok else { return false }
         guard let last, last.windowStart == windowStart else { return true }
-        if level > last.level { return true }
-        return now.timeIntervalSince(last.at) >= repeatAfter
+        let elapsed = now.timeIntervalSince(last.at)
+        if elapsed >= repeatAfter { return true }
+        let base = baseLevel ?? level
+        let lastBase = last.baseLevel ?? last.level
+        return base > lastBase && elapsed >= minimumGap
     }
 
     /// Surfaces a level allows before guardrails: L1–L2 menu bar or panel; L3 adds the pause screen.

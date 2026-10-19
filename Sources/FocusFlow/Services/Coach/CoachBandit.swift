@@ -141,7 +141,11 @@ struct CoachRewardRecord: Sendable, Equatable {
     }
 
     init?(attempt: InterventionAttempt) {
-        guard let contextKey = attempt.contextKey,
+        // A panel nobody was there to see teaches nothing (v3 R3).
+        guard attempt.outcome != .unseen,
+              let contextKey = attempt.contextKey,
+              // Planned cues are requested by the user; they say nothing about when to interrupt.
+              !CoachPlannedCue.isPlannedContextKey(contextKey),
               let reward = attempt.reward,
               let surface = attempt.surfaceRawValue.flatMap(CoachSurface.init(rawValue:)),
               surface != .silent else { return nil }
@@ -268,7 +272,9 @@ struct CoachBanditPolicy: Sendable {
         model: CoachBanditModel,
         using rng: inout G
     ) -> CoachArm {
-        var candidates = CoachArm.arms(for: surfaces)
+        // The user's chosen style is the only style used (v3 §3.5, R7): the bandit learns
+        // where and whether to prompt, not how to talk to someone who asked for Challenger.
+        var candidates = CoachArm.arms(for: surfaces).filter { $0.style == nil || $0.style == preferredStyle }
         if !candidates.contains(.silent) { candidates.insert(.silent, at: 0) }
         var best = CoachArm.silent
         var bestSample = -Double.infinity

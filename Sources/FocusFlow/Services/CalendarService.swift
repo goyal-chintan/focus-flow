@@ -186,6 +186,8 @@ final class CalendarService {
         let busyIntervals = store.events(matching: predicate).compactMap { event -> DateInterval? in
             guard !event.isAllDay,
                   event.availability != .free,
+                  // Out of office (from work) is free time for personal work.
+                  event.availability != .unavailable,
                   event.status != .canceled,
                   let start = event.startDate,
                   let end = event.endDate,
@@ -216,17 +218,25 @@ struct CalendarAvailability: Equatable, Sendable {
     let isBusyNow: Bool
     /// Whole minutes until the next busy event starts, within the lookahead; nil when none.
     let minutesUntilNextEvent: Int?
+    /// Busy events within ±12 h, for planning free start times (Coach v3 §3.1).
+    var busyIntervals: [DateInterval] = []
 
     static let unknown = CalendarAvailability(isBusyNow: false, minutesUntilNextEvent: nil)
     static let lookaheadSeconds: TimeInterval = 12 * 60 * 60
 
-    static func compute(busyIntervals: [DateInterval], now: Date) -> CalendarAvailability {
+    /// Longer "busy" blocks are availability markers, not meetings: an evening-to-morning "off work"
+    /// block, out-of-office, travel. Before v3 one such block silenced the coach every evening,
+    /// exactly when personal work happens (v3 R10).
+    static let maxMeetingDuration: TimeInterval = 4 * 60 * 60
+
+    static func compute(busyIntervals allIntervals: [DateInterval], now: Date) -> CalendarAvailability {
+        let busyIntervals = allIntervals.filter { $0.duration < maxMeetingDuration }
         let isBusyNow = busyIntervals.contains { $0.start <= now && now < $0.end }
         let nextStart = busyIntervals
             .map(\.start)
             .filter { $0 > now && $0.timeIntervalSince(now) <= lookaheadSeconds }
             .min()
         let minutes = nextStart.map { Int($0.timeIntervalSince(now) / 60) }
-        return CalendarAvailability(isBusyNow: isBusyNow, minutesUntilNextEvent: minutes)
+        return CalendarAvailability(isBusyNow: isBusyNow, minutesUntilNextEvent: minutes, busyIntervals: busyIntervals)
     }
 }
