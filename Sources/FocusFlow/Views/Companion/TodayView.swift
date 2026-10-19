@@ -48,6 +48,8 @@ struct TodayView: View {
                     now: snapshot.now
                 )
 
+                TodayCoachSection(now: snapshot.now, sessions: sessions)
+
                 statsRow(snapshot)
 
                 timelineSection(snapshot, windows: windows)

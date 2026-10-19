@@ -523,6 +523,13 @@ private struct IdlePopoverContent: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
 
+            // Coach v3: today's plan and today's line (hidden while a crash recovery is pending).
+            if recoveryState == nil {
+                PopoverPlanCard()
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 12)
+            }
+
             // Coach pre-session intention card
             if coachEnabled && selectedProject == nil {
                 FocusCoachPreSessionCard(

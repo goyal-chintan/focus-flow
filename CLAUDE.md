@@ -21,7 +21,7 @@ Tests: `swift test` (XCTest + Swift Testing in `Tests/FocusFlowTests`). If `xcod
 
 Visual QA: off-screen renders (`UIEvidenceCaptureTests`, output dir via `FOCUSFLOW_CAPTURE_OUTPUT_DIR`) and in-app `cacheDisplay` captures draw AppKit controls and glass in the wrong appearance. Judge layout from them; judge colour only from real screenshots.
 
-Coach v2 design: `docs/plans/2026-10-17-coach-v2-learning-motivation-design.md`. Companion/Settings design: `docs/plans/2026-10-17-companion-window-redesign.md`. Debug hooks (DEBUG builds, env vars): `FOCUSFLOW_DEBUG_COACH_PANEL=1` shows the on-screen coach panel 5s after launch; add `FOCUSFLOW_DEBUG_DRIFT_LEVEL=<1|2|3>` to show the rescue-ladder panel at that level; `FOCUSFLOW_DEBUG_PAUSE_SCREEN=1` shows the rescue pause screen 5s after launch (rescue loop: `docs/plans/2026-10-17-coach-rescue-loop-design.md`; starter blocks are sessions with `customLabel == "Starter"` and no project); `FOCUSFLOW_DEBUG_CAPTURE_DIR=<dir>` captures every companion tab from inside the app.
+Coach v2 design: `docs/plans/2026-10-17-coach-v2-learning-motivation-design.md`. Companion/Settings design: `docs/plans/2026-10-17-companion-window-redesign.md`. Debug hooks (DEBUG builds, env vars): `FOCUSFLOW_DEBUG_COACH_PANEL=1` shows the on-screen coach panel 5s after launch; add `FOCUSFLOW_DEBUG_DRIFT_LEVEL=<1|2|3>` to show the rescue-ladder panel at that level; `FOCUSFLOW_DEBUG_PAUSE_SCREEN=1` shows the rescue pause screen 5s after launch (rescue loop: `docs/plans/2026-10-17-coach-rescue-loop-design.md`; starter blocks are sessions with `customLabel == "Starter"` and no project); `FOCUSFLOW_DEBUG_CAPTURE_DIR=<dir>` captures every companion tab from inside the app. Coach v3 (start engine: daily plan, planned-start cue, coach insights; `docs/plans/2026-10-19-coach-v3-start-engine-design.md`): `FOCUSFLOW_DEBUG_PLAN=card|cue` shows the plan card or a planned-start cue 5s after launch without saving anything, and with `FOCUSFLOW_DEBUG_CAPTURE_DIR` also writes `panel_plan_<mode>.png`. Launch an installed build with env vars via `open -n ~/Applications/FocusFlow.app --env KEY=value`.
 
 ## Platform
 
@@ -98,6 +98,7 @@ These rules were established through iterative visual review and must not be vio
 - **Minimum text: 10pt** — Apple HIG floor. No exceptions.
 - **Minimum click target: 30pt** — use `.frame()` + `.contentShape(Rectangle())` on icon buttons.
 - **Custom matchedGeometryEffect pills look foreign** — use per-button `.glass`/`.glassProminent` + `.capsule` instead.
+- **Floating panels: measure before animating.** An `animator().setFrame` slide-in overrides any plain `setFrame` made while it runs; measure the hosted content first and resize through the animator (the coach panel was stuck at 120 pt and clipped its buttons).
 - **3-Gate review before presenting:** (1) Pixel match ≥80%, (2) Apple design checklist, (3) Apple UX checklist. If any gate fails, fix before showing user.
 
 ### SwiftUI Type-Check Timeout

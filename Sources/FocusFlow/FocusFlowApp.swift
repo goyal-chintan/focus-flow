@@ -6,7 +6,7 @@ struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self])
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self])
         let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("FocusFlow", isDirectory: true)
@@ -43,7 +43,9 @@ struct FocusFlowApp: App {
             HStack(spacing: 5) {
                 Image(systemName: menuBarIconName)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .symbolEffect(.pulse, options: .repeating, isActive: timerVM.coachMenuBarPulse)
+                    // A few pulses when a prompt starts waiting, then a static dot (v3 R9: a
+                    // repeating effect re-laid out the status item every frame, ~30% CPU for days).
+                    .symbolEffect(.pulse, options: .repeat(3), value: timerVM.coachMenuBarPulse)
                     .accessibilityHidden(true)
 
                 // A coach prompt is waiting (panel auto-hid or a badge prompt): clears on open.

@@ -582,6 +582,9 @@ final class TimerViewModel {
             log("WARNING: Stale website blocking detected from previous crash")
         }
         scheduleMidnightRefresh()
+        NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.checkDayRolloverIfNeeded() }
+        }
         // Refresh today-total whenever a session is manually logged from the Companion window.
         NotificationCenter.default.addObserver(forName: .focusSessionLoggedManually, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -632,6 +635,19 @@ final class TimerViewModel {
         if let raw = ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_DRIFT_LEVEL"], let value = Int(raw),
            let level = DriftLevel(rawValue: value), level > .ok {
             debugForcedDriftLevel = level
+        }
+        // Coach v3: FOCUSFLOW_DEBUG_PLAN=card shows the plan card, =cue a planned-start cue, in 5 s
+        // (nothing is saved). With FOCUSFLOW_DEBUG_CAPTURE_DIR the panel is also snapshotted.
+        if let mode = ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_PLAN"], mode == "card" || mode == "cue" {
+            log("debug: showing plan \(mode) in 5s")
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.presentDebugPlanPanel(cue: mode == "cue")
+                if let dir = ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_CAPTURE_DIR"], !dir.isEmpty {
+                    try? await Task.sleep(for: .seconds(4))
+                    DebugWindowCapture.snapshotCoachPanel(directory: dir, name: "panel_plan_\(mode).png")
+                }
+            }
         }
         if ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_PAUSE_SCREEN"] == "1" {
             log("debug: showing pause screen in 5s")
@@ -986,6 +1002,7 @@ final class TimerViewModel {
         }
         saveContext() // Persist session immediately — crash safety
         creditCoachPromptForStart(sessionID: session.id)
+        markPlannedBlockStarted(sessionID: session.id, at: session.startedAt)
         saveCrashRecoveryCheckpoint() // Write initial recovery state to UserDefaults
         startTimer()
         // Focus Coach: start session tracking
@@ -2564,6 +2581,11 @@ final class TimerViewModel {
     /// Closes the coach panel without an action (its X, or the v1 window API). Records
     /// `.dismissed` only when no action was taken, so an action's own outcome is kept (B12).
     func dismissCoachInterventionWindow() {
+        // ✕ on the plan card or a planned cue means "later", not "ignored" (v3 §3.2).
+        if isStickyCoachPanelShowing, !interventionActionTaken {
+            performCoachPanelEscape()
+            return
+        }
         if (showCoachInterventionWindow || coachPanel != nil) && !interventionActionTaken
             && Self.panelKindLogsOutcome(coachPanel?.kind) {
             coachEngine.recordInterventionOutcome(.dismissed, attemptID: coachPanel?.attemptID)
@@ -2591,6 +2613,7 @@ final class TimerViewModel {
     /// "Done for today": release window plus quiet until tomorrow.
     private func enterDoneForToday(now: Date = Date()) {
         enterRelease(reason: .offDuty)
+        skipRemainingPlans(now: now)
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))
         coachQuietUntil = tomorrow ?? now.addingTimeInterval(12 * 3600)
     }
@@ -2675,6 +2698,11 @@ final class TimerViewModel {
             hideCoachPanel()
         case .notice:
             hideCoachPanel()
+        case .plannedStart:
+            guard startCoachPlan(panel.plan, attemptID: panel.attemptID) else { return false }
+        case .dailyPlan:
+            guard let slot = panel.planSlots.first else { return false }
+            commitDailyPlan(slot)
         }
         if panel.kind == .pseudoProductivity, panel.level != nil {
             rescueStartedSessionID = currentSession?.id
@@ -2741,21 +2769,61 @@ final class TimerViewModel {
             // The starter already counted as a completed block; the block keeps its length.
             interventionActionTaken = true
             hideCoachPanel()
+        case .starterInstead:
+            // Two-minute rule: the smallest real start still fulfils the plan.
+            guard startStarterBlock(attemptID: panel.attemptID) else {
+                coachPanelError = startError
+                return
+            }
+            interventionActionTaken = true
+        case .push15, .push60:
+            coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
+            if let id = panel.plannedBlockID {
+                pushPlannedBlock(id: id, minutes: action == .push15 ? CoachPlannedCue.pushMinutes : 60, now: now)
+            }
+            interventionActionTaken = true
+            hideCoachPanel()
+        case .skipToday:
+            coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
+            interventionActionTaken = true
+            if let id = panel.plannedBlockID { skipPlannedBlock(id: id, now: now) }
+            hideCoachPanel()
+        case .planLater:
+            coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
+            interventionActionTaken = true
+            hideCoachPanel()
+        case .notToday:
+            coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
+            let store = CoachDailyPlanInviteStore(defaults: defaults)
+            var inviteLog = store.load(now: now)
+            inviteLog.declined = true
+            store.save(inviteLog)
+            interventionActionTaken = true
+            hideCoachPanel()
         }
     }
 
     /// Auto-hide after 20 s without interaction: counts as ignored and leaves a pulse on the
     /// menu bar icon (the popover keeps the prompt card until opened).
-    func coachPanelTimedOut(id: UUID) {
+    func coachPanelTimedOut(id: UUID, now: Date = Date()) {
         guard let panel = coachPanel, panel.id == id else { return }
         guard Self.panelKindLogsOutcome(panel.kind) else {
             // Keep-going: no answer is a decline (the starter still counts). Momentum, notice: nothing to do.
             hideCoachPanel()
             return
         }
-        coachEngine.recordInterventionOutcome(.ignored, attemptID: panel.attemptID)
+        // No input for the panel's whole life: the user was away, not ignoring it (v3 R3).
+        let unseen = Self.panelWasUnseen(shownFor: now.timeIntervalSince(panel.createdAt), systemIdleSeconds: systemIdleSeconds())
+        coachEngine.recordInterventionOutcome(unseen ? .unseen : .ignored, attemptID: panel.attemptID)
         hideCoachPanel()
         coachMenuBarPulse = true
+    }
+
+    /// True when the user had no keyboard or mouse input for (almost) the whole time the panel
+    /// was up. A 5 s margin absorbs the tick between showing and the first idle reading; a panel
+    /// up for under 10 s can't tell "away" from "busy", so it never counts as unseen.
+    nonisolated static func panelWasUnseen(shownFor: TimeInterval, systemIdleSeconds: TimeInterval) -> Bool {
+        shownFor >= 10 && systemIdleSeconds >= shownFor - 5
     }
 
     /// Keep-going, momentum and notice panels are not logged prompts: no outcome to record.
@@ -2773,7 +2841,8 @@ final class TimerViewModel {
             coachPanelAutoHideTask?.cancel()
             coachPanelAutoHideTask = nil
         } else {
-            scheduleCoachPanelAutoHide(for: panel.id, after: 8)
+            // Sticky panels (planned cue, daily plan) stay; others get 20 s after the pointer leaves.
+            scheduleCoachPanelAutoHide(for: panel.id, after: panel.autoHideSeconds.map { min($0, 20) })
         }
     }
 
@@ -2784,9 +2853,10 @@ final class TimerViewModel {
         prefillIntentForSelectedProject()
     }
 
-    private func scheduleCoachPanelAutoHide(for id: UUID, after seconds: Double) {
+    private func scheduleCoachPanelAutoHide(for id: UUID, after seconds: Double?) {
         coachPanelAutoHideTask?.cancel()
-        guard !isEvidenceMode else { return }
+        coachPanelAutoHideTask = nil
+        guard !isEvidenceMode, let seconds else { return }
         coachPanelAutoHideTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled else { return }
@@ -2819,7 +2889,7 @@ final class TimerViewModel {
             pendingPriorityID = previousPriority
             if let panel = coachPanel {
                 coachPanelError = startError
-                scheduleCoachPanelAutoHide(for: panel.id, after: Self.coachPanelAutoHideSeconds)
+                scheduleCoachPanelAutoHide(for: panel.id, after: panel.autoHideSeconds.map { _ in Self.coachPanelAutoHideSeconds })
             }
             return false
         }
@@ -3103,6 +3173,8 @@ final class TimerViewModel {
             lastIdleStarterSuppressionReason = .cooldownActive
             return
         }
+        // A planned cue or the plan card is on screen: never replace it with a nudge.
+        if isStickyCoachPanelShowing { return }
         // Drifting in a focus window: the rescue loop's ladder replaces the plain start nudge.
         if let drift = currentDrift, drift.isActive, drift.level > .ok {
             lastIdleStarterSuppressionReason = nil
@@ -3209,7 +3281,9 @@ final class TimerViewModel {
             contextKey: contextKey.rawValue
         )
         pendingCoachAttemptID = attempt.id
-        if message.detail != nil { noteMotivationShown(motivation, attemptID: attempt.id, at: snapshot.now) }
+        // Log the quote only when it is on screen (v3 R6: a fact used to displace it and the
+        // quote was still logged, burning the 3-day no-repeat pool).
+        if message.showsMotivation { noteMotivationShown(motivation, attemptID: attempt.id, at: snapshot.now) }
 
         let coachCtx = buildCoachContext(
             idleSeconds: idleSeconds,
@@ -3315,11 +3389,17 @@ final class TimerViewModel {
 
     private func coachIdleTick(now: Date = Date()) {
         coachIdleTickCount += 1
+        // R5: the midnight timer does not advance while the Mac sleeps, and dark wakes skip
+        // didWake. Checking here keeps "today" right within 15 s of the first tick of the day.
+        checkDayRolloverIfNeeded()
         syncGlobalHotkey()
+        // v3: the user's own planned start comes first; it owns the screen until answered.
+        if evaluatePlannedCue(now: now) { return }
         evaluateRescueLoop(now: now)
         // The rest runs once a minute.
         guard coachIdleTickCount % 4 == 0 else { return }
         resolveExpiredCoachRewards(now: now)
+        if evaluateDailyPlanInvite(now: now) { return }
         // While the rescue loop owns a drift episode it asks the pseudo-work question itself.
         if let drift = currentDrift, drift.isActive, drift.level > .ok { return }
         evaluatePseudoProductivityGuard(
@@ -3382,7 +3462,8 @@ final class TimerViewModel {
             frontCategory: frontmostCategory
         )
         let style = settings.coachStyle
-        let message = composeCoachMessage(trigger: .pseudoProductivity(priority: priority.title), style: style, snapshot: pseudoSnapshot)
+        let motivation = pickMotivation(situation: CoachSituation.isLateNight(now) ? .lateNight : .drift, now: now)
+        let message = composeCoachMessage(trigger: .pseudoProductivity(priority: priority.title), style: style, snapshot: pseudoSnapshot, motivation: motivation)
         let attempt = coachEngine.recordDeliveredIntervention(
             kind: .quickPrompt,
             riskScore: 0,
@@ -3391,6 +3472,7 @@ final class TimerViewModel {
             surface: .panel,
             style: style
         )
+        if message.showsMotivation { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
         pseudoLastAskedAt = now
         presentCoachPanel(CoachPanelPresentation(
             kind: .pseudoProductivity,
@@ -3421,6 +3503,32 @@ final class TimerViewModel {
 
     #if DEBUG
     /// FOCUSFLOW_DEBUG_COACH_PANEL=1: a real composed start nudge, shown without logging an attempt.
+    /// FOCUSFLOW_DEBUG_PLAN: the plan card or a planned-start cue, composed from real data, not saved.
+    func presentDebugPlanPanel(cue: Bool, now: Date = Date()) {
+        reloadWeeklyPriorities(now: now)
+        let snapshot = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+        let style = settings?.coachStyle ?? .challenger
+        let motivation = pickMotivation(situation: Self.startSituation(facts: snapshot.facts, now: now), now: now)
+        if cue {
+            let context = CoachPlannedCueContext(
+                timeLabel: Self.clockLabel(now), minutes: snapshot.target.minutes, priorityName: snapshot.target.name,
+                missedYesterday: snapshot.facts.missedYesterday,
+                starterMinutes: CoachStarterBlock.clampedMinutes(settings?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
+            )
+            let message = composeCoachMessage(trigger: .plannedStart(context), style: style, snapshot: snapshot, motivation: motivation)
+            log("debug: plan cue '\(message.hook)' / '\(message.detail?.text ?? "")' / '\(message.motivation?.text ?? "")'")
+            presentCoachPanel(CoachPanelPresentation(kind: .plannedStart, message: message, plan: snapshot.target, footerHint: hotkeyFooterHint))
+        } else {
+            let slots = dailyPlanSuggestions(now: now)
+            let message = composeCoachMessage(
+                trigger: .dailyPlan(goalMinutes: snapshot.pacing.goalMinutes, firstSuggestion: slots.first?.label()),
+                style: style, snapshot: snapshot, motivation: motivation
+            )
+            log("debug: plan card '\(message.hook)' slots=\(slots.map { $0.label() }) motivation='\(message.motivation?.text ?? "")'")
+            presentCoachPanel(CoachPanelPresentation(kind: .dailyPlan, message: message, planSlots: slots))
+        }
+    }
+
     func presentDebugCoachPanel() {
         if let level = debugForcedDriftLevel {
             presentDebugRescuePanel(level: level)
@@ -3638,7 +3746,7 @@ final class TimerViewModel {
 
         guard settings.coachIdleStarterEnabled, assessment.isActive, assessment.level > .ok,
               coachPanel == nil, pauseScreen == nil,
-              CoachRescueCadence.shouldDecide(level: assessment.level, windowStart: window.start, last: lastRescueDecision, now: now)
+              CoachRescueCadence.shouldDecide(level: assessment.level, baseLevel: assessment.baseLevel, windowStart: window.start, last: lastRescueDecision, now: now)
         else { return false }
 
         let calendarBusy = currentCalendarAvailability(now: now).isBusyNow
@@ -3691,7 +3799,7 @@ final class TimerViewModel {
                 using: &coachRandom
             )
         }
-        lastRescueDecision = .init(level: level, at: now, windowStart: window.start)
+        lastRescueDecision = .init(level: level, at: now, windowStart: window.start, baseLevel: assessment.baseLevel)
         let spanLabel: String
         if let lastEnd, lastEnd > window.start {
             spanLabel = "since your last block"
@@ -3774,9 +3882,7 @@ final class TimerViewModel {
                 surface: .panel, style: style, contextKey: contextKey
             )
             pendingCoachAttemptID = attempt.id
-            if case .why = message.detail { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
-            if case .quote = message.detail { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
-            if case .houseLine = message.detail { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
+            if message.showsMotivation { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
             if usePseudoPanel { pseudoLastAskedAt = now }
             presentCoachPanel(CoachPanelPresentation(
                 kind: usePseudoPanel ? .pseudoProductivity : .rescue,
@@ -3855,6 +3961,274 @@ final class TimerViewModel {
     private func noteMotivationShown(_ motivation: CoachMotivationItem??, attemptID: UUID?, at now: Date) {
         guard let item = motivation ?? nil else { return }
         CoachQuoteShowLog(defaults: defaults).append(CoachQuoteShow(itemID: item.id, shownAt: now, attemptID: attemptID))
+    }
+
+    // MARK: - Coach v3: daily plan and planned-start cue
+
+    /// Whether this store knows `PlannedBlock` (older test containers do not).
+    private var plannedBlocksSupported: Bool?
+
+    private func canUsePlannedBlocks() -> Bool {
+        guard let modelContext else { return false }
+        if let plannedBlocksSupported { return plannedBlocksSupported }
+        let supported = modelContext.container.schema.entities.contains { $0.name == "PlannedBlock" }
+        plannedBlocksSupported = supported
+        return supported
+    }
+
+    /// Plans whose start is between `start` and `end`, earliest first.
+    func plannedBlocks(from start: Date, to end: Date) -> [PlannedBlock] {
+        guard canUsePlannedBlocks(), let modelContext else { return [] }
+        let descriptor = FetchDescriptor<PlannedBlock>(
+            predicate: #Predicate { $0.startAt >= start && $0.startAt <= end },
+            sortBy: [SortDescriptor(\.startAt)]
+        )
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    /// Today already has a decision: any plan for today, or one still ahead in the next 12 h.
+    func hasPlanForToday(now: Date = Date()) -> Bool {
+        let dayStart = Calendar.current.startOfDay(for: now)
+        return plannedBlocks(from: dayStart, to: now.addingTimeInterval(12 * 3600)).contains { block in
+            Calendar.current.isDate(block.day, inSameDayAs: now) || (block.status == .planned && block.startAt > now)
+        }
+    }
+
+    /// The next plan still waiting (for the popover and companion).
+    func nextPlannedBlock(now: Date = Date()) -> PlannedBlock? {
+        plannedBlocks(from: now.addingTimeInterval(-CoachPlannedCue.lateStart), to: now.addingTimeInterval(24 * 3600))
+            .first { $0.status == .planned }
+    }
+
+    /// Suggested start times for today's block (learned windows that are free in the calendar).
+    func dailyPlanSuggestions(now: Date = Date()) -> [CoachPlanSlot] {
+        refreshCoachModelsIfNeeded(now: now)
+        let availability = currentCalendarAvailability(now: now)
+        return CoachDailyPlanner.suggestions(
+            now: now,
+            model: availabilityModel,
+            busy: availability.busyIntervals,
+            quietStartMinute: settings?.coachQuietStartMinute ?? 30,
+            quietEndMinute: settings?.coachQuietEndMinute ?? 420
+        )
+    }
+
+    private var isStickyCoachPanelShowing: Bool {
+        coachPanel?.kind == .plannedStart || coachPanel?.kind == .dailyPlan
+    }
+
+    /// Runs every coach tick (15 s). Shows the cue when a planned start time has come; marks
+    /// plans missed once their start window passes. Returns true while a cue is on screen.
+    @discardableResult
+    func evaluatePlannedCue(now: Date = Date()) -> Bool {
+        guard let settings, canUsePlannedBlocks(), state == .idle, !isOvertime, pauseScreen == nil else { return false }
+        let due = plannedBlocks(from: now.addingTimeInterval(-24 * 3600), to: now).filter { $0.status == .planned }
+        var changed = false
+        defer { if changed { saveContext() } }
+        for block in due {
+            if coachPanel?.plannedBlockID == block.id { return true }
+            let busy = currentCalendarAvailability(now: now).isBusyNow
+            switch CoachPlannedCue.step(startAt: block.startAt, now: now, calendarBusy: busy) {
+            case .notYet:
+                continue
+            case .expire:
+                block.status = .missed
+                changed = true
+                log("coach plan: \(Self.clockLabel(block.startAt)) missed")
+            case .waitForCalendar:
+                return false
+            case .cue:
+                if shouldSuppressGuardianPopups(using: settings) { return false }
+                presentPlannedCue(block, now: now)
+                changed = true
+                return true
+            }
+        }
+        return false
+    }
+
+    private func presentPlannedCue(_ block: PlannedBlock, now: Date) {
+        let snapshot = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+        let style = settings?.coachStyle ?? .challenger
+        let starter = CoachStarterBlock.clampedMinutes(settings?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
+        var target = snapshot.target
+        target.minutes = block.minutes
+        if let title = block.title { target.name = title }
+        if let priorityID = block.priorityID { target.priorityID = priorityID }
+        if let projectID = block.projectID { target.projectID = projectID }
+        let cue = CoachPlannedCueContext(
+            timeLabel: Self.clockLabel(block.startAt),
+            minutes: block.minutes,
+            priorityName: target.name,
+            pushes: block.pushes,
+            missedYesterday: snapshot.facts.missedYesterday,
+            starterMinutes: starter
+        )
+        let motivation = pickMotivation(situation: Self.startSituation(facts: snapshot.facts, now: now), now: now)
+        let message = composeCoachMessage(trigger: .plannedStart(cue), style: style, snapshot: snapshot, motivation: motivation)
+        let attempt = coachEngine.recordDeliveredIntervention(
+            kind: .strongPrompt, riskScore: 0, sessionId: nil, now: now,
+            surface: .panel, style: style, contextKey: CoachPlannedCue.contextKey(blockID: block.id)
+        )
+        pendingCoachAttemptID = attempt.id
+        if message.showsMotivation { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
+        block.cuedAt = now
+        log("coach plan: cue \(cue.timeLabel) (pushes=\(block.pushes))")
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .plannedStart,
+            message: message,
+            plan: target,
+            attemptID: attempt.id,
+            createdAt: now,
+            footerHint: hotkeyFooterHint,
+            plannedBlockID: block.id
+        ))
+    }
+
+    /// Runs once a minute. Once a day, at a breakpoint, asks when today's block will be.
+    @discardableResult
+    func evaluateDailyPlanInvite(now: Date = Date()) -> Bool {
+        guard let settings, canUsePlannedBlocks(), settings.coachOnScreenPromptsEnabled,
+              settings.coachIdleStarterEnabled else { return false }
+        let store = CoachDailyPlanInviteStore(defaults: defaults)
+        var inviteLog = store.load(now: now)
+        let availability = currentCalendarAvailability(now: now)
+        let pacing = currentPacing(now: now)
+        let input = CoachDailyPlanInvite.Input(
+            now: now,
+            hasPlanToday: hasPlanForToday(now: now),
+            goalMet: pacing.tier == .goalMet,
+            sessionActive: state != .idle || isOvertime,
+            quietHours: CoachGuardrails.isQuietHours(now, start: settings.coachQuietStartMinute, end: settings.coachQuietEndMinute),
+            calendarBusy: availability.isBusyNow,
+            screenShare: shouldSuppressGuardianPopups(using: settings),
+            released: isInReleaseWindow || (coachQuietUntil.map { $0 > now } ?? false),
+            userIdleSeconds: systemIdleSeconds(),
+            panelShowing: coachPanel != nil || pauseScreen != nil,
+            log: inviteLog,
+            hasSuggestions: true
+        )
+        guard CoachDailyPlanInvite.shouldInvite(input) else { return false }
+        let slots = dailyPlanSuggestions(now: now)
+        guard !slots.isEmpty else { return false }
+
+        let snapshot = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+        let style = settings.coachStyle
+        let motivation = pickMotivation(situation: Self.startSituation(facts: snapshot.facts, now: now), now: now)
+        let message = composeCoachMessage(
+            trigger: .dailyPlan(goalMinutes: pacing.goalMinutes, firstSuggestion: slots.first?.label()),
+            style: style, snapshot: snapshot, motivation: motivation
+        )
+        let attempt = coachEngine.recordDeliveredIntervention(
+            kind: .strongPrompt, riskScore: 0, sessionId: nil, now: now,
+            surface: .panel, style: style, contextKey: CoachPlannedCue.inviteContextKey
+        )
+        if message.showsMotivation { noteMotivationShown(motivation, attemptID: attempt.id, at: now) }
+        inviteLog.shown += 1
+        inviteLog.lastShownAt = now
+        store.save(inviteLog)
+        log("coach plan: invite shown (\(slots.map { $0.label() }.joined(separator: ", ")))")
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .dailyPlan,
+            message: message,
+            attemptID: attempt.id,
+            createdAt: now,
+            planSlots: slots
+        ))
+        return true
+    }
+
+    /// Commits a start time: creates the plan and confirms on screen. Used by the plan card,
+    /// the popover chips and the companion.
+    @discardableResult
+    func commitDailyPlan(_ slot: CoachPlanSlot, now: Date = Date()) -> PlannedBlock? {
+        guard canUsePlannedBlocks(), let modelContext else { return nil }
+        reloadWeeklyPriorities(now: now)
+        let top = weeklyPriorities.first { !$0.isDone }
+        let block = PlannedBlock(
+            startAt: slot.start,
+            minutes: CoachDailyPlanner.blockMinutes(pacing: currentPacing(now: now)),
+            title: top?.title,
+            priorityID: top?.id,
+            projectID: top?.projectID ?? selectedProject?.id
+        )
+        modelContext.insert(block)
+        saveContext()
+        if let panel = coachPanel, panel.kind == .dailyPlan {
+            coachEngine.recordInterventionOutcome(.improved, attemptID: panel.attemptID)
+            interventionActionTaken = true
+        }
+        log("coach plan: committed \(slot.label()) · \(block.minutes)m")
+        presentCoachPanel(CoachPanelPresentation(
+            kind: .notice,
+            message: CoachComposedMessage(
+                style: settings?.coachStyle ?? .challenger,
+                trigger: .dailyPlan(goalMinutes: 0, firstSuggestion: nil),
+                hook: "Planned: \(slot.label()) · \(block.minutes)m.",
+                detail: .line("I'll be on screen at \(slot.label()). Be ready."),
+                primaryTitle: "",
+                hookIsFact: false
+            ),
+            createdAt: now
+        ))
+        return block
+    }
+
+    /// Moves a plan `minutes` later, or marks it missed past the push limit.
+    func pushPlannedBlock(id: UUID, minutes: Int, now: Date = Date()) {
+        guard let block = plannedBlocks(from: now.addingTimeInterval(-24 * 3600), to: now.addingTimeInterval(24 * 3600)).first(where: { $0.id == id }) else { return }
+        if CoachPlannedCue.canPush(pushes: block.pushes) {
+            block.startAt = CoachPlannedCue.pushed(startAt: block.startAt, now: now, minutes: minutes)
+            block.pushes += 1
+        } else {
+            block.status = .missed
+        }
+        saveContext()
+    }
+
+    /// Skips or removes a plan (respected; never counted as ignored).
+    func skipPlannedBlock(id: UUID, now: Date = Date()) {
+        guard let block = plannedBlocks(from: now.addingTimeInterval(-24 * 3600), to: now.addingTimeInterval(24 * 3600)).first(where: { $0.id == id }) else { return }
+        block.status = .skipped
+        saveContext()
+        if coachPanel?.plannedBlockID == id { hideCoachPanel() }
+    }
+
+    /// Starts a plan right now (popover "Start now").
+    @discardableResult
+    func startPlannedBlockNow(id: UUID, now: Date = Date()) -> Bool {
+        guard let block = plannedBlocks(from: now.addingTimeInterval(-24 * 3600), to: now.addingTimeInterval(24 * 3600)).first(where: { $0.id == id }) else { return false }
+        let target = CoachStartTarget(minutes: block.minutes, name: block.title, projectID: block.projectID, priorityID: block.priorityID)
+        // Starting early still fulfils the plan: move it to now first.
+        if !CoachPlannedCue.fulfills(startAt: block.startAt, sessionStart: now) { block.startAt = now }
+        return startCoachPlan(target)
+    }
+
+    /// A focus block started: the closest plan in its start window is fulfilled.
+    private func markPlannedBlockStarted(sessionID: UUID, at start: Date) {
+        let candidates = plannedBlocks(
+            from: start.addingTimeInterval(-CoachPlannedCue.lateStart),
+            to: start.addingTimeInterval(CoachPlannedCue.earlyStart)
+        ).filter { $0.status == .planned && CoachPlannedCue.fulfills(startAt: $0.startAt, sessionStart: start) }
+        guard let block = candidates.min(by: { abs($0.startAt.timeIntervalSince(start)) < abs($1.startAt.timeIntervalSince(start)) }) else { return }
+        block.status = .started
+        block.sessionID = sessionID
+        saveContext()
+        log("coach plan: \(Self.clockLabel(block.startAt)) started")
+    }
+
+    /// "Done for today" also releases today's remaining plans.
+    private func skipRemainingPlans(now: Date) {
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) ?? now
+        let remaining = plannedBlocks(from: now.addingTimeInterval(-CoachPlannedCue.lateStart), to: dayEnd).filter { $0.status == .planned }
+        guard !remaining.isEmpty else { return }
+        remaining.forEach { $0.status = .skipped }
+        saveContext()
+    }
+
+    nonisolated static func clockLabel(_ date: Date, calendar: Calendar = .current) -> String {
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 
     // MARK: - Rescue loop: pause screen

@@ -84,7 +84,13 @@ final class CoachRescueFlowTests: XCTestCase {
         let first = try XCTUnwrap(vm.coachPanel)
         vm.coachPanelTimedOut(id: first.id)
 
-        let later = now.addingTimeInterval(60)
+        // v3 R2: the ignore alone never raises a second panel at once (live: 30 s apart).
+        let soon = now.addingTimeInterval(60)
+        feed(vm, youtube, minutes: 1, endingAt: soon)
+        XCTAssertFalse(vm.evaluateRescueLoop(now: soon))
+        XCTAssertNil(vm.coachPanel)
+
+        let later = now.addingTimeInterval(20 * 60)
         feed(vm, youtube, minutes: 1, endingAt: later)
         XCTAssertTrue(vm.evaluateRescueLoop(now: later))
         XCTAssertEqual(vm.currentDrift?.baseLevel, .drifting)
@@ -327,7 +333,7 @@ final class CoachRescueFlowTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self,
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self,
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         self.container = container

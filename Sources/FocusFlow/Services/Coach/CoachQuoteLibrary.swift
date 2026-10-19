@@ -312,6 +312,23 @@ enum CoachQuoteLibrary {
     static func quote(id: String) -> CoachQuote? {
         all.first { $0.id == id }
     }
+
+    /// Every line a style may show (house lines are Challenger-only), in a stable order.
+    static func lines(for style: CoachStyle) -> [CoachQuote] {
+        all.filter { !$0.isHouseLine || style == .challenger }.sorted { $0.id < $1.id }
+    }
+
+    /// "Today's line" in the popover (v3 §3.4): one line per calendar day, the same all day.
+    /// `offset` steps to the next line when the user asks for another.
+    static func dailyLine(style: CoachStyle, on date: Date, offset: Int = 0, calendar: Calendar = .current) -> CoachQuote? {
+        let pool = lines(for: style)
+        guard !pool.isEmpty else { return nil }
+        let day = calendar.ordinality(of: .day, in: .era, for: date) ?? 0
+        // A stride co-prime with the pool size walks every line before repeating.
+        let stride = pool.count > 7 && pool.count % 7 != 0 ? 7 : 1
+        let index = ((day &* stride) &+ offset) % pool.count
+        return pool[(index + pool.count) % pool.count]
+    }
 }
 
 // MARK: - 1% framings (from the user's own data)
@@ -376,6 +393,7 @@ struct CoachQuoteShow: Codable, Sendable, Equatable {
 /// the bandit's scale), so quotes that precede starts rise and dead ones fade.
 enum CoachQuotePicker {
     static let noRepeatInterval: TimeInterval = 3 * 24 * 3600
+    static let fallbackNoRepeatInterval: TimeInterval = 24 * 3600
     static let prior = (alpha: 1.0, beta: 1.0)
 
     static func candidates(situation: CoachSituation, whyLines: [String], style: CoachStyle) -> [CoachMotivationItem] {
@@ -409,7 +427,13 @@ enum CoachQuotePicker {
         using rng: inout G
     ) -> CoachMotivationItem? {
         let recent = Set(log.filter { now.timeIntervalSince($0.shownAt) < noRepeatInterval && $0.shownAt <= now }.map(\.itemID))
-        let available = candidates(situation: situation, whyLines: whyLines, style: style).filter { !recent.contains($0.id) }
+        var available = candidates(situation: situation, whyLines: whyLines, style: style).filter { !recent.contains($0.id) }
+        if available.isEmpty {
+            // v3 R6: with a quote on every prompt the situation's pool runs dry within days.
+            // Fall back to any line for the style not shown in the last 24 hours.
+            let lastDay = Set(log.filter { now.timeIntervalSince($0.shownAt) < fallbackNoRepeatInterval && $0.shownAt <= now }.map(\.itemID))
+            available = CoachQuoteLibrary.lines(for: style).map(CoachMotivationItem.quote).filter { !lastDay.contains($0.id) }
+        }
         guard !available.isEmpty else { return nil }
         let posteriors = posteriors(log: log, rewards: rewards)
         var best: CoachMotivationItem?

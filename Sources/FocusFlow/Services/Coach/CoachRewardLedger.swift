@@ -27,7 +27,7 @@ struct CoachRewardLedger {
               (attempt.reward ?? 0) <= 0 else { return false }
         attempt.reward = Self.startReward
         attempt.sessionId = sessionID
-        if attempt.outcome == nil || attempt.outcome == .ignored {
+        if attempt.outcome == nil || attempt.outcome == .ignored || attempt.outcome == .unseen {
             attempt.outcome = .improved
             attempt.resolvedAt = now
         }
@@ -60,7 +60,8 @@ struct CoachRewardLedger {
         let cutoff = now.addingTimeInterval(-Self.startWindow)
         var resolved = 0
         for attempt in store.attempts(deliveredSince: now.addingTimeInterval(-7 * 24 * 3600))
-        where attempt.contextKey != nil && attempt.reward == nil && attempt.deliveredAt < cutoff {
+        where attempt.contextKey != nil && attempt.reward == nil && attempt.deliveredAt < cutoff
+            && attempt.outcome != .unseen {
             attempt.reward = 0
             if attempt.outcome == nil {
                 attempt.outcome = .ignored

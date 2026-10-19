@@ -112,10 +112,24 @@ final class CoachV2FlowTests: XCTestCase {
         XCTAssertEqual(vm.state, .idle)
     }
 
+    /// v3 R3: no keyboard or mouse input for the panel's whole life means the user was away.
+    func testAutoHideWhileAwayIsUnseenNotIgnored() throws {
+        let vm = try makeViewModel()
+        vm.evaluateIdleStarterIntervention(idleSeconds: 30 * 60, frontmostCategory: .neutral)
+        let panel = try XCTUnwrap(vm.coachPanel)
+        vm.systemIdleSecondsProvider = { 3600 }
+        vm.coachPanelTimedOut(id: panel.id, now: panel.createdAt.addingTimeInterval(180))
+        let attempt = try XCTUnwrap(vm.coachEngine.store.attempt(id: try XCTUnwrap(panel.attemptID)))
+        XCTAssertEqual(attempt.outcome, .unseen)
+        XCTAssertFalse(CoachGuardrails.Delivery(attempt: attempt).countsTowardCap)
+        XCTAssertTrue(vm.coachMenuBarPulse, "The dot still says something waited")
+    }
+
     func testAutoHideCountsAsIgnoredAndPulsesTheMenuBarIcon() throws {
         let vm = try makeViewModel()
         vm.evaluateIdleStarterIntervention(idleSeconds: 30 * 60, frontmostCategory: .neutral)
         let panel = try XCTUnwrap(vm.coachPanel)
+        vm.systemIdleSecondsProvider = { 2 }
 
         vm.coachPanelTimedOut(id: panel.id)
 
@@ -290,7 +304,7 @@ final class CoachV2FlowTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self,
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self,
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         self.container = container

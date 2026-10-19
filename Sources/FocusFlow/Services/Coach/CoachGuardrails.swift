@@ -6,6 +6,9 @@ struct CoachGuardrails: Sendable {
     struct Delivery: Sendable, Equatable {
         let surface: CoachSurface
         let deliveredAt: Date
+        /// False for prompts the user asked for (planned-start cues, the daily plan card) and
+        /// for panels nobody saw. Those never use up the daily cap (v3 §3.3, R1).
+        var countsTowardCap: Bool = true
     }
 
     struct Input: Sendable {
@@ -59,8 +62,10 @@ struct CoachGuardrails: Sendable {
         if let snoozedUntil = input.snoozedUntil, input.now < snoozedUntil { return .snoozed }
 
         let startOfDay = input.calendar.startOfDay(for: input.now)
+        // Only prompts that interrupted: a menu-bar badge is ambient (v3 R1).
         let shownToday = input.deliveries.filter {
-            $0.surface != .silent && $0.deliveredAt >= startOfDay && $0.deliveredAt <= input.now
+            $0.countsTowardCap && $0.surface != .silent && $0.surface != .badge
+                && $0.deliveredAt >= startOfDay && $0.deliveredAt <= input.now
         }
         if shownToday.count >= max(0, input.maxPromptsPerDay) { return .dailyCapReached }
 
@@ -111,6 +116,11 @@ extension CoachGuardrails.Delivery {
     init(attempt: InterventionAttempt) {
         let surface = attempt.surfaceRawValue.flatMap(CoachSurface.init(rawValue:))
             ?? (attempt.kind == .strongPrompt ? .strongWindow : .badge)
-        self.init(surface: surface, deliveredAt: attempt.deliveredAt)
+        let requested = attempt.contextKey.map(CoachPlannedCue.isPlannedContextKey) ?? false
+        self.init(
+            surface: surface,
+            deliveredAt: attempt.deliveredAt,
+            countsTowardCap: !requested && attempt.outcome != .unseen
+        )
     }
 }

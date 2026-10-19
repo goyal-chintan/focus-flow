@@ -15,6 +15,10 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case momentum
         /// Short confirmation, no actions (e.g. "Starter block started · 5 min").
         case notice
+        /// v3 §3.2: the user's planned start time has come. Stays until answered.
+        case plannedStart
+        /// v3 §3.1: "When is today's block?" with time chips. Stays until answered.
+        case dailyPlan
     }
 
     let id: UUID
@@ -35,6 +39,10 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
     let footerHint: String?
     /// Keep-going panel: the step typed during the starter block.
     let step: String?
+    /// Planned-start cue: the `PlannedBlock` it is for.
+    let plannedBlockID: UUID?
+    /// Daily plan card: the suggested start times (one click each).
+    let planSlots: [CoachPlanSlot]
 
     init(
         id: UUID = UUID(),
@@ -47,7 +55,9 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         level: DriftLevel? = nil,
         ask: CoachRescueAsk? = nil,
         footerHint: String? = nil,
-        step: String? = nil
+        step: String? = nil,
+        plannedBlockID: UUID? = nil,
+        planSlots: [CoachPlanSlot] = []
     ) {
         self.id = id
         self.kind = kind
@@ -60,13 +70,23 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         self.ask = ask
         self.footerHint = footerHint
         self.step = step
+        self.plannedBlockID = plannedBlockID
+        self.planSlots = planSlots
     }
 
     /// Whether the panel has a primary button at all.
-    var hasPrimary: Bool { kind != .notice && !message.primaryTitle.isEmpty }
+    var hasPrimary: Bool { kind != .notice && kind != .dailyPlan && !message.primaryTitle.isEmpty }
 
-    /// Auto-hide delay: notices are brief, everything else waits 20 s.
-    var autoHideSeconds: Double { kind == .notice ? 3.5 : 20 }
+    /// Auto-hide delay. Nil means the panel stays until it is answered (v3 §3.2–3.3, R3):
+    /// before v3 every panel hid after 20 s, and 4 of 5 live prompts vanished unseen.
+    var autoHideSeconds: Double? {
+        switch kind {
+        case .notice: 3.5
+        case .keepGoing, .momentum, .inSessionDrift: 20
+        case .startNudge, .rescue, .pseudoProductivity, .weeklyPriorities: 180
+        case .plannedStart, .dailyPlan: nil
+        }
+    }
 
     /// Label of the secondary menu ("Not now ▾"; the system draws the chevron).
     var menuTitle: String {
@@ -75,6 +95,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .startNudge, .inSessionDrift, .weeklyPriorities, .rescue, .notice: "Not now"
         case .keepGoing: "I'm done · it counts"
         case .momentum: "Keep it short"
+        case .plannedStart: "Not yet"
+        case .dailyPlan: "Not now"
         }
     }
 
@@ -87,6 +109,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .keepGoing: [.finishStarter]
         case .momentum: [.keepShort]
         case .notice: []
+        case .plannedStart: [.starterInstead, .push15, .push60, .skipToday]
+        case .dailyPlan: [.planLater, .notToday]
         }
     }
 
@@ -104,6 +128,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .keepGoing: .finishStarter
         case .momentum: .keepShort
         case .notice: nil
+        case .plannedStart: .push15
+        case .dailyPlan: .planLater
         }
     }
 
@@ -119,7 +145,19 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .skipWeek: "Skip this week"
         case .finishStarter: "I'm done · it counts"
         case .keepShort: "Keep it short"
+        case .starterInstead: "Just \(starterMinutes) minutes instead"
+        case .push15: "Push 15 min"
+        case .push60: "Push 1 hour"
+        case .skipToday: "Skip today"
+        case .planLater: "Ask me in 2 hours"
+        case .notToday: "Not today"
         }
+    }
+
+    /// Starter length shown in "Just N minutes instead" (from the planned cue's copy).
+    private var starterMinutes: Int {
+        if case .plannedStart(let cue) = message.trigger { return cue.starterMinutes }
+        return CoachStarterBlock.defaultMinutes
     }
 }
 
@@ -136,6 +174,17 @@ enum CoachPanelSecondaryAction: String, CaseIterable, Sendable, Identifiable {
     case finishStarter
     /// Momentum ramp: keep the block at its current length.
     case keepShort
+    /// Planned cue: start a starter block instead of the full block (two-minute rule).
+    case starterInstead
+    /// Planned cue: move the plan 15 minutes / 1 hour.
+    case push15
+    case push60
+    /// Planned cue: skip today's plan (respected, not counted as ignored).
+    case skipToday
+    /// Daily plan card: ask again in 2 hours.
+    case planLater
+    /// Daily plan card: no plan today.
+    case notToday
 
     var id: String { rawValue }
 }

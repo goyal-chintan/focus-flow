@@ -785,7 +785,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self
         ])
         let container = try ModelContainer(
             for: schema,
@@ -2222,7 +2222,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
             InterventionAttempt.self,
             BreakLearningEvent.self,
             IdleDistractionItem.self,
-            WeeklyPriority.self
+            WeeklyPriority.self, PlannedBlock.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: configuration)

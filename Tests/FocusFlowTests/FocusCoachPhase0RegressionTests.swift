@@ -232,7 +232,7 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
         func input(_ count: Int) -> CoachGuardrails.Input {
             CoachGuardrails.Input(
                 now: now,
-                deliveries: (0..<count).map { _ in .init(surface: .badge, deliveredAt: earlierToday) },
+                deliveries: (0..<count).map { _ in .init(surface: .panel, deliveredAt: earlierToday) },
                 quietStartMinute: 0,
                 quietEndMinute: 0
             )
@@ -288,8 +288,9 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
         defer { AppUsageTracker.shared.stop() }
         let now = Date()
         let earlierToday = max(Calendar.current.startOfDay(for: now), now.addingTimeInterval(-3 * 3600))
+        // Three panels earlier today (v3: menu-bar badges no longer use up the cap).
         for _ in 0..<3 {
-            vm.coachEngine.recordDeliveredIntervention(kind: .quickPrompt, now: earlierToday)
+            vm.coachEngine.recordDeliveredIntervention(kind: .strongPrompt, now: earlierToday, surface: .panel)
         }
 
         vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .distracting)
@@ -360,11 +361,17 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
 
         XCTAssertEqual(
             CalendarAvailability.compute(busyIntervals: [current, next, past], now: now),
-            CalendarAvailability(isBusyNow: true, minutesUntilNextEvent: 45)
+            CalendarAvailability(isBusyNow: true, minutesUntilNextEvent: 45, busyIntervals: [current, next, past])
         )
         XCTAssertEqual(
             CalendarAvailability.compute(busyIntervals: [past], now: now),
-            CalendarAvailability(isBusyNow: false, minutesUntilNextEvent: nil)
+            CalendarAvailability(isBusyNow: false, minutesUntilNextEvent: nil, busyIntervals: [past])
+        )
+        // v3 R10: a 14-hour "off work" block is not a meeting.
+        let offWork = DateInterval(start: now.addingTimeInterval(-3 * 3600), end: now.addingTimeInterval(11 * 3600))
+        XCTAssertEqual(
+            CalendarAvailability.compute(busyIntervals: [offWork, next], now: now),
+            CalendarAvailability(isBusyNow: false, minutesUntilNextEvent: 45, busyIntervals: [next])
         )
     }
 

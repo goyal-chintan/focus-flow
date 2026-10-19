@@ -271,12 +271,24 @@ final class CoachRescueLoopTests: XCTestCase {
 
     // MARK: Cadence and surfaces
 
+    /// R2 (live, Oct 18): an L1 panel timed out, the ignore raised the level to L2 and a second
+    /// panel showed 30 s later. A rise caused only by ignored rescues must wait the full 20 minutes.
+    func testIgnoredRescueAloneNeverTriggersAnEarlyDecision() {
+        let last = CoachRescueCadence.Decision(level: .drifting, at: windowStart, windowStart: windowStart, baseLevel: .drifting)
+        XCTAssertFalse(CoachRescueCadence.shouldDecide(level: .lost, baseLevel: .drifting, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(30)))
+        XCTAssertFalse(CoachRescueCadence.shouldDecide(level: .lost, baseLevel: .drifting, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(900)))
+        XCTAssertTrue(CoachRescueCadence.shouldDecide(level: .lost, baseLevel: .drifting, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(1200)))
+        XCTAssertTrue(CoachRescueCadence.shouldDecide(level: .lost, baseLevel: .lost, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(400)))
+    }
+
     func testCadenceDecidesOnLevelRiseNewWindowOrAfterTwentyMinutes() {
         let last = CoachRescueCadence.Decision(level: .drifting, at: windowStart, windowStart: windowStart)
         XCTAssertFalse(CoachRescueCadence.shouldDecide(level: .ok, windowStart: windowStart, last: nil, now: windowStart))
         XCTAssertTrue(CoachRescueCadence.shouldDecide(level: .drifting, windowStart: windowStart, last: nil, now: windowStart))
         XCTAssertFalse(CoachRescueCadence.shouldDecide(level: .drifting, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(600)))
-        XCTAssertTrue(CoachRescueCadence.shouldDecide(level: .lost, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(60)))
+        // A usage-driven rise decides early, but not within 5 minutes of the last decision.
+        XCTAssertFalse(CoachRescueCadence.shouldDecide(level: .lost, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(60)))
+        XCTAssertTrue(CoachRescueCadence.shouldDecide(level: .lost, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(301)))
         XCTAssertTrue(CoachRescueCadence.shouldDecide(level: .drifting, windowStart: windowStart, last: last, now: windowStart.addingTimeInterval(1200)))
         XCTAssertTrue(CoachRescueCadence.shouldDecide(level: .drifting, windowStart: windowStart.addingTimeInterval(7200), last: last, now: windowStart.addingTimeInterval(7300)))
 
@@ -451,8 +463,17 @@ final class CoachRescueLoopTests: XCTestCase {
             log.append(CoachQuoteShow(itemID: item.id, shownAt: now.addingTimeInterval(TimeInterval(index * 3600)), attemptID: nil))
         }
         XCTAssertTrue(seen.contains("why:ship by december"), "Why lines are arms like quotes")
-        XCTAssertNil(CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: ["Ship by December"], log: log, rewards: [:], now: now.addingTimeInterval(20 * 3600), using: &rng),
-                     "Everything shown in 3 days: nothing rather than a repeat")
+        // v3: the situation's pool is spent, so the picker falls back to another line for the
+        // style that was not shown in the last 24 hours (never one of the spiral lines just shown).
+        let fallback = CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: ["Ship by December"], log: log, rewards: [:], now: now.addingTimeInterval(20 * 3600), using: &rng)
+        XCTAssertNotNil(fallback)
+        XCTAssertFalse(seen.contains(fallback?.id ?? ""), "Fallback never repeats a line shown in the last 24 h")
+        var everything = log
+        for (index, quote) in CoachQuoteLibrary.lines(for: .challenger).enumerated() {
+            everything.append(CoachQuoteShow(itemID: "quote:\(quote.id)", shownAt: now.addingTimeInterval(TimeInterval(index * 60)), attemptID: nil))
+        }
+        XCTAssertNil(CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: ["Ship by December"], log: everything, rewards: [:], now: now.addingTimeInterval(20 * 3600), using: &rng),
+                     "Every line shown within a day: nothing rather than a repeat")
         XCTAssertNotNil(CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: [], log: log, rewards: [:], now: now.addingTimeInterval(4 * 86_400), using: &rng))
     }
 

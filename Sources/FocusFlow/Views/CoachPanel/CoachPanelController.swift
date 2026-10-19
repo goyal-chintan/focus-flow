@@ -49,6 +49,9 @@ final class CoachPanelController: CoachPanelHosting {
 
     func showPanel(_ presentation: CoachPanelPresentation) {
         let panel = ensurePanel()
+        // Measure the new content first, so the panel opens at its real height (v3: before this
+        // the slide-in animation ended on a stale 120 pt frame and clipped the header and buttons).
+        measureContent()
         let target = frame(for: contentSize)
         if isShown, panel.isVisible {
             // Replace content in place; never stack a second panel.
@@ -132,25 +135,47 @@ final class CoachPanelController: CoachPanelHosting {
         return panel
     }
 
+    /// Lays out the hosted SwiftUI content now and adopts its fitting height.
+    private func measureContent() {
+        guard let glassView else { return }
+        glassView.layoutSubtreeIfNeeded()
+        if let hosting = glassView.contentView {
+            hosting.layoutSubtreeIfNeeded()
+            let fitting = hosting.fittingSize
+            if fitting.height > 1 {
+                contentSize = CGSize(width: CoachPanelView.width, height: ceil(fitting.height))
+            }
+        }
+    }
+
     private func contentSizeChanged(_ size: CGSize) {
         guard size.height > 0, abs(size.height - contentSize.height) > 0.5 else { return }
         contentSize = CGSize(width: CoachPanelView.width, height: ceil(size.height))
         guard let panel, isShown else { return }
-        panel.setFrame(frame(for: contentSize), display: true)
+        // Through the animator, so it replaces an in-flight slide-in instead of being undone by it.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.allowsImplicitAnimation = true
+            panel.animator().setFrame(frame(for: contentSize), display: true)
+        }
     }
 
-    /// Top-right, under the FocusFlow menu bar icon when it can be found.
+    /// Top-right of the display the user is looking at (the one with the pointer, v3 R3), under
+    /// the FocusFlow menu bar icon when that icon is on the same display.
     private func frame(for size: CGSize) -> NSRect {
         let statusFrame = NSApplication.shared.windows
             .first { String(describing: type(of: $0)).contains("StatusBarWindow") && $0.isVisible }?
             .frame
-        let screen = NSScreen.screens.first { screen in
-            statusFrame.map { screen.frame.contains(NSPoint(x: $0.midX, y: $0.midY)) } ?? false
-        } ?? NSScreen.main ?? NSScreen.screens.first
+        let pointer = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(pointer) }
+            ?? NSScreen.screens.first { screen in
+                statusFrame.map { screen.frame.contains(NSPoint(x: $0.midX, y: $0.midY)) } ?? false
+            }
+            ?? NSScreen.main ?? NSScreen.screens.first
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
         var x = visible.maxX - size.width - Self.margin
-        if let statusFrame {
+        if let statusFrame, let screen, screen.frame.contains(NSPoint(x: statusFrame.midX, y: statusFrame.midY)) {
             x = statusFrame.maxX + 12 - size.width
         }
         x = min(max(x, visible.minX + Self.margin), visible.maxX - size.width - Self.margin)
