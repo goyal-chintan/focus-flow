@@ -4,6 +4,8 @@ set -eu
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_DIR"
+. "$SCRIPT_DIR/lib/toolchain.sh"
+focusflow_use_xcode_toolchain || exit 1
 
 resolve_codesign_identity_hash() {
   identity_name="$1"
