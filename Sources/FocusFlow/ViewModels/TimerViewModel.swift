@@ -799,6 +799,14 @@ final class TimerViewModel {
     /// Resumes a focus session from crash recovery state.
     func resumeFromRecovery() {
         guard let recovery = recoveryState else { return }
+        // The banner can outlive its moment: a block started from a coach prompt or the
+        // notification while it was up. Resuming then would swap out the running session and
+        // force `.paused` while that block's timer keeps ticking — the popover sticks on Paused.
+        guard state == .idle, !isOvertime, currentSession == nil else {
+            log("resumeFromRecovery: a session is already running (state=\(state)), dropping stale recovery")
+            supersedePendingRecovery()
+            return
+        }
         log("Resuming from crash recovery: \(Int(recovery.remainingSeconds))s remaining")
 
         // Fetch the session from DB
@@ -860,6 +868,27 @@ final class TimerViewModel {
         recoveryState = nil
         recoveryProject = nil
         loadTodayStats()
+    }
+
+    /// A new block replaced the session the recovery banner offered: close that session the way
+    /// orphan cleanup would and hide the banner. The UserDefaults checkpoint is left alone — it
+    /// now belongs to the running block.
+    private func supersedePendingRecovery() {
+        guard let recovery = recoveryState else { return }
+        recoveryState = nil
+        recoveryProject = nil
+        let sessionId = recovery.sessionId
+        let descriptor = FetchDescriptor<FocusSession>(predicate: #Predicate { $0.id == sessionId })
+        guard let session = try? modelContext?.fetch(descriptor).first,
+              session !== currentSession, session.endedAt == nil else { return }
+        let elapsed = max(0, recovery.totalSeconds - recovery.remainingSeconds)
+        if session.type == .focus && elapsed < Self.minimumRetainedFocusSeconds {
+            modelContext?.delete(session)
+        } else {
+            session.endedAt = session.startedAt.addingTimeInterval(elapsed + session.totalPausedSeconds)
+            session.completed = false
+        }
+        saveContext()
     }
 
     private func purgeShortFocusSessions() {
@@ -974,6 +1003,8 @@ final class TimerViewModel {
     /// Core focus-starting logic, callable from any valid pre-focus state.
     /// Callers must validate preconditions (state, duration, settings) before invoking.
     private func startFocusInternal() {
+        // Starting fresh answers a pending crash-recovery banner; it must not resurface later.
+        supersedePendingRecovery()
         let duration = nextStartDurationOverride ?? focusDuration
         nextStartDurationOverride = nil
         log("startFocus: duration=\(duration), project=\(selectedProject?.name ?? "none")")
@@ -2306,7 +2337,21 @@ final class TimerViewModel {
         saveContext()
     }
 
+    /// True while a finished block waits for the user to choose what comes next: overtime after a
+    /// natural completion, a manual stop awaiting reflection, or a wake-recovery prompt.
+    var hasPendingCompletion: Bool {
+        state == .idle && (isOvertime || isManualStop || showSessionComplete)
+    }
+
+    /// Resolves a pending completion. Does nothing when no completion is pending: the completion
+    /// window and the popover can both offer these actions, so a second tap (or a double click)
+    /// arrives after the first already started the next block. Running it then would stop the new
+    /// block's timer and leave the state stuck in `.focusing` or `.onBreak`.
     func continueAfterCompletion(action: PostCompletionAction) {
+        guard hasPendingCompletion else {
+            log("continueAfterCompletion(\(action)): no pending completion (state=\(state)), ignoring")
+            return
+        }
         if showCoachReasonSheet && pendingReasonKind == .breakOverrun {
             recordCoachReason(kind: .breakOverrun, reason: nil)
         }
@@ -2545,7 +2590,7 @@ final class TimerViewModel {
             handleCoachAction(.snooze10m)
         case .open:
             // Opening the notification shows its prompt on screen; it is not a new delivery.
-            guard state == .idle, let decision = pendingCoachNotificationDecision else { return }
+            guard state == .idle, !isOvertime, let decision = pendingCoachNotificationDecision else { return }
             let message = decision.composed ?? CoachMessageComposer.neutralFallback(isInSession: false)
             presentCoachPanel(
                 CoachPanelPresentation(

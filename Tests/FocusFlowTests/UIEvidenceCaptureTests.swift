@@ -2012,7 +2012,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
             "lastCompletedSessionID": vm.lastCompletedSession?.id.uuidString ?? "nil"
         ]
         vm.continueAfterCompletion(action: .takeBreak(duration: nil))
-        vm.continueAfterCompletion(action: .endSession)
+        // A running break ends through stop(); completion actions only resolve a finished block.
+        vm.stop()
         let completionFlow = CanonicalFlowProof(
             id: "completion_take_break_continue_end",
             beforeState: completionBefore,

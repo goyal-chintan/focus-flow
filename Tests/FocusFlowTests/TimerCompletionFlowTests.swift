@@ -690,11 +690,178 @@ final class TimerCompletionFlowTests: XCTestCase {
 
         vm.suggestedEarnedBreakMinutes = 8
         vm.continueAfterCompletion(action: .takeBreak(duration: vm.suggestedEarnedBreakSeconds))
+        // The break finishes and enters overtime, as timerCompleted() leaves it.
+        vm.state = .idle
+        vm.isOvertime = true
+        vm.showSessionComplete = true
         vm.continueAfterCompletion(action: .continueFocusing)
 
         let events = try container.mainContext.fetch(FetchDescriptor<BreakLearningEvent>())
         XCTAssertEqual(events.count, 1)
         XCTAssertTrue(events[0].returnedToFocus)
+    }
+
+    // MARK: - Duplicate completion actions (a second start must not break the running block)
+
+    func testSecondContinueFocusingDoesNotStopRunningBlock() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .idle
+        vm.isOvertime = true
+        vm.showSessionComplete = true
+
+        // Popover "Skip break" and then the still-open completion window's "Start next block".
+        vm.continueAfterCompletion(action: .continueFocusing)
+        let running = try XCTUnwrap(openFocusSessions(in: container).first)
+        XCTAssertEqual(vm.state, .focusing)
+        XCTAssertTrue(vm.timer?.isValid == true)
+
+        vm.continueAfterCompletion(action: .continueFocusing)
+
+        XCTAssertEqual(vm.state, .focusing)
+        XCTAssertTrue(vm.timer?.isValid == true, "the running block's timer must keep ticking")
+        XCTAssertEqual(try openFocusSessions(in: container).map(\.id), [running.id])
+    }
+
+    func testStaleTakeBreakDoesNotReplaceRunningFocusBlock() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .idle
+        vm.isOvertime = true
+        vm.showSessionComplete = true
+        vm.continueAfterCompletion(action: .continueFocusing)
+        let running = try XCTUnwrap(openFocusSessions(in: container).first)
+
+        vm.continueAfterCompletion(action: .takeBreak(duration: nil))
+        vm.continueAfterCompletion(action: .endSession)
+
+        XCTAssertEqual(vm.state, .focusing)
+        XCTAssertEqual(try openFocusSessions(in: container).map(\.id), [running.id])
+        XCTAssertTrue(vm.timer?.isValid == true)
+        let breaks = try container.mainContext.fetch(FetchDescriptor<FocusSession>()).filter { $0.type != .focus }
+        XCTAssertTrue(breaks.isEmpty)
+    }
+
+    func testStaleContinueFocusingDoesNotFreezeRunningBreak() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.state = .idle
+        vm.isOvertime = true
+        vm.showSessionComplete = true
+        vm.continueAfterCompletion(action: .takeBreak(duration: nil))
+        XCTAssertEqual(vm.state, .onBreak(.shortBreak))
+
+        vm.continueAfterCompletion(action: .continueFocusing)
+
+        XCTAssertEqual(vm.state, .onBreak(.shortBreak))
+        XCTAssertTrue(vm.timer?.isValid == true, "the break must keep counting down")
+    }
+
+    func testCoachNotificationStartDuringRunningBlockKeepsBlock() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        XCTAssertTrue(vm.startFocus())
+        let running = try XCTUnwrap(openFocusSessions(in: container).first)
+
+        vm.handleCoachNotificationResponse(.startFocus)
+
+        XCTAssertEqual(vm.state, .focusing)
+        XCTAssertEqual(try openFocusSessions(in: container).map(\.id), [running.id])
+        XCTAssertTrue(vm.timer?.isValid == true)
+        XCTAssertEqual(vm.startError, "A session is already in progress.")
+    }
+
+    // MARK: - Crash-recovery banner vs. a block started elsewhere
+
+    /// Seeds what a relaunch after quitting mid-pause leaves: an open focus row and a paused
+    /// recovery offer in the popover.
+    private func seedPausedRecovery(_ vm: TimerViewModel, in container: ModelContainer) throws -> FocusSession {
+        let old = FocusSession(type: .focus, duration: 25 * 60, project: nil, customLabel: nil)
+        old.startedAt = Date().addingTimeInterval(-15 * 60)
+        container.mainContext.insert(old)
+        try container.mainContext.save()
+        vm.recoveryState = CrashRecoveryState(
+            sessionId: old.id,
+            remainingSeconds: 15 * 60,
+            totalSeconds: 25 * 60,
+            isPaused: true,
+            checkpointDate: Date(),
+            projectId: nil,
+            customLabel: nil,
+            completedFocusSessions: 0
+        )
+        return old
+    }
+
+    func testResumeRecoveryAfterStartingNewBlockDoesNotFreezeIntoPaused() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+        let old = try seedPausedRecovery(vm, in: container)
+
+        // A coach prompt starts a block, then the user taps the recovery "Resume".
+        XCTAssertTrue(vm.handleCoachAction(.startFocusNow))
+        let running = try XCTUnwrap(openFocusSessions(in: container).first)
+        vm.resumeFromRecovery()
+
+        XCTAssertEqual(vm.state, .focusing, "the new block must not be forced into Paused")
+        XCTAssertTrue(vm.timer?.isValid == true)
+        XCTAssertNil(vm.recoveryState)
+        XCTAssertEqual(try openFocusSessions(in: container).map(\.id), [running.id])
+        XCTAssertNotNil(old.endedAt, "the superseded session is closed, not left open")
+        XCTAssertFalse(old.completed)
+    }
+
+    func testResumeRecoveryWhileRunningBlockIsPausedKeepsThatBlock() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+        _ = try seedPausedRecovery(vm, in: container)
+        // Simulate the banner surviving the start (pre-fix state) to check the resume guard alone.
+        XCTAssertTrue(vm.startFocus())
+        let running = try XCTUnwrap(openFocusSessions(in: container).first)
+        vm.pause()
+        _ = try seedPausedRecovery(vm, in: container)
+
+        vm.resumeFromRecovery()
+
+        XCTAssertEqual(vm.state, .paused)
+        XCTAssertNil(vm.timer, "a paused block has no ticking timer")
+        vm.resume()
+        XCTAssertEqual(vm.state, .focusing, "Resume must work on the user's own block")
+        vm.stop()
+        XCTAssertNotNil(running.endedAt, "stop() ends the user's block, not the recovered one")
+        XCTAssertTrue(try openFocusSessions(in: container).isEmpty)
+    }
+
+    func testResumeRecoveryFromIdleStillRestoresPausedSession() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+        let old = try seedPausedRecovery(vm, in: container)
+
+        vm.resumeFromRecovery()
+
+        XCTAssertEqual(vm.state, .paused)
+        XCTAssertEqual(vm.remainingSeconds, 15 * 60)
+        XCTAssertNil(old.endedAt)
+        XCTAssertNil(vm.recoveryState)
+        vm.stop()
     }
 
     // MARK: - Pause Break (spec: break state controls must include Pause break)
@@ -1139,6 +1306,12 @@ final class TimerCompletionFlowTests: XCTestCase {
         vm.availabilityModelOverride = .empty
         vm.coachArmOverride = CoachArm(surface: .panel, style: .challenger)
         return vm
+    }
+
+    /// Focus sessions still running (no end time) — the block a stray start must not touch.
+    private func openFocusSessions(in container: ModelContainer) throws -> [FocusSession] {
+        try container.mainContext.fetch(FetchDescriptor<FocusSession>())
+            .filter { $0.type == .focus && $0.endedAt == nil }
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {
