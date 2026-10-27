@@ -2306,7 +2306,21 @@ final class TimerViewModel {
         saveContext()
     }
 
+    /// True while a finished block waits for the user to choose what comes next: overtime after a
+    /// natural completion, a manual stop awaiting reflection, or a wake-recovery prompt.
+    var hasPendingCompletion: Bool {
+        state == .idle && (isOvertime || isManualStop || showSessionComplete)
+    }
+
+    /// Resolves a pending completion. Does nothing when no completion is pending: the completion
+    /// window and the popover can both offer these actions, so a second tap (or a double click)
+    /// arrives after the first already started the next block. Running it then would stop the new
+    /// block's timer and leave the state stuck in `.focusing` or `.onBreak`.
     func continueAfterCompletion(action: PostCompletionAction) {
+        guard hasPendingCompletion else {
+            log("continueAfterCompletion(\(action)): no pending completion (state=\(state)), ignoring")
+            return
+        }
         if showCoachReasonSheet && pendingReasonKind == .breakOverrun {
             recordCoachReason(kind: .breakOverrun, reason: nil)
         }
@@ -2545,7 +2559,7 @@ final class TimerViewModel {
             handleCoachAction(.snooze10m)
         case .open:
             // Opening the notification shows its prompt on screen; it is not a new delivery.
-            guard state == .idle, let decision = pendingCoachNotificationDecision else { return }
+            guard state == .idle, !isOvertime, let decision = pendingCoachNotificationDecision else { return }
             let message = decision.composed ?? CoachMessageComposer.neutralFallback(isInSession: false)
             presentCoachPanel(
                 CoachPanelPresentation(

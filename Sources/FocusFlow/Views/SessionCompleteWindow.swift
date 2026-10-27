@@ -984,6 +984,9 @@ struct SessionCompleteWindowView: View {
     // MARK: - Actions
 
     private func saveAndDismiss(action: PostCompletionAction) {
+        // The save is async, so the window stays up for a moment; a second click must not
+        // save the reflection (and its splits) twice.
+        guard !hasHandledAction else { return }
         hasHandledAction = true
         Task { @MainActor in
             await timerVM.saveReflection(
