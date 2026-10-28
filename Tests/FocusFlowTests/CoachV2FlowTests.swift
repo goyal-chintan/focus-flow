@@ -241,12 +241,13 @@ final class CoachV2FlowTests: XCTestCase {
         XCTAssertEqual(vm.coachEngine.store.attempt(id: promptID)?.reward, 0.5)
     }
 
-    // MARK: Pseudo-productivity and weekly priorities
+    // MARK: Pseudo-productivity (holds up the #1 project, the next task or today's lever)
 
     func testPseudoProductivityGuardAsksOnceAndStartsATaggedBlock() throws {
         let vm = try makeViewModel()
-        let priority = WeeklyPriority(title: "Ship v1", weekStart: WeeklyPriority.weekStart(for: Date()), order: 0)
-        container.mainContext.insert(priority)
+        let project = Project(name: "Ship v1", color: "orange")
+        project.priorityRank = 1
+        container.mainContext.insert(project)
         try container.mainContext.save()
         let start = Date().addingTimeInterval(-25 * 60)
 
@@ -260,7 +261,7 @@ final class CoachV2FlowTests: XCTestCase {
 
         XCTAssertTrue(vm.performCoachPanelPrimary())
         let session = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
-        XCTAssertEqual(session.priorityID, priority.id)
+        XCTAssertEqual(session.project?.id, project.id, "The block starts on the #1 project")
         XCTAssertEqual(CoachPseudoWorkLog(defaults: defaults).entries.last?.answer, .isPriority)
 
         vm.stop()
@@ -270,7 +271,10 @@ final class CoachV2FlowTests: XCTestCase {
 
     func testPlannedAnswerLeavesTheUserAloneForAnHour() throws {
         let vm = try makeViewModel()
-        container.mainContext.insert(WeeklyPriority(title: "Finish chapter 3", weekStart: WeeklyPriority.weekStart(for: Date()), order: 0))
+        let project = Project(name: "Writing", color: "teal")
+        project.priorityRank = 1
+        container.mainContext.insert(project)
+        _ = vm.addDailyTask(title: "Finish chapter 3", projectID: project.id)
         try container.mainContext.save()
         _ = vm.evaluatePseudoProductivityGuard(now: Date().addingTimeInterval(-21 * 60), frontmostCategory: .productive, contextName: "Arc")
         XCTAssertTrue(vm.evaluatePseudoProductivityGuard(now: Date(), frontmostCategory: .productive, contextName: "Arc"))
@@ -283,19 +287,16 @@ final class CoachV2FlowTests: XCTestCase {
         XCTAssertEqual(vm.state, .idle)
     }
 
-    func testFirstPromptOfAWeekWithoutPrioritiesInvitesSettingThem() throws {
+    func testWeeklyPrioritiesInviteIsRetired() throws {
         let vm = try makeViewModel()
         defaults.removeObject(forKey: TimerViewModel.weeklyInviteDefaultsKey)
         var openedSettings = 0
         vm.openSettingsScene = { openedSettings += 1 }
 
         vm.evaluateIdleStarterIntervention(idleSeconds: 30 * 60, frontmostCategory: .neutral)
-        XCTAssertEqual(vm.coachPanel?.kind, .weeklyPriorities)
-        XCTAssertEqual(vm.coachPanel?.message.primaryTitle, "Set priorities")
-
-        XCTAssertTrue(vm.performCoachPanelPrimary())
-        XCTAssertEqual(openedSettings, 1)
-        XCTAssertFalse(vm.shouldInviteWeeklyPriorities(now: Date()), "Only once per week")
+        XCTAssertNotEqual(vm.coachPanel?.kind, .weeklyPriorities, "Goals and daily tasks plan the week now")
+        XCTAssertFalse(vm.shouldInviteWeeklyPriorities(now: Date()))
+        XCTAssertEqual(openedSettings, 0)
     }
 
     // MARK: Helpers
@@ -304,7 +305,7 @@ final class CoachV2FlowTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self,
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self,
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         self.container = container

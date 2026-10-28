@@ -87,7 +87,6 @@ struct ProjectFormView: View {
 
     @Query(sort: \BlockProfile.createdAt) private var blockProfiles: [BlockProfile]
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
-    @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
     @State private var showProtection = false
 
     private let colors: [(name: String, color: Color)] = [
@@ -105,11 +104,6 @@ struct ProjectFormView: View {
     ]
 
     private var tint: Color { FFPalette.project(draft.color) }
-    private var activeGoals: [ProjectGoal] {
-        guard let project else { return [] }
-        return goals.filter { $0.projectID == project.id && $0.status == .active }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -117,8 +111,12 @@ struct ProjectFormView: View {
                     identityCard
                     areaCard
                     priorityCard
+                    purposeCard
                     targetCard
-                    goalCard
+                    // A new project can start with its goal; existing goals are edited in the Goals tab.
+                    if project == nil {
+                        goalCard
+                    }
                     protectionCard
                 }
                 .padding(FFSpace.xl)
@@ -230,11 +228,31 @@ struct ProjectFormView: View {
                 rankButton("None", selected: draft.rank == nil) { draft.rank = nil }
             }
             if !others.isEmpty {
-                Text(others.map { "#\($0.priorityRank ?? 0) \($0.name)" }.joined(separator: " · ")
-                     + (others.contains { $0.priorityRank == draft.rank } ? " (it moves down one)" : ""))
+                Text(others.map { "#\($0.priorityRank ?? 0) \($0.name)" }.joined(separator: " · "))
                     .ffText(.caption)
             }
-            TextField("Why it matters (one line)", text: $draft.purpose)
+            if let moves = rankMoves(others) {
+                Label(moves, systemImage: "arrow.down")
+                    .ffText(.caption)
+                    .labelStyle(.titleAndIcon)
+            }
+        }
+    }
+
+    /// "Learning moves to #2" (and any below it), mirroring `ProjectDraft.apply`.
+    private func rankMoves(_ others: [Project]) -> String? {
+        guard let rank = draft.rank, project?.priorityRank != rank, others.contains(where: { $0.priorityRank == rank }) else { return nil }
+        let moved = others.filter { ($0.priorityRank ?? 0) >= rank }
+        guard let first = moved.first else { return nil }
+        let rest = moved.dropFirst().map { "\($0.name) to #\(($0.priorityRank ?? 0) + 1)" }
+        return (["\(first.name) moves to #\((first.priorityRank ?? 0) + 1)"] + rest).joined(separator: ", ")
+    }
+
+    // MARK: Why
+
+    private var purposeCard: some View {
+        card(title: "Why it matters", subtitle: "One line. It shows on the project, so hard days have a reason.") {
+            TextField("e.g. Interview-ready for a senior data role", text: $draft.purpose)
                 .textFieldStyle(.roundedBorder)
         }
     }
@@ -293,19 +311,7 @@ struct ProjectFormView: View {
 
     private var goalCard: some View {
         card(title: "Goal", subtitle: "A deadline and the results that prove it. You'll see if you're on pace.") {
-            if !activeGoals.isEmpty {
-                ForEach(activeGoals) { goal in
-                    let summary = GoalDataBuilder.summary(goal, now: Date())
-                    HStack {
-                        Image(systemName: goal.isBossFight ? "flag.checkered" : "scope").foregroundStyle(tint)
-                        Text(goal.title).ffText(.body)
-                        Spacer()
-                        PaceStatusPill(status: summary.status)
-                    }
-                }
-                Text("Edit these in the Goals tab.").ffText(.caption)
-            }
-            Toggle(activeGoals.isEmpty ? "Set a goal with a deadline" : "Add another goal", isOn: $draft.addsGoal.animation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)))
+            Toggle("Set a goal with a deadline", isOn: $draft.addsGoal.animation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)))
                 .toggleStyle(.switch)
             if draft.addsGoal {
                 GoalEditorFields(draft: $draft.goal, showsProject: false)

@@ -186,17 +186,21 @@ struct KeyResultRow: View {
                 Button {
                     log(pace.status == .done ? -keyResult.done : 1)
                 } label: {
-                    Image(systemName: pace.status == .done ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 18))
-                        .foregroundStyle(pace.status == .done ? FFPalette.goal : .secondary)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
+                    // Leading-aligned in its 30 pt target, so the circle lines up with the count rows' bars.
+                    HStack(spacing: FFSpace.s) {
+                        Image(systemName: pace.status == .done ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 18))
+                            .foregroundStyle(pace.status == .done ? FFPalette.goal : .secondary)
+                        Text(keyResult.title)
+                            .ffText(.body)
+                            .strikethrough(pace.status == .done, color: .secondary)
+                            .foregroundStyle(.primary)
+                    }
+                    .frame(minHeight: 30)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(pace.status == .done ? "Mark \(keyResult.title) not done" : "Mark \(keyResult.title) done")
-                Text(keyResult.title)
-                    .ffText(.body)
-                    .strikethrough(pace.status == .done, color: .secondary)
                 Spacer(minLength: FFSpace.s)
                 if pace.status == .overdue { PaceStatusPill(status: .overdue) }
             } else {
@@ -334,29 +338,6 @@ struct GoalPaceChart: View {
     }
 }
 
-// MARK: - Levers
-
-struct LeverRow: View {
-    let lever: DailyLever
-
-    var body: some View {
-        HStack(spacing: FFSpace.m) {
-            Image(systemName: lever.status == .overdue || lever.status == .behind ? "bolt.fill" : "arrow.forward.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(lever.status.color)
-                .frame(width: 22)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(lever.action).ffText(.headline)
-                Text("\(lever.goalTitle) · \(lever.reason)").ffText(.caption).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 // MARK: - Honest breakdown
 
 /// Where the time went, in priority order, against each project's target.
@@ -371,7 +352,6 @@ struct PriorityBreakdownView: View {
                     .ffText(.headline)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            stackedBar
             VStack(spacing: FFSpace.s) {
                 ForEach(allocation.rows) { row in
                     rowView(row)
@@ -380,35 +360,19 @@ struct PriorityBreakdownView: View {
         }
     }
 
-    private var stackedBar: some View {
-        GeometryReader { geo in
-            HStack(spacing: 2) {
-                if allocation.totalSeconds > 0 {
-                    ForEach(allocation.rows.filter { $0.seconds > 0 }) { row in
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(FFPalette.project(row.colorName).opacity(row.area.isOwnWork ? 1 : 0.45))
-                            .frame(width: max(2, (geo.size.width - CGFloat(allocation.rows.count) * 2) * row.seconds / allocation.totalSeconds))
-                            .help("\(row.name): \(FFFormat.duration(row.seconds))")
-                    }
-                } else {
-                    RoundedRectangle(cornerRadius: 3).fill(FFPalette.track)
-                }
-            }
-        }
-        .frame(height: 14)
-        .accessibilityLabel("Time split by project")
-    }
-
     private func rowView(_ row: PriorityRow) -> some View {
         HStack(spacing: FFSpace.m) {
             rankBadge(row)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: FFSpace.s) {
                     Text(row.name).ffText(.body).lineLimit(1)
-                    Label(row.area.title, systemImage: row.area.symbol)
-                        .labelStyle(.titleAndIcon)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    // "Learning · Learning" says nothing: the kind shows only when it adds information.
+                    if row.area.title.caseInsensitiveCompare(row.name) != .orderedSame {
+                        Label(row.area.title, systemImage: row.area.symbol)
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer(minLength: FFSpace.s)
                     Text(amountText(row)).ffText(.headline).monospacedDigit()
                 }
@@ -440,38 +404,3 @@ struct PriorityBreakdownView: View {
 
 // MARK: - Session complete
 
-/// "Progress on your goal": the session project's active key results with +1, logged against the
-/// session (priorities-goals design §3.6). Recording progress is what makes monitoring work
-/// (Harkin et al., 2016).
-struct SessionGoalProgressView: View {
-    let projectID: UUID?
-    let sessionID: UUID?
-
-    @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
-
-    var body: some View {
-        let relevant = goals.filter { $0.status == .active && $0.projectID != nil && $0.projectID == projectID }
-        if !relevant.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("PROGRESS ON YOUR GOAL")
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(1.8)
-                    .foregroundStyle(.secondary)
-                ForEach(relevant) { goal in
-                    let summary = GoalDataBuilder.summary(goal, now: Date())
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(goal.title).font(.system(size: 12, weight: .semibold))
-                            Spacer()
-                            PaceStatusPill(status: summary.status)
-                        }
-                        ForEach(Array(zip(goal.sortedKeyResults, summary.keyResults)), id: \.0.id) { pair in
-                            KeyResultRow(keyResult: pair.0, pace: pair.1, compact: true, sessionID: sessionID)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}

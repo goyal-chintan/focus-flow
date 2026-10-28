@@ -120,6 +120,8 @@ struct CoachPanelView: View {
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .tracking(1.1)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
             Spacer(minLength: 4)
             if let level = presentation.level, presentation.kind == .rescue || presentation.kind == .pseudoProductivity {
                 levelPips(level)
@@ -428,9 +430,11 @@ struct CoachPanelView: View {
 
     // MARK: Copy helpers
 
+    /// The plan the prompt serves ("#1 · SHIP SIDE APP V1", "INTERVIEW-READY · BEHIND"), never
+    /// the coach's internal style or arm name (screen audit 2026-10-28).
     private var eyebrow: String {
         switch presentation.kind {
-        case .startNudge: "FOCUS COACH · \(message.style.displayName.uppercased())"
+        case .startNudge: message.eyebrow ?? "FOCUS COACH"
         case .pseudoProductivity: "FOCUS COACH · CHECK-IN"
         case .inSessionDrift: "FOCUS COACH · IN BLOCK"
         case .weeklyPriorities: "FOCUS COACH · THIS WEEK"
@@ -439,7 +443,7 @@ struct CoachPanelView: View {
         case .momentum: "FOCUS COACH · MOMENTUM"
         case .notice: "FOCUS COACH"
         case .plannedStart: "YOUR PLAN · NOW"
-        case .dailyPlan: "FOCUS COACH · START"
+        case .dailyPlan: message.eyebrow ?? "FOCUS COACH · START"
         }
     }
 

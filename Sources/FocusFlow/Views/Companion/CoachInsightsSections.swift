@@ -4,16 +4,16 @@ import SwiftData
 /// Builds `CoachInsights.Summary` from the store and the coach's live model.
 private struct CoachInsightsData {
     let summary: CoachInsights.Summary
-    let nextPlan: PlannedBlock?
-    let todayPlans: [PlannedBlock]
 
+    /// `samples` are the goal samples (own work once a project is marked Work), so the
+    /// never-miss-twice chain and the "started that day" checks never count office time.
     @MainActor
-    init(now: Date, sessions: [FocusSession], plans: [PlannedBlock], attempts: [InterventionAttempt], timerVM: TimerViewModel) {
+    init(now: Date, samples: [FocusSample], plans: [PlannedBlock], attempts: [InterventionAttempt], timerVM: TimerViewModel) {
         let calendar = Calendar.current
         let lookback = calendar.date(byAdding: .day, value: -(CoachInsights.lookbackDays + 1), to: calendar.startOfDay(for: now)) ?? now
-        let sessionInputs = sessions
-            .filter { $0.type == .focus && $0.startedAt >= lookback }
-            .map { CoachInsights.SessionInput(start: $0.startedAt, seconds: $0.actualDuration, outcome: $0.outcome) }
+        let sessionInputs = samples
+            .filter { $0.isFocus && $0.start >= lookback }
+            .map { CoachInsights.SessionInput(start: $0.start, seconds: $0.activeSeconds, outcome: $0.outcome) }
         let planInputs = plans
             .filter { $0.day >= lookback }
             .map { CoachInsights.PlanInput(day: $0.day, startAt: $0.startAt, status: $0.status, pushes: $0.pushes) }
@@ -39,150 +39,6 @@ private struct CoachInsightsData {
             model: timerVM.availabilityModel,
             starterMinutes: CoachStarterBlock.clampedMinutes(timerVM.settings?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
         )
-        nextPlan = plans.first { $0.status == .planned && $0.startAt > now.addingTimeInterval(-CoachPlannedCue.lateStart) }
-        todayPlans = plans.filter { calendar.isDate($0.day, inSameDayAs: now) }
-    }
-}
-
-// MARK: - Today: "Your coach"
-
-/// Today → "Your coach": today's plan, the never-miss-twice chain, learned windows left today
-/// and up to three pieces of advice from the user's data, each with its source.
-struct TodayCoachSection: View {
-    let now: Date
-    let sessions: [FocusSession]
-
-    @Environment(TimerViewModel.self) private var timerVM
-    @Query(sort: \PlannedBlock.startAt) private var plans: [PlannedBlock]
-    @Query(sort: \InterventionAttempt.deliveredAt) private var attempts: [InterventionAttempt]
-    @State private var slots: [CoachPlanSlot] = []
-
-    var body: some View {
-        let data = CoachInsightsData(now: now, sessions: sessions, plans: plans, attempts: attempts, timerVM: timerVM)
-        FFSection("Your coach", subtitle: modelStatus(data.summary)) {
-            EmptyView()
-        } content: {
-            VStack(alignment: .leading, spacing: FFSpace.l) {
-                HStack(alignment: .top, spacing: FFSpace.l) {
-                    planBlock(data)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Divider()
-                    chainBlock(data.summary.chain)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-
-                if !data.summary.advice.isEmpty {
-                    adviceGrid(data.summary.advice)
-                }
-            }
-        }
-        .task(id: Calendar.current.component(.hour, from: now)) {
-            slots = timerVM.dailyPlanSuggestions(now: now)
-        }
-    }
-
-    private func modelStatus(_ summary: CoachInsights.Summary) -> String {
-        if summary.isLearned { return "Learned from your \(summary.learnedFromStarts) focus starts. Updates after every block." }
-        if summary.learnedFromStarts > 0 { return "Learning your rhythm: \(summary.learnedFromStarts) of 8 starts needed for personal windows." }
-        return "Start a few blocks and the coach learns when you work best."
-    }
-
-    @ViewBuilder
-    private func planBlock(_ data: CoachInsightsData) -> some View {
-        VStack(alignment: .leading, spacing: FFSpace.s) {
-            Text("TODAY'S PLAN").font(.system(size: 10, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
-            if let plan = data.nextPlan {
-                HStack(spacing: FFSpace.s) {
-                    Image(systemName: "alarm.fill").foregroundStyle(FFPalette.accent).accessibilityHidden(true)
-                    Text("\(TimerViewModel.clockLabel(plan.startAt)) · \(plan.minutes)m").ffNumber(.title3)
-                }
-                Text(plan.pushes > 0 ? "Pushed \(plan.pushes)× · the coach shows up on screen at that time" : "The coach shows up on screen at that time.")
-                    .ffText(.caption)
-                HStack(spacing: FFSpace.s) {
-                    Button("Start now") { timerVM.startPlannedBlockNow(id: plan.id) }
-                        .buttonStyle(.borderedProminent)
-                    Button("Skip today") { timerVM.skipPlannedBlock(id: plan.id) }
-                        .buttonStyle(.bordered)
-                }
-                .controlSize(.small)
-            } else if let kept = data.todayPlans.last(where: { $0.status == .started }) {
-                Label("Kept · \(TimerViewModel.clockLabel(kept.startAt))", systemImage: "checkmark.circle.fill")
-                    .ffText(.headline)
-                    .foregroundStyle(FFPalette.goal)
-                Text("You did what you said you'd do. That is the habit.").ffText(.caption)
-            } else if slots.isEmpty {
-                Text("No plan").ffText(.headline)
-                Text("Nothing free left today. Plan tomorrow's time in the morning.").ffText(.caption)
-            } else {
-                Text("No time decided yet").ffText(.headline)
-                HStack(spacing: FFSpace.s) {
-                    ForEach(slots) { slot in
-                        Button {
-                            timerVM.commitDailyPlan(slot)
-                        } label: {
-                            VStack(spacing: 0) {
-                                Text(slot.label()).font(.system(size: 13, weight: .semibold)).monospacedDigit()
-                                Text(slot.caption).font(.system(size: 10)).foregroundStyle(.secondary)
-                            }
-                            .frame(minWidth: 64)
-                        }
-                        .buttonStyle(.bordered)
-                        .help("Plan today's block at \(slot.label())")
-                    }
-                }
-                Text("One click. People who decide when are far likelier to start.").ffText(.caption)
-            }
-        }
-    }
-
-    private func chainBlock(_ chain: [CoachChainDay]) -> some View {
-        let lastTwoMissed = chain.suffix(3).dropLast().allSatisfy { $0.mark == .missed }
-        return VStack(alignment: .leading, spacing: FFSpace.s) {
-            Text("NEVER MISS TWICE · 14 DAYS").font(.system(size: 10, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
-            HStack(spacing: 5) {
-                ForEach(chain) { day in
-                    chainDot(day)
-                }
-            }
-            Text(chainCaption(chain, lastTwoMissed: lastTwoMissed)).ffText(.caption)
-        }
-    }
-
-    private func chainDot(_ day: CoachChainDay) -> some View {
-        let fill: Color = switch day.mark {
-        case .goal: FFPalette.goal
-        case .partial: FFPalette.accent
-        case .missed: FFPalette.track
-        case .open: .clear
-        }
-        return RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill(fill)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(day.mark == .open ? FFPalette.accent : FFPalette.hairline, style: StrokeStyle(lineWidth: 1, dash: day.mark == .open ? [2, 2] : []))
-            )
-            .frame(width: 16, height: 16)
-            .help("\(day.day.formatted(.dateTime.weekday(.abbreviated).day())): \(day.minutes)m")
-            .accessibilityLabel("\(day.day.formatted(.dateTime.weekday(.wide).day())), \(day.minutes) minutes")
-    }
-
-    private func chainCaption(_ chain: [CoachChainDay], lastTwoMissed: Bool) -> String {
-        let shown = chain.filter { $0.minutes > 0 }.count
-        let yesterdayMissed = chain.dropLast().last?.mark == .missed
-        let todayStarted = (chain.last?.minutes ?? 0) > 0
-        if todayStarted { return "\(shown) of 14 days with a block. Today counts." }
-        if yesterdayMissed { return "Yesterday was a miss. Today decides the habit: any block counts." }
-        return "\(shown) of 14 days with a block. Green: goal met. Blue: showed up."
-    }
-
-    private func adviceGrid(_ advice: [CoachAdvice]) -> some View {
-        HStack(alignment: .top, spacing: FFSpace.m) {
-            ForEach(advice) { item in
-                CoachAdviceCard(advice: item)
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -225,242 +81,181 @@ struct CoachAdviceCard: View {
     }
 }
 
-// MARK: - Insights: "What the coach learned"
+// MARK: - Insights: "Is the coach getting you started?"
 
-/// Insights → "What the coach learned": when a start is likely (the coach's own posterior),
-/// whether plans are kept, and whether prompts lead to starts.
-struct CoachLearnedSection: View {
-    let now: Date
+/// Insights → the one coach section (screen audit, Insights): does a prompt lead to a start
+/// (against the moments it stayed quiet), the next ask, what stops you, advice and the log. How the
+/// coach learns sits in a collapsed "How the coach decides".
+struct CoachStartSection: View {
+    let snapshot: CompanionSnapshot
+
     @Environment(TimerViewModel.self) private var timerVM
-    @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
     @Query(sort: \PlannedBlock.startAt) private var plans: [PlannedBlock]
     @Query(sort: \InterventionAttempt.deliveredAt) private var attempts: [InterventionAttempt]
-    @State private var hovered: Int?
-
-    var body: some View {
-        let data = CoachInsightsData(now: now, sessions: sessions, plans: plans, attempts: attempts, timerVM: timerVM)
-        let summary = data.summary
-        FFSection("What the coach learned", subtitle: "From your own starts: a Beta posterior per hour of the week, updated after every block.") {
-            EmptyView()
-        } content: {
-            VStack(alignment: .leading, spacing: FFSpace.l) {
-                HStack(alignment: .top, spacing: FFSpace.l) {
-                    FFStat(
-                        label: "Plans kept · 14 days",
-                        value: summary.plansMade == 0 ? "—" : "\(summary.plansKept) of \(summary.plansMade)",
-                        caption: summary.plansMade == 0 ? "Plan a time from the menu bar" : "Started within the plan's window"
-                    )
-                    Divider()
-                    FFStat(
-                        label: "Start rate with a plan",
-                        value: summary.startRatePlannedDays.map(CoachInsights.percent) ?? "—",
-                        caption: summary.startRateUnplannedDays.map { "Without a plan: \(CoachInsights.percent($0))" } ?? "Needs 3+ days of each"
-                    )
-                    Divider()
-                    FFStat(
-                        label: "Prompts → starts",
-                        value: summary.promptsSeen == 0 ? "—" : "\(summary.promptsLedToStart) of \(summary.promptsSeen)",
-                        caption: "Prompts you saw, last 14 days"
-                    )
-                    Divider()
-                    FFStat(
-                        label: "Best hour today",
-                        value: summary.bestHourThisWeekday.map { TimerViewModel.clockLabel($0.start) } ?? "—",
-                        caption: summary.bestHourThisWeekday.map { String(format: "%.1f× your average hour", $0.lift) } ?? "Learning (needs 8 starts)"
-                    )
-                }
-                .fixedSize(horizontal: false, vertical: true)
-
-                CoachStartFirstBlock(
-                    summary: summary,
-                    ladder: timerVM.startLadderRecommendation(now: now),
-                    journal: timerVM.coachJournal.entries(on: now),
-                    learning: timerVM.coachLearningSummary(now: now)
-                )
-
-                if summary.isLearned {
-                    heatmap
-                } else {
-                    FFEmptyState(
-                        systemImage: "brain.head.profile",
-                        message: "Still learning your rhythm",
-                        detail: "After 8 focus starts the coach maps when you are most likely to begin and times its prompts and plan suggestions to it."
-                    )
-                }
-            }
-        }
-    }
-
-    /// 7 × 24 grid of the posterior start probability, Monday first.
-    private var heatmap: some View {
-        let model = timerVM.availabilityModel
-        let calendar = Calendar.current
-        let monday = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
-        let cells: [(index: Int, date: Date, p: Double)] = (0..<7).flatMap { day in
-            (0..<24).compactMap { hour -> (Int, Date, Double)? in
-                guard let date = calendar.date(byAdding: .hour, value: day * 24 + hour, to: calendar.startOfDay(for: monday)) else { return nil }
-                return (day * 24 + hour, date, model.p(date))
-            }
-        }
-        let peak = max(cells.map(\.p).max() ?? 1, 0.0001)
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 2) {
-                Text("").frame(width: 30)
-                ForEach([0, 6, 12, 18], id: \.self) { hour in
-                    Text(String(format: "%02d", hour))
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            ForEach(0..<7, id: \.self) { day in
-                HStack(spacing: 2) {
-                    Text(FFFormat.weekdayShort[day]).font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
-                    ForEach(0..<24, id: \.self) { hour in
-                        let cell = cells[day * 24 + hour]
-                        let good = model.isGoodWindow(cell.date)
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(FFPalette.accent.opacity(0.08 + 0.85 * cell.p / peak))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                    .strokeBorder(good ? FFPalette.goal.opacity(0.9) : .clear, lineWidth: 1)
-                            )
-                            .frame(height: 14)
-                            .scaleEffect(hovered == cell.index ? 1.25 : 1)
-                            .zIndex(hovered == cell.index ? 1 : 0)
-                            .onHover { hovered = $0 ? cell.index : (hovered == cell.index ? nil : hovered) }
-                            .help(String(format: "%@ %02d:00 · %.1f× your average hour%@", FFFormat.weekdayShort[day], hour, cell.p / max(model.meanRate, 0.0001), good ? " · learned window" : ""))
-                    }
-                }
-            }
-            HStack(spacing: FFSpace.m) {
-                FFLegendItem(color: FFPalette.accent, label: "Likelier to start")
-                HStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2).strokeBorder(FFPalette.goal, lineWidth: 1).frame(width: 10, height: 10)
-                    Text("Learned window (plan suggestions and prompts use these)").ffText(.caption)
-                }
-            }
-            .padding(.top, 4)
-        }
-        .animation(.easeOut(duration: 0.12), value: hovered)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Heatmap of when you are most likely to start a focus block")
-    }
-}
-
-// MARK: - Coach v4: getting you started
-
-/// Insights → "What the coach learned" (v4 §3.1, §3.3–3.4): the next ask and why, which
-/// prompts led to a start, what stops you, and today's coach log.
-private struct CoachStartFirstBlock: View {
-    let summary: CoachInsights.Summary
-    let ladder: CoachBlockSizeLadder.Recommendation
-    let journal: [CoachJournal.Entry]
-    let learning: TimerViewModel.CoachLearningSummary
     @State private var showLog = false
+    @State private var showModel = false
+
+    private var now: Date { snapshot.now }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FFSpace.m) {
-            learningRow
-            HStack(alignment: .top, spacing: FFSpace.l) {
-                FFStat(label: "Next ask", value: "\(ladder.minutes) min", caption: ladder.caption)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        let summary = CoachInsightsData(now: now, samples: snapshot.goalSamples, plans: plans, attempts: attempts, timerVM: timerVM).summary
+        let learning = timerVM.coachLearningSummary(now: now)
+        let ladder = timerVM.startLadderRecommendation(now: now)
+        FFSection("Is the coach getting you started?", subtitle: "A prompt counts when you start a block within 10 minutes · last 14 days") {
+            VStack(alignment: .leading, spacing: FFSpace.l) {
+                headline(summary, learning: learning, ladder: ladder)
                 Divider()
-                VStack(alignment: .leading, spacing: FFSpace.xs) {
-                    Text("Which prompts got you started · 14 days").ffText(.callout)
-                    if summary.triggerStats.isEmpty {
-                        Text("No prompts seen yet.").ffText(.caption)
+                promptsAndReasons(summary)
+                if !summary.advice.isEmpty {
+                    HStack(alignment: .top, spacing: FFSpace.m) {
+                        ForEach(summary.advice) { CoachAdviceCard(advice: $0) }
                     }
-                    ForEach(summary.triggerStats) { stat in
-                        HStack(spacing: FFSpace.s) {
-                            Text(stat.label.capitalizedFirst).ffText(.body)
-                            Spacer(minLength: FFSpace.s)
-                            Text("\(stat.started) of \(stat.seen)").ffText(.headline).monospacedDigit()
-                        }
-                    }
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Divider()
-                VStack(alignment: .leading, spacing: FFSpace.xs) {
-                    Text("What stops you").ffText(.callout)
-                    if summary.reasons.isEmpty {
-                        Text("Pick a reason under “Not now” and the coach adapts its next ask.").ffText(.caption)
-                    }
-                    ForEach(summary.reasons.prefix(4)) { item in
-                        HStack(spacing: FFSpace.s) {
-                            Text(CoachDeclineResponse.label(item.reason)).ffText(.body)
-                            Spacer(minLength: FFSpace.s)
-                            Text("\(item.count)×").ffText(.headline).monospacedDigit()
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-
-            DisclosureGroup(isExpanded: $showLog) {
-                VStack(alignment: .leading, spacing: 3) {
-                    if journal.isEmpty {
-                        Text("Nothing yet today.").ffText(.caption)
-                    }
-                    ForEach(journal.reversed().prefix(30)) { entry in
-                        HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
-                            Text(TimerViewModel.clockLabel(entry.at)).ffText(.caption).monospacedDigit()
-                            Image(systemName: Self.symbol(entry.kind))
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 14)
-                            Text(entry.text).ffText(.callout).fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-                .padding(.top, FFSpace.xs)
-            } label: {
-                Text("Today's coach log · why it spoke, or stayed quiet").ffText(.headline)
+                logDisclosure
+                modelDisclosure(summary, learning: learning)
             }
         }
     }
 
-    /// v5 §3.5: does prompting help, what the coach learned, and what each size is worth.
-    private var learningRow: some View {
+    // MARK: Headline
+
+    private func headline(_ summary: CoachInsights.Summary, learning: TimerViewModel.CoachLearningSummary, ladder: CoachBlockSizeLadder.Recommendation) -> some View {
         HStack(alignment: .top, spacing: FFSpace.l) {
+            FFStat(
+                label: "Prompt → start",
+                value: summary.promptsSeen == 0 ? "—" : CoachInsights.percent(Double(summary.promptsLedToStart) / Double(summary.promptsSeen)),
+                caption: summary.promptsSeen == 0 ? "No prompts seen yet" : "\(summary.promptsLedToStart) of \(summary.promptsSeen) prompts you saw"
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Divider()
             if let lift = learning.lift {
                 FFStat(
-                    label: "Do prompts help you?",
-                    value: String(format: "%+.0f pts", lift.lift * 100),
-                    caption: "Started within 10 min: \(CoachInsights.percent(lift.withPrompt)) with a prompt, \(CoachInsights.percent(lift.withoutPrompt)) without (\(lift.decisions) moments)"
+                    label: "Without a prompt",
+                    value: CoachInsights.percent(lift.withoutPrompt),
+                    caption: "With one: \(CoachInsights.percent(lift.withPrompt)) · \(String(format: "%+.0f", lift.lift * 100)) points (\(lift.decisions) moments)",
+                    valueColor: nil
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 FFStat(
-                    label: "Do prompts help you?",
+                    label: "Without a prompt",
                     value: "Measuring",
-                    caption: "\(learning.decisions) moments so far (\(learning.quietDecisions) held back on purpose). Needs 20 to compare."
+                    caption: "\(learning.decisions) moments so far, \(learning.quietDecisions) of them quiet on purpose. Needs 20 to compare."
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
+            FFStat(label: "Next ask · 5 · 15 · 25", value: "\(ladder.minutes) min", caption: ladder.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func promptsAndReasons(_ summary: CoachInsights.Summary) -> some View {
+        HStack(alignment: .top, spacing: FFSpace.l) {
+            countList(
+                title: "Which prompts got you started",
+                empty: "No prompts seen yet.",
+                rows: summary.triggerStats.map { ($0.label.capitalizedFirst, "\($0.started) of \($0.seen)") }
+            )
+            Divider()
+            countList(
+                title: "What stops you",
+                empty: "Pick a reason under “Not now, because…” and the coach adapts its next ask.",
+                rows: summary.reasons.prefix(4).map { (CoachDeclineResponse.label($0.reason), "\($0.count)×") }
+            )
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func countList(title: String, empty: String, rows: [(String, String)]) -> some View {
+        VStack(alignment: .leading, spacing: FFSpace.xs) {
+            Text(title).ffText(.callout)
+            if rows.isEmpty {
+                Text(empty).ffText(.caption).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: FFSpace.s) {
+                    Text(row.0).ffText(.body).lineLimit(1)
+                    Spacer(minLength: FFSpace.s)
+                    Text(row.1).ffText(.headline).monospacedDigit()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Coach log
+
+    private var logDisclosure: some View {
+        let journal = timerVM.coachJournal.entries(on: now)
+        return DisclosureGroup(isExpanded: $showLog) {
+            VStack(alignment: .leading, spacing: 3) {
+                if journal.isEmpty {
+                    Text("Nothing yet today.").ffText(.caption)
+                }
+                ForEach(journal.reversed().prefix(30)) { entry in
+                    HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
+                        Text(TimerViewModel.clockLabel(entry.at)).ffText(.caption).monospacedDigit()
+                        Image(systemName: Self.symbol(entry.kind))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14)
+                        Text(entry.text).ffText(.callout).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.top, FFSpace.xs)
+        } label: {
+            Text("Today's coach log · why it spoke, or stayed quiet").ffText(.headline)
+        }
+    }
+
+    // MARK: How the coach decides (collapsed)
+
+    private func modelDisclosure(_ summary: CoachInsights.Summary, learning: TimerViewModel.CoachLearningSummary) -> some View {
+        DisclosureGroup(isExpanded: $showModel) {
+            VStack(alignment: .leading, spacing: FFSpace.l) {
+                Text("The coach compares moments it prompted with moments it stayed quiet, and learns which moments and block sizes lead to a start. It starts from the research; your own starts take over.")
+                    .ffText(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                learnedRow(learning)
+                planRow(summary)
+                CoachDeliveryCharts(snapshot: snapshot, attempts: attempts)
+            }
+            .padding(.top, FFSpace.s)
+        } label: {
+            Text("How the coach decides").ffText(.headline)
+        }
+    }
+
+    private func learnedRow(_ learning: TimerViewModel.CoachLearningSummary) -> some View {
+        HStack(alignment: .top, spacing: FFSpace.l) {
             VStack(alignment: .leading, spacing: FFSpace.xs) {
                 Text("When prompts work for you").ffText(.callout)
                 if learning.effects.isEmpty {
-                    Text("Starting from the research: breakpoints and your good hours help; repeats and late nights hurt.").ffText(.caption)
+                    Text("Starting from the research: natural breaks and your good hours help; repeats and late nights hurt.")
+                        .ffText(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(learning.effects, id: \.name) { effect in
                     HStack(spacing: FFSpace.s) {
                         Image(systemName: effect.weight > 0 ? "arrow.up.right" : "arrow.down.right")
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(effect.weight > 0 ? FFPalette.goal : Color.orange)
+                            .foregroundStyle(effect.weight > 0 ? FFPalette.goal : FFPalette.atRisk)
                             .accessibilityLabel(effect.weight > 0 ? "helps" : "hurts")
                         Text(effect.name).ffText(.body)
                         Spacer(minLength: FFSpace.s)
-                        Text(String(format: "%+.0f pts", effect.weight * 100)).ffText(.headline).monospacedDigit()
+                        Text(String(format: "%+.0f points", effect.weight * 100)).ffText(.headline).monospacedDigit()
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Divider()
             VStack(alignment: .leading, spacing: FFSpace.xs) {
-                Text("Which size works · expected value").ffText(.callout)
+                Text("Which size gets you started").ffText(.callout)
+                Text("Score: 1 means you start, more if you keep going.").ffText(.caption)
                 ForEach(learning.sizes, id: \.minutes) { size in
                     HStack(spacing: FFSpace.s) {
                         Text("\(size.minutes) min").ffText(.body)
@@ -473,7 +268,29 @@ private struct CoachStartFirstBlock: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .fixedSize(horizontal: false, vertical: true)
-        .help("Learner A: an action-centred Bayesian bandit estimates how much a prompt raises your chance of starting in each context (as in HeartSteps). Learner B: Bayesian Thompson sampling over 5 · 15 · 25 minutes. Rules from the research are the starting point; your data overrides them.")
+    }
+
+    private func planRow(_ summary: CoachInsights.Summary) -> some View {
+        HStack(alignment: .top, spacing: FFSpace.l) {
+            FFStat(
+                label: "Plans kept",
+                value: summary.plansMade == 0 ? "—" : "\(summary.plansKept) of \(summary.plansMade)",
+                caption: summary.plansMade == 0 ? "Plan a time from the menu bar" : "Started within the plan's window"
+            )
+            Divider()
+            FFStat(
+                label: "Start rate with a plan",
+                value: summary.startRatePlannedDays.map(CoachInsights.percent) ?? "—",
+                caption: summary.startRateUnplannedDays.map { "Without a plan: \(CoachInsights.percent($0))" } ?? "Needs 3+ days of each"
+            )
+            Divider()
+            FFStat(
+                label: "Best hour today",
+                value: summary.bestHourThisWeekday.map { TimerViewModel.clockLabel($0.start) } ?? "—",
+                caption: summary.bestHourThisWeekday.map { String(format: "%.1f× your average hour", $0.lift) } ?? "Needs 8 starts"
+            )
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     static func symbol(_ kind: CoachJournal.Entry.Kind) -> String {
@@ -484,6 +301,54 @@ private struct CoachStartFirstBlock: View {
         case .declined: "hand.raised"
         case .unseen: "eye.slash"
         case .arrival: "figure.walk.arrival"
+        case .logged: "checkmark.circle"
+        }
+    }
+}
+
+/// Start rate by prompt style, by where it appeared, and by rescue level · last 4 weeks.
+private struct CoachDeliveryCharts: View {
+    let snapshot: CompanionSnapshot
+    let attempts: [InterventionAttempt]
+    @Environment(TimerViewModel.self) private var timerVM
+
+    var body: some View {
+        let interval = DateInterval(start: snapshot.calendar.date(byAdding: .day, value: -27, to: snapshot.today.start) ?? snapshot.today.start, end: snapshot.now)
+        let result = snapshot.analytics.coachEffectiveness(prompts: attempts.map(PromptSample.init), sessions: snapshot.samples, in: interval)
+        let rescue = snapshot.analytics.rescueEffectiveness(
+            rescues: attempts.compactMap { RescueSample(contextKey: $0.contextKey, deliveredAt: $0.deliveredAt) },
+            sessions: snapshot.samples,
+            in: interval
+        )
+        let starterMinutes = CoachStarterBlock.clampedMinutes(timerVM.settings?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
+        VStack(alignment: .leading, spacing: FFSpace.l) {
+            if !result.byStyle.isEmpty {
+                chart("By style · last 4 weeks", arms: result.byStyle)
+            }
+            if result.bySurface.count > 1 {
+                chart("By where it appeared", arms: result.bySurface)
+            }
+            if rescue.hasRescues {
+                VStack(alignment: .leading, spacing: FFSpace.s) {
+                    chart("When you drift", arms: rescue.byLevel)
+                    Text("In a focus window the ask shrinks: a full block, then 10 minutes, then a \(starterMinutes)-minute starter.")
+                        .ffText(.caption)
+                }
+            }
+            if rescue.starterBlocks > 0 {
+                FFStat(
+                    label: "\(starterMinutes)-min starts that kept going",
+                    value: FFFormat.percent(rescue.keptGoingRate ?? 0),
+                    caption: "\(rescue.startersKeptGoing) of \(rescue.starterBlocks) starter blocks led to 20m or more"
+                )
+            }
+        }
+    }
+
+    private func chart(_ title: String, arms: [FocusAnalytics.PromptArm]) -> some View {
+        VStack(alignment: .leading, spacing: FFSpace.s) {
+            Text(title).ffText(.headline)
+            PromptArmChart(arms: arms)
         }
     }
 }

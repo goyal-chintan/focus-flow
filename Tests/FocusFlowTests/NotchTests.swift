@@ -50,12 +50,16 @@ final class NotchTests: XCTestCase {
             mode: .idle, time: "18:42", progress: 0.38, projectName: "Learning", projectColor: "purple",
             intent: "3 LeetCode questions", goalDone: 50 * 60, goalTarget: 2 * 3600, goalLabel: "Your own work",
             lever: lever, verdict: "3h 50m tracked · 50m on your #1 · 22% own work",
-            coachHook: nil, quickResult: (UUID(), "LeetCode", 14, 60)
+            coachHook: nil, quickResult: (UUID(), "LeetCode", 14, 60),
+            tasks: DailyTaskStats(planned: 5, done: 2), nextTask: (UUID(), "Window functions practice set")
         )
         var attention = base
         attention.coachHook = "First block. Start small."
+        attention.suggestedMinutes = 25
         var focusing = base
         focusing.mode = .focusing
+        var focusingNoTask = focusing
+        focusingNoTask.nextTask = nil
         var paused = base
         paused.mode = .paused
         var overtime = base
@@ -68,7 +72,8 @@ final class NotchTests: XCTestCase {
         let cases: [(String, NotchSnapshot, Bool)] = [
             ("compact_idle", base, false), ("compact_attention", attention, false), ("compact_focusing", focusing, false),
             ("compact_paused", paused, false), ("compact_overtime", overtime, false), ("compact_break", onBreak, false),
-            ("expanded_idle", attention, true), ("expanded_focusing", focusing, true), ("expanded_overtime", overtime, true),
+            ("expanded_idle", attention, true), ("expanded_focusing", focusing, true),
+            ("expanded_focusing_no_task", focusingNoTask, true), ("expanded_overtime", overtime, true),
             ("expanded_break", onBreak, true),
         ]
         for (name, snapshot, expanded) in cases {

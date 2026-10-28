@@ -16,6 +16,10 @@ struct PauseScreenView: View {
     var chrome: Chrome = .hosted
     /// Evidence renders show the ✕ that normally appears after 8 s.
     var showCloseImmediately = false
+    /// What the start is about: the next task, else the lever, else the #1 project.
+    var targetTitle: String? = nil
+    /// Goal pace above the quote, e.g. "LeetCode: 14 of 60 · 11 behind · 18 days left".
+    var goalLine: String? = nil
     var onStart: () -> Void = {}
     var onRealBreak: () -> Void = {}
     var onDone: () -> Void = {}
@@ -100,7 +104,11 @@ struct PauseScreenView: View {
     private var content: some View {
         VStack(spacing: 0) {
             eyebrow
-                .padding(.bottom, 34)
+                .padding(.bottom, goalLine == nil ? 34 : 18)
+            if let goalLine {
+                goalPaceLine(goalLine)
+                    .padding(.bottom, 30)
+            }
             headline
             if let fact = presentation.fact {
                 factPill(fact)
@@ -188,6 +196,22 @@ struct PauseScreenView: View {
         }
     }
 
+    /// "Start 5 minutes · Window functions practice set": the start says what it is on.
+    private var primaryTitle: String {
+        guard let target = targetTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !target.isEmpty else {
+            return presentation.primaryTitle
+        }
+        return "\(presentation.primaryTitle) · \(CoachMessageComposer.shortName(target))"
+    }
+
+    private func goalPaceLine(_ line: String) -> some View {
+        Label(line, systemImage: "flag.checkered")
+            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
     private func factPill(_ fact: String) -> some View {
         HStack(spacing: 10) {
             Circle()
@@ -210,8 +234,9 @@ struct PauseScreenView: View {
             HStack(spacing: 10) {
                 Image(systemName: "play.fill")
                     .font(.system(size: 14, weight: .bold))
-                Text(presentation.primaryTitle)
+                Text(primaryTitle)
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
                 Text("⏎")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .padding(.horizontal, 6)
@@ -236,7 +261,7 @@ struct PauseScreenView: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.defaultAction)
         .onHover { primaryHovered = $0 }
-        .accessibilityLabel(presentation.primaryTitle)
+        .accessibilityLabel(primaryTitle)
     }
 
     private var secondaryRow: some View {
@@ -320,11 +345,16 @@ private struct EvidenceDesktop: View {
 /// Live content: reads the presentation from `TimerViewModel`.
 struct PauseScreenHostView: View {
     @Environment(TimerViewModel.self) private var timerVM
+    /// Read once per presentation (the snapshot reads the store).
+    @State private var target: (title: String?, goal: String?) = (nil, nil)
+    @State private var targetFor: UUID?
 
     var body: some View {
         if let presentation = timerVM.pauseScreen {
             PauseScreenView(
                 presentation: presentation,
+                targetTitle: targetFor == presentation.id ? target.title : nil,
+                goalLine: targetFor == presentation.id ? target.goal : nil,
                 onStart: { timerVM.performPauseScreenExit(.startStarter) },
                 onRealBreak: { timerVM.performPauseScreenExit(.realBreak) },
                 onDone: { timerVM.performPauseScreenExit(.doneForToday) },
@@ -332,6 +362,18 @@ struct PauseScreenHostView: View {
                 onClose: { timerVM.performPauseScreenExit(.close) }
             )
             .id(presentation.id)
+            .task(id: presentation.id) {
+                let snapshot = timerVM.coachSnapshot(idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+                target = (snapshot.target.taskTitle ?? snapshot.target.name, snapshot.facts.goal.map(Self.goalLine))
+                targetFor = presentation.id
+            }
         }
+    }
+
+    /// "LeetCode: 14 of 60 · 11 behind · 18 days left".
+    static func goalLine(_ goal: CoachGoalFact) -> String {
+        let pace = goal.isBehind ? "\(goal.behind) behind" : "on pace"
+        let days = goal.daysLeft == 1 ? "1 day left" : "\(goal.daysLeft) days left"
+        return "\(CoachMessageComposer.shortName(goal.resultTitle)): \(goal.done) of \(goal.target) · \(pace) · \(days)"
     }
 }

@@ -31,6 +31,8 @@ final class FocusSession {
     var outcomeRawValue: String?
     /// `WeeklyPriority.id` this block served, if any.
     var priorityID: UUID?
+    /// The daily task this block was started for (daily tasks design §2).
+    var taskID: UUID?
 
     var outcome: SessionOutcome? {
         get { outcomeRawValue.flatMap(SessionOutcome.init(rawValue:)) }

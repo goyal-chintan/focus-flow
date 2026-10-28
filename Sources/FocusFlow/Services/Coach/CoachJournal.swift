@@ -21,6 +21,8 @@ final class CoachJournal {
             case unseen
             /// The user came back to the desk.
             case arrival
+            /// Progress logged: a task ticked or a key result moved.
+            case logged
         }
 
         let at: Date

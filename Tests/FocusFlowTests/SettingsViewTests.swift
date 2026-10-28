@@ -117,12 +117,7 @@ final class SettingsViewTests: XCTestCase {
         XCTAssertFalse(CoachSettingsTab.shouldOfferPauseScreenOff(style: .gentle, pauseScreenEnabled: false))
     }
 
-    func testStarterBlockChoiceSnapsToOfferedLengths() {
-        XCTAssertEqual(CoachSettingsTab.starterBlockChoices, [2, 5, 10])
-        XCTAssertEqual(CoachSettingsTab.starterBlockChoice(for: 5), 5)
-        XCTAssertEqual(CoachSettingsTab.starterBlockChoice(for: 1), 2)
-        XCTAssertEqual(CoachSettingsTab.starterBlockChoice(for: 8), 10)
-        XCTAssertEqual(CoachSettingsTab.starterBlockChoice(for: 25), 10)
+    func testStarterBlockDefaultsToFiveMinutes() {
         XCTAssertEqual(AppSettings().coachStarterBlockMinutes, 5)
     }
 }

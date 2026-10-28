@@ -7,6 +7,11 @@ struct FocusCoachReasonChipSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
     let anomalyKind: FocusCoachInterruptionKind
+    /// False when the host already titles the moment (the break window says "Break ran 3m over"):
+    /// one title from one source (screen audit 2026-10-28).
+    var showsTitle: Bool = true
+    /// The break window leaves "Snooze Coach" out: a break is not a prompt to snooze.
+    var showsSnooze: Bool = true
     let onSelect: (FocusCoachReason) -> Void
     let onSnooze: () -> Void
     let onDismiss: () -> Void
@@ -24,9 +29,15 @@ struct FocusCoachReasonChipSheet: View {
             // Header
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(headerTitle)
-                        .font(LiquidDesignTokens.Typography.headlineMedium)
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    if showsTitle {
+                        Text(headerTitle)
+                            .font(LiquidDesignTokens.Typography.headlineMedium)
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    } else {
+                        Text(questionTitle)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                    }
 
                     Text("This helps your coach learn what's a real interruption vs. avoidance.")
                         .font(.system(size: 11, weight: .regular, design: .rounded))
@@ -87,53 +98,58 @@ struct FocusCoachReasonChipSheet: View {
                 }
             }
 
-            // Actions
-            HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-                // Snooze button
-                Button(action: onSnooze) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "moon.zzz")
-                            .font(.system(size: 10, weight: .semibold))
-                            .accessibilityHidden(true)
-                        Text("Snooze Coach")
-                            .font(LiquidDesignTokens.Typography.labelSmall)
-                    }
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .padding(.horizontal, LiquidDesignTokens.Spacing.medium)
-                    .padding(.vertical, LiquidDesignTokens.Spacing.small)
-                    .background {
-                        Capsule()
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(Capsule().strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                // Submit (only if reason selected)
-                if let reason = selectedReason {
-                    Button(action: {
-                        confirmedReason = reason
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            onSelect(reason)
-                        }
-                    }) {
-                        Text("Done")
-                            .font(LiquidDesignTokens.Typography.labelMedium)
-                            .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                            .padding(.horizontal, LiquidDesignTokens.Spacing.large)
+            // Actions (none to show without snooze until a reason is picked)
+            if showsSnooze || selectedReason != nil {
+                HStack(spacing: LiquidDesignTokens.Spacing.medium) {
+                    // Snooze button
+                    if showsSnooze {
+                        Button(action: onSnooze) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "moon.zzz")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .accessibilityHidden(true)
+                                Text("Snooze Coach")
+                                    .font(LiquidDesignTokens.Typography.labelSmall)
+                            }
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            .padding(.horizontal, LiquidDesignTokens.Spacing.medium)
                             .padding(.vertical, LiquidDesignTokens.Spacing.small)
                             .background {
                                 Capsule()
-                                    .fill(LiquidDesignTokens.Spectral.electricBlue.opacity(0.12))
-                                    .overlay(
-                                        Capsule().strokeBorder(LiquidDesignTokens.Spectral.electricBlue.opacity(0.2), lineWidth: 0.5)
-                                    )
+                                    .fill(Color.white.opacity(0.04))
+                                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5))
                             }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Snooze coach")
                     }
-                    .buttonStyle(.plain)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+    
+                    Spacer()
+    
+                    // Submit (only if reason selected)
+                    if let reason = selectedReason {
+                        Button(action: {
+                            confirmedReason = reason
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                onSelect(reason)
+                            }
+                        }) {
+                            Text("Done")
+                                .font(LiquidDesignTokens.Typography.labelMedium)
+                                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
+                                .padding(.horizontal, LiquidDesignTokens.Spacing.large)
+                                .padding(.vertical, LiquidDesignTokens.Spacing.small)
+                                .background {
+                                    Capsule()
+                                        .fill(LiquidDesignTokens.Spectral.electricBlue.opacity(0.12))
+                                        .overlay(
+                                            Capsule().strokeBorder(LiquidDesignTokens.Spectral.electricBlue.opacity(0.2), lineWidth: 0.5)
+                                        )
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    }
                 }
             }
         }
@@ -205,6 +221,14 @@ struct FocusCoachReasonChipSheet: View {
         .buttonStyle(.plain)
         .accessibilityLabel(reason.displayName)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The question alone, when the host shows the title ("What kept you?").
+    private var questionTitle: String {
+        switch anomalyKind {
+        case .breakOverrun: "What kept you?"
+        default: "What happened?"
+        }
     }
 
     private var headerTitle: String {

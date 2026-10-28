@@ -1,8 +1,8 @@
 import SwiftUI
 import SwiftData
 
-/// Goals: direction (Dan Koe's protocol), today's levers, and every active goal with its pace
-/// (priorities-goals design §3.2, §3.5).
+/// Goals: every active goal with its pace, then the direction behind them (Dan Koe's protocol)
+/// (priorities-goals design §3.2, §3.5; screen audit: levers live in key-result captions here).
 struct GoalsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.companionNowOverride) private var nowOverride
@@ -32,10 +32,11 @@ struct GoalsView: View {
     }
 
     private func content(now: Date) -> some View {
-        let levers = GoalDataBuilder.levers(activeGoals, now: now)
-        return ScrollView {
+        ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
-                FFPageHeader("Goals", subtitle: activeGoals.isEmpty ? "Decide what you're playing for" : "\(activeGoals.count) active") {
+                FFPageHeader("Goals", subtitle: activeGoals.isEmpty
+                             ? "Decide what you're playing for"
+                             : "\(activeGoals.count) active · each key result shows what it needs a day") {
                     Button {
                         goalSheet = GoalSheet(goal: nil, projectID: projects.first { $0.priorityRank == 1 }?.id)
                     } label: {
@@ -44,24 +45,8 @@ struct GoalsView: View {
                     .buttonStyle(.bordered)
                 }
 
-                if let settings = allSettings.first {
-                    DirectionCard(settings: settings, bossFight: activeGoals.first { $0.isBossFight })
-                }
-
-                FFSection("Today's levers", subtitle: "The 2–3 actions that move your goals most today, from what's furthest behind.") {
-                    if levers.isEmpty {
-                        FFEmptyState(
-                            systemImage: "bolt",
-                            message: activeGoals.isEmpty ? "No goals yet" : "Nothing behind today",
-                            detail: activeGoals.isEmpty ? "Add a goal with a deadline and key results; the levers come from its pace." : "You're on pace. Protect it."
-                        )
-                    } else {
-                        VStack(alignment: .leading, spacing: FFSpace.s) {
-                            ForEach(levers) { LeverRow(lever: $0) }
-                        }
-                    }
-                }
-
+                // Goal cards first; their key-result captions carry today's pace ("need 2/day"),
+                // so levers are not repeated here (screen audit: levers once per screen).
                 if activeGoals.isEmpty {
                     FFSection {
                         FFEmptyState(
@@ -79,6 +64,10 @@ struct GoalsView: View {
                             onEdit: { goalSheet = GoalSheet(goal: goal, projectID: goal.projectID) }
                         )
                     }
+                }
+
+                if let settings = allSettings.first {
+                    DirectionCard(settings: settings)
                 }
 
                 if !finishedGoals.isEmpty {
@@ -113,13 +102,15 @@ struct GoalsView: View {
     }
 }
 
-/// Dan Koe's "fix your life" outputs, kept in view: anti-vision (the stakes), vision (the win
-/// condition), the 1-year goal, this month's boss fight and the rules.
+/// Dan Koe's "fix your life" outputs, kept one click away: anti-vision (the stakes), vision (the
+/// win condition), the 1-year goal and the rules. Collapsed to the 1-year goal; the boss fight is
+/// badged on its goal card.
 struct DirectionCard: View {
     @Bindable var settings: AppSettings
-    let bossFight: ProjectGoal?
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expanded = false
     @State private var editing = false
 
     private struct Field: Identifiable {
@@ -140,32 +131,59 @@ struct DirectionCard: View {
         ]
     }
 
+    private var yearGoal: String {
+        let value = settings.lifeYearGoal?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? "not set yet" : value
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: FFSpace.m) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Direction").ffText(.title3)
+            Button {
+                if expanded && editing { try? modelContext.save(); editing = false }
+                withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: FFSpace.s) {
+                    Image(systemName: "mountain.2.fill")
+                        .foregroundStyle(FFPalette.accent)
+                        .accessibilityHidden(true)
+                    Text("1-year:").ffText(.callout)
+                    Text(yearGoal).ffText(.headline).truncationMode(.tail)
+                    Spacer(minLength: FFSpace.s)
+                    Text("Direction").ffText(.callout)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .accessibilityHidden(true)
+                }
+                .lineLimit(1)
+                .frame(minHeight: 30)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Direction. 1-year goal: \(yearGoal)")
+            .accessibilityHint(expanded ? "Collapse" : "Show anti-vision, vision and rules")
+
+            if expanded {
+                HStack(alignment: .firstTextBaseline) {
                     Text("What you're playing for, and what you refuse to become.").ffText(.callout)
+                    Spacer()
+                    Button(editing ? "Done" : "Edit") {
+                        if editing { try? modelContext.save() }
+                        withAnimation(FFAnimation.control) { editing.toggle() }
+                    }
+                    .buttonStyle(.bordered)
                 }
-                Spacer()
-                Button(editing ? "Done" : "Edit") {
-                    if editing { try? modelContext.save() }
-                    withAnimation(FFAnimation.control) { editing.toggle() }
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: FFSpace.m), GridItem(.flexible(), spacing: FFSpace.m)], spacing: FFSpace.m) {
+                    ForEach(fields) { field in
+                        fieldView(field)
+                    }
                 }
-                .buttonStyle(.bordered)
-            }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: FFSpace.m), GridItem(.flexible(), spacing: FFSpace.m)], spacing: FFSpace.m) {
-                ForEach(fields) { field in
-                    fieldView(field)
-                }
-            }
-            HStack(spacing: FFSpace.s) {
-                Image(systemName: "flag.checkered").foregroundStyle(FFPalette.accent)
-                Text("This month's boss fight:").ffText(.callout)
-                Text(bossFight?.title ?? "none yet. Mark one goal as the boss fight.").ffText(.headline)
+                .transition(.opacity)
             }
         }
-        .padding(FFSpace.l)
+        .padding(.horizontal, FFSpace.l)
+        .padding(.vertical, FFSpace.m)
         .ffSurface()
         .help("From Dan Koe's \"How to fix your entire life in 1 day\" (2026): anti-vision, vision, 1-year goal, 1-month project, daily levers, constraints.")
     }

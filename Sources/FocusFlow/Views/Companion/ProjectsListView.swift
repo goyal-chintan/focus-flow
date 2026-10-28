@@ -14,7 +14,6 @@ struct ProjectsListView: View {
     @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
     @Environment(\.companionNowOverride) private var nowOverride
-    @Query private var priorities: [WeeklyPriority]
 
     @State private var selectedID: UUID?
     @State private var showingForm = false
@@ -45,7 +44,7 @@ struct ProjectsListView: View {
     }
 
     var body: some View {
-        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, now: nowOverride ?? Date())
+        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
         let weekTotals = snapshot.analytics.projectTotals(snapshot.samples, in: snapshot.thisWeek)
 
         VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
@@ -77,13 +76,11 @@ struct ProjectsListView: View {
                                 project: project,
                                 snapshot: snapshot,
                                 sessions: sessions,
-                                priorities: priorities.map(PrioritySample.init),
                                 goals: goals.filter { $0.projectID == project.id && $0.status == .active },
                                 onEdit: { startEdit(project) },
                                 onArchive: { projectToArchive = project },
                                 onSelectSession: { editingSession = $0 },
-                                onAddGoal: { goalSheet = GoalSheet(goal: nil, projectID: project.id) },
-                                onEditGoal: { goalSheet = GoalSheet(goal: $0, projectID: project.id) }
+                                onAddGoal: { goalSheet = GoalSheet(goal: nil, projectID: project.id) }
                             )
                             .id(project.id)
                             .transition(.opacity)
@@ -263,72 +260,44 @@ private struct ProjectDetail: View {
     let project: Project
     let snapshot: CompanionSnapshot
     let sessions: [FocusSession]
-    let priorities: [PrioritySample]
     let goals: [ProjectGoal]
     let onEdit: () -> Void
     let onArchive: () -> Void
     let onSelectSession: (FocusSession) -> Void
     let onAddGoal: () -> Void
-    let onEditGoal: (ProjectGoal) -> Void
 
     @State private var selectedDay: Date?
+    @AppStorage("companionRequestedTab") private var requestedTabRaw: String = ""
 
     private var key: AnalyticsProjectKey { AnalyticsProjectKey(project: project, customLabel: nil) }
     private var color: Color { FFPalette.project(project.color) }
+    private var target: TimeInterval? { project.dailyTargetMinutes.flatMap { $0 > 0 ? TimeInterval($0 * 60) : nil } }
 
     var body: some View {
         let analytics = snapshot.analytics
-        let projectSamples = snapshot.samples.filter { sample in sample.normalisedShares.contains { $0.project == key } }
         let weekDays = weekDays(analytics)
-        let weekSeconds = weekDays.reduce(0) { $0 + $1.seconds }
         let weekSessions = sessions
             .filter { $0.type == .focus && $0.actualDuration >= 60 && $0.effectiveEnd > snapshot.thisWeek.start && $0.startedAt < snapshot.thisWeek.end }
             .filter { session in FocusSample(session).normalisedShares.contains { $0.project == key } }
             .sorted { $0.startedAt > $1.startedAt }
-        let allTime = projectSamples.reduce(0) { total, sample in
-            total + sample.activeSeconds * (sample.normalisedShares.first { $0.project == key }?.fraction ?? 0)
-        }
-        let mix = analytics.outcomeMix(projectSamples.filter { $0.project == key })
-        let linked = priorities.filter { $0.projectID == project.id && snapshot.thisWeek.contains($0.weekStart) }
 
         VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
-            header(linked: linked)
+            header
 
-            HStack(alignment: .top, spacing: FFSpace.l) {
-                FFStat(label: "This week", value: FFFormat.duration(weekSeconds), caption: "\(weekSessions.count) block\(weekSessions.count == 1 ? "" : "s")")
-                Divider()
-                FFStat(
-                    label: "Daily average",
-                    value: FFFormat.duration(weekSeconds / Double(max(1, daysElapsedThisWeek(analytics)))),
-                    caption: "This week so far"
-                )
-                Divider()
-                FFStat(label: "All time", value: FFFormat.duration(allTime), caption: "\(projectSamples.count) blocks")
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(FFSpace.l)
-            .ffSurface()
+            statsRow(analytics)
 
             goalsSection
 
-            FFSection("This week", subtitle: "Daily focus on \(project.name)") {
+            FFSection("This week", subtitle: target.map { "Daily focus on \(project.name) against its \(FFFormat.duration($0)) target" } ?? "Daily focus on \(project.name)") {
                 DailyFocusChart(
                     days: weekDays,
-                    goal: snapshot.goal,
+                    goal: target ?? snapshot.goal,
                     colors: ProjectColorScale([key]),
                     singleColor: color,
-                    showGoal: false,
+                    showGoal: target != nil,
                     selectedDay: $selectedDay,
                     height: 170
                 )
-            }
-
-            FFSection("Real work vs busywork", subtitle: mix.ratedCount > 0 ? "\(mix.ratedCount) rated blocks, all time" : nil) {
-                if mix.ratedCount == 0 {
-                    FFEmptyState(systemImage: "checklist", message: "Rate your sessions after each block to see this")
-                } else {
-                    OutcomeMixBar(mix: mix)
-                }
             }
 
             FFSection("Blocks this week") {
@@ -346,31 +315,102 @@ private struct ProjectDetail: View {
         }
     }
 
+    // MARK: Stats (target-aware)
+
+    private func seconds(on day: FocusAnalytics.DayTotal) -> TimeInterval {
+        day.byProject.first { $0.project == key }?.seconds ?? 0
+    }
+
+    private func statsRow(_ analytics: FocusAnalytics) -> some View {
+        let todaySeconds = seconds(on: analytics.dayTotal(snapshot.samples, on: snapshot.now))
+        let todayTarget = project.dailyTarget(on: snapshot.now).map { TimeInterval($0 * 60) }
+        // Average over the last 7 days the target applies to (weekdays only when it is weekday-only).
+        let last7 = analytics.dailyTotals(snapshot.samples, trailing: 7, endingAt: snapshot.now)
+        let counted = target == nil ? last7 : last7.filter { project.dailyTarget(on: $0.day) != nil }
+        let average = counted.isEmpty ? 0 : counted.reduce(0) { $0 + seconds(on: $1) } / Double(counted.count)
+        let projectSamples = snapshot.samples.filter { sample in sample.normalisedShares.contains { $0.project == key } }
+        let allTime = projectSamples.reduce(0) { total, sample in
+            total + sample.activeSeconds * (sample.normalisedShares.first { $0.project == key }?.fraction ?? 0)
+        }
+        let todayCaption: String = if let todayTarget {
+            "of \(FFFormat.duration(todayTarget))"
+        } else if target != nil {
+            "No target today"
+        } else {
+            "No daily target"
+        }
+        return HStack(alignment: .top, spacing: FFSpace.l) {
+            FFStat(
+                label: "Today",
+                value: FFFormat.duration(todaySeconds),
+                caption: todayCaption,
+                valueColor: (todayTarget.map { todaySeconds >= $0 } ?? false) ? FFPalette.goal : nil
+            )
+            Divider()
+            FFStat(
+                label: "7-day average",
+                value: "\(FFFormat.duration(average))/day",
+                caption: target.map { "of \(FFFormat.duration($0))\(project.targetWeekdaysOnly == true ? " on weekdays" : "")" } ?? "Last 7 days"
+            )
+            Divider()
+            FFStat(label: "All time", value: FFFormat.duration(allTime), caption: "\(projectSamples.count) block\(projectSamples.count == 1 ? "" : "s")")
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(FFSpace.l)
+        .ffSurface()
+    }
+
+    // MARK: Goals (compact; the full cards live in the Goals tab)
+
     private var goalsSection: some View {
-        VStack(alignment: .leading, spacing: FFSpace.m) {
-            HStack {
-                Text("Goals").ffText(.title3)
-                Spacer()
-                Button(action: onAddGoal) { Label("Add goal", systemImage: "plus") }
-                    .buttonStyle(.bordered)
-            }
+        FFSection("Goals") {
+            Button(action: onAddGoal) { Label("Add goal", systemImage: "plus") }
+                .buttonStyle(.bordered)
+        } content: {
             if goals.isEmpty {
-                FFSection {
-                    FFEmptyState(
-                        systemImage: "scope",
-                        message: "No goal with a deadline yet",
-                        detail: "Add one (e.g. \"60 LeetCode by 28 Nov\") and the app shows whether you're on pace."
-                    )
-                }
+                Text("No goal with a deadline yet. Add one (e.g. \"60 LeetCode by 28 Nov\") and the app shows whether you're on pace.")
+                    .ffText(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                ForEach(goals) { goal in
-                    GoalCard(goal: goal, project: project, now: snapshot.now, onEdit: { onEditGoal(goal) })
+                VStack(spacing: 2) {
+                    ForEach(goals) { goal in
+                        goalRow(goal)
+                    }
                 }
+                .padding(.horizontal, -FFSpace.s)
             }
         }
     }
 
-    private func header(linked: [PrioritySample]) -> some View {
+    private func goalRow(_ goal: ProjectGoal) -> some View {
+        let summary = GoalDataBuilder.summary(goal, now: snapshot.now)
+        return HStack(spacing: FFSpace.m) {
+            Image(systemName: goal.isBossFight ? "flag.checkered" : "scope")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(goal.title).ffText(.headline).lineLimit(1)
+                Text("\(Int((summary.fraction * 100).rounded()))% done · due \(goal.deadline.formatted(.dateTime.day().month(.abbreviated)))")
+                    .ffText(.caption)
+                    .monospacedDigit()
+            }
+            Spacer(minLength: FFSpace.s)
+            PaceStatusPill(status: summary.status)
+            Button("Open in Goals") { requestedTabRaw = CompanionTab.goals.rawValue }
+                .buttonStyle(.link)
+                .font(FFTextStyle.callout.font)
+        }
+        .padding(.horizontal, FFSpace.s)
+        .frame(minHeight: 40)
+        .ffHoverRow()
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
         HStack(alignment: .center, spacing: FFSpace.m) {
             Image(systemName: project.icon ?? "folder.fill")
                 .font(.system(size: 17, weight: .semibold))
@@ -380,7 +420,7 @@ private struct ProjectDetail: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(project.name).ffText(.title3).lineLimit(1)
-                Text(headerCaption(linked: linked)).ffText(.caption).lineLimit(1)
+                Text(headerCaption).ffText(.caption).lineLimit(1)
             }
             Spacer(minLength: FFSpace.s)
             Button("Edit", action: onEdit).buttonStyle(.bordered)
@@ -388,18 +428,16 @@ private struct ProjectDetail: View {
         }
     }
 
-    private func headerCaption(linked: [PrioritySample]) -> String {
+    /// "#1 · Learning · 4h/day · Interview-ready for a senior data role".
+    private var headerCaption: String {
         var parts: [String] = []
-        if let rank = project.priorityRank { parts.append("Priority #\(rank)") }
+        if let rank = project.priorityRank { parts.append("#\(rank)") }
         if project.areaRaw != nil { parts.append(project.area.title) }
-        if let minutes = project.dailyTargetMinutes, minutes > 0 {
-            parts.append("\(FFFormat.duration(TimeInterval(minutes * 60)))/day\(project.targetWeekdaysOnly == true ? " on weekdays" : "")")
+        if let target {
+            parts.append("\(FFFormat.duration(target))/day\(project.targetWeekdaysOnly == true ? " on weekdays" : "")")
         }
         if let purpose = project.purpose { parts.append(purpose) }
-        if !linked.isEmpty { parts.append("Serves " + linked.map(\.title).joined(separator: ", ")) }
-        let profiles = project.effectiveBlockProfiles.map(\.name)
-        if !profiles.isEmpty { parts.append("Blocks with " + profiles.joined(separator: ", ")) }
-        if parts.isEmpty { parts.append("No blocking profile") }
+        if parts.isEmpty { return "Not ranked · no daily target" }
         return parts.joined(separator: " · ")
     }
 
@@ -410,9 +448,5 @@ private struct ProjectDetail: View {
             let slice = day.byProject.first { $0.project == key }
             return FocusAnalytics.DayTotal(day: day.day, seconds: slice?.seconds ?? 0, blocks: slice == nil ? 0 : 1, byProject: slice.map { [$0] } ?? [])
         }
-    }
-
-    private func daysElapsedThisWeek(_ analytics: FocusAnalytics) -> Int {
-        (analytics.calendar.dateComponents([.day], from: snapshot.thisWeek.start, to: snapshot.now).day ?? 0) + 1
     }
 }

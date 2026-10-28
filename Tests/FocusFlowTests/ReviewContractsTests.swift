@@ -2,7 +2,7 @@ import XCTest
 @testable import FocusFlow
 
 final class ReviewContractsTests: XCTestCase {
-    func testSessionCompleteNextStageShowsPlannedAndSuggestedBreakActions() throws {
+    private func sessionCompleteSource() throws -> String {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
         let sourceURL = repoRoot
@@ -10,68 +10,56 @@ final class ReviewContractsTests: XCTestCase {
             .appendingPathComponent("FocusFlow")
             .appendingPathComponent("Views")
             .appendingPathComponent("SessionCompleteWindow.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(
-            source.contains("title: \"Planned 5m Break\""),
-            "SessionCompleteWindow must expose a planned break action in stage 2."
-        )
-        XCTAssertTrue(
-            source.contains("title: \"Suggested Earned Break\""),
-            "SessionCompleteWindow must expose a suggested earned break action in stage 2."
-        )
-        XCTAssertTrue(
-            source.contains("gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: timerVM.cycleProgress)"),
-            "SessionCompleteWindow should prioritize reflection/progress completion as the primary CTA."
-        )
-        XCTAssertTrue(
-            source.contains("GradientCTAButton(\n                        title: \"Suggested Earned Break\""),
-            "Suggested earned break should be visually prioritized over skip-break actions."
-        )
-        XCTAssertTrue(
-            source.contains("LiquidActionButton(\n                        title: \"Start Next Block\""),
-            "Start Next Block should remain a secondary action to avoid skip-break bias."
-        )
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 
-    func testSessionCompleteResetsToEarnedStageOnAppear() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("SessionCompleteWindow.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    /// Screen audit 2026-10-28: one stage; a sticky footer with the earned break (a menu offers
+    /// 5 min), the next block on the next task, and Done for today.
+    func testSessionCompleteFooterOffersEarnedBreakNextBlockAndDoneForToday() throws {
+        let source = try sessionCompleteSource()
 
+        XCTAssertFalse(source.contains("enum CompletionStage"), "The block-end window has one stage.")
+        XCTAssertFalse(source.contains("title: \"Continue\""), "No Continue to a second stage.")
         XCTAssertTrue(
-            source.contains("stage = .earned"),
-            "SessionCompleteWindow should reset to earned stage on each appearance."
+            source.contains("LiquidActionButton(title: title, icon: \"cup.and.saucer.fill\", role: .primary)"),
+            "The earned break stays the visually prioritized action (no skip-break bias)."
         )
+        XCTAssertTrue(
+            source.contains("saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))"),
+            "The break button takes the earned break."
+        )
+        XCTAssertTrue(
+            source.contains("Button(\"Break 5 min\")") && source.contains("saveAndDismiss(action: .takeBreak(duration: 300))"),
+            "A menu still offers the plain 5 minute break."
+        )
+        XCTAssertTrue(
+            source.contains("LiquidActionButton(title: startTitle, icon: \"play.fill\", role: .secondary)"),
+            "Starting the next block stays a secondary action."
+        )
+        XCTAssertTrue(source.contains("saveAndDismiss(action: .continueFocusing, prepare: prepareNextStart)"))
+        XCTAssertTrue(source.contains("\"Done for today\"") && source.contains("saveAndDismiss(action: .endSession)"))
+        XCTAssertTrue(source.contains("timerVM.discardManualStop()"), "A manual stop can still be discarded.")
+    }
+
+    func testSessionCompleteClearsActionStateOnAppear() throws {
+        let source = try sessionCompleteSource()
         XCTAssertTrue(
             source.contains("hasHandledAction = false"),
             "SessionCompleteWindow should clear hasHandledAction on each appearance."
         )
     }
 
+    /// Block-end logging (screen audit 2026-10-28): no mood, no free-text note; ticks become the
+    /// achievement; reminders only with Reminders sync on.
     func testSessionCompleteClearsReflectionDraftsOnAppear() throws {
-        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
-        let sourceURL = repoRoot
-            .appendingPathComponent("Sources")
-            .appendingPathComponent("FocusFlow")
-            .appendingPathComponent("Views")
-            .appendingPathComponent("SessionCompleteWindow.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try sessionCompleteSource()
 
-        XCTAssertTrue(
-            source.contains("carryForwardNote = \"\""),
-            "SessionCompleteWindow should clear any carry-forward note draft on each appearance."
-        )
-        XCTAssertTrue(
-            source.contains("selectedMood = nil"),
-            "SessionCompleteWindow should clear the prior mood selection on each appearance."
-        )
+        XCTAssertFalse(source.contains("MoodSelector"), "Mood is removed from the block-end window.")
+        XCTAssertFalse(source.contains("carryForwardNote"), "The free-text carry-forward note is replaced by Next step tasks.")
+        XCTAssertFalse(source.contains("TextEditor("), "Nothing free-text the app then ignores.")
+        XCTAssertTrue(source.contains("mood: nil"), "saveReflection no longer receives a mood.")
+        XCTAssertTrue(source.contains("achievement: achievement"), "The achievement saved is the ticked tasks.")
+        XCTAssertTrue(source.contains("$0.isDone && $0.sessionID == sessionID"), "Achievement = tasks ticked in this block.")
         XCTAssertTrue(
             source.contains("showSplits = false"),
             "SessionCompleteWindow should collapse project splits on each appearance."
@@ -87,6 +75,15 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(
             source.contains("capturedReason = nil"),
             "SessionCompleteWindow should clear the prior coach reason confirmation on each appearance."
+        )
+        XCTAssertTrue(
+            source.contains("onAttachReminder: settings?.remindersIntegrationEnabled == true ? { showReminderPicker = true } : nil"),
+            "Attach reminder shows only with Reminders sync on; otherwise no reminders UI at all."
+        )
+        XCTAssertFalse(source.contains("Enable Reminders sync in Settings"), "No reminders UI when sync is off.")
+        XCTAssertTrue(
+            source.contains("settings?.remindersIntegrationEnabled == true ? selectedReminderItems.map(\\.id) : []"),
+            "Linked reminders are still completed when used."
         )
     }
 
@@ -313,7 +310,7 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(settingsScene.contains(".windowResizability(.contentSize)"))
     }
 
-    func testCoachSettingsHasRescueSectionBoundToRescueFields() throws {
+    func testCoachSettingsHasStartingSectionAndNoKnobsTheLearnerOwns() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let repoRoot = testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
         let source = try String(
@@ -321,14 +318,23 @@ final class ReviewContractsTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(source.contains("Text(\"Rescue\")"))
+        // Four groups (screen audit): Style, Starting, Limits, During a block.
+        for header in ["Text(\"Style\")", "Text(\"Starting\")", "Text(\"Limits\")", "Text(\"During a block\")"] {
+            XCTAssertTrue(source.contains(header), header)
+        }
+        XCTAssertTrue(source.contains("Text(\"Help me start\")"))
+        XCTAssertTrue(source.contains("settings.antiProcrastinationEnabled = newValue"))
+        XCTAssertTrue(source.contains("settings.coachIdleStarterEnabled = newValue"))
         XCTAssertTrue(source.contains("Toggle(\"Show drift time in the menu bar\", isOn: bind(\\.coachShowDriftInMenuBar))"))
         XCTAssertTrue(source.contains("settings.coachPauseScreenEnabled = newValue"))
         XCTAssertTrue(source.contains("Text(\"Pause screen when I spiral in a focus window\")"))
-        XCTAssertTrue(source.contains("A calm full-screen pause with one button to start 5 minutes. Never a lock."))
-        XCTAssertTrue(source.contains("Picker(\"Starter block\""))
-        XCTAssertTrue(source.contains("settings.coachStarterBlockMinutes = $0"))
-        XCTAssertTrue(source.contains("Toggle(\"⌃⌥Space starts a starter block\", isOn: bind(\\.coachGlobalHotkeyEnabled))"))
+        XCTAssertTrue(source.contains("Toggle(\"⌃⌥Space starts a block from anywhere\", isOn: bind(\\.coachGlobalHotkeyEnabled))"))
+        // What v5 learns or what nothing reads has no knob.
+        for removed in ["Picker(\"Starter block\"", "Picker(\"Escalation\"", "DisclosureGroup(\"Advanced\"",
+                        "First reminder after", "WeeklyPrioritiesSection(", "coachBringAppToFrontOnStrongPrompt",
+                        "coachAutoOpenPopoverOnStrongPrompt"] {
+            XCTAssertFalse(source.contains(removed), removed)
+        }
         // Offer, don't force: the style change only shows the row.
         XCTAssertTrue(source.contains("Pause screen is on. Turn off for this style?"))
         XCTAssertTrue(source.contains("bind(\\.coachStyle, onSet: styleDidChange)"))

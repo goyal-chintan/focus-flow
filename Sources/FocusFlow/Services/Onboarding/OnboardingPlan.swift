@@ -41,7 +41,7 @@ struct OnboardingProjectPreset: Identifiable, Hashable, Sendable {
         .init(name: "Interview prep", area: .learning, color: "purple", icon: "graduationcap.fill"),
         .init(name: "Side project", area: .personal, color: "orange", icon: "hammer.fill"),
         .init(name: "Writing", area: .personal, color: "teal", icon: "pencil.line"),
-        .init(name: "Deep work", area: .work, color: "blue", icon: "briefcase.fill"),
+        .init(name: "Reading", area: .personal, color: "indigo", icon: "book.fill"),
     ]
 }
 
@@ -227,7 +227,14 @@ struct OnboardingDraft: Equatable {
                 goal.deadline = deadline(from: now)
                 goal.isBossFight = !goals.contains { $0.status == .active && $0.isBossFight }
                 goal.keyResults = [.init(title: trimmedResult, kind: .count, target: Double(resultTarget))]
-                goal.apply(in: context, existing: nil)
+                let saved = goal.apply(in: context, existing: nil)
+                // Today's step becomes the first task, linked, so ticking it moves the goal.
+                if let result = saved.sortedKeyResults.first {
+                    let quota = dailyQuota
+                    let task = DailyTask(title: "\(quota) \(resultUnit(quota))", day: Calendar.current.startOfDay(for: now),
+                                         projectID: project.id, keyResultID: result.id, amount: Double(quota))
+                    context.insert(task)
+                }
             }
             // Own work sets the daily goal the ring, notch and coach pace against.
             if area.isOwnWork {
@@ -236,6 +243,8 @@ struct OnboardingDraft: Equatable {
             }
         }
         settings.coachStyleRawValue = coachStyle.rawValue
+        // The pause screen is Challenger's; Gentle and Data start with it off (rescue-loop design §3).
+        settings.coachPauseScreenEnabled = coachStyle == .challenger
         settings.notchCompanionEnabled = notchEnabled
         settings.onboardingCompletedAt = now
         try? context.save()
