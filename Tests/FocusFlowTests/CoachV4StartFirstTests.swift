@@ -290,6 +290,70 @@ final class CoachV4StartFirstTests: XCTestCase {
         XCTAssertNil(summary.lift, "Needs 20 randomised moments")
     }
 
+    // MARK: Priorities and goals → coach (priorities-goals design §3.5)
+
+    func testCoachAimsAtTheTopPriorityAndTodaysLeverBecomesTheIntent() throws {
+        let vm = try makeViewModel()
+        let context = try XCTUnwrap(containers.last?.mainContext)
+        let office = Project(name: "Office")
+        office.priorityRank = 2
+        office.area = .work
+        let learning = Project(name: "Learning")
+        learning.priorityRank = 1
+        learning.area = .learning
+        context.insert(office)
+        context.insert(learning)
+        let now = Date()
+        let goal = ProjectGoal(title: "Apply by Nov 28", projectID: learning.id, startDate: now.addingTimeInterval(-10 * 86_400), deadline: now.addingTimeInterval(20 * 86_400))
+        context.insert(goal)
+        let leet = GoalKeyResult(title: "LeetCode", kind: .count, target: 60, unit: "questions")
+        context.insert(leet)
+        goal.keyResults = [leet]
+        try context.save()
+
+        let snapshot = vm.coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: .neutral)
+        XCTAssertEqual(snapshot.target.name, "Learning", "No weekly priority: the #1 project")
+        XCTAssertEqual(snapshot.target.projectID, learning.id)
+        XCTAssertEqual(snapshot.facts.lever, "3 LeetCode questions", "60 left over 20 days")
+
+        XCTAssertTrue(vm.startNextBlock(minutes: 15))
+        let session = try XCTUnwrap(context.fetch(FetchDescriptor<FocusSession>()).first)
+        XCTAssertEqual(session.project?.id, learning.id)
+        XCTAssertEqual(session.intentText, "3 LeetCode questions")
+    }
+
+    func testOfficeHoursDoNotFillTheOwnWorkGoal() throws {
+        let vm = try makeViewModel()
+        let context = try XCTUnwrap(containers.last?.mainContext)
+        let office = Project(name: "Office")
+        office.area = .work
+        let learning = Project(name: "Learning")
+        learning.area = .learning
+        context.insert(office)
+        context.insert(learning)
+        let start = Calendar.current.startOfDay(for: Date()).addingTimeInterval(60)
+        func block(_ project: Project, at offset: TimeInterval, minutes: Double) {
+            let session = FocusSession(type: .focus, duration: minutes * 60, project: project)
+            session.startedAt = start.addingTimeInterval(offset)
+            session.endedAt = session.startedAt.addingTimeInterval(minutes * 60)
+            session.completed = true
+            context.insert(session)
+        }
+        block(office, at: 0, minutes: 180)
+        try context.save()
+        vm.todayFocusTime = 180 * 60
+        XCTAssertEqual(vm.goalProgressSeconds(), 0, "Three hours of office are not your own work")
+        block(learning, at: 4 * 3600, minutes: 30)
+        try context.save()
+        vm.todayFocusTime = 210 * 60
+        XCTAssertEqual(vm.goalProgressSeconds(), 1800, accuracy: 1)
+
+        office.areaRaw = nil
+        try context.save()
+        vm.todayFocusTime = 210 * 60 + 1
+        XCTAssertEqual(vm.goalProgressSeconds(), 210 * 60 + 1, "No Work project: all focus counts, as before")
+    }
+
     // MARK: Journal file
 
     func testJournalWritesReadsAndTrims() throws {
@@ -312,7 +376,7 @@ final class CoachV4StartFirstTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self,
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self,
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         containers.append(container)

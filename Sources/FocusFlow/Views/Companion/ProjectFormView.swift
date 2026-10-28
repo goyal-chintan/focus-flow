@@ -1,20 +1,94 @@
 import SwiftUI
 import SwiftData
 
+/// Editable copy of a project (priorities-goals design §3.1, §3.6).
+struct ProjectDraft {
+    var name = ""
+    var color = "blue"
+    var icon = "folder.fill"
+    var blockProfiles: [BlockProfile] = []
+    var workMode: WorkMode = .deepWork
+    var guardianSensitivity: GuardianSensitivity = .normal
+    var difficultyBias: DifficultyBias = .moderate
+    var area: ProjectArea = .personal
+    var rank: Int?
+    /// 0 = no target.
+    var dailyTargetMinutes = 0
+    var weekdaysOnly = false
+    var purpose = ""
+    /// New project, or a project without an active goal: also create this goal on save.
+    var addsGoal = false
+    var goal = GoalDraft()
+
+    init() {}
+
+    init(project: Project) {
+        name = project.name
+        color = project.color
+        icon = project.icon ?? "folder.fill"
+        blockProfiles = project.effectiveBlockProfiles
+        workMode = project.workMode
+        guardianSensitivity = project.guardianSensitivity
+        difficultyBias = project.difficultyBias
+        area = project.areaRaw == nil ? .other : project.area
+        rank = project.priorityRank
+        dailyTargetMinutes = project.dailyTargetMinutes ?? 0
+        weekdaysOnly = project.targetWeekdaysOnly ?? false
+        purpose = project.purpose ?? ""
+    }
+
+    var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+    var isValid: Bool { !trimmedName.isEmpty && (!addsGoal || goal.isValid) }
+
+    /// Writes the draft to `project`. Taking a rank that another project holds moves the others down.
+    @MainActor
+    func apply(to project: Project, others: [Project], in context: ModelContext) {
+        project.name = trimmedName
+        project.color = color
+        project.icon = icon
+        var seen = Set<UUID>()
+        let profiles = blockProfiles.filter { seen.insert($0.id).inserted }
+        project.blockProfiles = profiles
+        project.blockProfile = profiles.first
+        project.workMode = workMode
+        project.guardianSensitivity = guardianSensitivity
+        project.difficultyBias = difficultyBias
+        project.area = area
+        if let rank, project.priorityRank != rank {
+            let rivals = others.filter { $0.id != project.id && !$0.archived }
+            if rivals.contains(where: { $0.priorityRank == rank }) {
+                for other in rivals {
+                    if let r = other.priorityRank, r >= rank { other.priorityRank = r + 1 }
+                }
+            }
+        }
+        project.priorityRank = rank
+        project.dailyTargetMinutes = dailyTargetMinutes > 0 ? dailyTargetMinutes : nil
+        project.targetWeekdaysOnly = dailyTargetMinutes > 0 ? weekdaysOnly : nil
+        let why = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        project.purpose = why.isEmpty ? nil : why
+        if addsGoal && goal.isValid {
+            var goalDraft = goal
+            goalDraft.projectID = project.id
+            goalDraft.apply(in: context, existing: nil)
+        }
+    }
+}
+
 struct ProjectFormView: View {
     @Environment(\.dismiss) private var dismiss
-
-    @Binding var name: String
-    @Binding var color: String
-    @Binding var icon: String
-    @Binding var selectedBlockProfiles: [BlockProfile]
-    @Binding var workMode: WorkMode
-    @Binding var guardianSensitivity: GuardianSensitivity
-    @Binding var difficultyBias: DifficultyBias
-    @Query(sort: \BlockProfile.createdAt) private var blockProfiles: [BlockProfile]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @Binding var draft: ProjectDraft
+    /// The project being edited (nil when creating).
+    let project: Project?
     let title: String
     let onSave: () -> Void
+
+    @Query(sort: \BlockProfile.createdAt) private var blockProfiles: [BlockProfile]
+    @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
+    @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
+    @State private var showProtection = false
 
     private let colors: [(name: String, color: Color)] = [
         ("blue", .blue), ("indigo", .indigo), ("purple", .purple),
@@ -27,354 +101,352 @@ struct ProjectFormView: View {
         "folder.fill", "laptopcomputer", "book.fill", "hammer.fill",
         "paintbrush.fill", "music.note", "heart.fill", "star.fill",
         "bolt.fill", "leaf.fill", "brain.head.profile", "trophy.fill",
-        "figure.run", "cup.and.saucer.fill", "pencil.and.ruler.fill", "doc.text.fill"
+        "figure.run", "cup.and.saucer.fill", "briefcase.fill", "graduationcap.fill"
     ]
 
-    private var colorGridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 30, maximum: 30), spacing: 10, alignment: .leading)]
-    }
-
-    private var iconGridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 38, maximum: 38), spacing: 10, alignment: .leading)]
+    private var tint: Color { FFPalette.project(draft.color) }
+    private var activeGoals: [ProjectGoal] {
+        guard let project else { return [] }
+        return goals.filter { $0.projectID == project.id && $0.status == .active }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.large) {
-                LiquidSectionHeader(title, subtitle: "Customize identity and blocking behavior")
-
-                nameSection
-                colorSection
-                iconSection
-                blockProfileSection
-                workModeSection
-                guardianSensitivitySection
-                difficultyBiasSection
-                actionButtons
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: FFSpace.l) {
+                    identityCard
+                    areaCard
+                    priorityCard
+                    targetCard
+                    goalCard
+                    protectionCard
+                }
+                .padding(FFSpace.xl)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
+            Divider()
+            actionBar
         }
-        .frame(width: 420)
-        .frame(minHeight: 560)
-        .background(.background)
+        .frame(width: 560, height: 720)
+        .background(FFPalette.windowBackground)
     }
 
-    private var nameSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Name")
+    // MARK: Identity
 
-            TextField("e.g. IntelliOps, Resume Prep", text: $name)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
-        }
-    }
-
-    private var colorSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Color")
-
-            LazyVGrid(columns: colorGridColumns, alignment: .leading, spacing: 10) {
+    private var identityCard: some View {
+        card {
+            HStack(alignment: .center, spacing: FFSpace.m) {
+                Image(systemName: draft.icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 52, height: 52)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.16)))
+                    .animation(reduceMotion ? nil : FFAnimation.control, value: draft.color)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).ffText(.caption)
+                    TextField("Project name, e.g. Interview prep", text: $draft.name)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 20, weight: .semibold))
+                }
+            }
+            HStack(spacing: 8) {
                 ForEach(colors, id: \.name) { item in
                     Button {
-                        color = item.name
+                        draft.color = item.name
                     } label: {
                         Circle()
                             .fill(item.color)
-                            .frame(width: 26, height: 26)
-                            .overlay(
-                                Circle()
-                                    .stroke(.white.opacity(item.name == color ? 0.9 : 0), lineWidth: 2)
-                            )
-                            .scaleEffect(item.name == color ? 1.16 : 1)
-                            .shadow(color: item.color.opacity(item.name == color ? 0.4 : 0), radius: 6, y: 2)
+                            .frame(width: 20, height: 20)
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(item.name == draft.color ? 0.85 : 0), lineWidth: 2).padding(-3))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
-                    .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.8), value: color)
                     .help(item.name.capitalized)
+                    .accessibilityLabel("\(item.name.capitalized)\(item.name == draft.color ? ", selected" : "")")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 32, maximum: 32), spacing: 6)], alignment: .leading, spacing: 6) {
+                ForEach(icons, id: \.self) { symbol in
+                    Button {
+                        draft.icon = symbol
+                    } label: {
+                        Image(systemName: symbol)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(symbol == draft.icon ? tint : .secondary)
+                            .frame(width: 32, height: 32)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(symbol == draft.icon ? tint.opacity(0.16) : FFPalette.track))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(symbol) icon\(symbol == draft.icon ? ", selected" : "")")
+                }
+            }
         }
     }
 
-    private var iconSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Icon")
+    // MARK: Area
 
-            LazyVGrid(columns: iconGridColumns, alignment: .leading, spacing: 10) {
-                ForEach(icons, id: \.self) { sfSymbol in
+    private var areaCard: some View {
+        card(title: "What kind of work is it?", subtitle: "Personal and learning time counts as your own work in the daily breakdown.") {
+            HStack(spacing: FFSpace.s) {
+                ForEach(ProjectArea.allCases) { area in
                     Button {
-                        icon = sfSymbol
+                        draft.area = area
+                        if area == .work && draft.dailyTargetMinutes > 0 { draft.weekdaysOnly = true }
                     } label: {
-                        IconCell(sfSymbol: sfSymbol, selected: sfSymbol == icon)
+                        VStack(spacing: 6) {
+                            Image(systemName: area.symbol).font(.system(size: 16, weight: .semibold))
+                            Text(area.title).font(.system(size: 12, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(draft.area == area ? tint : .secondary)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(draft.area == area ? tint.opacity(0.14) : FFPalette.track)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(draft.area == area ? tint.opacity(0.6) : .clear, lineWidth: 1.5)
+                        )
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
-                    .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.8), value: icon)
+                    .accessibilityLabel("\(area.title)\(draft.area == area ? ", selected" : "")")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: Priority
+
+    private var priorityCard: some View {
+        let others = projects.filter { $0.id != project?.id && $0.priorityRank != nil }.sorted { ($0.priorityRank ?? 99) < ($1.priorityRank ?? 99) }
+        return card(title: "Priority", subtitle: "#1 is where most of your focus should go. The coach starts there.") {
+            HStack(spacing: 6) {
+                ForEach([1, 2, 3, 4, 5], id: \.self) { rank in
+                    rankButton(String("#\(rank)"), selected: draft.rank == rank) { draft.rank = rank }
+                }
+                rankButton("None", selected: draft.rank == nil) { draft.rank = nil }
+            }
+            if !others.isEmpty {
+                Text(others.map { "#\($0.priorityRank ?? 0) \($0.name)" }.joined(separator: " · ")
+                     + (others.contains { $0.priorityRank == draft.rank } ? " (it moves down one)" : ""))
+                    .ffText(.caption)
+            }
+            TextField("Why it matters (one line)", text: $draft.purpose)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    @ViewBuilder
+    private func rankButton(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        if selected {
+            Button(label, action: action)
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(tint)
+                .accessibilityLabel("Priority \(label), selected")
+        } else {
+            Button(label, action: action)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+                .accessibilityLabel("Priority \(label)")
+        }
+    }
+
+    // MARK: Target
+
+    private var targetCard: some View {
+        card(title: "Daily time target", subtitle: "How much focus this should get on a normal day. The breakdown and drift report measure against it.") {
+            HStack(spacing: FFSpace.m) {
+                Text(draft.dailyTargetMinutes == 0 ? "No target" : FFFormat.duration(TimeInterval(draft.dailyTargetMinutes * 60)))
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .frame(minWidth: 110, alignment: .leading)
+                    .contentTransition(.numericText())
+                Stepper("Daily target", value: $draft.dailyTargetMinutes, in: 0...720, step: 15)
+                    .labelsHidden()
+                Spacer()
+                Toggle("Weekdays only", isOn: $draft.weekdaysOnly)
+                    .toggleStyle(.checkbox)
+                    .disabled(draft.dailyTargetMinutes == 0)
+            }
+            HStack(spacing: 6) {
+                ForEach([30, 60, 120, 180, 240], id: \.self) { minutes in
+                    Button(FFFormat.duration(TimeInterval(minutes * 60))) {
+                        withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { draft.dailyTargetMinutes = minutes }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            if draft.dailyTargetMinutes > 0 {
+                let days = draft.weekdaysOnly ? 5 : 7
+                Text("≈ \(FFFormat.duration(TimeInterval(draft.dailyTargetMinutes * 60 * days))) a week")
+                    .ffText(.caption)
+            }
+        }
+    }
+
+    // MARK: Goal
+
+    private var goalCard: some View {
+        card(title: "Goal", subtitle: "A deadline and the results that prove it. You'll see if you're on pace.") {
+            if !activeGoals.isEmpty {
+                ForEach(activeGoals) { goal in
+                    let summary = GoalDataBuilder.summary(goal, now: Date())
+                    HStack {
+                        Image(systemName: goal.isBossFight ? "flag.checkered" : "scope").foregroundStyle(tint)
+                        Text(goal.title).ffText(.body)
+                        Spacer()
+                        PaceStatusPill(status: summary.status)
+                    }
+                }
+                Text("Edit these in the Goals tab.").ffText(.caption)
+            }
+            Toggle(activeGoals.isEmpty ? "Set a goal with a deadline" : "Add another goal", isOn: $draft.addsGoal.animation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)))
+                .toggleStyle(.switch)
+            if draft.addsGoal {
+                GoalEditorFields(draft: $draft.goal, showsProject: false)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: Focus protection (existing settings, collapsed)
+
+    private var protectionCard: some View {
+        card {
+            DisclosureGroup(isExpanded: $showProtection) {
+                VStack(alignment: .leading, spacing: FFSpace.s) {
+                    blockProfileSection
+                    workModeSection
+                    guardianSensitivitySection
+                    difficultyBiasSection
+                }
+                .padding(.top, FFSpace.s)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Focus protection").ffText(.headline)
+                    Text("Blocking, work mode and coach sensitivity").ffText(.caption)
+                }
+            }
         }
     }
 
     private var blockProfileSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Block Profiles")
-
-            Menu {
-                Button("Clear all") { selectedBlockProfiles = [] }
-                Divider()
-                ForEach(blockProfiles) { profile in
-                    Button {
-                        toggleBlockProfile(profile)
-                    } label: {
-                        HStack {
-                            if isProfileSelected(profile) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.tint)
-                                    .accessibilityHidden(true)
-                            } else {
-                                Image(systemName: "circle")
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityHidden(true)
-                            }
-                            Text(profile.name)
-                            if profile.isDefault { Text("(Default)") }
-                        }
-                    }
+        menuRow("Block profiles", value: selectedBlockProfilesLabel, symbol: "shield.checkered") {
+            Button("Clear all") { draft.blockProfiles = [] }
+            Divider()
+            ForEach(blockProfiles) { profile in
+                Button {
+                    toggleBlockProfile(profile)
+                } label: {
+                    Label(profile.name + (profile.isDefault ? " (Default)" : ""), systemImage: isProfileSelected(profile) ? "checkmark.circle.fill" : "circle")
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "shield.checkered")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-
-                    Text(selectedBlockProfilesLabel)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
             }
-            .buttonStyle(.plain)
         }
     }
 
-    private var selectedBlockProfilesLabel: String {
-        let names = selectedBlockProfiles.map(\.name)
-        if names.isEmpty { return "None (no blocking)" }
-        if names.count == 1 { return names[0] }
-        return "\(names.count) profiles selected"
-    }
-
     private var workModeSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Work Mode")
-
-            Menu {
-                ForEach(WorkMode.allCases, id: \.self) { mode in
-                    Button {
-                        workMode = mode
-                    } label: {
-                        HStack {
-                            Image(systemName: mode.icon)
-                                .accessibilityHidden(true)
-                            Text(mode.displayName)
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: workMode.icon)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-
-                    Text(workMode.displayName)
-                        .font(.subheadline)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+        menuRow("Work mode", value: draft.workMode.displayName, symbol: draft.workMode.icon) {
+            ForEach(WorkMode.allCases, id: \.self) { mode in
+                Button { draft.workMode = mode } label: { Label(mode.displayName, systemImage: mode.icon) }
             }
-            .buttonStyle(.plain)
         }
     }
 
     private var guardianSensitivitySection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Coach Sensitivity")
-
-            Menu {
-                ForEach(GuardianSensitivity.allCases, id: \.self) { sensitivity in
-                    Button {
-                        guardianSensitivity = sensitivity
-                    } label: {
-                        Text(sensitivity.displayName)
-                    }
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "sensor.tag.radiowaves.forward")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-
-                    Text(guardianSensitivity.displayName)
-                        .font(.subheadline)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+        menuRow("Coach sensitivity", value: draft.guardianSensitivity.displayName, symbol: "sensor.tag.radiowaves.forward") {
+            ForEach(GuardianSensitivity.allCases, id: \.self) { value in
+                Button(value.displayName) { draft.guardianSensitivity = value }
             }
-            .buttonStyle(.plain)
         }
     }
 
     private var difficultyBiasSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Difficulty Bias")
-
-            Menu {
-                ForEach(DifficultyBias.allCases, id: \.self) { bias in
-                    Button {
-                        difficultyBias = bias
-                    } label: {
-                        Text(bias.displayName)
-                    }
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "dial.medium")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-
-                    Text(difficultyBias.displayName)
-                        .font(.subheadline)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.control))
+        menuRow("Difficulty bias", value: draft.difficultyBias.displayName, symbol: "dial.medium") {
+            ForEach(DifficultyBias.allCases, id: \.self) { value in
+                Button(value.displayName) { draft.difficultyBias = value }
             }
-            .buttonStyle(.plain)
         }
     }
 
-    private var actionButtons: some View {
-        HStack(spacing: LiquidDesignTokens.Spacing.medium) {
-            LiquidActionButton(
-                title: "Cancel",
-                icon: "xmark",
-                role: .secondary
-            ) {
-                dismiss()
+    /// A dropdown row whose whole width opens the menu.
+    private func menuRow<Content: View>(_ label: String, value: String, symbol: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        Menu {
+            content()
+        } label: {
+            HStack(spacing: FFSpace.s) {
+                Label(label, systemImage: symbol).ffText(.body)
+                Spacer(minLength: FFSpace.s)
+                Text(value).ffText(.callout).lineLimit(1)
             }
-
-            LiquidActionButton(
-                title: "Save",
-                icon: "checkmark",
-                role: .primary
-            ) {
-                onSave()
-                dismiss()
-            }
-            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 34)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous).fill(FFPalette.track))
         }
-        .padding(.top, 4)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.visible)
     }
 
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+    private var selectedBlockProfilesLabel: String {
+        let names = draft.blockProfiles.map(\.name)
+        if names.isEmpty { return "None" }
+        if names.count == 1 { return names[0] }
+        return "\(names.count) profiles"
     }
 
     private func isProfileSelected(_ profile: BlockProfile) -> Bool {
-        selectedBlockProfiles.contains(where: { $0.id == profile.id })
+        draft.blockProfiles.contains { $0.id == profile.id }
     }
 
     private func toggleBlockProfile(_ profile: BlockProfile) {
-        if let index = selectedBlockProfiles.firstIndex(where: { $0.id == profile.id }) {
-            selectedBlockProfiles.remove(at: index)
+        if let index = draft.blockProfiles.firstIndex(where: { $0.id == profile.id }) {
+            draft.blockProfiles.remove(at: index)
         } else {
-            selectedBlockProfiles.append(profile)
+            draft.blockProfiles.append(profile)
         }
     }
-}
 
-private struct IconCell: View {
-    let sfSymbol: String
-    let selected: Bool
+    // MARK: Chrome
 
-    var body: some View {
-        if selected {
-            Image(systemName: sfSymbol)
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 34, height: 34)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.tint.opacity(0.5), lineWidth: 1.2)
-                )
-                .foregroundStyle(.tint)
-                .scaleEffect(1.08)
-                .accessibilityLabel("\(sfSymbol) icon, selected")
-        } else {
-            Image(systemName: sfSymbol)
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 34, height: 34)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("\(sfSymbol) icon")
+    private var actionBar: some View {
+        HStack {
+            if !draft.isValid && !draft.trimmedName.isEmpty && draft.addsGoal {
+                Text("The goal needs a name and a deadline after its start.").ffText(.caption)
+            }
+            Spacer()
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button("Save") {
+                onSave()
+                dismiss()
+            }
+            .keyboardShortcut(.defaultAction)
+            .buttonStyle(.borderedProminent)
+            .tint(tint)
+            .disabled(!draft.isValid)
         }
+        .padding(FFSpace.l)
+    }
+
+    private func card<Content: View>(title: String? = nil, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: FFSpace.m) {
+            if let title {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).ffText(.headline)
+                    if let subtitle { Text(subtitle).ffText(.caption).fixedSize(horizontal: false, vertical: true) }
+                }
+            }
+            content()
+        }
+        .padding(FFSpace.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ffSurface()
     }
 }

@@ -19,6 +19,7 @@ struct InsightsView: View {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
                 FFPageHeader("Insights", subtitle: "From your sessions and app usage over the last 8 weeks")
                 weekSummary(snapshot)
+                DriftReportSection(snapshot: snapshot)
                 CoachLearnedSection(now: snapshot.now)
                 whenYouFocus(snapshot)
                 derailers(snapshot)

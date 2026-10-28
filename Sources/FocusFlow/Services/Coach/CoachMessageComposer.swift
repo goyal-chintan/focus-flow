@@ -44,6 +44,8 @@ struct CoachFacts: Sendable, Equatable {
     var contextAppName: String?
     /// Consecutive days before today without any focus block (comeback framing). Nil = unknown.
     var daysWithoutBlock: Int?
+    /// Today's top lever from the goals, e.g. "3 LeetCode questions" (priorities-goals design §3.5).
+    var lever: String?
 }
 
 /// Everything a rescue message needs (rescue loop design §2–§4).
@@ -453,6 +455,7 @@ enum CoachMessageComposer {
             if input.style == .data { return nil }
             return .line("Too much? \(cue.starterMinutes) minutes still counts.")
         case .dailyPlan:
+            if let lever = facts.lever { return .fact("Today's lever: \(lever).") }
             switch input.style {
             case .challenger: return .line("Starting is the hard part. Make it small enough to start now.")
             case .data: return .line("Short, near goals raise starts and persistence (Bandura & Schunk, 1981).")
@@ -490,6 +493,9 @@ enum CoachMessageComposer {
             }
 
         case .startNudge:
+            if !hookIsFact, let lever = facts.lever {
+                return .fact("Today's lever: \(lever).")
+            }
             if !hookIsFact, input.style != .gentle || facts.sessionsToday > 0,
                let fact = startFact(facts) {
                 return .fact(fact)

@@ -114,7 +114,13 @@ final class ReviewContractsTests: XCTestCase {
             in: source,
             range: NSRange(source.startIndex..<source.endIndex, in: source)
         )
-        XCTAssertGreaterThanOrEqual(matches, 4, "Expected full-row hit target pattern on all project-form dropdown rows")
+        // The four rows share one `menuRow` helper (priorities-goals redesign), so the pattern appears
+        // once there and every row must go through it.
+        XCTAssertGreaterThanOrEqual(matches, 1, "Expected the full-row hit target pattern in the project-form dropdown row")
+        for section in ["blockProfileSection", "workModeSection", "guardianSensitivitySection", "difficultyBiasSection"] {
+            let body = source.components(separatedBy: "private var \(section): some View {").last ?? ""
+            XCTAssertTrue(body.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("menuRow("), "\(section) must use the full-width menuRow")
+        }
     }
 
     func testSettingsPrivacyCopyMatchesDomainCaptureBehavior() throws {
@@ -369,7 +375,7 @@ final class ReviewContractsTests: XCTestCase {
     }
 
     func testCompanionWindowHasFourDestinationsAndMapsRetiredTabs() {
-        XCTAssertEqual(CompanionTab.allCases.map(\.rawValue), ["Today", "History", "Insights", "Projects"])
+        XCTAssertEqual(CompanionTab.allCases.map(\.rawValue), ["Today", "Goals", "History", "Insights", "Projects"])
         XCTAssertEqual(CompanionTab.resolve("Calendar"), .history)
         XCTAssertEqual(CompanionTab.resolve("Week"), .history)
         XCTAssertEqual(CompanionTab.resolve("Distractions"), .today)

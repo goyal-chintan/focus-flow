@@ -445,6 +445,7 @@ final class TimerViewModel {
     private var momentumOfferedSessionID: UUID?
     private var coachIdleTickCount = 0
     private var pauseScreenShutoffLogged = false
+    private var goalProgressCache: (at: Date, focusTime: TimeInterval, seconds: TimeInterval)?
     /// Test hook: seconds since the last keyboard/mouse input. Nil reads the system.
     var systemIdleSecondsProvider: (() -> TimeInterval)?
     /// Coach v5: Thompson-sample the block size at a real ask. Tests switch it off for determinism.
@@ -2951,6 +2952,10 @@ final class TimerViewModel {
         }
         if plan?.findNextStep == true {
             pendingIntentText = "Find the next step"
+        } else if pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingIntentText == lastPrefilledIntent,
+                  let lever = currentLever(projectID: plan?.projectID) {
+            // The block's intent is today's lever: a specific output, not "work on it".
+            pendingIntentText = lever.action
         }
         let started = startFocus()
         selectedMinutes = preferredMinutes
@@ -3113,28 +3118,39 @@ final class TimerViewModel {
         let reader = historyReader
         let calendar = Calendar.current
         let goalMinutes = Int((settings?.dailyFocusGoal ?? 7200) / 60)
-        let doneMinutes = Int(todayFocusTime / 60)
+        let doneMinutes = Int(goalProgressSeconds(now: now) / 60)
         let pacing = CoachGoalPacing(
             goalMinutes: goalMinutes,
             doneMinutes: doneMinutes,
             windowMinutesLeft: model.goodWindowMinutesRemainingToday(from: now)
         )
         let topPriority = weeklyPriorities.first { !$0.isDone }
+        // Priorities-goals §3.5: without a weekly priority, the coach aims at the boss-fight goal's
+        // project, then the #1 project; today's lever names the concrete action.
+        let goals = reader?.activeGoals() ?? []
+        let levers = GoalDataBuilder.levers(goals, now: now)
+        let ranked = reader?.rankedProjects() ?? []
+        let bossProjectID = goals.first { $0.isBossFight }?.projectID
+        let focusProject: Project? = topPriority == nil
+            ? (ranked.first { $0.id == bossProjectID } ?? ranked.first)
+            : nil
+        let lever = levers.first { focusProject == nil || $0.projectID == nil || $0.projectID == focusProject?.id } ?? levers.first
 
         // Block length: max(25, min(remaining, 50)), shortened to end 5 min before a meeting.
         var minutes = pacing.suggestedBlockMinutes
         if let nextEvent = minutesUntilNextEvent, nextEvent - 5 < minutes {
             minutes = max(15, ((nextEvent - 5) / 5) * 5)
         }
-        let projectID = topPriority?.projectID ?? selectedProject?.id
+        let projectID = topPriority?.projectID ?? focusProject?.id ?? selectedProject?.id
         let target = CoachStartTarget(
             minutes: minutes,
-            name: topPriority?.title ?? selectedProject?.name,
+            name: topPriority?.title ?? focusProject?.name ?? selectedProject?.name,
             projectID: projectID,
             priorityID: topPriority?.id
         )
 
         var facts = CoachFacts()
+        facts.lever = lever?.action
         facts.goalMinutes = goalMinutes
         facts.doneMinutesToday = doneMinutes
         facts.pacing = pacing
@@ -3296,6 +3312,14 @@ final class TimerViewModel {
             now: snapshot.now, inGoodWindow: snapshot.inGoodWindow, tier: snapshot.tier, pacing: snapshot.pacing,
             facts: snapshot.facts, target: target, topPriority: snapshot.topPriority, frontCategory: snapshot.frontCategory
         )
+    }
+
+    /// Today's top lever for the block's project. Nil without a project: a lever must never label
+    /// an unrelated block.
+    func currentLever(projectID: UUID?, now: Date = Date()) -> DailyLever? {
+        guard let projectID else { return nil }
+        let levers = GoalDataBuilder.levers(historyReader?.activeGoals() ?? [], now: now)
+        return levers.first { $0.projectID == projectID }
     }
 
     // MARK: Coach v5: learning engine (docs/plans/2026-10-28-coach-v5-learning-engine-design.md)
@@ -4067,10 +4091,23 @@ final class TimerViewModel {
         driftMonitor.record(at: now, seconds: seconds, kind: kind, switchesPerMinute: frontmost.switchesPerMinute)
     }
 
+    /// Seconds that count toward the daily goal: own work once a project is marked Work (office
+    /// hours must not switch the coach off for the day), otherwise all focus. The store query is
+    /// cached for 30 s, and any change in tracked focus time invalidates it.
+    func goalProgressSeconds(now: Date = Date()) -> TimeInterval {
+        if let cached = goalProgressCache, cached.focusTime == todayFocusTime,
+           now.timeIntervalSince(cached.at) < 30, cached.at <= now {
+            return cached.seconds
+        }
+        let seconds = historyReader?.ownWorkSecondsToday(now: now) ?? todayFocusTime
+        goalProgressCache = (now, todayFocusTime, seconds)
+        return seconds
+    }
+
     private func currentPacing(now: Date) -> CoachGoalPacing {
         CoachGoalPacing(
             goalMinutes: Int((settings?.dailyFocusGoal ?? 7200) / 60),
-            doneMinutes: Int(todayFocusTime / 60),
+            doneMinutes: Int(goalProgressSeconds(now: now) / 60),
             windowMinutesLeft: availabilityModel.goodWindowMinutesRemainingToday(from: now)
         )
     }

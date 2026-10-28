@@ -17,6 +17,11 @@ final class AppSettings {
 
     // Goals
     var dailyFocusGoal: TimeInterval = 7200
+    // Direction (Dan Koe's protocol; priorities-goals design §3.5). Optional text, no migration.
+    var lifeVision: String?
+    var lifeAntiVision: String?
+    var lifeYearGoal: String?
+    var lifeConstraints: String?
 
     // Integrations
     var calendarIntegrationEnabled: Bool = false

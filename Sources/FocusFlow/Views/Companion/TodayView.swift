@@ -8,6 +8,8 @@ struct TodayView: View {
     @Query(sort: \AppUsageEntry.date) private var usageEntries: [AppUsageEntry]
     @Query private var priorities: [WeeklyPriority]
     @Query private var distractionRules: [IdleDistractionItem]
+    @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
+    @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
 
     @State private var showManualEntry = false
     @State private var editingSession: FocusSession?
@@ -27,7 +29,10 @@ struct TodayView: View {
     }
 
     private func content(snapshot: CompanionSnapshot) -> some View {
-        let progress = snapshot.analytics.goalProgress(snapshot.samples, on: snapshot.now, goal: snapshot.goal, stretch: snapshot.stretch)
+        // Own work only, once a project is marked Work: 3h of office must not read "goal met".
+        let ownOnly = GoalDataBuilder.ownWorkConfigured(projects)
+        let goalSamples = ownOnly ? GoalDataBuilder.ownWorkSamples(snapshot.samples, projects: projects) : snapshot.samples
+        let progress = snapshot.analytics.goalProgress(goalSamples, on: snapshot.now, goal: snapshot.goal, stretch: snapshot.stretch)
         let windows = snapshot.bestWindows
         return ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
@@ -42,11 +47,14 @@ struct TodayView: View {
                 }
 
                 GoalHeroView(
+                    title: ownOnly ? "Your own work today" : "Daily goal",
                     progress: progress,
                     next: snapshot.analytics.nextWindow(windows, after: snapshot.now),
-                    week: snapshot.analytics.weekOverWeek(snapshot.samples, goal: snapshot.goal, now: snapshot.now),
+                    week: snapshot.analytics.weekOverWeek(goalSamples, goal: snapshot.goal, now: snapshot.now),
                     now: snapshot.now
                 )
+
+                priorityBreakdown(snapshot)
 
                 TodayCoachSection(now: snapshot.now, sessions: sessions)
 
@@ -59,6 +67,39 @@ struct TodayView: View {
             .padding(FFSpace.page)
             .frame(maxWidth: 920, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Where today went (priorities-goals design §3.3)
+
+    private func priorityBreakdown(_ snapshot: CompanionSnapshot) -> some View {
+        let allocation = GoalDataBuilder.allocation(samples: snapshot.samples, projects: projects, day: snapshot.today, calendar: snapshot.calendar)
+        let levers = GoalDataBuilder.levers(goals.filter { $0.status == .active }, now: snapshot.now)
+        let ranked = projects.contains { $0.priorityRank != nil }
+        return FFSection("Where today went", subtitle: "In priority order, against each project's daily target.") {
+            Button("Set priorities") { requestedTabRaw = CompanionTab.projects.rawValue }
+                .buttonStyle(.link)
+                .opacity(ranked ? 0 : 1)
+                .disabled(ranked)
+        } content: {
+            VStack(alignment: .leading, spacing: FFSpace.l) {
+                PriorityBreakdownView(allocation: allocation)
+                if !levers.isEmpty {
+                    Divider()
+                    VStack(alignment: .leading, spacing: FFSpace.s) {
+                        HStack {
+                            Text("Today's levers").ffText(.headline)
+                            Spacer()
+                            Button("All goals") { requestedTabRaw = CompanionTab.goals.rawValue }.buttonStyle(.link)
+                        }
+                        ForEach(levers) { LeverRow(lever: $0) }
+                    }
+                }
+                Text("If the last two hours were recorded, what would they say you want?")
+                    .ffText(.caption)
+                    .italic()
+                    .help("Dan Koe's midday interrupt question")
+            }
         }
     }
 
@@ -92,7 +133,14 @@ struct TodayView: View {
     /// Time today on blocks tagged to one of this week's priorities (Coach v2 §9).
     private func personalWork(_ snapshot: CompanionSnapshot) -> (value: String, caption: String) {
         let weekIDs = Set(priorities.map(PrioritySample.init).filter { snapshot.thisWeek.contains($0.weekStart) }.map(\.id))
-        guard !weekIDs.isEmpty else { return ("—", "Set weekly priorities to track this") }
+        if weekIDs.isEmpty {
+            // Own work = personal and learning projects (priorities-goals design §3.3).
+            let own = projects.filter { $0.areaRaw != nil && $0.area.isOwnWork }
+            guard !own.isEmpty else { return ("—", "Mark projects Personal or Learning to track this") }
+            let seconds = GoalDataBuilder.seconds(samples: snapshot.samples, in: snapshot.today)
+            let total = own.reduce(0) { $0 + (seconds[GoalDataBuilder.projectKey($1)] ?? 0) }
+            return (FFFormat.duration(total), "Personal and learning projects")
+        }
         let seconds = snapshot.samples
             .filter { $0.priorityID.map(weekIDs.contains) ?? false }
             .reduce(0) { $0 + $1.overlap(with: snapshot.today) }
@@ -191,6 +239,7 @@ struct TodayView: View {
 // MARK: - Goal hero
 
 private struct GoalHeroView: View {
+    let title: String
     let progress: FocusAnalytics.GoalProgress
     let next: FocusAnalytics.NextWindow?
     let week: FocusAnalytics.WeekComparison
@@ -205,7 +254,7 @@ private struct GoalHeroView: View {
         HStack(spacing: FFSpace.xl) {
             ring
             VStack(alignment: .leading, spacing: FFSpace.s) {
-                Text("Daily goal").ffText(.callout)
+                Text(title).ffText(.callout)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(FFFormat.duration(progress.doneSeconds)).ffNumber(.largeTitle)
                     Text("of \(FFFormat.duration(progress.goalSeconds))").ffText(.title3).foregroundStyle(.secondary)

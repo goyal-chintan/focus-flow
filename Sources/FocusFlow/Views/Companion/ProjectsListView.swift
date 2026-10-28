@@ -24,16 +24,24 @@ struct ProjectsListView: View {
     @State private var showArchived = false
     @State private var saveError: String?
 
-    @State private var formName = ""
-    @State private var formColor = "blue"
-    @State private var formIcon = "folder.fill"
-    @State private var formBlockProfiles: [BlockProfile] = []
-    @State private var formWorkMode: WorkMode = .deepWork
-    @State private var formGuardianSensitivity: GuardianSensitivity = .normal
-    @State private var formDifficultyBias: DifficultyBias = .moderate
+    @State private var draft = ProjectDraft()
+    @State private var goalSheet: GoalSheet?
+    @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
+
+    /// Ranked projects first (#1, #2, …), then the rest in creation order.
+    private var orderedProjects: [Project] {
+        projects.sorted { lhs, rhs in
+            switch (lhs.priorityRank, rhs.priorityRank) {
+            case let (l?, r?): return l < r
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return lhs.createdAt < rhs.createdAt
+            }
+        }
+    }
 
     private var selectedProject: Project? {
-        projects.first { $0.id == selectedID } ?? projects.first
+        projects.first { $0.id == selectedID } ?? orderedProjects.first
     }
 
     var body: some View {
@@ -61,8 +69,8 @@ struct ProjectsListView: View {
                 Spacer(minLength: 0)
             } else {
                 HStack(alignment: .top, spacing: FFSpace.l) {
-                    projectList(weekTotals: weekTotals)
-                        .frame(width: 232)
+                    projectList(weekTotals: weekTotals, today: GoalDataBuilder.seconds(samples: snapshot.samples, in: snapshot.today))
+                        .frame(width: 260)
                     if let project = selectedProject {
                         ScrollView {
                             ProjectDetail(
@@ -70,9 +78,12 @@ struct ProjectsListView: View {
                                 snapshot: snapshot,
                                 sessions: sessions,
                                 priorities: priorities.map(PrioritySample.init),
+                                goals: goals.filter { $0.projectID == project.id && $0.status == .active },
                                 onEdit: { startEdit(project) },
                                 onArchive: { projectToArchive = project },
-                                onSelectSession: { editingSession = $0 }
+                                onSelectSession: { editingSession = $0 },
+                                onAddGoal: { goalSheet = GoalSheet(goal: nil, projectID: project.id) },
+                                onEditGoal: { goalSheet = GoalSheet(goal: $0, projectID: project.id) }
                             )
                             .id(project.id)
                             .transition(.opacity)
@@ -87,6 +98,7 @@ struct ProjectsListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $showingForm) { projectForm }
         .sheet(item: $editingSession) { SessionEditView(session: $0) }
+        .sheet(item: $goalSheet) { sheet in GoalFormView(goal: sheet.goal, defaultProjectID: sheet.projectID) }
         .saveErrorOverlay($saveError)
         .confirmationDialog(
             "Archive \(projectToArchive?.name ?? "project")?",
@@ -102,31 +114,45 @@ struct ProjectsListView: View {
 
     // MARK: - List
 
-    private func projectList(weekTotals: [FocusAnalytics.ProjectTotal]) -> some View {
+    private func projectList(weekTotals: [FocusAnalytics.ProjectTotal], today: [String: TimeInterval]) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(projects) { project in
+            ForEach(orderedProjects) { project in
                 let seconds = weekTotals.first { $0.project.projectUUID == project.id }?.seconds ?? 0
+                let todaySeconds = today[GoalDataBuilder.projectKey(project)] ?? 0
+                let target = project.dailyTarget(on: nowOverride ?? Date()).map { TimeInterval($0 * 60) }
                 Button {
                     selectedID = project.id
                 } label: {
-                    HStack(spacing: FFSpace.s) {
-                        Image(systemName: project.icon ?? "folder.fill")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(FFPalette.project(project.color))
-                            .frame(width: 20)
-                            .accessibilityHidden(true)
-                        Text(project.name).ffText(.body).lineLimit(1)
-                        Spacer(minLength: FFSpace.xs)
-                        Text(seconds > 0 ? FFFormat.duration(seconds) : "—")
-                            .ffText(.caption)
-                            .monospacedDigit()
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: FFSpace.s) {
+                            Text(project.priorityRank.map { "#\($0)" } ?? "–")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(project.priorityRank == 1 ? Color.white : .secondary)
+                                .frame(width: 24, height: 18)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(project.priorityRank == 1 ? FFPalette.project(project.color) : FFPalette.track))
+                            Image(systemName: project.icon ?? "folder.fill")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(FFPalette.project(project.color))
+                                .frame(width: 18)
+                                .accessibilityHidden(true)
+                            Text(project.name).ffText(.body).lineLimit(1)
+                            Spacer(minLength: FFSpace.xs)
+                            Text(seconds > 0 ? FFFormat.duration(seconds) : "—")
+                                .ffText(.caption)
+                                .monospacedDigit()
+                        }
+                        if let target, target > 0 {
+                            PaceBar(fraction: min(1, todaySeconds / target), expected: 0, color: FFPalette.project(project.color), height: 4)
+                                .padding(.leading, 56)
+                                .help("Today: \(FFFormat.duration(todaySeconds)) of \(FFFormat.duration(target))")
+                        }
                     }
                     .padding(.horizontal, FFSpace.s)
-                    .frame(height: 30)
+                    .padding(.vertical, 6)
                     .ffHoverRow(isSelected: project.id == selectedProject?.id)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(project.name), \(FFFormat.duration(seconds)) this week")
+                .accessibilityLabel("\(project.priorityRank.map { "Priority \($0), " } ?? "")\(project.name), \(FFFormat.duration(seconds)) this week")
                 .accessibilityAddTraits(project.id == selectedProject?.id ? .isSelected : [])
             }
 
@@ -172,25 +198,14 @@ struct ProjectsListView: View {
     // MARK: - Actions
 
     private func startCreate() {
-        formName = ""
-        formColor = "blue"
-        formIcon = "folder.fill"
-        formBlockProfiles = []
-        formWorkMode = .deepWork
-        formGuardianSensitivity = .normal
-        formDifficultyBias = .moderate
+        draft = ProjectDraft()
+        draft.rank = projects.contains { $0.priorityRank != nil } ? nil : 1
         editingProject = nil
         showingForm = true
     }
 
     private func startEdit(_ project: Project) {
-        formName = project.name
-        formColor = project.color
-        formIcon = project.icon ?? "folder.fill"
-        formBlockProfiles = project.effectiveBlockProfiles
-        formWorkMode = project.workMode
-        formGuardianSensitivity = project.guardianSensitivity
-        formDifficultyBias = project.difficultyBias
+        draft = ProjectDraft(project: project)
         editingProject = project
         showingForm = true
     }
@@ -212,31 +227,18 @@ struct ProjectsListView: View {
 
     private var projectForm: some View {
         ProjectFormView(
-            name: $formName,
-            color: $formColor,
-            icon: $formIcon,
-            selectedBlockProfiles: $formBlockProfiles,
-            workMode: $formWorkMode,
-            guardianSensitivity: $formGuardianSensitivity,
-            difficultyBias: $formDifficultyBias,
-            title: editingProject == nil ? "New Project" : "Edit Project"
+            draft: $draft,
+            project: editingProject,
+            title: editingProject == nil ? "New project" : "Edit project"
         ) {
-            let profiles = deduplicated(formBlockProfiles)
             let target: Project
             if let editing = editingProject {
                 target = editing
             } else {
-                target = Project(name: "", color: formColor, icon: formIcon)
+                target = Project(name: "", color: draft.color, icon: draft.icon)
                 modelContext.insert(target)
             }
-            target.name = formName.trimmingCharacters(in: .whitespaces)
-            target.color = formColor
-            target.icon = formIcon
-            target.blockProfiles = profiles
-            target.blockProfile = profiles.first
-            target.workMode = formWorkMode
-            target.guardianSensitivity = formGuardianSensitivity
-            target.difficultyBias = formDifficultyBias
+            draft.apply(to: target, others: projects, in: modelContext)
             saveWithFeedback(modelContext, errorBinding: $saveError)
             if editingProject == nil {
                 timerVM.selectedProject = target
@@ -246,10 +248,13 @@ struct ProjectsListView: View {
         }
     }
 
-    private func deduplicated(_ profiles: [BlockProfile]) -> [BlockProfile] {
-        var seen = Set<UUID>()
-        return profiles.filter { seen.insert($0.id).inserted }
-    }
+}
+
+/// A goal to create or edit from a project's detail.
+struct GoalSheet: Identifiable {
+    let id = UUID()
+    let goal: ProjectGoal?
+    let projectID: UUID?
 }
 
 // MARK: - Detail
@@ -259,9 +264,12 @@ private struct ProjectDetail: View {
     let snapshot: CompanionSnapshot
     let sessions: [FocusSession]
     let priorities: [PrioritySample]
+    let goals: [ProjectGoal]
     let onEdit: () -> Void
     let onArchive: () -> Void
     let onSelectSession: (FocusSession) -> Void
+    let onAddGoal: () -> Void
+    let onEditGoal: (ProjectGoal) -> Void
 
     @State private var selectedDay: Date?
 
@@ -301,6 +309,8 @@ private struct ProjectDetail: View {
             .padding(FFSpace.l)
             .ffSurface()
 
+            goalsSection
+
             FFSection("This week", subtitle: "Daily focus on \(project.name)") {
                 DailyFocusChart(
                     days: weekDays,
@@ -336,6 +346,30 @@ private struct ProjectDetail: View {
         }
     }
 
+    private var goalsSection: some View {
+        VStack(alignment: .leading, spacing: FFSpace.m) {
+            HStack {
+                Text("Goals").ffText(.title3)
+                Spacer()
+                Button(action: onAddGoal) { Label("Add goal", systemImage: "plus") }
+                    .buttonStyle(.bordered)
+            }
+            if goals.isEmpty {
+                FFSection {
+                    FFEmptyState(
+                        systemImage: "scope",
+                        message: "No goal with a deadline yet",
+                        detail: "Add one (e.g. \"60 LeetCode by 28 Nov\") and the app shows whether you're on pace."
+                    )
+                }
+            } else {
+                ForEach(goals) { goal in
+                    GoalCard(goal: goal, project: project, now: snapshot.now, onEdit: { onEditGoal(goal) })
+                }
+            }
+        }
+    }
+
     private func header(linked: [PrioritySample]) -> some View {
         HStack(alignment: .center, spacing: FFSpace.m) {
             Image(systemName: project.icon ?? "folder.fill")
@@ -356,6 +390,12 @@ private struct ProjectDetail: View {
 
     private func headerCaption(linked: [PrioritySample]) -> String {
         var parts: [String] = []
+        if let rank = project.priorityRank { parts.append("Priority #\(rank)") }
+        if project.areaRaw != nil { parts.append(project.area.title) }
+        if let minutes = project.dailyTargetMinutes, minutes > 0 {
+            parts.append("\(FFFormat.duration(TimeInterval(minutes * 60)))/day\(project.targetWeekdaysOnly == true ? " on weekdays" : "")")
+        }
+        if let purpose = project.purpose { parts.append(purpose) }
         if !linked.isEmpty { parts.append("Serves " + linked.map(\.title).joined(separator: ", ")) }
         let profiles = project.effectiveBlockProfiles.map(\.name)
         if !profiles.isEmpty { parts.append("Blocks with " + profiles.joined(separator: ", ")) }

@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The companion window's four destinations (redesign spec §2).
+/// The companion window's destinations (redesign spec §2; Goals: priorities-goals design §3.6).
 enum CompanionTab: String, CaseIterable, Identifiable {
     case today = "Today"
+    case goals = "Goals"
     case history = "History"
     case insights = "Insights"
     case projects = "Projects"
@@ -12,6 +13,7 @@ enum CompanionTab: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .today: "sun.max"
+        case .goals: "scope"
         case .history: "calendar"
         case .insights: "chart.xyaxis.line"
         case .projects: "folder"
@@ -90,6 +92,7 @@ struct CompanionWindowView: View {
     private func destination(for tab: CompanionTab) -> some View {
         switch tab {
         case .today: TodayView()
+        case .goals: GoalsView()
         case .history: HistoryView()
         case .insights: InsightsView()
         case .projects: ProjectsListView()

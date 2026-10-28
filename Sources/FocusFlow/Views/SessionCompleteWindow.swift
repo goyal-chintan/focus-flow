@@ -177,8 +177,9 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 20) {
             earnedBadge
 
-            if timerVM.lastCompletedFocusSession != nil {
+            if let session = timerVM.lastCompletedFocusSession {
                 outcomeSection
+                SessionGoalProgressView(projectID: session.project?.id, sessionID: session.id)
             }
 
             // Session app distraction review — shown first when we have detected apps.

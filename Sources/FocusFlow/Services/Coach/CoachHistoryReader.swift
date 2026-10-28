@@ -17,6 +17,37 @@ struct CoachHistoryReader {
         modelContext.container.schema.entities.contains { $0.name == name }
     }
 
+    // MARK: Priorities and goals (priorities-goals design §3.5)
+
+    /// Ranked, active projects: #1 first.
+    func rankedProjects() -> [Project] {
+        let descriptor = FetchDescriptor<Project>(predicate: #Predicate { !$0.archived })
+        return ((try? modelContext.fetch(descriptor)) ?? [])
+            .filter { $0.priorityRank != nil }
+            .sorted { ($0.priorityRank ?? .max) < ($1.priorityRank ?? .max) }
+    }
+
+    /// Own-work seconds today (personal and learning projects), or nil when no project is marked
+    /// Work, in which case all focus counts.
+    func ownWorkSecondsToday(now: Date) -> TimeInterval? {
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        guard GoalDataBuilder.ownWorkConfigured(projects) else { return nil }
+        let start = calendar.startOfDay(for: now)
+        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return nil }
+        let samples = focusSessions(since: start.addingTimeInterval(-12 * 3600)).map(FocusSample.init)
+        let seconds = GoalDataBuilder.seconds(samples: samples, in: DateInterval(start: start, end: end))
+        let keys = GoalDataBuilder.ownWorkKeys(projects)
+        return seconds.filter { keys.contains($0.key) }.values.reduce(0, +)
+    }
+
+    /// Active goals (empty on stores without the goal entities).
+    func activeGoals() -> [ProjectGoal] {
+        guard hasEntity(named: "ProjectGoal") else { return [] }
+        let active = GoalStatus.active.rawValue
+        let descriptor = FetchDescriptor<ProjectGoal>(predicate: #Predicate { $0.statusRaw == active })
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
+
     // MARK: Sessions
 
     /// Finished or running focus sessions that started on or after `date`.
