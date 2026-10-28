@@ -36,6 +36,8 @@ final class CoachPanelControllerTests: XCTestCase {
         let settings = AppSettings()
         container.mainContext.insert(settings)
         let vm = TimerViewModel(defaults: defaults)
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: container.mainContext, settings: settings)
         let controller = CoachPanelController(timerVM: vm, modelContainer: container)
         vm.coachPanelHost = controller

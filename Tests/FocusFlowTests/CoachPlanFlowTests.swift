@@ -47,7 +47,7 @@ final class CoachPlanFlowTests: XCTestCase {
         let slot = card.planSlots[0]
         let block = try XCTUnwrap(vm.commitDailyPlan(slot, now: now))
         XCTAssertEqual(block.startAt, slot.start)
-        XCTAssertEqual(block.minutes, 50, "Pacing: 120 min owed → 50 min block")
+        XCTAssertEqual(block.minutes, 15, "v4: a plan is the ladder's size (15 with no history), not 50")
         XCTAssertEqual(vm.coachPanel?.kind, .notice)
         XCTAssertEqual(attempt.outcome, .improved)
         XCTAssertTrue(vm.hasPlanForToday(now: now))
@@ -90,7 +90,7 @@ final class CoachPlanFlowTests: XCTestCase {
         XCTAssertEqual(cue.plannedBlockID, block.id)
         XCTAssertNil(cue.autoHideSeconds)
         XCTAssertEqual(cue.message.hook, "\(label). You said you'd start now.")
-        XCTAssertEqual(cue.message.primaryTitle, "Start 50m focus")
+        XCTAssertEqual(cue.message.primaryTitle, "Start 15m focus")
         XCTAssertNotNil(cue.message.motivation)
         let attempt = try XCTUnwrap(vm.coachEngine.store.attempt(id: try XCTUnwrap(cue.attemptID)))
         XCTAssertTrue(CoachPlannedCue.isPlannedContextKey(attempt.contextKey ?? ""))
@@ -211,6 +211,7 @@ final class CoachPlanFlowTests: XCTestCase {
         vm.configure(modelContext: container.mainContext)
         vm.calendarAvailabilityProvider = { _ in .unknown }
         vm.systemIdleSecondsProvider = { 0 }
+        vm.coachExploreSizes = false
         let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
         settings.antiProcrastinationEnabled = true
         settings.coachIdleStarterEnabled = true

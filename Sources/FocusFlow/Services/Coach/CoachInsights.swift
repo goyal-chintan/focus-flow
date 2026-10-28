@@ -70,7 +70,35 @@ enum CoachInsights {
         let deliveredAt: Date
         let outcome: FocusCoachOutcome?
         let reward: Double?
+        /// A cue for a block the user planned (not counted as a coach prompt).
         let isPlanned: Bool
+        /// v4: "start card", "rescue (L2)", "start nudge"…
+        var label: String = "prompt"
+        var skipReason: FocusCoachSkipReason? = nil
+
+        init(deliveredAt: Date, outcome: FocusCoachOutcome?, reward: Double?, isPlanned: Bool, label: String = "prompt", skipReason: FocusCoachSkipReason? = nil) {
+            self.deliveredAt = deliveredAt
+            self.outcome = outcome
+            self.reward = reward
+            self.isPlanned = isPlanned
+            self.label = label
+            self.skipReason = skipReason
+        }
+    }
+
+    /// v4 §3.1: prompts seen and starts within 10 minutes, per kind of prompt.
+    struct TriggerStat: Equatable, Sendable, Identifiable {
+        let label: String
+        let seen: Int
+        let started: Int
+        var id: String { label }
+    }
+
+    /// v4 §3.4: how often each "Not now" reason was given.
+    struct ReasonCount: Equatable, Sendable, Identifiable {
+        let reason: FocusCoachSkipReason
+        let count: Int
+        var id: String { reason.rawValue }
     }
 
     struct Summary: Sendable {
@@ -89,6 +117,10 @@ enum CoachInsights {
         let learnedFromStarts: Int
         let isLearned: Bool
         let advice: [CoachAdvice]
+        /// v4: seen → started per kind of prompt, most-seen first.
+        var triggerStats: [TriggerStat] = []
+        /// v4: "Not now" reasons, most frequent first.
+        var reasons: [ReasonCount] = []
     }
 
     static let lookbackDays = 14
@@ -132,7 +164,13 @@ enum CoachInsights {
         let unplannedRate = unplannedDays >= 3 ? Double(unplannedStarts) / Double(unplannedDays) : nil
 
         let seen = prompts.filter { !$0.isPlanned && $0.deliveredAt >= lookbackStart && $0.outcome != .unseen }
-        let ledToStart = seen.filter { ($0.reward ?? 0) >= 1 || $0.outcome == .improved }.count
+        let ledToStart = seen.filter(\.ledToStart).count
+        let triggerStats = Dictionary(grouping: seen, by: \.label)
+            .map { TriggerStat(label: $0.key, seen: $0.value.count, started: $0.value.filter(\.ledToStart).count) }
+            .sorted { $0.seen != $1.seen ? $0.seen > $1.seen : $0.label < $1.label }
+        let reasons = Dictionary(grouping: seen.compactMap(\.skipReason), by: { $0 })
+            .map { ReasonCount(reason: $0.key, count: $0.value.count) }
+            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.reason.rawValue < $1.reason.rawValue }
 
         let advice = adviceList(
             now: now,
@@ -160,7 +198,9 @@ enum CoachInsights {
             promptsLedToStart: ledToStart,
             learnedFromStarts: model.totalStarts,
             isLearned: isLearned,
-            advice: advice
+            advice: advice,
+            triggerStats: triggerStats,
+            reasons: reasons
         )
     }
 
@@ -331,4 +371,9 @@ enum CoachInsights {
     }
 
     static func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
+}
+
+extension CoachInsights.PromptInput {
+    /// Credited with a start (v4 attribution), or a plan the user made from it.
+    var ledToStart: Bool { (reward ?? 0) >= 1 || outcome == .improved }
 }

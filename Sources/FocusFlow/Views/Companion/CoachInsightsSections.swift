@@ -24,7 +24,10 @@ private struct CoachInsightsData {
                     deliveredAt: $0.deliveredAt,
                     outcome: $0.outcome,
                     reward: $0.reward,
-                    isPlanned: $0.contextKey.map(CoachPlannedCue.isPlannedContextKey) ?? false
+                    // v4: the start card is a coach prompt; only cues for planned blocks are excluded.
+                    isPlanned: $0.contextKey.map(CoachPlannedCue.isRequestedCueKey) ?? false,
+                    label: CoachPromptAttribution.label(contextKey: $0.contextKey, surface: $0.surfaceRawValue.flatMap(CoachSurface.init(rawValue:))),
+                    skipReason: $0.skipReason
                 )
             }
         summary = CoachInsights.summary(
@@ -268,6 +271,13 @@ struct CoachLearnedSection: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
+                CoachStartFirstBlock(
+                    summary: summary,
+                    ladder: timerVM.startLadderRecommendation(now: now),
+                    journal: timerVM.coachJournal.entries(on: now),
+                    learning: timerVM.coachLearningSummary(now: now)
+                )
+
                 if summary.isLearned {
                     heatmap
                 } else {
@@ -336,4 +346,148 @@ struct CoachLearnedSection: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Heatmap of when you are most likely to start a focus block")
     }
+}
+
+// MARK: - Coach v4: getting you started
+
+/// Insights → "What the coach learned" (v4 §3.1, §3.3–3.4): the next ask and why, which
+/// prompts led to a start, what stops you, and today's coach log.
+private struct CoachStartFirstBlock: View {
+    let summary: CoachInsights.Summary
+    let ladder: CoachBlockSizeLadder.Recommendation
+    let journal: [CoachJournal.Entry]
+    let learning: TimerViewModel.CoachLearningSummary
+    @State private var showLog = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FFSpace.m) {
+            learningRow
+            HStack(alignment: .top, spacing: FFSpace.l) {
+                FFStat(label: "Next ask", value: "\(ladder.minutes) min", caption: ladder.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Divider()
+                VStack(alignment: .leading, spacing: FFSpace.xs) {
+                    Text("Which prompts got you started · 14 days").ffText(.callout)
+                    if summary.triggerStats.isEmpty {
+                        Text("No prompts seen yet.").ffText(.caption)
+                    }
+                    ForEach(summary.triggerStats) { stat in
+                        HStack(spacing: FFSpace.s) {
+                            Text(stat.label.capitalizedFirst).ffText(.body)
+                            Spacer(minLength: FFSpace.s)
+                            Text("\(stat.started) of \(stat.seen)").ffText(.headline).monospacedDigit()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Divider()
+                VStack(alignment: .leading, spacing: FFSpace.xs) {
+                    Text("What stops you").ffText(.callout)
+                    if summary.reasons.isEmpty {
+                        Text("Pick a reason under “Not now” and the coach adapts its next ask.").ffText(.caption)
+                    }
+                    ForEach(summary.reasons.prefix(4)) { item in
+                        HStack(spacing: FFSpace.s) {
+                            Text(CoachDeclineResponse.label(item.reason)).ffText(.body)
+                            Spacer(minLength: FFSpace.s)
+                            Text("\(item.count)×").ffText(.headline).monospacedDigit()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            DisclosureGroup(isExpanded: $showLog) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if journal.isEmpty {
+                        Text("Nothing yet today.").ffText(.caption)
+                    }
+                    ForEach(journal.reversed().prefix(30)) { entry in
+                        HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
+                            Text(TimerViewModel.clockLabel(entry.at)).ffText(.caption).monospacedDigit()
+                            Image(systemName: Self.symbol(entry.kind))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 14)
+                            Text(entry.text).ffText(.callout).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(.top, FFSpace.xs)
+            } label: {
+                Text("Today's coach log · why it spoke, or stayed quiet").ffText(.headline)
+            }
+        }
+    }
+
+    /// v5 §3.5: does prompting help, what the coach learned, and what each size is worth.
+    private var learningRow: some View {
+        HStack(alignment: .top, spacing: FFSpace.l) {
+            if let lift = learning.lift {
+                FFStat(
+                    label: "Do prompts help you?",
+                    value: String(format: "%+.0f pts", lift.lift * 100),
+                    caption: "Started within 10 min: \(CoachInsights.percent(lift.withPrompt)) with a prompt, \(CoachInsights.percent(lift.withoutPrompt)) without (\(lift.decisions) moments)"
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                FFStat(
+                    label: "Do prompts help you?",
+                    value: "Measuring",
+                    caption: "\(learning.decisions) moments so far (\(learning.quietDecisions) held back on purpose). Needs 20 to compare."
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: FFSpace.xs) {
+                Text("When prompts work for you").ffText(.callout)
+                if learning.effects.isEmpty {
+                    Text("Starting from the research: breakpoints and your good hours help; repeats and late nights hurt.").ffText(.caption)
+                }
+                ForEach(learning.effects, id: \.name) { effect in
+                    HStack(spacing: FFSpace.s) {
+                        Image(systemName: effect.weight > 0 ? "arrow.up.right" : "arrow.down.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(effect.weight > 0 ? FFPalette.goal : Color.orange)
+                            .accessibilityLabel(effect.weight > 0 ? "helps" : "hurts")
+                        Text(effect.name).ffText(.body)
+                        Spacer(minLength: FFSpace.s)
+                        Text(String(format: "%+.0f pts", effect.weight * 100)).ffText(.headline).monospacedDigit()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Divider()
+            VStack(alignment: .leading, spacing: FFSpace.xs) {
+                Text("Which size works · expected value").ffText(.callout)
+                ForEach(learning.sizes, id: \.minutes) { size in
+                    HStack(spacing: FFSpace.s) {
+                        Text("\(size.minutes) min").ffText(.body)
+                        Spacer(minLength: FFSpace.s)
+                        Text(String(format: "%.2f", size.value)).ffText(.headline).monospacedDigit()
+                        Text("· \(size.asks) asks").ffText(.caption)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .help("Learner A: an action-centred Bayesian bandit estimates how much a prompt raises your chance of starting in each context (as in HeartSteps). Learner B: Bayesian Thompson sampling over 5 · 15 · 25 minutes. Rules from the research are the starting point; your data overrides them.")
+    }
+
+    static func symbol(_ kind: CoachJournal.Entry.Kind) -> String {
+        switch kind {
+        case .shown: "bubble.left.fill"
+        case .quiet: "moon.zzz"
+        case .started: "play.fill"
+        case .declined: "hand.raised"
+        case .unseen: "eye.slash"
+        case .arrival: "figure.walk.arrival"
+        }
+    }
+}
+
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

@@ -9,6 +9,8 @@ struct CoachStartTarget: Sendable, Equatable {
     var name: String?
     var projectID: UUID?
     var priorityID: UUID?
+    /// Coach v4 §3.4: "I don't know the next step" → the block's job is to find it.
+    var findNextStep: Bool = false
 }
 
 /// A confirmed derailer that is frontmost now, with its real time this week.
@@ -108,8 +110,11 @@ enum CoachTrigger: Sendable, Equatable {
     case starterStarted(minutes: Int)
     /// v3 §3.2: the user's own planned start time has come.
     case plannedStart(CoachPlannedCueContext)
-    /// v3 §3.1: once a day, "when is today's block?" with suggested times.
+    /// v4 §3.3: the start card. Start the next block now (5 · 15 · 25), or pick a time later.
+    /// (v3's plan card asked "When is today's 2h?"; `goalMinutes` is no longer shown.)
     case dailyPlan(goalMinutes: Int, firstSuggestion: String?)
+    /// v4 §3.4: the "then" of an if-then plan, right after a reasoned "Not now".
+    case counterOffer(reason: FocusCoachSkipReason)
 }
 
 /// What a planned-start cue says (v3 §3.2).
@@ -226,8 +231,10 @@ enum CoachMessageComposer {
             hook = (CoachStarterBlock.startedNotice(minutes: minutes), false)
         case .plannedStart(let cue):
             hook = plannedHook(input, cue)
-        case .dailyPlan(let goal, let first):
-            hook = dailyPlanHook(input.style, goalMinutes: goal, firstSuggestion: first)
+        case .dailyPlan:
+            hook = startCardHook(input)
+        case .counterOffer(let reason):
+            hook = counterOfferHook(input, reason: reason)
         }
 
         let detail = detail(input, hookIsFact: hook.isFact)
@@ -253,7 +260,7 @@ enum CoachMessageComposer {
         switch input.trigger {
         case .startNudge, .rescue, .pseudoProductivity, .plannedStart, .dailyPlan:
             return rotation(input)
-        case .inSessionDrift, .weeklyPriorities, .keepGoing, .momentum, .starterStarted:
+        case .inSessionDrift, .weeklyPriorities, .keepGoing, .momentum, .starterStarted, .counterOffer:
             return nil
         }
     }
@@ -272,12 +279,29 @@ enum CoachMessageComposer {
         }
     }
 
-    private static func dailyPlanHook(_ style: CoachStyle, goalMinutes: Int, firstSuggestion: String?) -> (String, Bool) {
-        let goal = goalMinutes > 0 ? duration(goalMinutes) : "focus"
-        switch style {
-        case .challenger: return ("When is today's \(goal)? Decide now.", false)
-        case .data: return (firstSuggestion.map { "Best time left today: \($0)." } ?? "Pick today's start time.", firstSuggestion != nil)
-        case .gentle: return ("When would you like to focus today?", false)
+    /// The start card never names the day's goal: a near, small goal gets started; a distal one
+    /// gets postponed (Bandura & Schunk, 1981). It asks for the next block only.
+    private static func startCardHook(_ input: CoachComposerInput) -> (String, Bool) {
+        let first = input.facts.sessionsToday == 0
+        switch input.style {
+        case .challenger:
+            if first && input.facts.missedYesterday { return ("Never miss twice. Start small.", false) }
+            return (first ? "First block. Start small." : "Next block. Small is fine.", false)
+        case .data:
+            if first { return ("No block yet today. Next: \(input.target.minutes)m.", true) }
+            return ("\(input.facts.sessionsToday) block\(input.facts.sessionsToday == 1 ? "" : "s") today. Next: \(input.target.minutes)m.", true)
+        case .gentle:
+            return (first ? "Ready for a small start?" : "Ready for one more small block?", false)
+        }
+    }
+
+    private static func counterOfferHook(_ input: CoachComposerInput, reason: FocusCoachSkipReason) -> (String, Bool) {
+        let minutes = input.target.minutes
+        switch (reason, input.style) {
+        case (.unclearNextStep, .gentle): return ("Let's spend \(minutes) minutes finding the next step?", false)
+        case (.unclearNextStep, _): return ("No next step? Spend \(minutes) minutes finding it.", false)
+        case (_, .gentle): return ("Then just \(minutes) minutes?", false)
+        default: return ("Too big? Then \(minutes) minutes. Just open it.", false)
         }
     }
 
@@ -430,10 +454,17 @@ enum CoachMessageComposer {
             return .line("Too much? \(cue.starterMinutes) minutes still counts.")
         case .dailyPlan:
             switch input.style {
-            case .challenger: return .line("Pick a time. People who decide when are far likelier to start.")
-            case .data: return .line("Planning when has a medium-to-large effect on follow-through (d = 0.65).")
-            case .gentle: return .line("One click. I'll remind you on screen at that time.")
+            case .challenger: return .line("Starting is the hard part. Make it small enough to start now.")
+            case .data: return .line("Short, near goals raise starts and persistence (Bandura & Schunk, 1981).")
+            case .gentle: return .line("Five minutes still counts.")
             }
+        case .counterOffer(let reason):
+            if reason == .unclearNextStep {
+                return .line("Write the next step down. Then the work has a door.")
+            }
+            return input.style == .data
+                ? .line("Name the obstacle, then plan around it: if-then plans help (g = 0.34).")
+                : .line("You don't have to want to. Just start the small version.")
         case .weeklyPriorities:
             switch input.style {
             case .challenger: return .line("What will you finish by Sunday?")
@@ -519,8 +550,10 @@ enum CoachMessageComposer {
             return "Keep going · \(CoachStarterBlock.keepGoingMinutes)m"
         case .momentum:
             return "Make it \(CoachMomentumRamp.targetMinutes)"
-        case .starterStarted, .dailyPlan:
+        case .starterStarted:
             return ""
+        case .dailyPlan, .counterOffer:
+            return startTitle(input.target)
         case .plannedStart(let cue):
             var target = input.target
             target.minutes = cue.minutes
@@ -530,6 +563,7 @@ enum CoachMessageComposer {
     }
 
     static func startTitle(_ target: CoachStartTarget) -> String {
+        if target.findNextStep { return "Find the next step · \(target.minutes)m" }
         if let name = target.name, !name.isEmpty {
             return "Start \(target.minutes)m on \(shortName(name))"
         }

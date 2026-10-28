@@ -197,6 +197,10 @@ private struct AppLaunchBridge: View {
                 if timerVM.hotkeyRegistrar == nil {
                     timerVM.hotkeyRegistrar = CoachGlobalHotkey.shared
                 }
+                // Coach v4: the decision journal, written in release builds too.
+                if timerVM.coachJournal.fileURL == nil, !timerVM.isEvidenceMode {
+                    timerVM.coachJournal = CoachJournal(fileURL: CoachJournal.defaultURL())
+                }
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.syncGlobalHotkey()
                 WindowPolicyManager.shared.start()

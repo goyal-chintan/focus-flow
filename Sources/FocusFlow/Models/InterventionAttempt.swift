@@ -25,6 +25,21 @@ final class InterventionAttempt {
     /// Learned reward once resolved: +1 start, +0.5 completed, ±0.5 outcome rating.
     var reward: Double?
 
+    // Coach v5 learning fields (optional: no migration needed). A decision row is logged at every
+    // decision point, including the ones where the coach stayed quiet (docs/plans/2026-10-28-coach-v5-learning-engine-design.md).
+    /// "prompt" for a Learner A decision point.
+    var decisionRaw: String?
+    /// `CoachPromptFeatures` vector at the decision, comma-separated.
+    var featuresRaw: String?
+    /// Probability the coach prompted with (nil when forced, e.g. by a test override).
+    var propensity: Double?
+    /// Whether it prompted.
+    var treated: Bool?
+    /// Block size asked for (Learner B).
+    var askedMinutes: Int?
+    /// `CoachSizePolicy.Context` vector at the ask, comma-separated.
+    var sizeFeaturesRaw: String?
+
     var kind: FocusCoachInterventionKind {
         get { FocusCoachInterventionKind(rawValue: kindRawValue) ?? .softNudge }
         set { kindRawValue = newValue.rawValue }

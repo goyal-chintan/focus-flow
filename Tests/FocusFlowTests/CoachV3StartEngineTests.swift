@@ -139,7 +139,8 @@ final class CoachV3StartEngineTests: XCTestCase {
         XCTAssertEqual(CoachPanelPresentation(kind: .rescue, message: message).autoHideSeconds, 180)
         XCTAssertEqual(CoachPanelPresentation(kind: .notice, message: message).autoHideSeconds, 3.5)
         XCTAssertEqual(CoachPanelPresentation(kind: .plannedStart, message: message).escapeAction, .push15)
-        XCTAssertFalse(CoachPanelPresentation(kind: .dailyPlan, message: message).hasPrimary)
+        // v4: size pills replace the primary button on the start card.
+        XCTAssertFalse(CoachPanelPresentation(kind: .dailyPlan, message: message, sizeOptions: [5, 15, 25]).hasPrimary)
     }
 
     // MARK: Motivation line (R6)
@@ -194,9 +195,11 @@ final class CoachV3StartEngineTests: XCTestCase {
         XCTAssertEqual(compose(.plannedStart(missed)).hook, "22:00. Missed yesterday. Never miss twice.")
         XCTAssertEqual(compose(.plannedStart(cue), style: .gentle).hook, "It's 22:00, your planned block.")
 
+        // v4: the start card asks for the next block, never the day's 2h.
         let invite = compose(.dailyPlan(goalMinutes: 120, firstSuggestion: "21:00"))
-        XCTAssertEqual(invite.hook, "When is today's 2h? Decide now.")
-        XCTAssertEqual(invite.primaryTitle, "")
+        XCTAssertEqual(invite.hook, "First block. Start small.")
+        XCTAssertFalse(invite.hook.contains("2h"))
+        XCTAssertEqual(invite.primaryTitle, "Start 50m on Book draft")
     }
 
     func testTodaysLineIsStableForADayAndRotates() {

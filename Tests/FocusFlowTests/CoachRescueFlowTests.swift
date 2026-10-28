@@ -344,6 +344,8 @@ final class CoachRescueFlowTests: XCTestCase {
     private func makeViewModel() throws -> TimerViewModel {
         let container = try makeContainer()
         let vm = TimerViewModel(defaults: defaults)
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         vm.calendarAvailabilityProvider = { _ in .unknown }
         vm.systemIdleSecondsProvider = { 0 }

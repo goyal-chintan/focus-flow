@@ -35,6 +35,26 @@ struct CoachRewardLedger {
         return true
     }
 
+    /// Credits a start to the most recent prompt the user saw in the last 10 minutes, whatever
+    /// surface started the block (Coach v4 §3.1). The plan card's starts were made from the
+    /// popover a minute later and, before v4, were never credited.
+    @discardableResult
+    func creditLatestSeen(sessionID: UUID, at now: Date = Date()) -> UUID? {
+        let candidates = store.attempts(deliveredSince: now.addingTimeInterval(-Self.startWindow)).map {
+            CoachPromptAttribution.Candidate(
+                id: $0.id,
+                deliveredAt: $0.deliveredAt,
+                surface: $0.surfaceRawValue.flatMap(CoachSurface.init(rawValue:)),
+                outcome: $0.outcome,
+                reward: $0.reward,
+                hasContext: $0.contextKey != nil
+            )
+        }
+        guard let id = CoachPromptAttribution.creditTarget(for: now, candidates: candidates),
+              creditStart(attemptID: id, sessionID: sessionID, at: now) else { return nil }
+        return id
+    }
+
     /// Adds the completion bonus to the prompt that led to `sessionID`.
     @discardableResult
     func creditCompletion(sessionID: UUID) -> Bool {

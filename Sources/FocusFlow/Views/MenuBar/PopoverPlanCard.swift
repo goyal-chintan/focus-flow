@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 
 /// Idle popover, top: today's plan (Coach v3 §3.1). Either the next planned start with
-/// Start now / Push / Skip, or one-click start times when nothing is planned yet. Below it,
+/// Start now / Push / Skip, or (v4 §3.3) "start small, now": one click starts the coach's
+/// suggested size, and one-click start times for later sit below. Below it,
 /// "Today's line": one quote per day for the chosen coach style.
 struct PopoverPlanCard: View {
     @Environment(TimerViewModel.self) private var timerVM
@@ -10,6 +11,7 @@ struct PopoverPlanCard: View {
     @Query(sort: \PlannedBlock.startAt) private var plans: [PlannedBlock]
 
     @State private var slots: [CoachPlanSlot] = []
+    @State private var ladder: CoachBlockSizeLadder.Recommendation?
     @State private var lineOffset = 0
     @State private var hoveredSlot: Date?
 
@@ -34,6 +36,9 @@ struct PopoverPlanCard: View {
             .task(id: Calendar.current.component(.hour, from: now)) {
                 slots = timerVM.dailyPlanSuggestions(now: now)
             }
+            .task(id: timerVM.completedFocusSessions) {
+                ladder = timerVM.startLadderRecommendation(now: now)
+            }
         }
         .animation(reduceMotion ? nil : FFMotion.section, value: nextPlan(now: Date())?.id)
     }
@@ -56,7 +61,7 @@ struct PopoverPlanCard: View {
             statusRow(icon: "checkmark.circle.fill", tint: .green, title: "Plan kept · \(TimerViewModel.clockLabel(done.startAt))", subtitle: "Showing up is the habit. Again tomorrow.")
         } else if timerVM.todayFocusTime >= (timerVM.settings?.dailyFocusGoal ?? 7200) {
             statusRow(icon: "flag.checkered", tint: .green, title: "Today's goal is done", subtitle: "Rest is part of the system.")
-        } else if !slots.isEmpty {
+        } else {
             chooser
         }
     }
@@ -111,57 +116,78 @@ struct PopoverPlanCard: View {
     }
 
     private var chooser: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let suggested = ladder?.minutes ?? CoachBlockSizeLadder.defaultMinutes
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "calendar.badge.clock")
+                Image(systemName: "play.circle.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
                     .accessibilityHidden(true)
-                Text("When is today's block?")
+                Text(timerVM.completedFocusSessions == 0 ? "Start small, now" : "Next block, small is fine")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                 Spacer(minLength: 0)
             }
-            HStack(spacing: 6) {
-                ForEach(slots) { slot in
-                    Button {
-                        timerVM.commitDailyPlan(slot)
-                    } label: {
-                        VStack(spacing: 0) {
-                            Text(slot.label())
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                            Text(slot.caption)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                        .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(hoveredSlot == slot.start
-                                      ? LiquidDesignTokens.Spectral.primaryContainer.opacity(0.22)
-                                      : Color.primary.opacity(0.06))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .strokeBorder(hoveredSlot == slot.start
-                                              ? LiquidDesignTokens.Spectral.primaryContainer.opacity(0.7)
-                                              : Color.primary.opacity(0.10), lineWidth: 1)
-                        )
-                        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            // One button: the coach's size. (The Duration picker below already offers every size.)
+            HStack(alignment: .center, spacing: 10) {
+                Button { timerVM.startNextBlock(minutes: suggested) } label: {
+                    Label("Start \(suggested) min", systemImage: "play.fill")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .frame(minHeight: 24)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(LiquidDesignTokens.Spectral.primaryContainer)
+                .help("Start \(suggested) minutes now (the coach's suggestion)")
+                if let ladder {
+                    Text(ladder.caption)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            if !slots.isEmpty {
+                Text("Or plan it for later")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 2)
+                HStack(spacing: 6) {
+                    ForEach(slots) { slot in
+                        slotButton(slot)
                     }
-                    .buttonStyle(.plain)
-                    .onHover { hoveredSlot = $0 ? slot.start : (hoveredSlot == slot.start ? nil : hoveredSlot) }
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hoveredSlot)
-                    .help("Plan today's block at \(slot.label()). The coach shows up on screen then.")
-                    .accessibilityLabel("Plan at \(slot.label()), \(slot.caption)")
                 }
             }
-            Text("Deciding when is the step most people skip.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
         }
+    }
+
+    private func slotButton(_ slot: CoachPlanSlot) -> some View {
+        Button {
+            timerVM.commitDailyPlan(slot)
+        } label: {
+            HStack(spacing: 4) {
+                Text(slot.label())
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                Text(slot.caption)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, minHeight: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(hoveredSlot == slot.start
+                          ? LiquidDesignTokens.Spectral.primaryContainer.opacity(0.18)
+                          : Color.primary.opacity(0.05))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredSlot = $0 ? slot.start : (hoveredSlot == slot.start ? nil : hoveredSlot) }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hoveredSlot)
+        .help("Plan a block at \(slot.label()). The coach shows up on screen then.")
+        .accessibilityLabel("Plan at \(slot.label()), \(slot.caption)")
     }
 
     private func statusRow(icon: String, tint: Color, title: String, subtitle: String) -> some View {

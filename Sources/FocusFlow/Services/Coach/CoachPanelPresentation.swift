@@ -17,7 +17,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case notice
         /// v3 §3.2: the user's planned start time has come. Stays until answered.
         case plannedStart
-        /// v3 §3.1: "When is today's block?" with time chips. Stays until answered.
+        /// v4 §3.3: the start card: "Start 5 · 15 · 25 now", with time chips for later.
+        /// Stays until answered.
         case dailyPlan
     }
 
@@ -43,6 +44,12 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
     let plannedBlockID: UUID?
     /// Daily plan card: the suggested start times (one click each).
     let planSlots: [CoachPlanSlot]
+    /// v4 §3.3: one-click block sizes (5 · 15 · 25). Empty: a single primary button.
+    let sizeOptions: [Int]
+    /// The size the ladder recommends (highlighted, Return starts it).
+    let recommendedMinutes: Int?
+    /// Why that size, e.g. "5m: you said it felt too big."
+    let sizeCaption: String?
 
     init(
         id: UUID = UUID(),
@@ -57,7 +64,10 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         footerHint: String? = nil,
         step: String? = nil,
         plannedBlockID: UUID? = nil,
-        planSlots: [CoachPlanSlot] = []
+        planSlots: [CoachPlanSlot] = [],
+        sizeOptions: [Int] = [],
+        recommendedMinutes: Int? = nil,
+        sizeCaption: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -72,10 +82,14 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         self.step = step
         self.plannedBlockID = plannedBlockID
         self.planSlots = planSlots
+        self.sizeOptions = sizeOptions
+        self.recommendedMinutes = recommendedMinutes
+        self.sizeCaption = sizeCaption
     }
 
     /// Whether the panel has a primary button at all.
-    var hasPrimary: Bool { kind != .notice && kind != .dailyPlan && !message.primaryTitle.isEmpty }
+    /// Size pills replace the primary button (the recommended pill takes Return).
+    var hasPrimary: Bool { kind != .notice && sizeOptions.isEmpty && !message.primaryTitle.isEmpty }
 
     /// Auto-hide delay. Nil means the panel stays until it is answered (v3 §3.2–3.3, R3):
     /// before v3 every panel hid after 20 s, and 4 of 5 live prompts vanished unseen.
@@ -114,9 +128,19 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         }
     }
 
+    /// v4 §3.4: "Not now, because…" on prompts that ask for a start. Each reason changes the
+    /// next ask. Not on a counter-offer (it already answers a reason).
+    var reasonActions: [CoachPanelSecondaryAction] {
+        if case .counterOffer = message.trigger { return [] }
+        switch kind {
+        case .startNudge, .dailyPlan, .rescue: return CoachPanelSecondaryAction.reasons
+        default: return []
+        }
+    }
+
     /// A single secondary action renders as a plain button instead of a menu.
     var singleSecondary: CoachPanelSecondaryAction? {
-        secondaryActions.count == 1 ? secondaryActions[0] : nil
+        secondaryActions.count == 1 && reasonActions.isEmpty ? secondaryActions[0] : nil
     }
 
     /// What Esc does once the panel has been clicked ("Not now").
@@ -151,6 +175,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .skipToday: "Skip today"
         case .planLater: "Ask me in 2 hours"
         case .notToday: "Not today"
+        case .reasonBusy, .reasonTired, .reasonTooBig, .reasonUnclear:
+            action.declineReason.map(CoachDeclineResponse.label) ?? ""
         }
     }
 
@@ -185,8 +211,25 @@ enum CoachPanelSecondaryAction: String, CaseIterable, Sendable, Identifiable {
     case planLater
     /// Daily plan card: no plan today.
     case notToday
+    /// v4 §3.4: "Not now, because…"
+    case reasonBusy
+    case reasonTired
+    case reasonTooBig
+    case reasonUnclear
 
     var id: String { rawValue }
+
+    static let reasons: [CoachPanelSecondaryAction] = [.reasonBusy, .reasonTired, .reasonTooBig, .reasonUnclear]
+
+    var declineReason: FocusCoachSkipReason? {
+        switch self {
+        case .reasonBusy: .urgentTask
+        case .reasonTired: .justTired
+        case .reasonTooBig: .taskTooBig
+        case .reasonUnclear: .unclearNextStep
+        default: nil
+        }
+    }
 }
 
 /// The AppKit host for the panel. `TimerViewModel` owns the content; the host only shows,

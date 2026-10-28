@@ -7,6 +7,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testContinueOvertimeActionKeepsOvertimeActive() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -26,6 +28,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testContinueFocusingRetainsCurrentSessionForStopLifecycle() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -44,6 +48,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testContinueAfterCompletionTakeBreakKeepsLastCompletedFocusContext() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -66,6 +72,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testSkipBreakStartsNextFocusBlockInsteadOfEndingCycle() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -80,6 +88,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testExplicitSkipReasonCreatesSuppressionReleaseWindow() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -92,6 +102,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testMarkOffDutyEntersExplicitReleaseAndClearsPrompts() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -166,6 +178,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testIdleStarterSuppressionRecordsReasonWhenReleaseWindowIsActive() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -213,14 +227,24 @@ final class TimerCompletionFlowTests: XCTestCase {
 
         vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .distracting)
 
-        let surface = vm.coachEngine.store.attempts.first?.surfaceRawValue
-        XCTAssertNotEqual(surface, CoachSurface.notification.rawValue)
-        XCTAssertNotNil(vm.currentIdleStarterDecision, "A start prompt must land on screen (panel) or in the popover (badge)")
+        let attempt = try XCTUnwrap(vm.coachEngine.store.attempts.first, "Every decision point is logged (v5)")
+        XCTAssertNotEqual(attempt.surfaceRawValue, CoachSurface.notification.rawValue)
+        if attempt.treated == true {
+            XCTAssertEqual(attempt.surfaceRawValue, CoachSurface.panel.rawValue, "A start prompt lands on screen")
+            XCTAssertNotNil(vm.currentIdleStarterDecision)
+        } else {
+            // v5: the learner may hold back on purpose; the quiet moment is logged as the control.
+            XCTAssertEqual(attempt.decisionRaw, CoachPromptPolicy.decisionKey)
+            XCTAssertNotNil(attempt.propensity)
+            XCTAssertNil(vm.coachPanel)
+        }
     }
 
     func testScreenShareHardPassSuppressesNotificationAndPrompt() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel(screenShareGuard: ScreenShareGuard(isScreenSharingProvider: { true }))
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -343,6 +367,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testStartFocusRequestsPopoverCloseOnCommit() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
         var closeRequests = 0
@@ -357,6 +383,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testContinueAfterCompletionEndSessionRequestsPopoverClose() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
         var closeRequests = 0
@@ -376,6 +404,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testBreakOverrunReasonPromptActivatesDuringOvertime() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -396,6 +426,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testBreakOverrunReasonPromptDoesNotLoopAfterReasonSubmitted() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -436,6 +468,10 @@ final class TimerCompletionFlowTests: XCTestCase {
         try container.mainContext.save()
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -451,6 +487,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testDeferBreakAndStartNextBlockEndsInFocusingNotIdle() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -464,6 +502,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testCompletedBlockContextIsNonNilAfterFocusSessionCompletes() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -479,6 +519,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testCompletedBlockContextSurvivesDeferBreakAndStartNextBlock() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -503,6 +545,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testClassifyBreakRecoveryDoneForNowActivatesSuppressionWindow() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -516,6 +560,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testBlockForProjectStoresAppContextTargetInBlockedApps() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -557,6 +603,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testBlockForProjectKeepsDomainBehaviorInBlockedWebsites() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -597,6 +645,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testBlockForProjectDoesNotDuplicateTargetAcrossMultipleProfiles() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -644,6 +694,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testSuggestedEarnedBreakIsCalculatedAfterMeaningfulFocusCompletion() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -661,6 +713,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testChoosingSuggestedBreakStartsBreakWithSuggestedDuration() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -679,6 +733,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testBreakOutcomeRecordedWhenReturningToFocus() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -706,6 +762,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testSecondContinueFocusingDoesNotStopRunningBlock() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -729,6 +787,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testStaleTakeBreakDoesNotReplaceRunningFocusBlock() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -751,6 +811,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testStaleContinueFocusingDoesNotFreezeRunningBreak() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -769,6 +831,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testCoachNotificationStartDuringRunningBlockKeepsBlock() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -808,6 +872,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testResumeRecoveryAfterStartingNewBlockDoesNotFreezeIntoPaused() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
         let old = try seedPausedRecovery(vm, in: container)
@@ -828,6 +894,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testResumeRecoveryWhileRunningBlockIsPausedKeepsThatBlock() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
         _ = try seedPausedRecovery(vm, in: container)
@@ -851,6 +919,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testResumeRecoveryFromIdleStillRestoresPausedSession() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
         let old = try seedPausedRecovery(vm, in: container)
@@ -869,6 +939,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testPauseBreakSetsPausedFlagAndDoesNotChangeState() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -885,6 +957,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testResumeBreakClearsPausedFlagAndRestoresState() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -903,6 +977,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testPauseBreakOutsideBreakStateIsNoOp() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -915,6 +991,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testStopClearsBreakPausedFlag() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -974,6 +1052,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testResumeAccumulatesPauseIntoSession() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -994,6 +1074,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testStopWhilePausedAccumulatesPauseIntoSession() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1024,6 +1106,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testLoadTodayStatsExcludesPauseTime() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1048,6 +1132,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testCheckDayRolloverResetsStatsOnNewDay() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1070,6 +1156,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testLoadTodayStatsReconcilesWhenIdleEvenIfDifferenceUnder60Seconds() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1089,6 +1177,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testSwitchProjectWhilePausedAccumulatesPauseToCorrectSession() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1133,6 +1223,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testWakeRecoveryKeepOvertimeExcludesSleepFromActualDuration() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1211,6 +1303,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testResumeSetsPauseCountOnSession() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1232,6 +1326,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testStopWhilePausedSetsPauseCount() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1259,6 +1355,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     func testSwitchProjectSetsPauseCountOnCorrectSession() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -1294,6 +1392,8 @@ final class TimerCompletionFlowTests: XCTestCase {
     /// and the bandit forced to the panel × challenger arm so assertions are deterministic.
     private func makeCoachReadyViewModel(container: ModelContainer) throws -> TimerViewModel {
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         vm.calendarAvailabilityProvider = { _ in .unknown }
         let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
