@@ -43,6 +43,9 @@ enum FocusCoachSkipReason: String, CaseIterable, Sendable {
     case cantFocus        = "cantFocus"
     case justTired        = "justTired"
     case doneForToday     = "doneForToday"
+    // Coach v4 §3.4: reasons that change the next ask (MCII: name the obstacle, plan for it).
+    case taskTooBig       = "taskTooBig"
+    case unclearNextStep  = "unclearNextStep"
 
     var displayName: String {
         switch self {
@@ -55,6 +58,8 @@ enum FocusCoachSkipReason: String, CaseIterable, Sendable {
         case .cantFocus:       "Can't focus"
         case .justTired:       "Just tired"
         case .doneForToday:    "Done for today"
+        case .taskTooBig:      "It feels too big"
+        case .unclearNextStep: "I don't know the next step"
         }
     }
 
@@ -69,6 +74,8 @@ enum FocusCoachSkipReason: String, CaseIterable, Sendable {
         case .cantFocus:       "🌀"
         case .justTired:       "🛋"
         case .doneForToday:    "🌙"
+        case .taskTooBig:      "🏔"
+        case .unclearNextStep: "🧭"
         }
     }
 

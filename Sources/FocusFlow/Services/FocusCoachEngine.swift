@@ -324,6 +324,21 @@ final class FocusCoachEngine {
         return attempt
     }
 
+    /// Coach v5: logs a decision point where the coach chose to stay quiet. Unlike a delivery it
+    /// touches no prompt state (budget, cooldown, last delivered): nothing was shown.
+    @discardableResult
+    func recordDecisionPoint(at now: Date, riskScore: Double, features: String, propensity: Double?) -> InterventionAttempt {
+        let attempt = InterventionAttempt(kind: .quickPrompt, riskScore: riskScore, sessionId: nil)
+        attempt.deliveredAt = now
+        attempt.surfaceRawValue = CoachSurface.silent.rawValue
+        attempt.decisionRaw = CoachPromptPolicy.decisionKey
+        attempt.featuresRaw = features
+        attempt.propensity = propensity
+        attempt.treated = false
+        store.saveInterventionAttempt(attempt)
+        return attempt
+    }
+
     /// Prompts shown since `date` (any surface), for the non-learnable guardrails.
     func guardrailDeliveries(since date: Date) -> [CoachGuardrails.Delivery] {
         store.attempts(deliveredSince: date).map(CoachGuardrails.Delivery.init(attempt:))
@@ -487,7 +502,7 @@ final class FocusCoachEngine {
             return .lowPriorityWork
         case .procrastinating, .cantFocus:
             return .procrastinating
-        case .urgentTask, .inMeeting, .takingBreak, .notWell, .justTired, .doneForToday:
+        case .urgentTask, .inMeeting, .takingBreak, .notWell, .justTired, .doneForToday, .taskTooBig, .unclearNextStep:
             return nil
         }
     }

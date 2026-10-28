@@ -9,6 +9,9 @@ struct CoachGuardrails: Sendable {
         /// False for prompts the user asked for (planned-start cues, the daily plan card) and
         /// for panels nobody saw. Those never use up the daily cap (v3 §3.3, R1).
         var countsTowardCap: Bool = true
+        /// False for a panel that hid while nobody was at the desk. An unseen panel must not
+        /// start the 2-hour spacing: before v4 one unseen panel left only badges for the evening.
+        var wasSeen: Bool = true
     }
 
     struct Input: Sendable {
@@ -72,7 +75,7 @@ struct CoachGuardrails: Sendable {
         if (surface == .panel || surface == .strongWindow) && !input.ignorePanelSpacing {
             let spacingStart = input.now.addingTimeInterval(-Self.panelSpacing)
             let recentPanel = input.deliveries.contains {
-                ($0.surface == .panel || $0.surface == .strongWindow)
+                ($0.surface == .panel || $0.surface == .strongWindow) && $0.wasSeen
                     && $0.deliveredAt > spacingStart && $0.deliveredAt <= input.now
             }
             if recentPanel { return .panelTooSoon }
@@ -120,7 +123,8 @@ extension CoachGuardrails.Delivery {
         self.init(
             surface: surface,
             deliveredAt: attempt.deliveredAt,
-            countsTowardCap: !requested && attempt.outcome != .unseen
+            countsTowardCap: !requested && attempt.outcome != .unseen,
+            wasSeen: attempt.outcome != .unseen
         )
     }
 }

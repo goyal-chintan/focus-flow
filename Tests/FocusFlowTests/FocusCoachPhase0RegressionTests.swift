@@ -14,6 +14,8 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
     func testInSessionRescueSavesRunningSessionInsteadOfDeletingIt() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -39,6 +41,8 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
     func testBackToWorkKeepsSessionRunning() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -66,6 +70,8 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
     func testOffForTodaySnoozeIsNotShortenedByOutcomeRecording() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -174,6 +180,8 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
     func testNotificationStartActionStartsSessionAndLabelsAttempt() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -187,6 +195,8 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
     func testNotificationSnoozeActionSnoozesCoach() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -203,6 +213,8 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
     func testRefusedStartKeepsPromptOpenAndReportsError() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         defer { AppUsageTracker.shared.stop() }
 
@@ -347,10 +359,12 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
         vm.evaluateIdleStarterIntervention(idleSeconds: 10 * 60, frontmostCategory: .distracting)
 
         XCTAssertEqual(vm.currentIdleStarterDecision?.kind, .strongPrompt)
-        // max(25, min(120 remaining, 50)) = 50, shortened to end 5 min before the event at +40.
-        XCTAssertEqual(vm.idleStarterRecommendedMinutes, 35)
-        XCTAssertEqual(vm.coachPanel?.plan?.minutes, 35)
-        XCTAssertTrue(vm.coachPanel?.message.primaryTitle.hasPrefix("Start 35m") == true)
+        // v4: the ask is the ladder's size (15 with no history), never longer than the 35 min
+        // left before the event at +40.
+        XCTAssertEqual(vm.idleStarterRecommendedMinutes, 15)
+        XCTAssertEqual(vm.coachPanel?.plan?.minutes, 15)
+        XCTAssertEqual(vm.coachPanel?.recommendedMinutes, 15)
+        XCTAssertEqual(vm.coachPanel?.sizeOptions, [5, 15, 25])
     }
 
     func testCalendarAvailabilityComputation() {
@@ -486,6 +500,8 @@ final class FocusCoachPhase0RegressionTests: XCTestCase {
     private func makeIdleStarterViewModel() throws -> (ModelContainer, TimerViewModel) {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         vm.calendarAvailabilityProvider = { _ in .unknown }
 

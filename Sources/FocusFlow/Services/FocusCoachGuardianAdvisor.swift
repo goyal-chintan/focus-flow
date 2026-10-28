@@ -137,7 +137,7 @@ struct FocusCoachGuardianAdvisor: Sendable {
             return 60 * 60
         case .takingBreak, .inMeeting, .urgentTask:
             return 45 * 60
-        case .lowPriorityWork, .procrastinating, .cantFocus:
+        case .lowPriorityWork, .procrastinating, .cantFocus, .taskTooBig, .unclearNextStep:
             return 20 * 60
         }
     }

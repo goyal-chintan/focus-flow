@@ -119,6 +119,8 @@ final class CoachInterventionFixesTests: XCTestCase {
         // Keep the container alive for the test: the view model's context must outlive the helper.
         retainedContainer = container
         let vm = TimerViewModel(defaults: defaults)
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configure(modelContext: container.mainContext)
         return vm
     }

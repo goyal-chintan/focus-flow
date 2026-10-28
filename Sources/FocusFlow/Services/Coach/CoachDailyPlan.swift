@@ -167,6 +167,9 @@ enum CoachPlannedCue {
 
     static func isPlannedContextKey(_ key: String) -> Bool { key.hasPrefix(contextPrefix) }
 
+    /// A cue for a block the user planned (not the start card, which the coach chose to show).
+    static func isRequestedCueKey(_ key: String) -> Bool { isPlannedContextKey(key) && key != inviteContextKey }
+
     enum Step: Equatable, Sendable {
         case notYet
         case cue

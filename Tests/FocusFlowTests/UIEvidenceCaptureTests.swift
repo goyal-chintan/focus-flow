@@ -677,6 +677,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
 
         try context.save()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
@@ -843,6 +845,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         try context.save()
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
@@ -1457,6 +1463,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
         )
         try context.save()
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         vm.todayFocusTime = (1 * 60 + 40) * 60
         vm.todaySessionCount = 3
@@ -1517,6 +1525,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         try context.save()
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
@@ -1574,6 +1586,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         try context.save()
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
@@ -1631,6 +1647,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         try context.save()
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
@@ -1654,6 +1674,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         try context.save()
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
@@ -1666,6 +1690,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         context.insert(settings)
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         return Fixture(container: container, context: context, vm: vm)
     }
@@ -1677,6 +1705,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
         configureSettings?(settings)
         context.insert(settings)
         let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         return Fixture(container: container, context: context, vm: vm)
     }
 
@@ -1982,6 +2012,10 @@ final class UIEvidenceCaptureTests: XCTestCase {
         context.insert(settings)
 
         let vm = TimerViewModel()
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         defer { AppUsageTracker.shared.stop() }
 
@@ -2085,6 +2119,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
 
         // --- Proof: deferBreakAndStartNextBlock transitions onBreak → focusing ---
         let vm2 = TimerViewModel()
+        vm2.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm2.coachExploreSizes = false
         vm2.configureForEvidence(modelContext: context, settings: settings)
         vm2.startFocus()
         vm2.stopForReflection()
@@ -2108,6 +2144,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
 
         // --- Proof: takeBreak(duration:300) uses 5m override vs takeBreak(nil) uses configured duration ---
         let vm3 = TimerViewModel()
+        vm3.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm3.coachExploreSizes = false
         vm3.configureForEvidence(modelContext: context, settings: settings)
         vm3.startFocus()
         vm3.stopForReflection()
@@ -2125,6 +2163,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
 
         // --- Proof: enterRelease via markOffDuty suppresses strong interventions ---
         let vm4 = TimerViewModel()
+        vm4.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm4.coachExploreSizes = false
         vm4.configureForEvidence(modelContext: context, settings: settings)
         let suppressBefore = ["isInReleaseWindow": "\(vm4.isInReleaseWindow)"]
         vm4.enterRelease(reason: .doneForNow)

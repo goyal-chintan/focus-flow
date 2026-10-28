@@ -21,12 +21,15 @@ struct CoachPanelView: View {
     var onHover: (Bool) -> Void = { _ in }
     /// Daily plan card: a time chip was clicked.
     var onPlanSlot: (CoachPlanSlot) -> Void = { _ in }
+    /// v4: a size pill (5 · 15 · 25) was clicked.
+    var onStartSize: (Int) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
     @State private var closeHovered = false
     @State private var primaryHovered = false
     @State private var hoveredSlot: Date?
+    @State private var hoveredSize: Int?
 
     private var message: CoachComposedMessage { presentation.message }
     private var palette: CoachPanelPalette { CoachPanelPalette(style: message.style) }
@@ -48,9 +51,17 @@ struct CoachPanelView: View {
                     motivationView(motivation)
                         .padding(.top, 8)
                 }
-                if presentation.kind == .dailyPlan, !presentation.planSlots.isEmpty {
-                    planChips
+                if !presentation.sizeOptions.isEmpty {
+                    sizePills
                         .padding(.top, 10)
+                }
+                if presentation.kind == .dailyPlan, !presentation.planSlots.isEmpty {
+                    Text("Or plan it for later today")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 10)
+                    planChips
+                        .padding(.top, 4)
                 }
                 if let errorText, !errorText.isEmpty {
                     Label(errorText, systemImage: "exclamationmark.triangle.fill")
@@ -216,6 +227,73 @@ struct CoachPanelView: View {
         .padding(.trailing, 8)
     }
 
+    /// v4 §3.3: start now at 5, 15 or 25 minutes. The ladder's size is highlighted and takes Return.
+    private var sizePills: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                ForEach(presentation.sizeOptions, id: \.self) { minutes in
+                    sizePill(minutes, recommended: minutes == presentation.recommendedMinutes)
+                }
+            }
+            if let caption = presentation.sizeCaption {
+                Text(caption)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.trailing, 8)
+    }
+
+    @ViewBuilder
+    private func sizePill(_ minutes: Int, recommended: Bool) -> some View {
+        let hovered = hoveredSize == minutes
+        let button = Button {
+            onStartSize(minutes)
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 9, weight: .bold))
+                Text("\(minutes) min")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                if recommended {
+                    Text("⏎")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .opacity(0.6)
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(recommended ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 34)
+            .background {
+                if recommended {
+                    Capsule(style: .continuous)
+                        .fill(LinearGradient(colors: palette.gradient, startPoint: .leading, endPoint: .trailing))
+                        .brightness(hovered ? 0.06 : 0)
+                } else {
+                    Capsule(style: .continuous)
+                        .fill(hovered ? palette.gradient[0].opacity(0.22) : Color.primary.opacity(0.06))
+                }
+            }
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(recommended ? Color.white.opacity(0.18) : Color.primary.opacity(hovered ? 0.18 : 0.10), lineWidth: recommended ? 0.5 : 1)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredSize = $0 ? minutes : (hoveredSize == minutes ? nil : hoveredSize) }
+        .animation(.easeOut(duration: 0.12), value: hoveredSize)
+        .accessibilityLabel("Start \(minutes) minutes now\(recommended ? ", suggested" : "")")
+        if recommended {
+            button.keyboardShortcut(.defaultAction)
+        } else {
+            button
+        }
+    }
+
     /// Three small pips: how deep the drift is (L1–L3).
     private func levelPips(_ level: DriftLevel) -> some View {
         HStack(spacing: 3) {
@@ -260,6 +338,13 @@ struct CoachPanelView: View {
                 Menu {
                     ForEach(presentation.secondaryActions) { action in
                         Button(presentation.title(for: action)) { onSecondary(action) }
+                    }
+                    if !presentation.reasonActions.isEmpty {
+                        Section("Not now, because…") {
+                            ForEach(presentation.reasonActions) { action in
+                                Button(presentation.title(for: action)) { onSecondary(action) }
+                            }
+                        }
                     }
                 } label: {
                     Text(presentation.menuTitle)
@@ -354,7 +439,7 @@ struct CoachPanelView: View {
         case .momentum: "FOCUS COACH · MOMENTUM"
         case .notice: "FOCUS COACH"
         case .plannedStart: "YOUR PLAN · NOW"
-        case .dailyPlan: "FOCUS COACH · PLAN TODAY"
+        case .dailyPlan: "FOCUS COACH · START"
         }
     }
 
@@ -367,7 +452,7 @@ struct CoachPanelView: View {
         case .momentum: return "bolt.fill"
         case .notice: return "play.fill"
         case .plannedStart: return "alarm.fill"
-        case .dailyPlan: return "calendar.badge.clock"
+        case .dailyPlan: return "play.fill"
         case .rescue:
             switch presentation.level ?? .drifting {
             case .ok, .drifting: return "arrow.uturn.backward"
@@ -423,7 +508,8 @@ struct CoachPanelHostView: View {
                 onSecondary: { timerVM.performCoachPanelSecondary($0) },
                 onClose: { timerVM.dismissCoachInterventionWindow() },
                 onHover: { timerVM.coachPanelHoverChanged($0) },
-                onPlanSlot: { timerVM.commitDailyPlan($0) }
+                onPlanSlot: { timerVM.commitDailyPlan($0) },
+                onStartSize: { timerVM.performCoachPanelStart(minutes: $0) }
             )
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { onSizeChange($0) }

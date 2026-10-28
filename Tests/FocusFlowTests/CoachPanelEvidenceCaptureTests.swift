@@ -90,6 +90,40 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
             )
             try writePNG(try renderPanel(quote, appearance: appearance), to: output.appendingPathComponent("coach_panel_quote_\(suffix).png"))
 
+            // Coach v4: the start card (5 · 15 · 25 now, plan later) and a counter-offer.
+            let cardTarget = CoachStartTarget(minutes: 15, name: "SQL interview prep")
+            let card = CoachPanelPresentation(
+                kind: .dailyPlan,
+                message: CoachMessageComposer.compose(CoachComposerInput(
+                    style: .challenger, trigger: .dailyPlan(goalMinutes: 120, firstSuggestion: nil),
+                    facts: CoachFacts(), target: cardTarget,
+                    pickedDetail: .houseLine("Starting is the whole game. 5 minutes counts.")
+                )),
+                plan: cardTarget,
+                planSlots: [
+                    CoachPlanSlot(start: Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!, reason: .bestWindow(lift: 2.1)),
+                    CoachPlanSlot(start: Calendar.current.date(bySettingHour: 21, minute: 0, second: 0, of: Date())!, reason: .evening),
+                ],
+                sizeOptions: CoachBlockSizeLadder.sizes,
+                recommendedMinutes: 15,
+                sizeCaption: CoachBlockSizeLadder.Recommendation(minutes: 15, why: .starting).caption
+            )
+            let cardImage = try renderPanel(card, appearance: appearance)
+            try assertVisible(cardImage, "start card \(suffix)")
+            try writePNG(cardImage, to: output.appendingPathComponent("coach_panel_start_card_\(suffix).png"))
+
+            var offerTarget = cardTarget
+            offerTarget.minutes = 5
+            offerTarget.findNextStep = true
+            let offer = CoachPanelPresentation(
+                kind: .startNudge,
+                message: CoachMessageComposer.compose(CoachComposerInput(
+                    style: .challenger, trigger: .counterOffer(reason: .unclearNextStep), facts: CoachFacts(), target: offerTarget
+                )),
+                plan: offerTarget
+            )
+            try writePNG(try renderPanel(offer, appearance: appearance), to: output.appendingPathComponent("coach_panel_counter_offer_\(suffix).png"))
+
             let error = try renderPanel(startNudgePresentation(style: .challenger), appearance: appearance, error: "Complete the current session first.")
             try writePNG(error, to: output.appendingPathComponent("coach_panel_error_\(suffix).png"))
 
@@ -214,6 +248,8 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
         context.insert(settings)
         try context.save()
         let vm = TimerViewModel(defaults: defaults)
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         vm.seedEvidenceStarterState(step: "Sketch the onboarding empty state")
         let view = MenuBarPopoverView()
@@ -295,6 +331,10 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
         try context.save()
 
         let vm = TimerViewModel(defaults: defaults)
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         vm.selectedProject = project
         vm.reloadWeeklyPriorities()
@@ -320,6 +360,10 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
         try context.save()
 
         let vm = TimerViewModel(defaults: defaults)
+
+        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
+
+        vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)
         vm.seedEvidenceCompletionState(sessionType: .focus, project: project, customLabel: nil, duration: 50 * 60, overtimeSeconds: 64)
         vm.lastCompletedFocusSession?.outcome = .movedForward
