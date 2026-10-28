@@ -91,7 +91,8 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
             try writePNG(try renderPanel(quote, appearance: appearance), to: output.appendingPathComponent("coach_panel_quote_\(suffix).png"))
 
             // Coach v4: the start card (5 · 15 · 25 now, plan later) and a counter-offer.
-            let cardTarget = CoachStartTarget(minutes: 15, name: "SQL interview prep")
+            // Screen audit: the card names the next task (detail) and the plan (eyebrow).
+            let cardTarget = CoachStartTarget(minutes: 15, name: "SQL interview prep", taskTitle: "Window functions practice set", rank: 1)
             let card = CoachPanelPresentation(
                 kind: .dailyPlan,
                 message: CoachMessageComposer.compose(CoachComposerInput(
@@ -111,6 +112,22 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
             let cardImage = try renderPanel(card, appearance: appearance)
             try assertVisible(cardImage, "start card \(suffix)")
             try writePNG(cardImage, to: output.appendingPathComponent("coach_panel_start_card_\(suffix).png"))
+
+            // Without a task or lever the card falls back to a house line (and the #1 project eyebrow).
+            let bareTarget = CoachStartTarget(minutes: 15, name: "SQL interview prep", rank: 1)
+            let bare = CoachPanelPresentation(
+                kind: .dailyPlan,
+                message: CoachMessageComposer.compose(CoachComposerInput(
+                    style: .challenger, trigger: .dailyPlan(goalMinutes: 120, firstSuggestion: nil),
+                    facts: CoachFacts(), target: bareTarget,
+                    pickedDetail: .houseLine("Starting is the whole game. 5 minutes counts.")
+                )),
+                plan: bareTarget,
+                sizeOptions: CoachBlockSizeLadder.sizes,
+                recommendedMinutes: 15,
+                sizeCaption: CoachBlockSizeLadder.Recommendation(minutes: 15, why: .starting).caption
+            )
+            try writePNG(try renderPanel(bare, appearance: appearance), to: output.appendingPathComponent("coach_panel_start_card_bare_\(suffix).png"))
 
             var offerTarget = cardTarget
             offerTarget.minutes = 5
@@ -189,7 +206,11 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
                 attemptID: nil
             )
             let pauseImage = try render(
-                PauseScreenView(presentation: pause, chrome: .standalone, showCloseImmediately: true).frame(width: 1440, height: 900),
+                PauseScreenView(
+                    presentation: pause, chrome: .standalone, showCloseImmediately: true,
+                    targetTitle: "Window functions practice set",
+                    goalLine: PauseScreenHostView.goalLine(CoachGoalFact(goalTitle: "Interview-ready", resultTitle: "SQL questions", done: 14, target: 60, behind: 11, daysLeft: 18))
+                ).frame(width: 1440, height: 900),
                 appearance: appearance,
                 size: CGSize(width: 1440, height: 900)
             )
@@ -288,7 +309,7 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self,
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self,
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         containers.append(container)

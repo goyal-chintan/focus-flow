@@ -9,6 +9,8 @@ FocusFlow is a native macOS focus companion built for people who want more than 
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![Download](https://img.shields.io/github/v/release/goyal-chintan/focus-flow?label=Download&logo=apple&color=blue)](https://github.com/goyal-chintan/focus-flow/releases/latest)
 
+**New here?** Read [Getting started](docs/GETTING_STARTED.md): install, the one-minute welcome tour, and daily use in plain words.
+
 ## Screenshots
 
 | Active focus session | Today dashboard |

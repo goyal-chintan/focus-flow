@@ -8,6 +8,7 @@ struct DriftReportSection: View {
     let snapshot: CompanionSnapshot
 
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
+    @Query private var tasks: [DailyTask]
     @State private var span: Span = .week
 
     enum Span: Int, CaseIterable, Identifiable {
@@ -21,7 +22,12 @@ struct DriftReportSection: View {
         let report = GoalDataBuilder.drift(samples: snapshot.samples, projects: projects, now: snapshot.now, days: span.rawValue, calendar: snapshot.calendar)
         let targeted = report.lines.contains { ($0.targetPerDay ?? 0) > 0 }
         FFSection("Said vs did", subtitle: "What you planned each project to get, and what it got (daily average).") {
-            FFSegmentedPicker(title: "Period", options: Span.allCases, selection: $span, label: \.label)
+            HStack(spacing: FFSpace.m) {
+                if targeted {
+                    targetLegend
+                }
+                FFSegmentedPicker(title: "Period", options: Span.allCases, selection: $span, label: \.label)
+            }
         } content: {
             if report.lines.isEmpty {
                 FFEmptyState(systemImage: "chart.bar.xaxis", message: "No focus in this period")
@@ -30,6 +36,12 @@ struct DriftReportSection: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(report.findings(format: FFFormat.duration), id: \.self) { line in
                             Label(line, systemImage: "arrow.right")
+                                .ffText(.body)
+                                .labelStyle(.titleAndIcon)
+                        }
+                        // Planned tasks against ticked ones (daily tasks design §2).
+                        if let tasksLine = DailyTaskPlanner.weekSummary(DailyTaskPlanner.history(tasks, endingOn: snapshot.now, days: span.rawValue, calendar: snapshot.calendar)) {
+                            Label("Tasks: \(tasksLine)", systemImage: "checklist")
                                 .ffText(.body)
                                 .labelStyle(.titleAndIcon)
                         }
@@ -70,16 +82,37 @@ struct DriftReportSection: View {
             }
         }
         .chartXAxis {
-            AxisMarks { value in
+            AxisMarks(values: .stride(by: axisStride(report))) { value in
                 AxisGridLine().foregroundStyle(FFPalette.gridLine)
-                AxisValueLabel { Text("\(value.as(Double.self).map { String(format: "%.0fh", $0) } ?? "")").font(.system(size: 10)) }
+                AxisValueLabel {
+                    if let hours = value.as(Double.self) {
+                        Text(hours == 0 ? "0" : FFFormat.duration(hours * 3600)).font(.system(size: 10)).monospacedDigit()
+                    }
+                }
             }
         }
         .chartXScale(domain: 0...(xMax(report) * 1.45))
         .frame(height: CGFloat(max(2, report.lines.count)) * 40 + 24)
         .accessibilityLabel("Daily average per project against its target")
-        .overlay(alignment: .topTrailing) {
-            FFLegendItem(color: .primary, label: "Target")
+    }
+
+    /// The target tick, as drawn on the chart.
+    private var targetLegend: some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 1.5).fill(Color.primary.opacity(0.75)).frame(width: 3, height: 12)
+            Text("Target").ffText(.caption)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Gridline step in hours: a handful of labels whatever the scale, on whole or half hours.
+    private func axisStride(_ report: DriftReport) -> Double {
+        let span = xMax(report) * 1.45
+        switch span {
+        case ...2: return 0.5
+        case ...6: return 1
+        case ...12: return 2
+        default: return 4
         }
     }
 

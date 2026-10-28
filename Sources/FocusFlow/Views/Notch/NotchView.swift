@@ -72,6 +72,12 @@ struct NotchSnapshot {
     var coachHook: String?
     /// The running block's project has a key result to +1.
     var quickResult: (id: UUID, title: String, done: Double, target: Double)?
+    /// Today's tasks (daily tasks design §2): counts, and the task to tick next
+    /// (the block's own task while focusing).
+    var tasks: DailyTaskStats? = nil
+    var nextTask: (id: UUID, title: String)? = nil
+    /// The coach's learned block size (`startLadderRecommendation`), highlighted among 5 · 15 · 25.
+    var suggestedMinutes: Int = CoachBlockSizeLadder.defaultMinutes
 
     var goalFraction: Double { goalTarget > 0 ? min(1, goalDone / goalTarget) : 0 }
 }
@@ -237,6 +243,7 @@ struct NotchView: View {
                 Spacer(minLength: 0)
             }
             ProgressLine(progress: snapshot.progress, tint: tint)
+            taskLine(tint: tint)
             HStack(spacing: 8) {
                 if snapshot.mode == .paused {
                     NotchButton(title: "Resume", symbol: "play.fill", prominent: true, tint: tint, action: actions.resume)
@@ -267,12 +274,13 @@ struct NotchView: View {
                 .font(.system(size: 40, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.orange)
-            Text("You're in flow. Keep going, or take the break you earned.")
+            Text("Block done. Log it, then keep going or rest.")
                 .font(.system(size: 13))
                 .foregroundStyle(.white.opacity(0.7))
             HStack(spacing: 8) {
-                NotchButton(title: "Keep going", symbol: "forward.fill", prominent: true, tint: .orange, action: actions.keepGoing)
-                NotchButton(title: "Break · 5 min", symbol: "cup.and.saucer.fill", action: actions.takeBreak)
+                NotchButton(title: "Log", symbol: "checkmark.circle", prominent: true, tint: .orange, action: actions.log)
+                NotchButton(title: "Keep going", symbol: "forward.fill", action: actions.keepGoing)
+                NotchButton(title: "Break 5 min", symbol: "cup.and.saucer.fill", action: actions.takeBreak)
                 NotchButton(title: "End", symbol: "stop.fill", action: actions.end)
                 Spacer(minLength: 0)
             }
@@ -323,7 +331,7 @@ struct NotchView: View {
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         ForEach(CoachBlockSizeLadder.sizes, id: \.self) { minutes in
-                            NotchButton(title: "\(minutes) min", symbol: "play.fill", prominent: minutes == 15, tint: FFPalette.project(snapshot.projectColor)) {
+                            NotchButton(title: "\(minutes) min", symbol: "play.fill", prominent: minutes == snapshot.suggestedMinutes, tint: FFPalette.project(snapshot.projectColor)) {
                                 actions.start(minutes)
                             }
                         }
@@ -332,6 +340,7 @@ struct NotchView: View {
                 }
                 Spacer(minLength: 0)
             }
+            taskLine(tint: FFPalette.project(snapshot.projectColor))
             if let verdict = snapshot.verdict {
                 HStack(spacing: 8) {
                     Image(systemName: "chart.bar.fill").font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
@@ -350,6 +359,60 @@ struct NotchView: View {
                     .contentShape(Rectangle())
                 }
             }
+        }
+    }
+
+    /// "○ Next task · 2/5 tasks" with a tick; hidden without a plan. In a block, only the block's
+    /// own task is offered; a block without one shows just the count.
+    @ViewBuilder
+    private func taskLine(tint: Color) -> some View {
+        if let stats = snapshot.tasks, stats.planned > 0 {
+            HStack(spacing: 8) {
+                if let task = snapshot.nextTask {
+                    Button {
+                        actions.tickTask(task.id)
+                    } label: {
+                        Image(systemName: "circle")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Mark “\(task.title)” done")
+                    .accessibilityLabel("Mark \(task.title) done")
+                    Text(task.title)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
+                } else if stats.isComplete {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.green)
+                        .frame(width: 30, height: 30)
+                    Text("Today's list is done.")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85))
+                } else {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 30, height: 30)
+                        .accessibilityHidden(true)
+                    Text("Today's tasks")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                Spacer(minLength: 8)
+                Text("\(stats.done)/\(stats.planned) tasks")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(stats.isComplete ? .green : tint)
+                    .contentTransition(.numericText())
+            }
+            .padding(.trailing, 10)
+            .frame(height: 32)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(0.07)))
         }
     }
 
@@ -381,6 +444,9 @@ struct NotchActions {
     var start: (Int) -> Void = { _ in }
     var logResult: (UUID) -> Void = { _ in }
     var openGoals: () -> Void = {}
+    var tickTask: (UUID) -> Void = { _ in }
+    /// Overtime: open the block-end window to log the block.
+    var log: () -> Void = {}
 }
 
 // MARK: - Pieces

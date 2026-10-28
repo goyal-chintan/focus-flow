@@ -84,7 +84,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         self.planSlots = planSlots
         self.sizeOptions = sizeOptions
         self.recommendedMinutes = recommendedMinutes
-        self.sizeCaption = sizeCaption
+        // The default size has no reason worth a line; the hook already says "start small".
+        self.sizeCaption = sizeCaption == CoachBlockSizeLadder.Recommendation.startingCaption ? nil : sizeCaption
     }
 
     /// Whether the panel has a primary button at all.
@@ -102,11 +103,11 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         }
     }
 
-    /// Label of the secondary menu ("Not now ▾"; the system draws the chevron).
+    /// Label of the secondary menu ("Not now ▾"; the system draws the chevron). Its reasons
+    /// section reads "Not now, because…" (shared vocabulary, screen audit 2026-10-28).
     var menuTitle: String {
         switch kind {
-        case .pseudoProductivity: "Not this"
-        case .startNudge, .inSessionDrift, .weeklyPriorities, .rescue, .notice: "Not now"
+        case .startNudge, .pseudoProductivity, .inSessionDrift, .weeklyPriorities, .rescue, .notice: "Not now"
         case .keepGoing: "I'm done · it counts"
         case .momentum: "Keep it short"
         case .plannedStart: "Not yet"

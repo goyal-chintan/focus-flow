@@ -121,7 +121,7 @@ final class GoalTrackingTests: XCTestCase {
 
     @MainActor
     func testGoalModelsRoundTripAndProgressIsTheSumOfEntries() throws {
-        let schema = Schema([Project.self, FocusSession.self, TimeSplit.self, BlockProfile.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self])
+        let schema = Schema([Project.self, FocusSession.self, TimeSplit.self, BlockProfile.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         let context = container.mainContext
         let project = Project(name: "Learning")
@@ -152,6 +152,42 @@ final class GoalTrackingTests: XCTestCase {
         context.delete(fetched)
         try context.save()
         XCTAssertTrue(try context.fetch(FetchDescriptor<GoalProgressEntry>()).isEmpty, "Cascade deletes key results and entries")
+    }
+
+    /// Screen audit: once a project is marked Work, every companion goal mark uses own work only.
+    @MainActor
+    func testCompanionSnapshotCountsOwnWorkTowardTheGoal() throws {
+        let schema = Schema([Project.self, FocusSession.self, TimeSplit.self, BlockProfile.self])
+        let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        let context = container.mainContext
+        let learning = Project(name: "Learning")
+        learning.area = .learning
+        let office = Project(name: "Office")
+        office.area = .work
+        [learning, office].forEach { context.insert($0) }
+        let now = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: Date())!
+        func block(_ project: Project, hour: Int, minutes: Int) -> FocusSession {
+            let session = FocusSession(type: .focus, duration: TimeInterval(minutes * 60), project: project)
+            session.startedAt = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: now)!
+            session.endedAt = session.startedAt.addingTimeInterval(TimeInterval(minutes * 60))
+            session.completed = true
+            context.insert(session)
+            return session
+        }
+        let sessions = [block(office, hour: 9, minutes: 180), block(learning, hour: 14, minutes: 30)]
+        try context.save()
+
+        let snapshot = CompanionSnapshot(sessions: sessions, settings: nil, projects: [learning, office], now: now)
+        XCTAssertTrue(snapshot.ownWorkOnly)
+        let progress = snapshot.analytics.goalProgress(snapshot.goalSamples, on: now, goal: snapshot.goal, stretch: snapshot.stretch)
+        XCTAssertEqual(progress.doneSeconds, 30 * 60, accuracy: 1, "3h of office must not count toward the personal goal")
+        XCTAssertFalse(progress.isMet)
+        XCTAssertEqual(snapshot.analytics.dayTotal(snapshot.samples, on: now).seconds, 210 * 60, accuracy: 1, "The honest total keeps everything")
+        XCTAssertEqual(snapshot.workKeys, [GoalDataBuilder.projectKey(office)])
+
+        let unconfigured = CompanionSnapshot(sessions: sessions, settings: nil, projects: [learning], now: now)
+        XCTAssertFalse(unconfigured.ownWorkOnly, "Without a Work project every block counts")
+        XCTAssertEqual(unconfigured.goalSamples.count, 2)
     }
 }
 

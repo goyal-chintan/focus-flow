@@ -39,7 +39,7 @@ struct SessionDistractionReviewSection: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 TrackedLabel(
-                    text: "Apps Detected This Session",
+                    text: "Part of the Work?",
                     font: .system(size: 10, weight: .semibold),
                     color: LiquidDesignTokens.Surface.onSurfaceMuted,
                     tracking: 1.5

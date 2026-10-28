@@ -185,6 +185,15 @@ final class NotchController: NotchHosting {
             openGoals: { [weak self] in
                 self?.collapse()
                 vm.openCompanionWindow?(.goals)
+            },
+            tickTask: { id in
+                if let task = vm.todayTasks().first(where: { $0.id == id }) { vm.setDailyTask(task, done: true) }
+            },
+            log: { [weak self] in
+                // Same as the popover's "Log this block": the block-end window.
+                self?.collapse()
+                vm.openCompletionWindow?()
+                vm.requestAppActivation?()
             }
         )
     }
@@ -217,16 +226,10 @@ private struct NotchLiveView: View {
         let leverProject = levers.first?.projectID.flatMap { id in projects.first { $0.id == id } }
         let shownProject: Project? = mode == .idle ? (leverProject ?? topProject) : vm.selectedProject
 
-        var verdict: String?
-        if mode == .idle, state.expanded {
-            let dayStart = Calendar.current.startOfDay(for: now)
-            let since = dayStart.addingTimeInterval(-12 * 3600)
-            let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }))) ?? []
-            let samples = sessions.filter { $0.type == .focus }.map(FocusSample.init)
-            let day = DateInterval(start: dayStart, end: dayStart.addingTimeInterval(86_400))
-            let allocation = GoalDataBuilder.allocation(samples: samples, projects: projects, day: day)
-            verdict = allocation.totalSeconds > 0 ? allocation.shortVerdict(format: FFFormat.duration) : nil
-        }
+        let idleOpen = mode == .idle && state.expanded
+        let verdict = idleOpen ? TodayVerdict.text(modelContext: modelContext, now: now) : nil
+        // The learned size is a store read: only while the idle island is open.
+        let suggested = idleOpen ? vm.startLadderRecommendation(now: now).minutes : CoachBlockSizeLadder.defaultMinutes
 
         var quick: (id: UUID, title: String, done: Double, target: Double)?
         if mode == .focusing || mode == .paused, let projectID = vm.selectedProject?.id {
@@ -236,6 +239,16 @@ private struct NotchLiveView: View {
                 .first { $0.id == lever?.id && $0.kind == .count }
                 ?? goals.filter { $0.projectID == projectID }.flatMap(\.sortedKeyResults).first { $0.kind == .count && $0.done < $0.target }
             if let result { quick = (result.id, result.title, result.done, result.target) }
+        }
+
+        // Today's tasks: in a block, only the block's own task (no fallback to the next one).
+        let todays = vm.todayTasks(now: now)
+        let taskStats = DailyTaskPlanner.stats(todays, on: now)
+        let next: DailyTask?
+        if mode == .focusing || mode == .paused {
+            next = vm.currentBlockTaskID.flatMap { id in todays.first { $0.id == id && !$0.isDone } }
+        } else {
+            next = DailyTaskPlanner.nextTask(todays, on: now, preferring: shownProject?.id)
         }
 
         let attention = mode == .idle && (vm.coachPanel != nil || vm.coachMenuBarPulse)
@@ -253,7 +266,10 @@ private struct NotchLiveView: View {
             lever: levers.first,
             verdict: verdict,
             coachHook: attention ? (vm.coachPanel?.message.hook ?? "The coach has a start for you.") : nil,
-            quickResult: quick
+            quickResult: quick,
+            tasks: taskStats,
+            nextTask: next.map { ($0.id, $0.title) },
+            suggestedMinutes: suggested
         )
     }
 }

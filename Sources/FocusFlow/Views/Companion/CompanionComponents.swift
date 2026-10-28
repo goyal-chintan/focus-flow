@@ -11,16 +11,30 @@ struct CompanionSnapshot {
     let now: Date
     /// Focus blocks of at least one minute (breaks excluded).
     let samples: [FocusSample]
+    /// What counts toward the daily goal: own work (Personal + Learning) once any project is marked
+    /// Work, otherwise every block (screen audit: "own work everywhere"). Every streak, chain,
+    /// "goal met" mark and goal ring uses these, never `samples`.
+    let goalSamples: [FocusSample]
+    /// True once a project is marked Work, so `goalSamples` is own work only.
+    let ownWorkOnly: Bool
+    /// Keys (`GoalDataBuilder.projectKey`) of Work projects, drawn faded in charts.
+    let workKeys: Set<String>
     let goal: TimeInterval
     let stretch: TimeInterval
 
-    init(sessions: [FocusSession], settings: AppSettings?, now: Date = Date(), calendar: Calendar = .current) {
+    @MainActor
+    init(sessions: [FocusSession], settings: AppSettings?, projects: [Project] = [], now: Date = Date(), calendar: Calendar = .current) {
         self.analytics = FocusAnalytics(calendar: calendar)
         self.now = now
-        self.samples = sessions
+        let samples = sessions
             .filter { $0.type == .focus }
             .map(FocusSample.init)
             .filter { $0.activeSeconds >= 60 }
+        self.samples = samples
+        let ownOnly = GoalDataBuilder.ownWorkConfigured(projects)
+        self.ownWorkOnly = ownOnly
+        self.goalSamples = ownOnly ? GoalDataBuilder.ownWorkSamples(samples, projects: projects) : samples
+        self.workKeys = Set(projects.filter { $0.areaRaw != nil && $0.area == .work }.map(GoalDataBuilder.projectKey))
         self.goal = max(60, settings?.dailyFocusGoal ?? 7200)
         self.stretch = max(self.goal, settings?.dailyStretchGoal ?? 9000)
     }
@@ -28,6 +42,11 @@ struct CompanionSnapshot {
     var calendar: Calendar { analytics.calendar }
     var today: DateInterval { analytics.dayInterval(containing: now) }
     var thisWeek: DateInterval { analytics.weekInterval(containing: now) }
+
+    /// Daily goal totals for `days` (own work once configured).
+    func goalDays(_ days: [Date]) -> [FocusAnalytics.DayTotal] {
+        analytics.dailyTotals(goalSamples, days: days)
+    }
 
     var bestWindows: [FocusAnalytics.FocusWindow] {
         analytics.bestWindows(analytics.hourOfWeek(samples, weeks: 8, now: now))
@@ -39,13 +58,15 @@ struct ProjectColorScale {
     let domain: [String]
     let range: [Color]
 
-    init(_ keys: [AnalyticsProjectKey]) {
+    /// `faded`: project keys drawn at 0.45 opacity (Work projects, so own work stands out).
+    init(_ keys: [AnalyticsProjectKey], faded: Set<String> = []) {
         var seen = Set<String>()
         var names: [String] = []
         var colors: [Color] = []
         for key in keys.sorted() where seen.insert(key.name).inserted {
             names.append(key.name)
-            colors.append(FFPalette.project(key.colorName))
+            let color = FFPalette.project(key.colorName)
+            colors.append(faded.contains(key.id) ? color.opacity(0.45) : color)
         }
         domain = names
         range = colors
