@@ -38,9 +38,10 @@ struct MenuBarPopoverView: View {
 
                 coachStripSection
 
-                timerHeroSection
-
-                earnedTokenBadge
+                // Idle shows the hero instead of a 25:00 ring; active states keep the ring.
+                if timerVM.state != .idle || timerVM.isOvertime {
+                    timerHeroSection
+                }
 
                 stateSection
 
@@ -118,100 +119,63 @@ struct MenuBarPopoverView: View {
     }
 
     private var headerBarContent: some View {
+        // Statistics live in the footer; the header only closes.
         HStack {
             Spacer()
-            HStack(spacing: 12) {
-                Button {
-                    openStatsWindow(requestedTab: nil)
-                } label: {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open statistics")
-
-                Button {
-                    timerVM.closePopover()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
+            Button {
+                timerVM.closePopover()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close")
         }
-        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-        .padding(.top, 16)
-        .padding(.bottom, 4)
+        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal - 12)
+        .padding(.top, 6)
     }
 
     // MARK: - Active Context (focusing + overtime)
 
+    /// Project title, with the block's intent under it (focusing and paused). The ring's own
+    /// label says the state, so there is no "FOCUSING" / "OVERTIME" eyebrow.
     @ViewBuilder
     private var activeContextSection: some View {
-        if case .focusing = timerVM.state {
+        if timerVM.isOvertime {
+            Text(timerVM.isFocusOvertime ? (timerVM.selectedProject?.name ?? "Focus") : "Break")
+                .font(LiquidDesignTokens.Typography.headlineMedium)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
+                .lineLimit(1)
+                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal + 20)
+                .padding(.bottom, 4)
+        } else if timerVM.state == .focusing || timerVM.state == .paused {
             VStack(spacing: 3) {
-                TrackedLabel(
-                    text: timerVM.isStarterBlock ? "Starter block" : "Focusing",
-                    font: LiquidDesignTokens.Typography.labelSmall,
-                    color: timerVM.isStarterBlock ? LiquidDesignTokens.Spectral.amber : LiquidDesignTokens.Spectral.electricBlue,
-                    tracking: 1.8
-                )
+                if timerVM.isStarterBlock {
+                    TrackedLabel(
+                        text: "Starter block",
+                        font: LiquidDesignTokens.Typography.labelSmall,
+                        color: LiquidDesignTokens.Spectral.amber,
+                        tracking: 1.8
+                    )
+                }
                 Text(timerVM.isStarterBlock ? "Plan the next step" : (timerVM.selectedProject?.name ?? "Focus"))
                     .font(LiquidDesignTokens.Typography.headlineMedium)
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                     .lineLimit(1)
+                if !timerVM.isStarterBlock, let intent = timerVM.currentIntentText, !intent.isEmpty {
+                    Text(intent)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .padding(.top, 12)
+            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal + 20)
             .padding(.bottom, 4)
-        } else if timerVM.isOvertime {
-            VStack(spacing: 3) {
-                TrackedLabel(
-                    text: timerVM.isFocusOvertime ? "Overtime" : "Break Over",
-                    font: LiquidDesignTokens.Typography.labelSmall,
-                    color: timerVM.isFocusOvertime ? LiquidDesignTokens.Spectral.mint : Color.orange,
-                    tracking: 1.8
-                )
-                Text(timerVM.isFocusOvertime ? (timerVM.selectedProject?.name ?? "Focus") : "Break")
-                    .font(LiquidDesignTokens.Typography.headlineMedium)
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                    .lineLimit(1)
-            }
-            .padding(.top, 12)
-            .padding(.bottom, 4)
-        }
-    }
-
-    // MARK: - Earned Token Badge (shown after block completes, until next session starts)
-
-    @ViewBuilder
-    private var earnedTokenBadge: some View {
-        if let ctx = timerVM.completedBlockContext, timerVM.state != .focusing {
-            HStack(spacing: 4) {
-                Text("✦ \(ctx.durationMinutes)m earned")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(LiquidDesignTokens.Spectral.mint)
-                    .contentTransition(.numericText(countsDown: false))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.12))
-                    .overlay(Capsule().strokeBorder(LiquidDesignTokens.Spectral.mint.opacity(0.18), lineWidth: 0.5))
-            )
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.85).combined(with: .opacity),
-                removal: .opacity
-            ))
-            .animation(FFMotion.reward, value: ctx.durationMinutes)
-            .padding(.bottom, 2)
         }
     }
 
@@ -237,14 +201,10 @@ struct MenuBarPopoverView: View {
 
     @ViewBuilder
     private var coachStripSection: some View {
-        if timerVM.settings?.coachRealtimeEnabled == true {
-            let isActive: Bool = {
-                switch timerVM.state {
-                case .focusing, .paused: return true
-                case .onBreak: return true
-                case .idle: return false
-                }
-            }()
+        // Idle: the coach's hook lives in the hero (PopoverIdleHero), so nothing renders here.
+        if timerVM.settings?.coachRealtimeEnabled == true, timerVM.state != .idle {
+            // Only when there is something to say: never while paused, never when stable.
+            let isActive = timerVM.state == .focusing && timerVM.coachEngine.riskLevel != .stable
             let overlayActive = timerVM.activeCoachPopoverDecision != nil &&
                 FocusCoachPresentationMapper.mapDecision(timerVM.activeCoachPopoverDecision ?? .none) != nil
 
@@ -276,24 +236,6 @@ struct MenuBarPopoverView: View {
                 .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 .padding(.top, 4)
                 .transition(.opacity)
-
-                if timerVM.state == .idle {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let summary = timerVM.idleStarterSummary, !summary.isEmpty {
-                            Text(summary)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if let recommended = timerVM.idleStarterRecommendedMinutes {
-                            Text("Recommended duration: \(recommended)m")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                                .monospacedDigit()
-                        }
-                    }
-                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                }
             }
         }
     }
@@ -337,15 +279,18 @@ struct MenuBarPopoverView: View {
 
     private var footerSection: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                footerLeadingContent
-
-                Spacer()
-
-                Text(timerVM.todayFocusTime.formattedFocusTime)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(footerTimeColor)
-                    .monospacedDigit()
+            HStack(spacing: 4) {
+                // The honest total (screen audit): the verdict, not one "today" number.
+                Button {
+                    openStatsWindow(requestedTab: .goals)
+                } label: {
+                    PopoverVerdictText()
+                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open Goals: own work against your priorities")
+                .accessibilityLabel("Today's verdict. Opens Goals")
 
                 Button {
                     openStatsWindow(requestedTab: nil)
@@ -381,57 +326,15 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    @ViewBuilder
-    private var footerLeadingContent: some View {
-        switch timerVM.state {
-        case .focusing:
-            Text("TODAY'S TOTAL")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-        case .paused:
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(Color(hex: 0xE6A820))
-                    .frame(width: 6, height: 6)
-                Text("TODAY'S TOTAL")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-            }
-        case .onBreak:
-            Text("TODAY'S TOTAL")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-        default:
-            HStack(spacing: 5) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11))
-                    .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                    .accessibilityHidden(true)
-                Text("TODAY'S TOTAL")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.8))
-            }
-        }
-    }
-
-    private var footerTimeColor: Color {
-        switch timerVM.state {
-        case .focusing:
-            LiquidDesignTokens.Spectral.electricBlue
-        case .paused:
-            LiquidDesignTokens.Surface.onSurface
-        default:
-            LiquidDesignTokens.Surface.onSurface
-        }
-    }
-
     // MARK: - Helpers
 
-    /// Behavioral ring subtitle per spec §11: Ready, Protecting, Check, Return.
+    /// Behavioral ring subtitle per spec §11: Ready, Protecting, Check, Return; Block done / Break over.
     /// Escalates to "Check" during active focus when guardian has surfaced a challenge.
     private var stateLabel: String {
         switch timerVM.state {
         case .idle:
+            // Idle + overtime is the end of a block or a break that ran over.
+            if timerVM.isOvertime { return timerVM.isFocusOvertime ? "Block done" : "Break over" }
             return "Ready"
         case .focusing:
             if timerVM.isOvertime { return "Overtime" }
@@ -449,7 +352,9 @@ struct MenuBarPopoverView: View {
 
     private var stateLabelColor: Color {
         switch timerVM.state {
-        case .idle: return LiquidDesignTokens.Surface.onSurfaceMuted
+        case .idle:
+            if timerVM.isOvertime { return timerVM.isFocusOvertime ? LiquidDesignTokens.Spectral.mint : Color.orange }
+            return LiquidDesignTokens.Surface.onSurfaceMuted
         case .focusing:
             if timerVM.isOvertime { return LiquidDesignTokens.Spectral.mint }
             if timerVM.activeCoachInterventionDecision != nil || timerVM.currentCoachQuickPromptDecision != nil {
@@ -493,106 +398,188 @@ struct MenuBarPopoverView: View {
 // MARK: - Idle State
 
 private struct IdlePopoverContent: View {
-    @Binding var selectedProject: Project?
-    @Binding var selectedMinutes: Int
-    let coachEnabled: Bool
-    @Binding var coachTaskType: FocusCoachTaskType
-    @Binding var coachResistance: Int
-    @Binding var intentText: String
-    @Binding var selectedPriorityID: UUID?
-    let weeklyPriorities: [WeeklyPriority]
-    let recoveryState: CrashRecoveryState?
-    let recoveryProject: Project?
+    @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onStartFocus: () -> Void
     let onResumeRecovery: () -> Void
     let onDiscardRecovery: () -> Void
 
     @State private var showCustomSlider: Bool = false
     @State private var startCommitting: Bool = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The coach's learned size (`startLadderRecommendation`), preselected on open.
+    @State private var suggestion: CoachBlockSizeLadder.Recommendation?
+    /// Today's lever (first of `GoalDataBuilder.levers`): the hero and the goal field share it.
+    @State private var lever: DailyLever?
+    /// The lever text this view put in the goal field, so it can be replaced but never user text.
+    @State private var autoIntent: String?
 
-    private static let presetMinutes: [Int] = [5, 15, 25, 45]
+    private static let presetMinutes: [Int] = CoachBlockSizeLadder.sizes
 
     var body: some View {
         VStack(spacing: 0) {
             // Crash recovery banner — highest priority
-            if let recovery = recoveryState {
+            if let recovery = timerVM.recoveryState {
                 recoveryBanner(recovery)
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                    .padding(.top, 12)
+                    .padding(.top, 16)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-            }
-
-            // Coach v3: today's plan and today's line (hidden while a crash recovery is pending).
-            if recoveryState == nil {
-                PopoverPlanCard()
+            } else {
+                // 1 · Hero (mirrors the notch): own-work ring, coach hook, today's lever.
+                PopoverIdleHero(lever: lever)
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                    .padding(.top, 12)
+                    .padding(.top, 16)
+                // 2 · Today's tasks: tick, or click a title to make it the block's goal.
+                PopoverTasksStrip()
+                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                    .padding(.top, 10)
             }
 
-            // Coach pre-session intention card
-            if coachEnabled && selectedProject == nil {
-                FocusCoachPreSessionCard(
-                    selectedTaskType: $coachTaskType,
-                    resistanceLevel: $coachResistance
-                )
-                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 12)
-            }
-
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 workingOnSection
-                SessionIntentField(
-                    intentText: $intentText,
-                    selectedPriorityID: $selectedPriorityID,
-                    priorities: weeklyPriorities
-                )
-                durationSection
+                intentSection
+                sizeSection
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-            .padding(.top, 16)
+            .padding(.top, 12)
 
-            startButton
-                .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                .padding(.top, 16)
-
-            Text("The coach checks in if you drift.")
-                .font(.system(size: 10, weight: .regular))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+            VStack(spacing: 2) {
+                startButton
+                PopoverPlanLaterMenu()
+            }
+            .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+        }
+        .task(id: refreshKey) {
+            refresh()
+        }
+        .onChange(of: timerVM.selectedProject) { _, newValue in
+            if newValue != nil { timerVM.noteProjectSelected() }
+            applyIntentPrefill()
+        }
+        .onChange(of: timerVM.pendingIntentText) { _, newValue in
+            // Typing something else unlinks the picked task.
+            guard let id = timerVM.pendingTaskID,
+                  let task = timerVM.todayTasks().first(where: { $0.id == id }),
+                  task.title != newValue else { return }
+            timerVM.pendingTaskID = nil
         }
     }
+
+    /// Re-read the lever and the suggestion after each block and each task change.
+    private var refreshKey: String {
+        "\(timerVM.completedFocusSessions)-\(timerVM.dailyTaskRevision)"
+    }
+
+    private func refresh() {
+        lever = GoalDataBuilder.levers(timerVM.historyReaderActiveGoals(), now: Date()).first
+        let recommendation = timerVM.startLadderRecommendation(now: Date())
+        suggestion = recommendation
+        if !showCustomSlider {
+            timerVM.selectedMinutes = recommendation.minutes
+        }
+        applyIntentPrefill()
+    }
+
+    // MARK: Goal for this block
+
+    /// Prefill order: the picked task, else today's lever (for this project), else the last
+    /// intent (the view model's prefill). Text the user typed is never replaced.
+    private func applyIntentPrefill() {
+        guard timerVM.state == .idle, !timerVM.isOvertime else { return }
+        let current = timerVM.pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let id = timerVM.pendingTaskID, let task = timerVM.todayTasks().first(where: { $0.id == id && !$0.isDone }) {
+            if current.isEmpty { timerVM.pendingIntentText = task.title }
+            return
+        }
+        timerVM.pendingTaskID = nil
+        let lastIntent = CoachHistoryReader(modelContext: modelContext).lastIntent(projectID: timerVM.selectedProject?.id) ?? ""
+        let isAuto = current.isEmpty || current == lastIntent || current == autoIntent
+        guard isAuto, let lever else { return }
+        let projectID = timerVM.selectedProject?.id
+        guard projectID == nil || lever.projectID == nil || lever.projectID == projectID else {
+            // Another project's lever: fall back to this project's last intent.
+            if current == autoIntent { timerVM.pendingIntentText = lastIntent }
+            autoIntent = nil
+            return
+        }
+        autoIntent = lever.action
+        timerVM.pendingIntentText = lever.action
+        // The lever belongs to a project: a block on it should count there.
+        if projectID == nil, let leverProjectID = lever.projectID,
+           let project = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == leverProjectID })))?.first {
+            timerVM.selectedProject = project
+        }
+    }
+
+    private func pickTask(_ task: DailyTask) {
+        timerVM.pendingTaskID = task.id
+        timerVM.pendingIntentText = task.title
+        autoIntent = nil
+        if let projectID = task.projectID,
+           let project = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })))?.first {
+            timerVM.selectedProject = project
+        }
+    }
+
+    private func pickLever(_ lever: DailyLever) {
+        timerVM.pendingTaskID = nil
+        timerVM.pendingIntentText = lever.action
+        autoIntent = lever.action
+        if let projectID = lever.projectID,
+           let project = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })))?.first {
+            timerVM.selectedProject = project
+        }
+    }
+
+    // MARK: Sections
 
     private var workingOnSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        @Bindable var vm = timerVM
+        return VStack(alignment: .leading, spacing: 6) {
             IdleSectionLabel("Working on")
-            ProjectPickerView(selectedProject: $selectedProject)
+            ProjectPickerView(selectedProject: $vm.selectedProject)
         }
     }
 
-    private var durationSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var intentSection: some View {
+        @Bindable var vm = timerVM
+        return SessionIntentField(
+            intentText: $vm.pendingIntentText,
+            isTaskLinked: timerVM.pendingTaskID != nil,
+            openTasks: timerVM.todayTasks().filter { !$0.isDone },
+            lever: lever,
+            onPickTask: pickTask,
+            onPickLever: pickLever
+        )
+    }
+
+    private var sizeSection: some View {
+        @Bindable var vm = timerVM
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                IdleSectionLabel("Duration")
+                IdleSectionLabel("Size")
                 Spacer()
                 if showCustomSlider {
-                    Text("\(selectedMinutes) min")
+                    Text("\(timerVM.selectedMinutes) min")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(LiquidDesignTokens.Spectral.primaryContainer)
                         .monospacedDigit()
                         .contentTransition(.numericText())
+                } else if let suggestion {
+                    Text("\(suggestion.minutes) min suggested")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .help(suggestion.caption)
                 }
             }
 
-            DurationPresetRow(
+            BlockSizeRow(
                 presets: Self.presetMinutes,
-                selectedMinutes: $selectedMinutes,
-                showCustom: true,
-                isCustomActive: $showCustomSlider,
-                minHeight: 30
+                suggested: suggestion?.minutes,
+                selectedMinutes: $vm.selectedMinutes,
+                isCustomActive: $showCustomSlider
             )
 
             if showCustomSlider {
@@ -604,17 +591,17 @@ private struct IdlePopoverContent: View {
 
     private var customSlider: some View {
         Slider(value: Binding(
-            get: { Double(selectedMinutes) },
-            set: { selectedMinutes = Int($0) }
+            get: { Double(timerVM.selectedMinutes) },
+            set: { timerVM.selectedMinutes = Int($0) }
         ), in: 5...120, step: 1)
         .tint(LiquidDesignTokens.Spectral.primaryContainer)
         .accessibilityLabel("Focus duration")
-        .accessibilityValue("\(selectedMinutes) minutes")
+        .accessibilityValue("\(timerVM.selectedMinutes) minutes")
     }
 
     private var startButton: some View {
         GradientCTAButton(
-            title: "Start Focus Session",
+            title: "Start \(max(5, timerVM.selectedMinutes)) min",
             icon: "play.fill",
             gradient: LiquidDesignTokens.Gradient.focus,
             action: {
@@ -622,6 +609,7 @@ private struct IdlePopoverContent: View {
                     withAnimation(FFMotion.commit) { startCommitting = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         onStartFocus()
+                        startCommitting = false
                     }
                 } else {
                     onStartFocus()
@@ -639,7 +627,7 @@ private struct IdlePopoverContent: View {
         let timeString = String(format: "%d:%02d", mins, secs)
         let minutesAgo = Int(Date().timeIntervalSince(recovery.checkpointDate) / 60)
         let agoText = minutesAgo < 1 ? "just now" : "\(minutesAgo)m ago"
-        let projectName = recoveryProject?.name ?? recovery.customLabel ?? "Focus"
+        let projectName = timerVM.recoveryProject?.name ?? recovery.customLabel ?? "Focus"
         let totalMins = Int(recovery.totalSeconds / 60)
 
         return VStack(spacing: 10) {
@@ -745,82 +733,156 @@ private struct IdleSectionLabel: View {
     }
 }
 
-/// "Goal for this block" (optional, prefilled from the last intent for the project) and the
-/// weekly priority this block counts toward. Start never waits on either.
+/// "Goal for this block": prefilled with the picked task, else today's lever, else the last
+/// intent. The trailing menu offers today's open tasks, then the lever. Start never waits on it.
 private struct SessionIntentField: View {
     @Binding var intentText: String
-    @Binding var selectedPriorityID: UUID?
-    let priorities: [WeeklyPriority]
+    let isTaskLinked: Bool
+    let openTasks: [DailyTask]
+    let lever: DailyLever?
+    let onPickTask: (DailyTask) -> Void
+    let onPickLever: (DailyLever) -> Void
 
-    private var selectedPriority: WeeklyPriority? {
-        priorities.first { $0.id == selectedPriorityID }
+    /// The lever, unless it is already one of today's tasks.
+    private var menuLever: DailyLever? {
+        guard let lever, !openTasks.contains(where: { $0.title == lever.action }) else { return nil }
+        return lever
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                IdleSectionLabel("Goal for this block")
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.seal")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                        .accessibilityHidden(true)
-                    TextField("e.g. Draft the intro section (optional)", text: $intentText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12, weight: .regular))
-                        .lineLimit(1)
-                        .accessibilityLabel("Goal for this block")
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .evidenceSafeGlass(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
-            }
-
-            if !priorities.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    IdleSectionLabel("Counts toward")
+        VStack(alignment: .leading, spacing: 6) {
+            IdleSectionLabel("Goal for this block")
+            HStack(spacing: 8) {
+                Image(systemName: isTaskLinked ? "checklist.checked" : "checkmark.seal")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isTaskLinked ? FFPalette.accent : LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .accessibilityHidden(true)
+                TextField("e.g. Draft the intro section (optional)", text: $intentText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .regular))
+                    .lineLimit(1)
+                    .accessibilityLabel("Goal for this block")
+                if !openTasks.isEmpty || menuLever != nil {
                     Menu {
-                        Button("No priority") { selectedPriorityID = nil }
-                        Divider()
-                        ForEach(priorities, id: \.id) { priority in
-                            Button(priority.title) { selectedPriorityID = priority.id }
+                        if !openTasks.isEmpty {
+                            Section("Today's tasks") {
+                                ForEach(openTasks) { task in
+                                    Button(task.title) { onPickTask(task) }
+                                }
+                            }
+                        }
+                        if let lever = menuLever {
+                            Section("Today's lever") {
+                                Button(lever.action) { onPickLever(lever) }
+                            }
                         }
                     } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "flag")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                                .accessibilityHidden(true)
-                            Text(selectedPriority?.title ?? "No priority")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                                .accessibilityHidden(true)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-                        .padding(.horizontal, 10)
-                        .background {
-                            RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm, style: .continuous)
-                                .fill(Color.primary.opacity(0.06))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.sm, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
-                                )
-                        }
-                        .contentShape(Rectangle())
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     }
-                    .menuStyle(.button)
+                    .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityLabel("Weekly priority this block counts toward")
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+                    .help("Pick one of today's tasks or the lever")
+                    .accessibilityLabel("Pick a goal from today's tasks")
                 }
             }
+            .padding(.leading, 10)
+            .padding(.trailing, 2)
+            .frame(height: 30)
+            .evidenceSafeGlass(cornerRadius: LiquidDesignTokens.CornerRadius.sm)
         }
+    }
+}
+
+/// 5 · 15 · 25 · Custom. The coach's suggestion carries a small sparkle.
+private struct BlockSizeRow: View {
+    let presets: [Int]
+    let suggested: Int?
+    @Binding var selectedMinutes: Int
+    @Binding var isCustomActive: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GlassEffectContainer {
+            HStack(spacing: 6) {
+                ForEach(presets, id: \.self) { minutes in
+                    pill(minutes)
+                }
+                customPill
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pill(_ minutes: Int) -> some View {
+        let isSelected = !isCustomActive && selectedMinutes == minutes
+        let button = Button {
+            withAnimation(reduceMotion ? nil : FFMotion.control) {
+                selectedMinutes = minutes
+                isCustomActive = false
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text("\(minutes)")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                if minutes == suggested {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 10, weight: .bold))
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonBorderShape(.capsule)
+        .accessibilityLabel(minutes == suggested ? "\(minutes) minutes, suggested" : "\(minutes) minutes")
+        if isSelected {
+            button.buttonStyle(.glassProminent).tint(LiquidDesignTokens.Spectral.primaryContainer)
+        } else {
+            button.buttonStyle(.glass)
+        }
+    }
+
+    @ViewBuilder
+    private var customPill: some View {
+        let button = Button {
+            withAnimation(reduceMotion ? nil : FFMotion.section) { isCustomActive = true }
+        } label: {
+            Text("Custom")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonBorderShape(.capsule)
+        .accessibilityLabel("Custom duration")
+        if isCustomActive {
+            button.buttonStyle(.glassProminent).tint(LiquidDesignTokens.Spectral.primaryContainer)
+        } else {
+            button.buttonStyle(.glass)
+        }
+    }
+}
+
+/// The footer's honest total: "3h 50m tracked · 50m on your #1 · 22% own work".
+/// Re-reads the store only when today's focus time or the block count changes.
+private struct PopoverVerdictText: View {
+    @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.modelContext) private var modelContext
+
+    var body: some View {
+        let _ = (timerVM.todayFocusTime, timerVM.completedFocusSessions)
+        let verdict = TodayVerdict.text(modelContext: modelContext)
+        Text(verdict ?? "Nothing tracked yet today")
+            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(verdict == nil ? 0.55 : 0.8))
+            .monospacedDigit()
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -873,7 +935,6 @@ private struct FocusingPopoverContent: View {
     @Binding var selectedProject: Project?
     var isStarterBlock: Bool = false
     var starterStep: Binding<String> = .constant("")
-    let projectName: String?
     let canReduceTime: Bool
     let canExtendTime: Bool
     let showPauseReasonChips: Bool
@@ -962,7 +1023,10 @@ private struct FocusingPopoverContent: View {
                 stopConfirmation
             }
 
-            nextUpCard
+            // Log while you work: the block's task tick and the key result's +1.
+            if !isStarterBlock {
+                PopoverBlockLogRow()
+            }
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
@@ -1135,39 +1199,6 @@ private struct FocusingPopoverContent: View {
         )
     }
 
-    private var nextUpCard: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.right.circle.fill")
-                .font(.system(size: 22))
-                .foregroundStyle(.purple.opacity(0.7))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                TrackedLabel(
-                    text: "Next Up",
-                    font: .system(size: 10, weight: .medium),
-                    tracking: 2.0
-                )
-                Text(projectName ?? "Break Time")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
-    }
-
     private var stopConfirmation: some View {
         VStack(spacing: 10) {
             Text("End this session?")
@@ -1277,6 +1308,8 @@ private struct PausedPopoverContent: View {
             if showStopConfirmation {
                 pausedStopConfirmation
             }
+
+            PopoverBlockLogRow()
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
@@ -1335,159 +1368,87 @@ private struct PausedPopoverContent: View {
 
 private struct OvertimePopoverContent: View {
     @Binding var selectedProject: Project?
-    let overtimeString: String
     let showSessionComplete: Bool
-    let cycleProgress: Double
-    let onBringWindowToFront: () -> Void
+    let onLogBlock: () -> Void
     let onTakeBreak: () -> Void
-    let onSkipBreak: () -> Void
-    let onFinishSession: () -> Void
+    let onKeepGoing: () -> Void
+    let onEnd: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
-            // Overtime badge
-            HStack(spacing: 6) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color(hex: 0x3DA86A))
-                    .accessibilityHidden(true)
-                Text(overtimeString)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Color(hex: 0x3DA86A))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color(hex: 0x3DA86A).opacity(0.12))
+        // The ring already shows "+M:SS · Block done"; no badge repeats it.
+        VStack(spacing: 12) {
+            Text("Block done. Log it, then keep going or rest.")
+                .font(.system(size: 12))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 6)
+
+            GradientCTAButton(
+                title: "Log this block",
+                icon: "checkmark.circle",
+                gradient: LiquidDesignTokens.Gradient.focus,
+                action: onLogBlock
             )
 
-            if showSessionComplete {
-                // Session window is open — guide user there instead of offering bypass actions
-                VStack(spacing: 10) {
-                    Text("Your session is complete ✓")
-                        .font(LiquidDesignTokens.Typography.bodySmall)
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-
-                    Button(action: onBringWindowToFront) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                                .accessibilityHidden(true)
-                            Text("Log & Continue →")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .buttonBorderShape(.capsule)
-                }
-            } else {
-                // Window not open — inline quick actions (e.g. if window was dismissed)
-                GlassEffectContainer {
-                    VStack(spacing: 8) {
-                        // Primary CTA — coached path (full width, no truncation)
-                        GradientCTAButton(
-                            title: "Take a Break",
-                            icon: "cup.and.saucer.fill",
-                            gradient: LiquidDesignTokens.Gradient.breakStart,
-                            action: onTakeBreak
-                        )
-
-                        // Secondary actions row — lower visual weight
-                        HStack(spacing: 8) {
-                            Button(action: onSkipBreak) {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "forward.fill")
-                                        .font(.system(size: 10))
-                                        .accessibilityHidden(true)
-                                    Text("Start Next Block")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.capsule)
-
-                            Button(action: onFinishSession) {
-                                HStack(spacing: 5) {
-                                    Image(systemName: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill")
-                                        .font(.system(size: 10))
-                                        .accessibilityHidden(true)
-                                    Text(cycleProgress >= 1.0 ? "Complete Block" : "End with Progress")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.capsule)
-                        }
-                    }
-                }
-            }
-
-            // Next session project picker (only when window not blocking actions)
             if !showSessionComplete {
-                VStack(spacing: 6) {
-                    HStack {
-                        TrackedLabel(
-                            text: "Next Session Project",
-                            font: .system(size: 10, weight: .medium),
-                            tracking: 1.8
-                        )
-                        Spacer()
+                // The block-end window was closed: the other answers stay one click away.
+                GlassEffectContainer {
+                    HStack(spacing: 6) {
+                        secondaryButton("Break 5 min", label: "Take a 5 minute break", action: onTakeBreak)
+                        secondaryButton("Keep going", label: "Start the next block", action: onKeepGoing)
+                        secondaryButton("End", label: "End without logging", action: onEnd)
                     }
-                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                }
 
+                VStack(alignment: .leading, spacing: 6) {
+                    TrackedLabel(
+                        text: "Next Session Project",
+                        font: .system(size: 10, weight: .medium),
+                        tracking: 1.8
+                    )
                     ProjectPickerView(selectedProject: $selectedProject)
-                        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                 }
             }
         }
         .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
         .padding(.bottom, 12)
     }
+
+    private func secondaryButton(_ title: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, minHeight: 30)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.capsule)
+        .accessibilityLabel(label)
+    }
 }
 
 // MARK: - Break Overtime State
 
 private struct BreakOvertimePopoverContent: View {
-    let overtimeString: String
+    /// "Next: 3 LeetCode questions": the picked task, else today's lever.
+    let nextLine: String?
     let onStartFocusing: () -> Void
     let onEnd: () -> Void
 
-    @State private var pulse = false
-
     var body: some View {
-        VStack(spacing: 14) {
-            // Escalating overtime badge — orange to signal urgency
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
-                    .accessibilityHidden(true)
-                Text(overtimeString)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.orange)
+        // The ring already shows the overrun and "Break over"; no badge repeats it.
+        VStack(spacing: 12) {
+            if let nextLine {
+                Text("Next: \(nextLine)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(Capsule(style: .continuous).fill(Color.orange.opacity(pulse ? 0.2 : 0.12)))
-            .opacity(pulse ? 1.0 : 0.7)
-            .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: pulse)
-            .onAppear { pulse = true }
-
-            Text("Break time is up — time to focus!")
-                .font(LiquidDesignTokens.Typography.bodySmall)
-                .foregroundStyle(.orange.opacity(0.85))
-                .italic()
 
             GlassEffectContainer {
                 VStack(spacing: 8) {
@@ -1505,8 +1466,11 @@ private struct BreakOvertimePopoverContent: View {
                             color: LiquidDesignTokens.Surface.onSurfaceMuted,
                             tracking: 2.0
                         )
+                        .frame(minHeight: 30)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("End break")
                 }
             }
         }
@@ -1621,24 +1585,7 @@ private struct BreakPopoverContent: View {
 
 extension MenuBarPopoverView {
     fileprivate var idleContent: some View {
-        @Bindable var vm = timerVM
-        return IdlePopoverContent(
-            selectedProject: $vm.selectedProject,
-            selectedMinutes: $vm.selectedMinutes,
-            coachEnabled: timerVM.settings?.coachRealtimeEnabled ?? false,
-            coachTaskType: Binding(
-                get: { timerVM.coachTaskType },
-                set: { timerVM.coachTaskType = $0 }
-            ),
-            coachResistance: Binding(
-                get: { timerVM.coachResistance },
-                set: { timerVM.coachResistance = $0 }
-            ),
-            intentText: $vm.pendingIntentText,
-            selectedPriorityID: $vm.pendingPriorityID,
-            weeklyPriorities: timerVM.weeklyPriorities,
-            recoveryState: timerVM.recoveryState,
-            recoveryProject: timerVM.recoveryProject,
+        IdlePopoverContent(
             onStartFocus: {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.startFocus()
@@ -1650,9 +1597,6 @@ extension MenuBarPopoverView {
                 timerVM.discardRecovery()
             }
         )
-        .onChange(of: timerVM.selectedProject) { _, newValue in
-            if newValue != nil { timerVM.noteProjectSelected() }
-        }
     }
 
     fileprivate var focusingContent: some View {
@@ -1662,7 +1606,6 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             isStarterBlock: timerVM.isStarterBlock,
             starterStep: $vm.starterStepText,
-            projectName: timerVM.selectedProject?.name,
             canReduceTime: timerVM.canReduceTime,
             canExtendTime: timerVM.canExtendTime,
             showPauseReasonChips: timerVM.showPauseReasonChips,
@@ -1717,7 +1660,7 @@ extension MenuBarPopoverView {
 
     fileprivate var breakOvertimeContent: some View {
         BreakOvertimePopoverContent(
-            overtimeString: timerVM.overtimeTimeString,
+            nextLine: nextStepLine,
             onStartFocusing: {
                 timerVM.continueAfterCompletion(action: .continueFocusing)
             },
@@ -1727,24 +1670,30 @@ extension MenuBarPopoverView {
         )
     }
 
+    /// What the next block is about: the picked task, else today's lever.
+    fileprivate var nextStepLine: String? {
+        if let id = timerVM.pendingTaskID, let task = timerVM.todayTasks().first(where: { $0.id == id && !$0.isDone }) {
+            return task.title
+        }
+        return GoalDataBuilder.levers(timerVM.historyReaderActiveGoals(), now: Date()).first?.action
+    }
+
     fileprivate var overtimeContent: some View {
         @Bindable var vm = timerVM
         return OvertimePopoverContent(
             selectedProject: $vm.selectedProject,
-            overtimeString: timerVM.overtimeTimeString,
             showSessionComplete: timerVM.showSessionComplete,
-            cycleProgress: timerVM.cycleProgress,
-            onBringWindowToFront: {
+            onLogBlock: {
                 timerVM.openCompletionWindow?()
                 timerVM.requestAppActivation?()
             },
             onTakeBreak: {
-                timerVM.continueAfterCompletion(action: .takeBreak(duration: nil))
+                timerVM.continueAfterCompletion(action: .takeBreak(duration: 300))
             },
-            onSkipBreak: {
+            onKeepGoing: {
                 timerVM.continueAfterCompletion(action: .continueFocusing)
             },
-            onFinishSession: {
+            onEnd: {
                 timerVM.continueAfterCompletion(action: .endSession)
             }
         )

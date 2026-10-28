@@ -279,32 +279,32 @@ final class UIEvidenceCaptureTests: XCTestCase {
             fixtures: fixtures
         )
 
-        // Continue button region — capsule centered around y≈0.70-0.74
-        // (below the Coach v2 "How did this block go?" outcome chips).
+        // Block-end window (screen audit 2026-10-28): one stage that fits its content, then the
+        // sticky footer. Start button (full width) at y≈0.84-0.89.
         let continueStats = try luminanceStats(
             in: image,
-            normalizedRect: CGRect(x: 0.15, y: 0.70, width: 0.70, height: 0.04)
+            normalizedRect: CGRect(x: 0.15, y: 0.845, width: 0.70, height: 0.04)
         )
-        // Carry-forward text editor region — glass panel at y≈0.41-0.48
+        // "Add something you finished" field — glass panel at y≈0.375-0.41
         let textFieldStats = try luminanceStats(
             in: image,
-            normalizedRect: CGRect(x: 0.10, y: 0.41, width: 0.80, height: 0.07)
+            normalizedRect: CGRect(x: 0.10, y: 0.375, width: 0.80, height: 0.035)
         )
-        // Footer bar — evidence-safe material at bottom
+        // Footer bar — evidence-safe material under the Break / Done row
         let footerStats = try luminanceStats(
             in: image,
-            normalizedRect: CGRect(x: 0.05, y: 0.95, width: 0.90, height: 0.04)
+            normalizedRect: CGRect(x: 0.05, y: 0.962, width: 0.90, height: 0.012)
         )
 
         XCTAssertGreaterThan(
             continueStats.mean,
             8.0,
-            "Continue button should have a visible surface in dark evidence captures, not just floating text. Got mean=\(continueStats.mean)"
+            "Start button should have a visible surface in dark evidence captures, not just floating text. Got mean=\(continueStats.mean)"
         )
         XCTAssertGreaterThan(
             textFieldStats.mean,
             3.0,
-            "Carry-forward text field should have a visible glass border/fill in dark evidence captures. Got mean=\(textFieldStats.mean)"
+            "Task entry field should have a visible glass border/fill in dark evidence captures. Got mean=\(textFieldStats.mean)"
         )
         XCTAssertGreaterThan(
             footerStats.mean,
@@ -443,6 +443,149 @@ final class UIEvidenceCaptureTests: XCTestCase {
             let blockingImage = try renderBlockingSettings(blockingFixture, appearance: appearance)
             try writePNG(blockingImage, to: appearanceDirectory.appendingPathComponent("blocking_settings.png"))
         }
+    }
+
+    // MARK: - Priorities and goals capture (docs/plans/2026-10-28-priorities-goals-design.md)
+
+    /// Seeds three ranked projects with targets, a week of blocks (office-heavy, little learning) and a
+    /// boss-fight goal, then renders Goals, Today, Insights, the project form and the session-complete
+    /// goal block. Output: FOCUSFLOW_CAPTURE_OUTPUT_DIR/goals/<appearance>/.
+    func testCapturePrioritiesAndGoalsInBothAppearances() throws {
+        guard let override = ProcessInfo.processInfo.environment["FOCUSFLOW_CAPTURE_OUTPUT_DIR"], !override.isEmpty else {
+            throw XCTSkip("Set FOCUSFLOW_CAPTURE_OUTPUT_DIR to capture")
+        }
+        let outputRoot = URL(fileURLWithPath: override, isDirectory: true).appendingPathComponent("goals", isDirectory: true)
+        for appearance in ReviewArtifactAppearance.allCases {
+            let directory = outputRoot.appendingPathComponent(appearance.rawValue, isDirectory: true)
+            try makeDirectory(directory)
+            let fixture = try makeFixture { settings in
+                settings.lifeAntiVision = "Still at the same desk in five years, always 'about to' start, building tools instead of the work."
+                settings.lifeVision = "A role I chose, interviews I'm ready for, evenings that build something of mine."
+                settings.lifeYearGoal = "Land a senior data role by October."
+                settings.lifeConstraints = "Sleep by 00:30. Family dinner. No new productivity tools until the goal is done."
+            }
+            let (learning, _, _) = try seedPriorityWeek(in: fixture.context)
+
+            let goalsView = GoalsView()
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .frame(width: 900, height: 2000).background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try trimmedBottomPadding(try render(goalsView, appearance: appearance, size: CGSize(width: 900, height: 2000))), to: directory.appendingPathComponent("goals_tab.png"))
+
+            let today = TodayView()
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .frame(width: 900, height: 2400).background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try trimmedBottomPadding(try render(today, appearance: appearance, size: CGSize(width: 900, height: 2400))), to: directory.appendingPathComponent("today.png"))
+
+            // Project detail (target-aware stats, compact goal rows) and History (Work faded,
+            // goal dots on own work) for the ranked, office-heavy week.
+            let projects = ProjectsListView()
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .frame(width: 900, height: 1100).background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try render(projects, appearance: appearance, size: CGSize(width: 900, height: 1100)), to: directory.appendingPathComponent("projects.png"))
+            let history = HistoryView(initialRange: .week)
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .frame(width: 900, height: 1400).background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try trimmedBottomPadding(try render(history, appearance: appearance, size: CGSize(width: 900, height: 1400))), to: directory.appendingPathComponent("history_week.png"))
+
+            let allSessions = try fixture.context.fetch(FetchDescriptor<FocusSession>())
+            let drift = ScrollView { DriftReportSection(snapshot: CompanionSnapshot(sessions: allSessions, settings: nil)).padding(24) }
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .frame(width: 900, height: 900).background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try trimmedBottomPadding(try render(drift, appearance: appearance, size: CGSize(width: 900, height: 900))), to: directory.appendingPathComponent("insights_drift.png"))
+
+            var draft = ProjectDraft(project: learning)
+            draft.addsGoal = false
+            let form = ProjectFormView(draft: .constant(draft), project: learning, title: "Edit project") {}
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try render(form, appearance: appearance, size: CGSize(width: 560, height: 720)), to: directory.appendingPathComponent("project_form.png"))
+
+            var newDraft = ProjectDraft()
+            newDraft.name = "Interview prep"
+            newDraft.area = .learning
+            newDraft.rank = 1
+            newDraft.dailyTargetMinutes = 120
+            newDraft.addsGoal = true
+            newDraft.goal.title = "Apply for jobs by 28 Nov"
+            newDraft.goal.keyResults = [
+                .init(title: "LeetCode", kind: .count, target: 60, unit: "questions"),
+                .init(title: "SQL", kind: .count, target: 10, unit: "questions"),
+                .init(title: "Apply for jobs", kind: .checkbox, target: 1),
+            ]
+            let newForm = ScrollView { ProjectFormView(draft: .constant(newDraft), project: nil, title: "New project") {} }
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try render(newForm, appearance: appearance, size: CGSize(width: 560, height: 720)), to: directory.appendingPathComponent("project_form_new.png"))
+
+            let progress = SessionGoalSection(projectID: learning.id, sessionID: UUID())
+                .padding(24).frame(width: 480)
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try render(progress, appearance: appearance, size: CGSize(width: 480, height: 320)), to: directory.appendingPathComponent("session_goal_progress.png"))
+        }
+    }
+
+    /// Learning #1 (4h every day), Office #2 (3h weekdays), ProjectWork #3; a week of office-heavy days.
+    private func seedPriorityWeek(in context: ModelContext) throws -> (Project, Project, Project) {
+        let learning = Project(name: "Learning", color: "purple", icon: "graduationcap.fill")
+        learning.priorityRank = 1; learning.area = .learning; learning.dailyTargetMinutes = 240
+        learning.purpose = "Interview-ready for a senior data role"
+        let office = Project(name: "Office", color: "blue", icon: "briefcase.fill")
+        office.priorityRank = 2; office.area = .work; office.dailyTargetMinutes = 180; office.targetWeekdaysOnly = true
+        let side = Project(name: "ProjectWork", color: "orange", icon: "hammer.fill")
+        side.priorityRank = 3; side.area = .personal; side.dailyTargetMinutes = 60
+        [learning, office, side].forEach { context.insert($0) }
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let plan: [(Project, Int, Int)] = [(office, 9, 100), (office, 11, 80), (office, 14, 110), (learning, 7, 50), (side, 21, 40)]
+        for offset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            for (project, hour, minutes) in plan {
+                if offset == 0 && hour > calendar.component(.hour, from: Date()) { continue }
+                let session = FocusSession(type: .focus, duration: TimeInterval(minutes * 60), project: project)
+                session.startedAt = day.addingTimeInterval(TimeInterval(hour * 3600))
+                session.endedAt = session.startedAt.addingTimeInterval(TimeInterval(minutes * 60))
+                session.completed = true
+                context.insert(session)
+            }
+        }
+
+        let goal = ProjectGoal(title: "Interview-ready and applying by 28 Nov", projectID: learning.id,
+                               startDate: today.addingTimeInterval(-12 * 86_400), deadline: today.addingTimeInterval(18 * 86_400), isBossFight: true)
+        goal.why = "Out of the 'about to start' loop."
+        context.insert(goal)
+        let leet = GoalKeyResult(title: "LeetCode", kind: .count, target: 60, unit: "questions", order: 0)
+        let sql = GoalKeyResult(title: "SQL", kind: .count, target: 10, unit: "questions", order: 1)
+        let referrals = GoalKeyResult(title: "Referral asks", kind: .count, target: 3, order: 2)
+        let apply = GoalKeyResult(title: "Apply for 10 jobs", kind: .checkbox, target: 1, order: 3)
+        [leet, sql, referrals, apply].forEach { context.insert($0) }
+        goal.keyResults = [leet, sql, referrals, apply]
+        for (index, amount) in [2.0, 1, 3, 0, 2, 1, 2, 3].enumerated() where amount > 0 {
+            let entry = GoalProgressEntry(amount: amount, at: today.addingTimeInterval(TimeInterval(-11 + index) * 86_400 + 8 * 3600))
+            context.insert(entry)
+            leet.entries.append(entry)
+        }
+        let sqlEntry = GoalProgressEntry(amount: 4, at: today.addingTimeInterval(-5 * 86_400))
+        context.insert(sqlEntry)
+        sql.entries.append(sqlEntry)
+        let refEntry = GoalProgressEntry(amount: 1, at: today.addingTimeInterval(-2 * 86_400))
+        context.insert(refEntry)
+        referrals.entries.append(refEntry)
+
+        let side30 = ProjectGoal(title: "Ship the portfolio site", projectID: side.id, startDate: today.addingTimeInterval(-3 * 86_400), deadline: today.addingTimeInterval(11 * 86_400))
+        context.insert(side30)
+        let pages = GoalKeyResult(title: "Case studies", kind: .count, target: 3, order: 0)
+        context.insert(pages)
+        side30.keyResults = [pages]
+        try context.save()
+        return (learning, office, side)
     }
 
     // MARK: - Redesigned Companion Screens Capture
@@ -787,7 +930,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self
         ])
         let container = try ModelContainer(
             for: schema,
@@ -856,7 +999,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
     private func companionFixture(for tab: CompanionTab, fixtures: FixturePool) throws -> Fixture {
         switch tab {
         case .today: return try fixtures.todayStatsFixture()
-        case .history, .projects: return try fixtures.weeklyStatsFixture()
+        case .history, .projects, .goals: return try fixtures.weeklyStatsFixture()
         case .insights: return try fixtures.insightsDomainsFixture()
         }
     }
@@ -985,7 +1128,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
             return try renderMenuBar(fixture, appearance: appearance)
 
         case "session_complete_focus_complete":
-            let fixture = try fixtures.focusCompletionFixture()
+            let fixture = try fixtures.blockEndFixture()
             return try renderSessionComplete(fixture, appearance: appearance)
 
         case "session_complete_manual_stop":
@@ -1052,8 +1195,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
             return try renderSessionComplete(fixture, appearance: appearance)
 
         case "session_complete_earned_stage":
-            // The Earned stage is the default initial stage when session completes — no extra state needed.
-            let fixture = try fixtures.focusCompletionFixture()
+            // The block-end window with a plan: "Did you finish it?", tasks and the goal.
+            let fixture = try fixtures.blockEndFixture()
             return try renderSessionComplete(fixture, appearance: appearance)
 
         case "session_complete_recovery_chips":
@@ -1271,6 +1414,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         private unowned let owner: UIEvidenceCaptureTests
         private var base: Fixture?
         private var focusCompleted: Fixture?
+        private var blockEnd: Fixture?
         private var breakCompleted: Fixture?
         private var settingsCalendar: Fixture?
         private var settingsReminders: Fixture?
@@ -1299,6 +1443,16 @@ final class UIEvidenceCaptureTests: XCTestCase {
             }
             let created = try owner.makeFocusCompletionFixture()
             self.focusCompleted = created
+            return created
+        }
+
+        /// A finished block with a plan: the block's task, other tasks, a goal (block-end window).
+        func blockEndFixture() throws -> Fixture {
+            if let blockEnd {
+                return blockEnd
+            }
+            let created = try owner.makeBlockEndFixture()
+            self.blockEnd = created
             return created
         }
 
@@ -1720,6 +1874,54 @@ final class UIEvidenceCaptureTests: XCTestCase {
             duration: 25 * 60,
             overtimeSeconds: 78
         )
+        return fixture
+    }
+
+    /// A 25m block on "Deep Work" that was started for a task linked to a key result, with two
+    /// other tasks today, one earlier block, and +1 already logged on the goal in this block.
+    private func makeBlockEndFixture() throws -> Fixture {
+        let fixture = try makeFocusCompletionFixture()
+        let context = fixture.context
+        guard let session = fixture.vm.lastCompletedFocusSession, let project = session.project else {
+            throw CaptureError.flowFixtureFailed("Block-end fixture needs a finished focus block")
+        }
+        let now = Date()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+
+        let earlier = FocusSession(type: .focus, duration: 45 * 60, project: project)
+        earlier.startedAt = max(today, now.addingTimeInterval(-80 * 60))
+        earlier.endedAt = earlier.startedAt.addingTimeInterval(45 * 60)
+        earlier.completed = true
+        context.insert(earlier)
+
+        let goal = ProjectGoal(
+            title: "Ship side app v1", projectID: project.id,
+            startDate: calendar.date(byAdding: .day, value: -10, to: today)!,
+            deadline: calendar.date(byAdding: .day, value: 20, to: today)!
+        )
+        let screens = GoalKeyResult(title: "Onboarding screens", kind: .count, target: 8, unit: "screens")
+        context.insert(goal)
+        context.insert(screens)
+        goal.keyResults.append(screens)
+        for amount in [1.0, 1.0] {
+            let entry = GoalProgressEntry(amount: amount, at: calendar.date(byAdding: .day, value: -3, to: now)!)
+            context.insert(entry)
+            screens.entries.append(entry)
+        }
+        let thisBlock = GoalProgressEntry(amount: 1, at: now, sessionID: session.id)
+        context.insert(thisBlock)
+        screens.entries.append(thisBlock)
+
+        let blockTask = DailyTask(title: "Onboarding empty state", day: today, order: 0, projectID: project.id, keyResultID: screens.id)
+        let notes = DailyTask(title: "Write the release notes", day: today, order: 1, projectID: project.id)
+        let reply = DailyTask(title: "Reply to Priya about the referral", day: today, order: 2)
+        let done = DailyTask(title: "Window functions practice set", day: today, order: 3)
+        done.isDone = true
+        done.doneAt = now.addingTimeInterval(-3 * 3600)
+        for task in [blockTask, notes, reply, done] { context.insert(task) }
+        session.taskID = blockTask.id
+        try context.save()
         return fixture
     }
 
@@ -2218,9 +2420,9 @@ final class UIEvidenceCaptureTests: XCTestCase {
         case "coach_window_dismiss": return "Coach window X dismiss button evidence"
         case "settings_calendar_permissions": return "Calendar integration permission surface"
         case "settings_reminders_permissions": return "Reminders integration permission surface"
-        case "today_stats_view": return "Today goal hero, Focus blocks / Personal work / Streak, timeline and Distractions today"
+        case "today_stats_view": return "Today goal hero with the own-work week, tasks and levers, where today went, timeline and Distractions today"
         case "weekly_stats_view": return "History daily focus chart with goal line, consistency and day detail"
-        case "insights_view_domains": return "Insights focus windows, What derails you, outcomes, priorities and coach effectiveness"
+        case "insights_view_domains": return "Insights said vs did, coach prompt → start, focus windows, What derails you and outcomes"
         case "distractions_view": return "Companion Distractions tab with active rules, learned suggestions, and manual add"
         case "settings_domain_tracking": return "Settings domain tracking toggle and recovery guidance"
         case "break_complete_reason_sheet_hidden": return "Break-complete window with reason sheet collapsed"
@@ -2263,7 +2465,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
             InterventionAttempt.self,
             BreakLearningEvent.self,
             IdleDistractionItem.self,
-            WeeklyPriority.self, PlannedBlock.self
+            WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: configuration)

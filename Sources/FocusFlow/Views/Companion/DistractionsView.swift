@@ -161,10 +161,19 @@ struct DistractionsView: View {
 
             if !domainTrackingEnabled && hasActiveWebsiteRules {
                 LabeledContent {
-                    Button("Open Permissions") {
-                        selectedSettingsTab = .integrations
-                        openSettings()
+                    // Turn it on here; Permissions only holds the macOS approvals it may then ask for.
+                    HStack(spacing: 6) {
+                        Button("Turn On") {
+                            allSettings.first?.coachCollectRawDomains = true
+                            saveWithFeedback(modelContext, errorBinding: $saveError)
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        Button("Permissions…") {
+                            selectedSettingsTab = .integrations
+                            openSettings()
+                        }
                     }
+                    .fixedSize()
                 } label: {
                     Label {
                         Text("Website rules need browser domain tracking.")

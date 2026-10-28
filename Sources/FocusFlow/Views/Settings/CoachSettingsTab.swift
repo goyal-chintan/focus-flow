@@ -1,8 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Settings → Coach. Style and prompt budget first, then the existing before/during-session
-/// controls, then the user's own motivation: "My why" and this week's priorities.
+/// Settings → Coach (screen audit 2026-10-28). Four groups: the style, starting, the limits the
+/// learner never crosses, and during a block. What v5 learns (when to ask, which size) has no knob;
+/// weekly priorities are retired in favour of goals and daily tasks.
 struct CoachSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(TimerViewModel.self) private var timerVM
@@ -11,7 +12,6 @@ struct CoachSettingsTab: View {
     @ObservedObject private var notificationService = NotificationService.shared
 
     @State private var saveError: String?
-    @State private var showAdvanced = false
     @State private var isRequestingNotifications = false
     /// Shown after a switch to Gentle or Data while the pause screen is still on.
     @State private var showPauseScreenOffer = false
@@ -25,13 +25,10 @@ struct CoachSettingsTab: View {
     var body: some View {
         Form {
             styleSection
-            promptsSection
-            beforeSessionSection
+            startingSection
+            limitsSection
             duringSessionSection
-            rescueSection
-            advancedSection
             myWhySection
-            WeeklyPrioritiesSection(projects: projects, saveError: $saveError)
             debugSection
         }
         .formStyle(.grouped)
@@ -51,7 +48,9 @@ struct CoachSettingsTab: View {
 
             CoachStylePreviewCard(
                 style: settings.coachStyle,
-                projectName: projects.first?.name ?? "your project"
+                projectName: projects.min { ($0.priorityRank ?? .max) < ($1.priorityRank ?? .max) }?.name ?? "your #1",
+                lever: GoalDataBuilder.levers(timerVM.historyReaderActiveGoals(), now: Date()).first?.action,
+                suggestedMinutes: timerVM.startLadderRecommendation().minutes
             )
 
             if showPauseScreenOffer {
@@ -101,19 +100,24 @@ struct CoachSettingsTab: View {
         pauseScreenEnabled && style != .challenger
     }
 
-    // MARK: Rescue
+    // MARK: Starting
 
-    /// Lengths offered for the one-click starter block.
-    static let starterBlockChoices = [2, 5, 10]
-
-    /// Snaps a stored length to the nearest offered choice, so the picker never shows blank.
-    static func starterBlockChoice(for minutes: Int) -> Int {
-        starterBlockChoices.min { abs($0 - minutes) < abs($1 - minutes) } ?? 5
-    }
-
-    private var rescueSection: some View {
+    private var startingSection: some View {
         Section {
-            Toggle("Show drift time in the menu bar", isOn: bind(\.coachShowDriftInMenuBar))
+            // One switch for the whole start loop: start prompts and the start card.
+            Toggle(isOn: Binding(
+                get: { settings.antiProcrastinationEnabled && settings.coachIdleStarterEnabled },
+                set: { newValue in
+                    settings.antiProcrastinationEnabled = newValue
+                    settings.coachIdleStarterEnabled = newValue
+                    save()
+                }
+            )) {
+                Text("Help me start")
+                Text("Asks only when you're at your desk, and offers 5, 15 or 25 minutes.")
+            }
+
+            Toggle("⌃⌥Space starts a block from anywhere", isOn: bind(\.coachGlobalHotkeyEnabled))
 
             Toggle(isOn: Binding(
                 get: { settings.coachPauseScreenEnabled },
@@ -124,27 +128,21 @@ struct CoachSettingsTab: View {
                 }
             )) {
                 Text("Pause screen when I spiral in a focus window")
-                Text("A calm full-screen pause with one button to start 5 minutes. Never a lock.")
+                Text("A calm full-screen pause with one button to start a short block. Never a lock.")
             }
 
-            Picker("Starter block", selection: Binding(
-                get: { Self.starterBlockChoice(for: settings.coachStarterBlockMinutes) },
-                set: { settings.coachStarterBlockMinutes = $0; save() }
-            )) {
-                ForEach(Self.starterBlockChoices, id: \.self) { minutes in
-                    Text("\(minutes) min").tag(minutes)
-                }
-            }
-
-            Toggle("⌃⌥Space starts a starter block", isOn: bind(\.coachGlobalHotkeyEnabled))
+            Toggle("Show drift time in the menu bar", isOn: bind(\.coachShowDriftInMenuBar))
         } header: {
-            Text("Rescue")
+            Text("Starting")
+        } footer: {
+            Text("The coach learns when to ask and which size to offer. See Insights → Is the coach getting you started?")
+                .foregroundStyle(.secondary)
         }
     }
 
     // MARK: Prompts
 
-    private var promptsSection: some View {
+    private var limitsSection: some View {
         Section {
             Toggle("On-screen prompts", isOn: bind(\.coachOnScreenPromptsEnabled))
 
@@ -199,9 +197,9 @@ struct CoachSettingsTab: View {
                 .fixedSize()
             }
         } header: {
-            Text("Prompts")
+            Text("Limits")
         } footer: {
-            Text("No prompts during quiet hours.")
+            Text("The coach learns inside these limits. It never goes past them, and stays quiet during quiet hours.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -216,37 +214,14 @@ struct CoachSettingsTab: View {
         }
     }
 
-    // MARK: Existing coach controls
-
-    private var beforeSessionSection: some View {
-        Section {
-            Toggle("Remind me to start", isOn: bind(\.antiProcrastinationEnabled))
-
-            if settings.antiProcrastinationEnabled {
-                SettingsStepperRow(
-                    title: "First reminder after",
-                    valueText: settingsMinutesText(settings.antiProcrastinationThresholdMinutes),
-                    value: bind(\.antiProcrastinationThresholdMinutes),
-                    range: 2...15
-                )
-                Toggle("Show the starter card", isOn: bind(\.coachIdleStarterEnabled))
-            }
-        } header: {
-            Text("Before a session")
-        }
-    }
+    // MARK: During a block
 
     private var duringSessionSection: some View {
         Section {
-            Toggle("Coach me during sessions", isOn: bind(\.coachRealtimeEnabled))
+            Toggle("Coach me during blocks", isOn: bind(\.coachRealtimeEnabled))
 
             if settings.coachRealtimeEnabled {
-                Picker("Escalation", selection: bind(\.coachInterventionMode)) {
-                    ForEach(FocusCoachInterventionMode.allCases, id: \.rawValue) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                Toggle("Ask why I stopped or drifted", isOn: bind(\.coachReasonPromptsEnabled))
+                Toggle("Ask why after a long pause or break", isOn: bind(\.coachReasonPromptsEnabled))
                 SettingsStepperRow(
                     title: "Snooze for",
                     valueText: settingsMinutesText(settings.coachDefaultSnoozeMinutes),
@@ -256,45 +231,10 @@ struct CoachSettingsTab: View {
                 )
             }
         } header: {
-            Text("During a session")
+            Text("During a block")
         } footer: {
-            if settings.coachRealtimeEnabled {
-                Text(escalationFooter)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var advancedSection: some View {
-        if settings.coachRealtimeEnabled {
-            Section {
-                DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
-                    SettingsStepperRow(
-                        title: "Prompts per session",
-                        valueText: "\(settings.coachPromptBudgetPerSession)",
-                        value: bind(\.coachPromptBudgetPerSession),
-                        range: 1...8
-                    )
-                    SettingsStepperRow(
-                        title: "Strong prompts per session",
-                        valueText: "\(settings.coachMaxStrongPromptsPerSession)",
-                        value: bind(\.coachMaxStrongPromptsPerSession),
-                        range: 1...6
-                    )
-                    Toggle("Bring FocusFlow to the front for strong prompts", isOn: bind(\.coachBringAppToFrontOnStrongPrompt))
-                    Toggle("Open the menu bar panel for strong prompts", isOn: bind(\.coachAutoOpenPopoverOnStrongPrompt))
-                    Toggle("Allow “Skip this check”", isOn: bind(\.coachAllowSkipAction))
-                }
-            }
-        }
-    }
-
-    private var escalationFooter: String {
-        switch settings.coachInterventionMode {
-        case .balanced: "Balanced is the calmest."
-        case .adaptiveStrict: "Adaptive Strict escalates faster when you drift."
-        case .sessionRescue: "Session Rescue focuses on getting you back into the session."
+            Text("Nudges you back when a distraction takes over a block. Distractions decides which apps and sites count.")
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -332,7 +272,7 @@ struct CoachSettingsTab: View {
                     .foregroundStyle(.secondary)
             }
         } footer: {
-            Text("One reason per line. Challenger quotes these back to you.")
+            Text("One reason per line. The coach quotes them back to you when you need a push.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -374,10 +314,13 @@ struct CoachSettingsTab: View {
 
 // MARK: - Style preview
 
-/// A sample prompt in the chosen style (copy from the coach v2 design §4.1).
+/// What this style would say to you now: the real composer, fed your #1 project and today's lever,
+/// with the same 5 · 15 · 25 choice the start card shows (v4 §3.3: start prompts never cite the daily goal).
 struct CoachStylePreviewCard: View {
     let style: CoachStyle
     let projectName: String
+    var lever: String?
+    var suggestedMinutes: Int = 15
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -389,19 +332,17 @@ struct CoachStylePreviewCard: View {
         }
     }
 
-    /// Real composer output for a sample mid-day state: a five-day streak, one block done, 43 of 120 minutes.
     private var composed: CoachComposedMessage {
-        CoachMessageComposer.compose(CoachComposerInput(
-            style: style,
-            trigger: .startNudge,
-            facts: CoachFacts(streakDays: 5, hasHistory: true, sessionsToday: 1, doneMinutesToday: 43, goalMinutes: 120),
-            target: CoachStartTarget(minutes: 25, name: projectName)
-        ))
+        var facts = CoachFacts(streakDays: 5, hasHistory: true, sessionsToday: 1)
+        facts.lever = lever
+        var target = CoachStartTarget(minutes: suggestedMinutes, name: projectName)
+        target.taskTitle = lever
+        return CoachMessageComposer.compose(CoachComposerInput(style: style, trigger: .startNudge, facts: facts, target: target))
     }
 
     private var headline: String { composed.hook }
 
-    private var message: String { composed.detail?.text ?? composed.primaryTitle }
+    private var message: String { composed.detail?.text ?? lever.map { "Next: \($0)" } ?? "Start on \(projectName)." }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -412,13 +353,26 @@ struct CoachStylePreviewCard: View {
                 .background(Circle().fill(Color.accentColor.opacity(0.14)))
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(headline)
                     .font(.body.weight(.semibold))
                 Text(message)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    ForEach(CoachBlockSizeLadder.sizes, id: \.self) { minutes in
+                        Text("\(minutes) min")
+                            .font(.caption.weight(minutes == suggestedMinutes ? .semibold : .regular))
+                            .foregroundStyle(minutes == suggestedMinutes ? Color.white : Color.primary)
+                            .padding(.horizontal, 9)
+                            .frame(height: 20)
+                            .background(Capsule().fill(minutes == suggestedMinutes ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.07))))
+                    }
+                    Text("Not now, because…").font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.top, 2)
+                .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .id(style)

@@ -11,6 +11,10 @@ struct CoachStartTarget: Sendable, Equatable {
     var priorityID: UUID?
     /// Coach v4 §3.4: "I don't know the next step" → the block's job is to find it.
     var findNextStep: Bool = false
+    /// The concrete step the block will start on: the next daily task, else today's lever.
+    var taskTitle: String?
+    /// The project's priority rank ("#1"), for the panel eyebrow. Nil when unranked or unknown.
+    var rank: Int?
 }
 
 /// A confirmed derailer that is frontmost now, with its real time this week.
@@ -44,6 +48,23 @@ struct CoachFacts: Sendable, Equatable {
     var contextAppName: String?
     /// Consecutive days before today without any focus block (comeback framing). Nil = unknown.
     var daysWithoutBlock: Int?
+    /// Today's top lever from the goals, e.g. "3 LeetCode questions" (priorities-goals design §3.5).
+    var lever: String?
+    /// Where the most urgent goal stands (goal-aware copy).
+    var goal: CoachGoalFact?
+}
+
+/// The most urgent goal's key result, for copy that names the real stakes.
+struct CoachGoalFact: Sendable, Equatable {
+    /// Short goal name ("Interview-ready").
+    var goalTitle: String
+    var resultTitle: String
+    var done: Int
+    var target: Int
+    /// Units behind the even pace (0 when on pace or ahead).
+    var behind: Int
+    var daysLeft: Int
+    var isBehind: Bool { behind > 0 }
 }
 
 /// Everything a rescue message needs (rescue loop design §2–§4).
@@ -180,6 +201,9 @@ struct CoachComposedMessage: Sendable, Equatable {
     /// A quote, house line or "my why" line shown under the fact (v3 §3.4, R6). Before v3 a
     /// quote had to win the single detail slot against facts and almost never did.
     var motivation: CoachDetail? = nil
+    /// The plan this prompt serves, for the panel eyebrow: "#1 · SHIP SIDE APP V1" or
+    /// "INTERVIEW-READY · BEHIND". Nil on prompts that are not about a start.
+    var eyebrow: String? = nil
 
     var accessibilityText: String {
         [hook, detail?.text, motivation?.text].compactMap { $0 }.joined(separator: ". ")
@@ -245,8 +269,31 @@ enum CoachMessageComposer {
             detail: detail,
             primaryTitle: primaryTitle(input),
             hookIsFact: hook.isFact,
-            motivation: motivationLine(input, detail: detail)
+            motivation: motivationLine(input, detail: detail),
+            eyebrow: eyebrow(input)
         )
+    }
+
+    /// The plan, not the coach's internals (screen audit 2026-10-28): the goal's standing when a
+    /// goal fact exists, else the target's rank and name.
+    static func eyebrow(_ input: CoachComposerInput) -> String? {
+        switch input.trigger {
+        case .startNudge, .dailyPlan, .counterOffer: break
+        default: return nil
+        }
+        if let goal = input.facts.goal {
+            return "\(shortName(goal.goalTitle)) · \(goal.isBehind ? "behind" : "on pace")".uppercased()
+        }
+        guard let name = input.target.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+        let rank = input.target.rank.map { "#\($0) · " } ?? ""
+        return (rank + shortName(name)).uppercased()
+    }
+
+    /// The step the block starts on when it is a task, not the lever (the lever has its own line).
+    private static func nextTask(_ input: CoachComposerInput) -> String? {
+        guard let task = input.target.taskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !task.isEmpty,
+              task != input.facts.lever else { return nil }
+        return task
     }
 
     /// Challenger and Gentle prompts that ask for a start always carry a quote, house line or
@@ -258,7 +305,12 @@ enum CoachMessageComposer {
         case .fact, .line, nil: break
         }
         switch input.trigger {
-        case .startNudge, .rescue, .pseudoProductivity, .plannedStart, .dailyPlan:
+        case .dailyPlan:
+            // The start card says "start small" once, in the hook. With a task or lever the
+            // detail names it; a house line only fills the card when there is nothing concrete.
+            if input.target.taskTitle != nil || input.facts.lever != nil { return nil }
+            return rotation(input)
+        case .startNudge, .rescue, .pseudoProductivity, .plannedStart:
             return rotation(input)
         case .inSessionDrift, .weeklyPriorities, .keepGoing, .momentum, .starterStarted, .counterOffer:
             return nil
@@ -306,13 +358,31 @@ enum CoachMessageComposer {
     }
 
     /// Copy for a decision that arrived without composed copy (should not happen in v2).
-    static func neutralFallback(isInSession: Bool) -> CoachComposedMessage {
-        CoachComposedMessage(
+    /// With a known `target` it names what the block is about.
+    static func neutralFallback(isInSession: Bool, target: CoachStartTarget? = nil) -> CoachComposedMessage {
+        if isInSession {
+            return CoachComposedMessage(
+                style: .gentle,
+                trigger: .inSessionDrift(projectName: nil, appName: nil, minutesInApp: nil),
+                hook: "Still on your block?",
+                detail: nil,
+                primaryTitle: "Back to it",
+                hookIsFact: false
+            )
+        }
+        let about = (target?.taskTitle ?? target?.name)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let target, let about, !about.isEmpty else {
+            return CoachComposedMessage(
+                style: .gentle, trigger: .startNudge, hook: "Ready for a focus block?",
+                detail: nil, primaryTitle: "Start focus", hookIsFact: false
+            )
+        }
+        return CoachComposedMessage(
             style: .gentle,
-            trigger: isInSession ? .inSessionDrift(projectName: nil, appName: nil, minutesInApp: nil) : .startNudge,
-            hook: isInSession ? "Still on your block?" : "Ready for a focus block?",
+            trigger: .startNudge,
+            hook: "Ready for \(shortName(about))?",
             detail: nil,
-            primaryTitle: isInSession ? "Back to it" : "Start focus",
+            primaryTitle: startTitle(target),
             hookIsFact: false
         )
     }
@@ -324,6 +394,9 @@ enum CoachMessageComposer {
         let minutes = input.target.minutes
         switch input.style {
         case .challenger:
+            if let goal = facts.goal, goal.isBehind {
+                return ("\(goal.daysLeft) day\(goal.daysLeft == 1 ? "" : "s") left. \(shortName(goal.resultTitle)) is \(goal.behind) behind.", true)
+            }
             if let derailer = facts.derailer {
                 return ("\(shortName(derailer.name)) has had \(duration(derailer.minutesThisWeek)) of you this week.", true)
             }
@@ -343,6 +416,9 @@ enum CoachMessageComposer {
                 ? ("1% better daily = 37× in a year.", false)
                 : ("Show up. \(minutes) minutes.", false)
         case .data:
+            if let goal = facts.goal {
+                return ("\(shortName(goal.resultTitle)): \(goal.done) of \(goal.target) · \(goal.isBehind ? "\(goal.behind) behind pace" : "on pace") · \(goal.daysLeft)d left.", true)
+            }
             if let derailer = facts.derailer {
                 return ("\(shortName(derailer.name)): \(duration(derailer.minutesThisWeek)) this week.", true)
             }
@@ -354,6 +430,9 @@ enum CoachMessageComposer {
             }
             return ("Next block: \(minutes) minutes.", false)
         case .gentle:
+            if let lever = facts.lever {
+                return ("Today's step: \(lever)?", false)
+            }
             if let name = input.target.name {
                 return ("Ready for \(shortName(name))?", false)
             }
@@ -393,6 +472,10 @@ enum CoachMessageComposer {
     }
 
     private static func rescueDetail(_ input: CoachComposerInput, _ rescue: CoachRescueContext, hookIsFact: Bool) -> CoachDetail? {
+        // The stakes, when a goal is behind: this time could have been the work that's missing.
+        if !hookIsFact, input.style != .gentle, !rescue.lateNight, let goal = input.facts.goal, goal.isBehind {
+            return .fact("\(shortName(goal.resultTitle)) is \(goal.behind) behind with \(goal.daysLeft) days left.")
+        }
         if !hookIsFact, input.style != .gentle, let fact = rescue.fact {
             return .fact(fact)
         }
@@ -453,11 +536,10 @@ enum CoachMessageComposer {
             if input.style == .data { return nil }
             return .line("Too much? \(cue.starterMinutes) minutes still counts.")
         case .dailyPlan:
-            switch input.style {
-            case .challenger: return .line("Starting is the hard part. Make it small enough to start now.")
-            case .data: return .line("Short, near goals raise starts and persistence (Bandura & Schunk, 1981).")
-            case .gentle: return .line("Five minutes still counts.")
-            }
+            // What the block is about, not a second "start small" (the hook said it).
+            if let task = nextTask(input) { return .line("Next: \(task)") }
+            if let lever = facts.lever { return .line("Today's lever: \(lever).") }
+            return nil
         case .counterOffer(let reason):
             if reason == .unclearNextStep {
                 return .line("Write the next step down. Then the work has a door.")
@@ -490,6 +572,12 @@ enum CoachMessageComposer {
             }
 
         case .startNudge:
+            // The next task, else the lever, is the ask, not a statistic: it shows even when
+            // the hook is a fact.
+            if let task = nextTask(input) { return .line("Next: \(task)") }
+            if let lever = facts.lever, input.style != .gentle {
+                return .line("Today's lever: \(lever).")
+            }
             if !hookIsFact, input.style != .gentle || facts.sessionsToday > 0,
                let fact = startFact(facts) {
                 return .fact(fact)
@@ -562,8 +650,13 @@ enum CoachMessageComposer {
         }
     }
 
+    /// "Start 15m on SQL prep"; a block that starts on a task names the task, never the project
+    /// (the project is in the eyebrow): "Start 15m · Window functions…".
     static func startTitle(_ target: CoachStartTarget) -> String {
         if target.findNextStep { return "Find the next step · \(target.minutes)m" }
+        if let task = target.taskTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !task.isEmpty {
+            return "Start \(target.minutes)m · \(shortName(task))"
+        }
         if let name = target.name, !name.isEmpty {
             return "Start \(target.minutes)m on \(shortName(name))"
         }

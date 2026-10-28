@@ -6,7 +6,7 @@ struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self])
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self])
         let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("FocusFlow", isDirectory: true)
@@ -116,6 +116,20 @@ struct FocusFlowApp: App {
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
 
+        // Welcome tour (onboarding design): first launch, and Settings → General → Getting started.
+        Window("Welcome to FocusFlow", id: "onboarding") {
+            OnboardingView()
+                .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
+        // Opened only by the launch check or Settings, never by window restoration.
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
+        .modelContainer(container)
+
         // Settings window (⌘, and the popover gear). SettingsView owns its toolbar tab bar;
         // the expanded toolbar style puts the tab title above the centred bar, like the
         // native Settings layout, and the fixed content size keeps the window from jumping.
@@ -175,6 +189,7 @@ private struct AppLaunchBridge: View {
     let timerVM: TimerViewModel
     let modelContext: ModelContext
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @Query private var rescueSettings: [AppSettings]
 
     var body: some View {
@@ -197,17 +212,50 @@ private struct AppLaunchBridge: View {
                 if timerVM.hotkeyRegistrar == nil {
                     timerVM.hotkeyRegistrar = CoachGlobalHotkey.shared
                 }
+                timerVM.openCompanionWindow = { tab in
+                    UserDefaults.standard.set(tab.rawValue, forKey: "companionRequestedTab")
+                    WindowPolicyManager.shared.prepareToOpen()
+                    openWindow(id: "stats")
+                }
+                timerVM.openOnboarding = {
+                    WindowPolicyManager.shared.prepareToOpen()
+                    openWindow(id: "onboarding")
+                }
                 // Coach v4: the decision journal, written in release builds too.
                 if timerVM.coachJournal.fileURL == nil, !timerVM.isEvidenceMode {
                     timerVM.coachJournal = CoachJournal(fileURL: CoachJournal.defaultURL())
                 }
                 timerVM.ensureConfigured(modelContext: modelContext)
+                // Notch companion (notch design §2): on unless turned off in Settings.
+                if timerVM.notchHost == nil, !timerVM.isEvidenceMode {
+                    let notch = NotchController(timerVM: timerVM, modelContainer: modelContext.container)
+                    timerVM.notchHost = notch
+                    notch.setEnabled(timerVM.isNotchCompanionEnabled)
+                }
                 timerVM.syncGlobalHotkey()
                 WindowPolicyManager.shared.start()
+                showOnboardingIfNeeded()
             }
             .onChange(of: rescueSettings.first?.coachGlobalHotkeyEnabled) { _, _ in
                 timerVM.syncGlobalHotkey()
             }
+    }
+}
+
+extension AppLaunchBridge {
+    /// First launch on an empty store opens the welcome tour; an existing store is marked done silently.
+    fileprivate func showOnboardingIfNeeded() {
+        guard !timerVM.isEvidenceMode, let settings = timerVM.settings else { return }
+        let hasSessions = ((try? modelContext.fetchCount(FetchDescriptor<FocusSession>())) ?? 0) > 0
+        switch OnboardingLaunch.decide(completedAt: settings.onboardingCompletedAt, hasSessions: hasSessions) {
+        case .show:
+            timerVM.openOnboarding?()
+        case .markDone:
+            settings.onboardingCompletedAt = Date()
+            try? modelContext.save()
+        case .none:
+            break
+        }
     }
 }
 

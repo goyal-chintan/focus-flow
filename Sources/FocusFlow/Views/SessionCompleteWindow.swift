@@ -1,32 +1,43 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Completion Stage
-
-private enum CompletionStage { case earned, next }
-
+/// The block-end window (screen audit 2026-10-28): one stage, 480 pt wide.
+///
+/// Header ("✦ 25m earned · Deep Work"), "Did you finish it?" for the block's task, today's tasks,
+/// the project's goal, "What did this block produce?", at most one coach question, an optional
+/// time split, and a sticky footer: Break · Start next · Done for today.
+///
+/// Everything you tap saves at once (ticks, goal steps, the outcome). The tasks ticked in this
+/// block become the session's achievement (history title, Calendar notes).
 struct SessionCompleteWindowView: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.modelContext) private var modelContext
     @Query private var allSettings: [AppSettings]
+    @Query private var todaysTasks: [DailyTask]
+    @Query private var recentSessions: [FocusSession]
+    @Query private var projects: [Project]
+    @Query private var goals: [ProjectGoal]
 
-    // Two-stage focus flow
-    @State private var stage: CompletionStage = .earned
     @State private var appeared = false
-
-    // Reflection fields (persisted across stages)
-    @State private var selectedMood: FocusMood? = nil
-    @State private var carryForwardNote: String = ""
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
     @State private var selectedReminderItems: [RemindersService.ReminderItem] = []
     @State private var showReminderPicker = false
     @State private var hasHandledAction = false
     @State private var capturedReason: FocusCoachReason? = nil
-    @State private var depositPulse: Bool = false
     @State private var selectedOutcome: SessionOutcome? = nil
+    /// "Not yet" on the block's task (nothing is stored; the task just stays open).
+    @State private var blockTaskNotYet = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
+
+    init(now: Date = Date()) {
+        let today = Calendar.current.startOfDay(for: now)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today
+        _todaysTasks = Query(filter: #Predicate<DailyTask> { $0.day >= today })
+        _recentSessions = Query(filter: #Predicate<FocusSession> { $0.startedAt >= yesterday })
+    }
 
     private var settings: AppSettings? { allSettings.first }
 
@@ -47,6 +58,14 @@ struct SessionCompleteWindowView: View {
         return nil
     }
 
+    /// The project the next block continues (this block's, else the selected one).
+    private var blockProjectID: UUID? {
+        timerVM.lastCompletedFocusSession?.project?.id
+            ?? timerVM.completedBlockContext?.projectId
+            ?? timerVM.breakEpisodeContext?.earnedBlock.projectId
+            ?? timerVM.selectedProject?.id
+    }
+
     var body: some View {
         Group {
             if timerVM.isWakeRecoveryActive {
@@ -60,18 +79,15 @@ struct SessionCompleteWindowView: View {
         .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
         .interactiveDismissDisabled()
         .onAppear {
-            stage = .earned
             hasHandledAction = false
-            selectedMood = nil
-            carryForwardNote = ""
             showSplits = false
             splits = []
             selectedReminderItems = []
             showReminderPicker = false
             capturedReason = nil
+            blockTaskNotYet = false
             selectedOutcome = timerVM.lastCompletedFocusSession?.outcome
             appeared = disableMotionForEvidence
-            depositPulse = false
             if !timerVM.isEvidenceMode {
                 bringWindowToFront()
             }
@@ -79,7 +95,12 @@ struct SessionCompleteWindowView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { appeared = true }
             }
         }
+        .onChange(of: blockWins) { _, _ in
+            syncAchievement()
+        }
         .onDisappear {
+            // Ticks, goal steps and the outcome are already saved; the achievement follows the ticks.
+            if !hasHandledAction { syncAchievement() }
             if !hasHandledAction && timerVM.isManualStop && timerVM.showSessionComplete {
                 timerVM.preserveManualStop()
             }
@@ -151,66 +172,267 @@ struct SessionCompleteWindowView: View {
         .frame(width: 480, height: 440)
     }
 
-    // MARK: - Focus Completion (two-stage)
+    // MARK: - Focus Completion (one stage)
 
     private var focusContent: some View {
         VStack(spacing: 0) {
             ScrollView {
-                Group {
-                    if stage == .earned {
-                        earnedStage
-                    } else {
-                        nextStage
-                    }
-                }
-                .padding(24)
-                .animation(disableMotionForEvidence ? nil : .easeInOut(duration: 0.22), value: stage)
+                earnedStage
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+                    .padding(.bottom, 20)
             }
+            .scrollBounceBehavior(.basedOnSize)
+            // The window fits its content up to this height, then scrolls above the sticky footer.
+            .frame(maxHeight: 620)
             footerBar
         }
         .frame(width: 480)
     }
 
-    // MARK: Stage 1 — Earned
-
     private var earnedStage: some View {
-        VStack(spacing: 20) {
-            earnedBadge
+        VStack(alignment: .leading, spacing: 20) {
+            earnedHeader
 
-            if timerVM.lastCompletedFocusSession != nil {
+            if let session = timerVM.lastCompletedFocusSession {
+                if let task = blockTask(of: session) {
+                    blockTaskSection(task, session: session)
+                }
+                SessionTasksSection(
+                    sessionID: session.id,
+                    blockTaskID: session.taskID,
+                    projectID: session.project?.id,
+                    onAttachReminder: settings?.remindersIntegrationEnabled == true ? { showReminderPicker = true } : nil
+                )
+                if settings?.remindersIntegrationEnabled == true, !selectedReminderItems.isEmpty {
+                    linkedReminders
+                }
+                // After the tasks, so a tick visibly moves the bar here.
+                SessionGoalSection(projectID: session.project?.id, sessionID: session.id)
                 outcomeSection
             }
 
-            // Session app distraction review — shown first when we have detected apps.
-            // Suppresses the generic coach reason sheet so user sees concrete context instead.
-            if !timerVM.lastSessionDistractingEntries.isEmpty, !timerVM.lastCompletionWasBreak {
-                sessionDistractionReview
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                        removal: .opacity
-                    ))
-            } else if timerVM.showCoachReasonSheet {
-                // Only show generic reason sheet when we have no app-level context
-                coachReasonSection
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                        removal: .opacity.combined(with: .scale(scale: 0.97))
-                    ))
-            } else if let reason = capturedReason {
-                reasonConfirmationPill(reason)
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.97)),
-                        removal: .opacity
-                    ))
-            }
+            coachQuestion
 
-            carryForwardSection
-            moodSection
-            remindersSection
-            continueButton
+            splitSection
         }
         .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.showCoachReasonSheet)
         .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.lastSessionDistractingEntries.isEmpty)
+        // TODO: Focus restoration on sheet dismiss for standalone windows (SessionComplete,
+        // CoachIntervention) is a known limitation. Avoid NSApplication.shared.activate() here.
+        .sheet(isPresented: $showReminderPicker) {
+            ReminderSelectionSheet(
+                selectedListId: settings?.selectedReminderListId,
+                initialSelectedIds: Set(selectedReminderItems.map(\.id))
+            ) { chosen in
+                selectedReminderItems = chosen
+            }
+        }
+    }
+
+    // MARK: Header
+
+    /// "✦ 25m earned · Deep Work" / "45m focused · stopped early", then "3 blocks · 1h 40m today".
+    private var earnedHeader: some View {
+        let manual = timerVM.isManualStop
+        let tint = manual ? LiquidDesignTokens.Spectral.salmon : LiquidDesignTokens.Spectral.amber
+        return HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(headline)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(todayLine)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                if let pauseLabel = timerVM.lastCompletedFocusSession?.pauseLabel ?? timerVM.lastCompletedSession?.pauseLabel {
+                    Text(pauseLabel)
+                        .font(.system(size: 11))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                        .lineLimit(1)
+                }
+            }
+            .scaleEffect(appeared ? 1 : 0.97, anchor: .leading)
+            .opacity(appeared ? 1 : 0)
+            .animation(disableMotionForEvidence ? nil : FFMotion.reward, value: appeared)
+            Spacer(minLength: 8)
+            if let eventId = timerVM.lastCompletedSession?.calendarEventId, !eventId.isEmpty {
+                Image(systemName: "calendar.badge.checkmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .frame(width: 30, height: 30)
+                    .help("Saved to Calendar")
+                    .accessibilityLabel("Saved to Calendar")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var headline: String {
+        guard let ctx = earnedContext else {
+            return timerVM.isManualStop ? "Stopped early" : "✦ Block done"
+        }
+        return timerVM.isManualStop
+            ? "\(ctx.minutes)m focused · stopped early"
+            : "✦ \(ctx.minutes)m earned · \(ctx.projectName)"
+    }
+
+    /// "3 blocks · 1h 40m today"; a manual stop leads with the project (the headline has no room).
+    private var todayLine: String {
+        let totals = todayTotals
+        var parts: [String] = []
+        if timerVM.isManualStop, let name = earnedContext?.projectName { parts.append(name) }
+        parts.append("\(totals.blocks) block\(totals.blocks == 1 ? "" : "s")")
+        parts.append("\(FFFormat.duration(totals.seconds)) today")
+        return parts.joined(separator: " · ")
+    }
+
+    /// Every kept focus block today and the time in them (same set, so the two numbers agree).
+    private var todayTotals: (blocks: Int, seconds: TimeInterval) {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        guard let end = calendar.date(byAdding: .day, value: 1, to: start) else {
+            return (timerVM.todaySessionCount, timerVM.todayFocusTime)
+        }
+        var kept = recentSessions.filter { Self.isKeptFocusBlock($0, from: start, to: end) }
+        if let last = timerVM.lastCompletedFocusSession,
+           !kept.contains(where: { $0.id == last.id }),
+           Self.isKeptFocusBlock(last, from: start, to: end) {
+            kept.append(last)
+        }
+        guard !kept.isEmpty else {
+            return (max(timerVM.todaySessionCount, earnedContext == nil ? 0 : 1), timerVM.todayFocusTime)
+        }
+        let seconds = kept.reduce(0.0) { sum, session in
+            sum + max(0, min(session.effectiveEnd, end).timeIntervalSince(max(session.startedAt, start)))
+        }
+        return (kept.count, seconds)
+    }
+
+    /// Mirrors `TimerViewModel.loadTodayStats`: focus blocks of 5 minutes or more that touch today.
+    static func isKeptFocusBlock(_ session: FocusSession, from start: Date, to end: Date) -> Bool {
+        guard session.type == .focus else { return false }
+        if session.endedAt != nil, session.actualDuration < 5 * 60 { return false }
+        return session.effectiveEnd > start && session.startedAt < end
+    }
+
+    // MARK: Did you finish it?
+
+    private func blockTask(of session: FocusSession) -> DailyTask? {
+        guard let taskID = session.taskID else { return nil }
+        return todaysTasks.first { $0.id == taskID }
+    }
+
+    private var resultTitles: [UUID: String] {
+        Dictionary(goals.flatMap(\.keyResults).map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The block's own task: an explicit Done or Not yet. Never ticked for you.
+    private func blockTaskSection(_ task: DailyTask, session: FocusSession) -> some View {
+        let finishedHere = task.isDone && task.sessionID == session.id
+        let caption = SessionTasksSection.goalCaption(task, resultTitles: resultTitles)
+        return VStack(alignment: .leading, spacing: 8) {
+            TrackedLabel(text: "Did you finish it?", font: .system(size: 11, weight: .semibold), tracking: 1.8)
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(task.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .strikethrough(task.isDone, color: .secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let caption {
+                        Text(caption)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(finishedHere ? FFPalette.goal : LiquidDesignTokens.Surface.onSurfaceMuted)
+                    }
+                }
+                Spacer(minLength: 8)
+                choiceChip(
+                    "Done", symbol: "checkmark", tint: LiquidDesignTokens.Spectral.mintDark,
+                    selected: task.isDone, label: task.isDone ? "Mark \(task.title) not done" : "Mark \(task.title) done"
+                ) {
+                    withAnimation(disableMotionForEvidence ? nil : .smooth(duration: 0.25)) {
+                        blockTaskNotYet = false
+                        timerVM.setDailyTask(task, done: !task.isDone, sessionID: session.id)
+                    }
+                }
+                .frame(width: 88)
+                choiceChip(
+                    "Not yet", symbol: "arrow.uturn.forward", tint: LiquidDesignTokens.Spectral.amberDark,
+                    selected: blockTaskNotYet && !task.isDone, label: "Not finished yet, keep \(task.title) open"
+                ) {
+                    withAnimation(disableMotionForEvidence ? nil : .smooth(duration: 0.25)) {
+                        if finishedHere { timerVM.setDailyTask(task, done: false) }
+                        blockTaskNotYet = true
+                    }
+                }
+                .frame(width: 96)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.04)))
+        }
+    }
+
+    /// The tasks ticked in this block, in tick order: the session's achievement.
+    private var blockWins: [String] {
+        guard let sessionID = timerVM.lastCompletedFocusSession?.id else { return [] }
+        return todaysTasks
+            .filter { $0.isDone && $0.sessionID == sessionID }
+            .sorted { ($0.doneAt ?? .distantPast) < ($1.doneAt ?? .distantPast) }
+            .map(\.title)
+    }
+
+    private var achievementText: String? {
+        let wins = blockWins
+        return wins.isEmpty ? nil : wins.joined(separator: "\n")
+    }
+
+    /// Ticks save at once; the achievement follows them so history and Calendar see real wins
+    /// even when the window closes without a button.
+    private func syncAchievement() {
+        guard !isBreakCompletion, let session = timerVM.lastCompletedFocusSession else { return }
+        let text = achievementText
+        guard session.achievement != text else { return }
+        session.achievement = text
+        try? modelContext.save()
+    }
+
+    // MARK: Reminders (only with Reminders sync on)
+
+    private var linkedReminders: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(selectedReminderItems, id: \.id) { item in
+                HStack(spacing: 6) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.blue)
+                        .accessibilityHidden(true)
+                    Text(item.title)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        selectedReminderItems.removeAll(where: { $0.id == item.id })
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel("Remove reminder \(item.title)")
+                }
+            }
+            Text("Completed in Reminders when you leave this window.")
+                .font(.system(size: 11))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+        }
     }
 
     // MARK: Outcome (Coach v2 §9 step 3)
@@ -220,53 +442,54 @@ struct SessionCompleteWindowView: View {
     private var outcomeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             TrackedLabel(
-                text: "How did this block go?",
+                text: "What did this block produce?",
                 font: .system(size: 11, weight: .semibold),
                 tracking: 1.8
             )
             HStack(spacing: 8) {
                 ForEach(SessionOutcome.allCases, id: \.self) { outcome in
-                    outcomeChip(outcome)
+                    choiceChip(
+                        outcome.displayName, symbol: outcomeSymbol(outcome), tint: outcomeTint(outcome),
+                        selected: selectedOutcome == outcome, label: "Rate this block: \(outcome.displayName)"
+                    ) {
+                        withAnimation(disableMotionForEvidence ? nil : FFMotion.control) {
+                            selectedOutcome = outcome
+                        }
+                        timerVM.recordSessionOutcome(outcome)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func outcomeChip(_ outcome: SessionOutcome) -> some View {
-        let isSelected = selectedOutcome == outcome
-        let tint = outcomeTint(outcome)
-        return Button {
-            withAnimation(disableMotionForEvidence ? nil : FFMotion.control) {
-                selectedOutcome = outcome
-            }
-            timerVM.recordSessionOutcome(outcome)
-        } label: {
+    private func choiceChip(_ title: String, symbol: String, tint: Color, selected: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: outcomeSymbol(outcome))
+                Image(systemName: symbol)
                     .font(.system(size: 12, weight: .semibold))
                     .accessibilityHidden(true)
-                Text(outcome.displayName)
+                Text(title)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
-            .foregroundStyle(isSelected ? tint : LiquidDesignTokens.Surface.onSurface.opacity(0.8))
+            .foregroundStyle(selected ? tint : LiquidDesignTokens.Surface.onSurface.opacity(0.8))
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 34)
             .background(
                 Capsule(style: .continuous)
-                    .fill(isSelected ? tint.opacity(0.16) : LiquidDesignTokens.Surface.onSurface.opacity(0.05))
+                    .fill(selected ? tint.opacity(0.16) : LiquidDesignTokens.Surface.onSurface.opacity(0.05))
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(isSelected ? tint.opacity(0.55) : LiquidDesignTokens.Surface.onSurface.opacity(0.10), lineWidth: isSelected ? 1 : 0.5)
+                    .strokeBorder(selected ? tint.opacity(0.55) : LiquidDesignTokens.Surface.onSurface.opacity(0.10), lineWidth: selected ? 1 : 0.5)
             )
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Rate this block: \(outcome.displayName)")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func outcomeSymbol(_ outcome: SessionOutcome) -> String {
@@ -285,6 +508,33 @@ struct SessionCompleteWindowView: View {
         }
     }
 
+    // MARK: Coach question (at most one)
+
+    /// The app review, else the coach reason sheet, else the captured reason. Logic unchanged.
+    @ViewBuilder
+    private var coachQuestion: some View {
+        if !timerVM.lastSessionDistractingEntries.isEmpty, !timerVM.lastCompletionWasBreak {
+            // Concrete context first: it suppresses the generic reason sheet.
+            sessionDistractionReview
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
+                    removal: .opacity
+                ))
+        } else if timerVM.showCoachReasonSheet {
+            coachReasonSection
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
+                    removal: .opacity.combined(with: .scale(scale: 0.97))
+                ))
+        } else if let reason = capturedReason {
+            reasonConfirmationPill(reason)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.97)),
+                    removal: .opacity
+                ))
+        }
+    }
+
     /// Inline distraction review section — shows apps seen during the session.
     private var sessionDistractionReview: some View {
         SessionDistractionReviewSection(
@@ -294,317 +544,24 @@ struct SessionCompleteWindowView: View {
         )
     }
 
-    private var earnedBadge: some View {
-        VStack(spacing: 12) {
-            // Animated glow + icon
-            ZStack {
-                Circle()
-                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.15))
-                    .frame(width: 80, height: 80)
-                    .blur(radius: appeared ? 14 : 0)
-                    .animation(disableMotionForEvidence ? nil : .easeOut(duration: 0.5), value: appeared)
-
-                Image(systemName: timerVM.isManualStop ? "stop.circle.fill" : "sparkles")
-                    .font(.system(size: 40))
-                    .foregroundStyle(
-                        timerVM.isManualStop
-                            ? LiquidDesignTokens.Spectral.salmon
-                            : LiquidDesignTokens.Spectral.amber
-                    )
-                    .accessibilityHidden(true)
-            }
-            .scaleEffect(appeared ? 1.0 : 0.85)
-            .opacity(appeared ? 1.0 : 0)
-            .animation(disableMotionForEvidence ? nil : FFMotion.reward, value: appeared)
-
-            // Earned time headline
-            if let ctx = earnedContext {
-                VStack(spacing: 4) {
-                    Text(timerVM.isManualStop ? "\(ctx.minutes)m focused" : "✦ \(ctx.minutes)m earned")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(
-                            timerVM.isManualStop
-                                ? LiquidDesignTokens.Spectral.salmon
-                                : LiquidDesignTokens.Spectral.amber
-                        )
-                    Text(ctx.projectName)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                        .lineLimit(1)
-                    if let pauseLabel = timerVM.lastCompletedFocusSession?.pauseLabel ?? timerVM.lastCompletedSession?.pauseLabel {
-                        Text(pauseLabel)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } else {
-                Text(timerVM.isManualStop ? "Session Ended Early" : "Session Complete")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-            }
-
-            // Today's stats
-            let blockCount = timerVM.todaySessionCount
-            let totalMins = Int(timerVM.todayFocusTime / 60)
-            Text("\(blockCount) block\(blockCount == 1 ? "" : "s") today · \(totalMins)m total")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-
-            // Calendar save confirmation
-            if let eventId = timerVM.lastCompletedSession?.calendarEventId, !eventId.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar.badge.checkmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.green)
-                        .accessibilityHidden(true)
-                    Text("Saved to Calendar")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.green.opacity(0.10)))
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            }
-
-            if !timerVM.isManualStop {
-                Text("Ready for another block?")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    .italic()
-            }
-        }
-        .padding(.top, 8)
-    }
-
-    private var carryForwardSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TrackedLabel(
-                text: timerVM.isManualStop ? "What Did You Finish?" : "Carry-Forward Note",
-                font: .system(size: 11, weight: .semibold),
-                tracking: 1.8
-            )
-
-            ZStack(alignment: .topLeading) {
-                if carryForwardNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(timerVM.isManualStop ? "Log your wins — one per line..." : "What to pick up next (optional)...")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .allowsHitTesting(false)
-                }
-
-                TextEditor(text: $carryForwardNote)
-                    .scrollContentBackground(.hidden)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
-                    .frame(minHeight: 72, maxHeight: 120)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .accessibilityLabel(timerVM.isManualStop ? "Achievements" : "Carry-forward note")
-            }
-            .evidenceSafeGlass(cornerRadius: LiquidDesignTokens.CornerRadius.control)
-
-            // Live checkmark preview — one row per non-empty line
-            if !carryForwardNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                achievementLinePreview
-                    .transition(.opacity)
-                    .animation(disableMotionForEvidence ? nil : FFMotion.control, value: carryForwardNote)
-            }
-        }
-    }
-
-    /// Live bullet preview showing one green checkmark per non-empty line of the achievement/notes text.
-    private var achievementLinePreview: some View {
-        let lines = carryForwardNote
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        return VStack(alignment: .leading, spacing: 5) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                HStack(alignment: .top, spacing: 7) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(LiquidDesignTokens.Spectral.mint)
-                        .accessibilityHidden(true)
-                    Text(line)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(0.75))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(LiquidDesignTokens.Spectral.mint.opacity(0.06))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(LiquidDesignTokens.Spectral.mint.opacity(0.15), lineWidth: 0.5))
-        )
-        .accessibilityLabel("Achievement preview")
-    }
-
-    private var continueButton: some View {
-        Button {
-            withAnimation(disableMotionForEvidence ? nil : .easeInOut(duration: 0.22)) {
-                stage = .next
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Text("Continue")
-                    .font(.system(size: 15, weight: .semibold))
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .accessibilityHidden(true)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-        }
-        .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(isEvidence: true)) }
-        .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
-        .buttonBorderShape(.capsule)
-        .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-        .accessibilityLabel("Continue to choose next action")
-    }
-
-    // MARK: Stage 2 — Next
-
-    private var nextStage: some View {
-        VStack(spacing: 20) {
-            VStack(spacing: 6) {
-                Text("What's next?")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .padding(.top, 8)
-                if let ctx = earnedContext {
-                    Text("\(ctx.minutes)m · \(ctx.projectName)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                    if let pauseLabel = timerVM.lastCompletedFocusSession?.pauseLabel ?? timerVM.lastCompletedSession?.pauseLabel {
-                        Text(pauseLabel)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            splitSection
-
-            EvidenceSafeGlassGroup {
-                VStack(spacing: 8) {
-                    // Take 5m reset (short break via standard break action)
-                    LiquidActionButton(
-                        title: "Planned 5m Break",
-                        icon: "timer",
-                        role: .secondary
-                    ) {
-                        saveAndDismiss(action: .takeBreak(duration: 300))
-                    }
-                    .accessibilityLabel("Take planned 5 minute break")
-
-                    // Primary: Suggested earned break
-                    GradientCTAButton(
-                        title: "Suggested Earned Break",
-                        icon: "cup.and.saucer.fill",
-                        gradient: LiquidDesignTokens.Gradient.breakStart
-                    ) {
-                        saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))
-                    }
-                    .accessibilityLabel("Take suggested earned break")
-
-                    // Secondary: Start next block (explicit skip)
-                    LiquidActionButton(
-                        title: "Start Next Block",
-                        icon: "play.fill",
-                        role: .secondary
-                    ) {
-                        saveAndDismiss(action: .continueFocusing)
-                    }
-                    .accessibilityLabel("Start next focus block")
-
-                    // End with today's progress
-                    GradientCTAButton(
-                        title: timerVM.cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "End with Today's Progress",
-                        icon: timerVM.cycleProgress >= 1.0 ? "checkmark.seal.fill" : "checkmark.circle.fill",
-                        gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: timerVM.cycleProgress)
-                    ) {
-                        if disableMotionForEvidence {
-                            saveAndDismiss(action: .endSession)
-                        } else {
-                            withAnimation(FFMotion.reward) { depositPulse = true }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                saveAndDismiss(action: .endSession)
-                            }
-                        }
-                    }
-                    .background(
-                        Circle()
-                            .fill(LiquidDesignTokens.Spectral.mint.opacity(depositPulse ? 0.25 : 0))
-                            .blur(radius: 8)
-                            .scaleEffect(depositPulse ? 1.2 : 0.8)
-                            .animation(FFMotion.reward, value: depositPulse)
-                    )
-                    .accessibilityLabel("End session with today's progress")
-
-                    // Discard — only for manual stops
-                    if timerVM.isManualStop {
-                        Button {
-                            hasHandledAction = true
-                            timerVM.discardManualStop()
-                            dismissWindow(id: "session-complete")
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .accessibilityHidden(true)
-                                Text("Discard Session")
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                        }
-                        .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(isEvidence: true)) }
-                        .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
-                        .buttonBorderShape(.capsule)
-                        .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
-                        .accessibilityLabel("Discard this manual session")
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Coach Reason
-
+    /// The sheet carries its own title ("Why did you stop?"); no second label around it.
     private var coachReasonSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TrackedLabel(
-                text: "What Happened?",
-                font: .system(size: 11, weight: .semibold),
-                tracking: 1.8
-            )
-            Text("Help your coach understand why this session ended early")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            FocusCoachReasonChipSheet(
-                anomalyKind: timerVM.pendingReasonKind,
-                onSelect: { reason in
-                    capturedReason = reason
-                    timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: reason)
-                    timerVM.showCoachReasonSheet = false
-                },
-                onSnooze: {
-                    timerVM.showCoachReasonSheet = false
-                    timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
-                },
-                onDismiss: {
-                    timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: nil)
-                    timerVM.showCoachReasonSheet = false
-                }
-            )
-        }
+        FocusCoachReasonChipSheet(
+            anomalyKind: timerVM.pendingReasonKind,
+            onSelect: { reason in
+                capturedReason = reason
+                timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: reason)
+                timerVM.showCoachReasonSheet = false
+            },
+            onSnooze: {
+                timerVM.showCoachReasonSheet = false
+                timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
+            },
+            onDismiss: {
+                timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: nil)
+                timerVM.showCoachReasonSheet = false
+            }
+        )
     }
 
     @ViewBuilder
@@ -629,29 +586,10 @@ struct SessionCompleteWindowView: View {
         )
     }
 
-    // MARK: - Mood
-
-    private var moodSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TrackedLabel(
-                text: "How Was Your Focus?",
-                font: .system(size: 11, weight: .semibold),
-                tracking: 1.8
-            )
-            MoodSelector(selectedMood: $selectedMood, style: .regular)
-        }
-    }
-
-    // MARK: - Project Split
+    // MARK: Split (disclosure)
 
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TrackedLabel(
-                text: "Project Allocation",
-                font: .system(size: 12, weight: .semibold),
-                tracking: 1.8
-            )
-
             Button {
                 withAnimation(disableMotionForEvidence ? nil : .spring(response: 0.4, dampingFraction: 0.8)) {
                     showSplits.toggle()
@@ -665,27 +603,21 @@ struct SessionCompleteWindowView: View {
                     }
                 }
             } label: {
-                HStack {
-                    Image(systemName: showSplits ? "rectangle.split.3x1.fill" : "rectangle.split.3x1")
-                        .font(.system(size: 13))
+                HStack(spacing: 6) {
+                    Image(systemName: showSplits ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 12)
                         .accessibilityHidden(true)
-                    Text("Split across projects")
-                        .font(.system(size: 13, weight: .medium))
+                    Text("Split time across projects…")
+                        .font(.system(size: 12, weight: .medium))
                     Spacer()
-                    Image(systemName: showSplits ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
-                        .accessibilityHidden(true)
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .if(isEvidenceRendering) { $0.buttonStyle(EvidenceSafeGlassButtonStyle(shape: AnyShape(RoundedRectangle(cornerRadius: 12, style: .continuous)), isEvidence: true)) }
-            .if(!isEvidenceRendering) { $0.buttonStyle(.glass) }
-            .buttonBorderShape(.roundedRectangle(radius: 12))
-            .accessibilityLabel(showSplits ? "Collapse project split" : "Split across projects")
+            .buttonStyle(.plain)
+            .accessibilityLabel(showSplits ? "Hide project split" : "Split time across projects")
             .accessibilityHint("Allocate session time across multiple projects")
 
             if showSplits {
@@ -698,77 +630,108 @@ struct SessionCompleteWindowView: View {
         }
     }
 
-    // MARK: - Reminders
+    // MARK: Footer (sticky)
 
-    private var remindersSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                TrackedLabel(
-                    text: "Linked Reminders",
-                    font: .system(size: 11, weight: .semibold),
-                    tracking: 1.8
-                )
-                Spacer()
-                if settings?.remindersIntegrationEnabled == true {
-                    Button {
-                        showReminderPicker = true
-                    } label: {
-                        Label("Attach", systemImage: "plus")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Attach reminder")
-                }
+    private var footerBar: some View {
+        VStack(spacing: 8) {
+            // The next block names its task, so it gets the full width.
+            LiquidActionButton(title: startTitle, icon: "play.fill", role: .secondary) {
+                saveAndDismiss(action: .continueFocusing, prepare: prepareNextStart)
             }
-
-            if settings?.remindersIntegrationEnabled != true {
-                Text("Enable Reminders sync in Settings to link tasks.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            } else if selectedReminderItems.isEmpty {
-                Text("No reminders linked")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
-            } else {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(selectedReminderItems, id: \.id) { item in
-                        HStack(spacing: 6) {
-                            Image(systemName: "checklist")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.blue)
-                                .accessibilityHidden(true)
-                            Text(item.title)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Spacer()
-                            Button {
-                                selectedReminderItems.removeAll(where: { $0.id == item.id })
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 12))
-                                    .accessibilityHidden(true)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.tertiary)
-                            .accessibilityLabel("Remove reminder")
-                        }
-                    }
+            .help(startTitle)
+            .accessibilityLabel(startTitle)
+            HStack(spacing: 8) {
+                breakButton
+                LiquidActionButton(title: "Done for today", icon: "checkmark.circle", role: .secondary) {
+                    saveAndDismiss(action: .endSession)
                 }
+                .accessibilityLabel("Done for today: end and keep this block")
+            }
+            if timerVM.isManualStop {
+                Button {
+                    hasHandledAction = true
+                    timerVM.discardManualStop()
+                    dismissWindow(id: "session-complete")
+                } label: {
+                    Label("Discard this block", systemImage: "trash")
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(minHeight: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
+                .accessibilityLabel("Discard this manual session")
             }
         }
-        // TODO: Focus restoration on sheet dismiss for standalone windows (SessionComplete,
-        // CoachIntervention) is a known limitation. macOS SwiftUI handles focus restoration
-        // automatically for sheets, but window-level focus return after closing standalone
-        // windows is not reliably supported. Avoid NSApplication.shared.activate() here.
-        .sheet(isPresented: $showReminderPicker) {
-            ReminderSelectionSheet(
-                selectedListId: settings?.selectedReminderListId,
-                initialSelectedIds: Set(selectedReminderItems.map(\.id))
-            ) { chosen in
-                selectedReminderItems = chosen
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .evidenceSafeMaterial()
+    }
+
+    /// The earned break, one click; a menu offers the plain 5 minutes.
+    @ViewBuilder
+    private var breakButton: some View {
+        let minutes = timerVM.suggestedEarnedBreakMinutes
+        let title = "Break \(minutes)m"
+        if isEvidenceRendering || minutes == 5 {
+            LiquidActionButton(title: title, icon: "cup.and.saucer.fill", role: .primary) {
+                saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))
+            }
+            .accessibilityLabel("Take the earned \(minutes) minute break")
+        } else {
+            Menu {
+                Button("Break 5 min") {
+                    saveAndDismiss(action: .takeBreak(duration: 300))
+                }
+                .accessibilityLabel("Take a 5 minute break")
+            } label: {
+                Label(title, systemImage: "cup.and.saucer.fill")
+                    .font(LiquidDesignTokens.Typography.controlLabel)
+                    .frame(maxWidth: .infinity)
+            } primaryAction: {
+                saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))
+            }
+            .menuStyle(.button)
+            .buttonStyle(.glassProminent)
+            .tint(LiquidDesignTokens.Spectral.primaryContainer)
+            .buttonBorderShape(.capsule)
+            .controlSize(.extraLarge)
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("Take the earned \(minutes) minute break")
+        }
+    }
+
+    // MARK: Next block
+
+    /// What the next block is about: the next open task, this project first.
+    private var nextTask: DailyTask? {
+        DailyTaskPlanner.nextTask(todaysTasks, on: Date(), preferring: blockProjectID)
+    }
+
+    /// The learned size (preselected on every surface).
+    private var nextMinutes: Int {
+        timerVM.startLadderRecommendation().minutes
+    }
+
+    private var startTitle: String {
+        if let task = nextTask { return "Start \(nextMinutes)m · \(task.title)" }
+        return "Start \(nextMinutes)m"
+    }
+
+    /// Sets up `continueAfterCompletion(.continueFocusing)` to start the learned size on the
+    /// next task (its project too). Returns the restore step for the user's chosen duration.
+    private func prepareNextStart() -> () -> Void {
+        let previousMinutes = timerVM.selectedMinutes
+        timerVM.selectedMinutes = nextMinutes
+        if let task = nextTask {
+            timerVM.pendingTaskID = task.id
+            timerVM.pendingIntentText = task.title
+            if let projectID = task.projectID, projectID != timerVM.selectedProject?.id,
+               let project = projects.first(where: { $0.id == projectID }) {
+                timerVM.selectedProject = project
             }
         }
+        return { [timerVM] in timerVM.selectedMinutes = previousMinutes }
     }
 
     // MARK: - Break Completion
@@ -780,35 +743,36 @@ struct SessionCompleteWindowView: View {
                 breakReasonSection
             }
             breakActionsSection
-            // Classification chips — only shown when overrun exceeds 60 seconds
-            if (timerVM.breakEpisodeContext?.overrunSeconds ?? 0) > 60 {
-                breakRecoveryChips
-            }
         }
         .padding(18)
         .frame(width: 420)
     }
 
+    /// Seconds past the planned break (live while the break runs over).
+    private var breakOverSeconds: Int {
+        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isOvertime ? timerVM.overtimeSeconds : 0)
+    }
+
+    /// One title from one source: "Break ran 3m over" (amber) or "Reset complete".
+    private var breakTitle: String {
+        let over = breakOverSeconds
+        guard over > 60 else { return "Reset complete" }
+        return "Break ran \(FFFormat.duration(TimeInterval(over))) over"
+    }
+
     private var breakHeaderSection: some View {
-        VStack(spacing: 10) {
-            let isOverrun = (timerVM.breakEpisodeContext?.overrunSeconds ?? 0) > 60
+        let isOverrun = breakOverSeconds > 60
+        return VStack(spacing: 10) {
             Image(systemName: "cup.and.saucer.fill")
-                .font(.system(size: 40))
+                .font(.system(size: 32))
                 .foregroundStyle(isOverrun ? LiquidDesignTokens.Spectral.amber : .blue)
                 .accessibilityHidden(true)
 
-            Text(isOverrun ? "Break ran long" : "Reset complete")
-                .font(.system(size: 20, weight: .semibold))
-
-            if timerVM.isOvertime {
-                LiquidMetricCard(
-                    title: "Overtime",
-                    value: timerVM.overtimeTimeString,
-                    icon: "exclamationmark.triangle.fill",
-                    color: timerVM.overtimeSeconds > 120 ? .red : .orange
-                )
-                .frame(maxWidth: 180)
-            }
+            Text(breakTitle)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(isOverrun ? LiquidDesignTokens.Spectral.amber : LiquidDesignTokens.Surface.onSurface)
+                .monospacedDigit()
+                .contentTransition(.numericText())
 
             // Spec invariant: always show last earned block
             if let ctx = timerVM.completedBlockContext ?? timerVM.breakEpisodeContext?.earnedBlock {
@@ -835,16 +799,19 @@ struct SessionCompleteWindowView: View {
         return EvidenceSafeGlassGroup {
             VStack(spacing: 8) {
                 LiquidActionButton(
-                    title: "Start Next Block",
+                    title: startTitle,
                     icon: "play.fill",
                     role: .primary,
                     tint: .blue
                 ) {
                     hasHandledAction = true
+                    let restore = prepareNextStart()
                     timerVM.continueAfterCompletion(action: .continueFocusing)
+                    restore()
                     dismissWindow(id: "session-complete")
                 }
-                .accessibilityLabel("Start next focus block")
+                .help(startTitle)
+                .accessibilityLabel(startTitle)
 
                 // Short-overrun extension option
                 if overrun > 0 && overrun <= 60 {
@@ -861,141 +828,60 @@ struct SessionCompleteWindowView: View {
                 }
 
                 LiquidActionButton(
-                    title: "End with Progress",
-                    icon: "stop.fill",
+                    title: "Done for today",
+                    icon: "checkmark.circle",
                     role: .secondary
                 ) {
                     hasHandledAction = true
                     timerVM.continueAfterCompletion(action: .endSession)
                     dismissWindow(id: "session-complete")
                 }
-                .accessibilityLabel("End break and keep progress")
+                .accessibilityLabel("Done for today: end the break and keep today's progress")
             }
         }
     }
 
-    /// Classification chips shown when break overrun exceeds 60 seconds (amber, compact, no motion).
-    private var breakRecoveryChips: some View {
-        VStack(spacing: 8) {
-            Text("How's the break going?")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                recoveryChipButton("Still recovering") {
-                    timerVM.classifyBreakRecovery(.stillRecovering)
-                }
-                recoveryChipButton("Done for now") {
-                    timerVM.classifyBreakRecovery(.doneForNow)
-                    hasHandledAction = true
-                    dismissWindow(id: "session-complete")
-                }
-                recoveryChipButton("Got distracted") {
-                    timerVM.classifyBreakRecovery(.gotDistracted)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    @ViewBuilder
-    private func recoveryChipButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(LiquidDesignTokens.Spectral.amber.opacity(0.15))
-                        .overlay(Capsule()
-                            .strokeBorder(LiquidDesignTokens.Spectral.amber.opacity(0.3), lineWidth: 0.5))
-                )
-        }
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-        .buttonStyle(.plain)
-        .foregroundStyle(LiquidDesignTokens.Spectral.amber)
-        .accessibilityLabel(title)
-    }
-
+    /// The sheet asks the question; the window header already says what happened.
     private var breakReasonSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TrackedLabel(
-                text: "What Extended Your Break?",
-                font: .system(size: 11, weight: .semibold),
-                tracking: 1.8
-            )
-            Text("This helps your coach distinguish legitimate interruptions from avoidable drift.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            FocusCoachReasonChipSheet(
-                anomalyKind: .breakOverrun,
-                onSelect: { reason in
-                    timerVM.recordCoachReason(kind: .breakOverrun, reason: reason)
-                    timerVM.showCoachReasonSheet = false
-                },
-                onSnooze: {
-                    timerVM.showCoachReasonSheet = false
-                    timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
-                },
-                onDismiss: {
-                    timerVM.recordCoachReason(kind: .breakOverrun, reason: nil)
-                    timerVM.showCoachReasonSheet = false
-                }
-            )
-        }
-    }
-
-    // MARK: - Footer
-
-    private var footerBar: some View {
-        HStack(spacing: 12) {
-            TrackedLabel(
-                text: "FocusFlow macOS",
-                font: .system(size: 10, weight: .medium),
-                color: LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.5),
-                tracking: 1.5
-            )
-
-            Spacer()
-
-            Text(formattedTodayTotal)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue.opacity(0.7))
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .evidenceSafeMaterial()
-    }
-
-    private var formattedTodayTotal: String {
-        let total = timerVM.todayFocusTime
-        let hours = Int(total) / 3600
-        let minutes = (Int(total) % 3600) / 60
-        if hours > 0 {
-            return "TODAY'S TOTAL: \(hours)H \(minutes)M"
-        } else {
-            return "TODAY'S TOTAL: \(minutes)M"
-        }
+        FocusCoachReasonChipSheet(
+            anomalyKind: .breakOverrun,
+            showsTitle: false,
+            showsSnooze: false,
+            onSelect: { reason in
+                timerVM.recordCoachReason(kind: .breakOverrun, reason: reason)
+                timerVM.showCoachReasonSheet = false
+            },
+            onSnooze: {
+                timerVM.showCoachReasonSheet = false
+                timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
+            },
+            onDismiss: {
+                timerVM.recordCoachReason(kind: .breakOverrun, reason: nil)
+                timerVM.showCoachReasonSheet = false
+            }
+        )
     }
 
     // MARK: - Actions
 
-    private func saveAndDismiss(action: PostCompletionAction) {
+    /// Saves the block's leftovers (achievement from the ticks, splits, reminders), then runs
+    /// `action`. `prepare` runs just before `continueAfterCompletion` and returns its undo.
+    private func saveAndDismiss(action: PostCompletionAction, prepare: (() -> (() -> Void))? = nil) {
         // The save is async, so the window stays up for a moment; a second click must not
         // save the reflection (and its splits) twice.
         guard !hasHandledAction else { return }
         hasHandledAction = true
+        let achievement = achievementText
         Task { @MainActor in
             await timerVM.saveReflection(
-                mood: selectedMood,
-                achievement: carryForwardNote.isEmpty ? nil : carryForwardNote,
-                reminderIdsToComplete: selectedReminderItems.map(\.id),
+                mood: nil,
+                achievement: achievement,
+                reminderIdsToComplete: settings?.remindersIntegrationEnabled == true ? selectedReminderItems.map(\.id) : [],
                 splits: showSplits ? splits : nil
             )
+            let restore = prepare?()
             timerVM.continueAfterCompletion(action: action)
+            restore?()
             dismissWindow(id: "session-complete")
         }
     }

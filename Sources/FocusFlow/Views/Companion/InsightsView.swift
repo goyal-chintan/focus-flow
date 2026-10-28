@@ -9,52 +9,24 @@ struct InsightsView: View {
     @Query private var allSettings: [AppSettings]
     @Environment(\.companionNowOverride) private var nowOverride
     @Query(sort: \AppUsageEntry.date) private var usageEntries: [AppUsageEntry]
-    @Query(sort: \InterventionAttempt.deliveredAt) private var attempts: [InterventionAttempt]
-    @Query private var priorities: [WeeklyPriority]
     @Query private var distractionRules: [IdleDistractionItem]
+    @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
 
     var body: some View {
-        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, now: nowOverride ?? Date())
+        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
         ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
                 FFPageHeader("Insights", subtitle: "From your sessions and app usage over the last 8 weeks")
-                weekSummary(snapshot)
-                CoachLearnedSection(now: snapshot.now)
+                DriftReportSection(snapshot: snapshot)
+                CoachStartSection(snapshot: snapshot)
                 whenYouFocus(snapshot)
                 derailers(snapshot)
                 realWork(snapshot)
-                weeklyPriorities(snapshot)
-                coach(snapshot)
             }
             .padding(FFSpace.page)
             .frame(maxWidth: 920, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    // MARK: - This week
-
-    private func weekSummary(_ snapshot: CompanionSnapshot) -> some View {
-        let comparison = snapshot.analytics.weekOverWeek(snapshot.samples, goal: snapshot.goal, now: snapshot.now)
-        let delta = comparison.deltaSeconds
-        let deltaCaption: String = comparison.lastWeekSameSpanSeconds > 0
-            ? "\(FFFormat.signedDuration(delta)) vs this point last week"
-            : "Nothing at this point last week"
-        return HStack(alignment: .top, spacing: FFSpace.l) {
-            FFStat(label: "Focus this week", value: FFFormat.duration(comparison.thisWeekSeconds), caption: deltaCaption)
-            Divider()
-            FFStat(label: "Last week", value: FFFormat.duration(comparison.lastWeekSeconds), caption: "Full week")
-            Divider()
-            FFStat(
-                label: "Days goal met",
-                value: "\(comparison.thisWeekGoalDays)",
-                caption: "\(comparison.lastWeekGoalDays) last week",
-                valueColor: comparison.thisWeekGoalDays > 0 ? FFPalette.goal : nil
-            )
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(FFSpace.l)
-        .ffSurface()
     }
 
     // MARK: - When you focus
@@ -70,7 +42,7 @@ struct InsightsView: View {
                 FFEmptyState(systemImage: "clock", message: "No focus blocks in the last 8 weeks", detail: "Your usual focus hours appear here once you've logged a few blocks.")
             } else {
                 HourOfWeekHeatmap(matrix: matrix, windows: windows)
-                Text("Minutes focused, averaged over \(matrix.weeksObserved) week\(matrix.weeksObserved == 1 ? "" : "s"). The coach's own start model is above.")
+                Text("Minutes focused, averaged over \(matrix.weeksObserved) week\(matrix.weeksObserved == 1 ? "" : "s").")
                     .ffText(.caption)
             }
         }
@@ -130,153 +102,6 @@ struct InsightsView: View {
                         .monospacedDigit()
                 }
             }
-        }
-    }
-
-    // MARK: - Weekly priorities
-
-    private func weeklyPriorities(_ snapshot: CompanionSnapshot) -> some View {
-        let breakdown = snapshot.analytics.priorityBreakdown(snapshot.samples, priorities: priorities.map(PrioritySample.init), now: snapshot.now)
-        return FFSection("Weekly priorities", subtitle: "Focus time tagged to each of this week's priorities") {
-            if breakdown.priorities.isEmpty {
-                FFEmptyState(
-                    systemImage: "flag",
-                    message: "No priorities set for this week",
-                    detail: "Name 1–3 outcomes for the week and tag blocks to them when you start."
-                )
-            } else {
-                let peak = max(breakdown.priorities.map(\.seconds).max() ?? 0, breakdown.untaggedSeconds, 1)
-                VStack(spacing: FFSpace.m) {
-                    ForEach(breakdown.priorities) { item in
-                        priorityRow(
-                            title: item.priority.title,
-                            done: item.priority.isDone,
-                            seconds: item.seconds,
-                            detail: "\(item.sessions) block\(item.sessions == 1 ? "" : "s")",
-                            fraction: item.seconds / peak,
-                            color: FFPalette.accent
-                        )
-                    }
-                    if breakdown.untaggedSeconds > 0 {
-                        priorityRow(
-                            title: "Not tagged",
-                            done: false,
-                            seconds: breakdown.untaggedSeconds,
-                            detail: "other focus",
-                            fraction: breakdown.untaggedSeconds / peak,
-                            color: FFPalette.comparison
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func priorityRow(title: String, done: Bool, seconds: TimeInterval, detail: String, fraction: Double, color: Color) -> some View {
-        HStack(spacing: FFSpace.m) {
-            HStack(spacing: FFSpace.xs) {
-                if done {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(FFPalette.goal).accessibilityLabel("Done")
-                }
-                Text(title).ffText(.body).lineLimit(1)
-            }
-            .frame(width: 200, alignment: .leading)
-            FFValueBar(fraction: fraction, color: color, height: 8)
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(FFFormat.duration(seconds)).ffNumber(.body)
-                Text(detail).ffText(.caption).monospacedDigit()
-            }
-            .frame(width: 80, alignment: .trailing)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: - Coach
-
-    private func coach(_ snapshot: CompanionSnapshot) -> some View {
-        let interval = DateInterval(start: snapshot.calendar.date(byAdding: .day, value: -27, to: snapshot.today.start) ?? snapshot.today.start, end: snapshot.now)
-        let result = snapshot.analytics.coachEffectiveness(
-            prompts: attempts.map(PromptSample.init),
-            sessions: snapshot.samples,
-            in: interval
-        )
-        let rescue = snapshot.analytics.rescueEffectiveness(
-            rescues: attempts.compactMap { RescueSample(contextKey: $0.contextKey, deliveredAt: $0.deliveredAt) },
-            sessions: snapshot.samples,
-            in: interval
-        )
-        let starterMinutes = CoachStarterBlock.clampedMinutes(allSettings.first?.coachStarterBlockMinutes ?? CoachStarterBlock.defaultMinutes)
-        return FFSection("Is the coach helping?", subtitle: "A prompt counts when you start a block within 10 minutes · last 4 weeks") {
-            if !result.hasData && !rescue.hasRescues && rescue.starterBlocks == 0 {
-                FFEmptyState(systemImage: "bell.slash", message: "No coach prompts in the last 4 weeks")
-            } else {
-                VStack(alignment: .leading, spacing: FFSpace.l) {
-                    HStack(alignment: .top, spacing: FFSpace.l) {
-                        FFStat(
-                            label: "Prompt → start",
-                            value: FFFormat.percent(result.rate ?? 0),
-                            caption: "\(result.startsWithinWindow) of \(result.prompts) prompts",
-                            valueColor: nil
-                        )
-                        Divider()
-                        FFStat(
-                            label: "Prompts per day",
-                            value: String(format: "%.1f", result.promptsPerDay),
-                            caption: "Over \(result.days) day\(result.days == 1 ? "" : "s")"
-                        )
-                        Divider()
-                        if let silent = result.silentBaseline {
-                            FFStat(
-                                label: "Without a prompt",
-                                value: FFFormat.percent(silent.rate),
-                                caption: "Coach stayed quiet \(silent.prompts) times"
-                            )
-                        } else {
-                            FFStat(label: "Prompts shown", value: "\(result.prompts)", caption: "Last 4 weeks")
-                        }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    if !result.byStyle.isEmpty {
-                        VStack(alignment: .leading, spacing: FFSpace.s) {
-                            Text("By style").ffText(.headline)
-                            PromptArmChart(arms: result.byStyle)
-                        }
-                    }
-                    if result.bySurface.count > 1 {
-                        VStack(alignment: .leading, spacing: FFSpace.s) {
-                            Text("By where it appeared").ffText(.headline)
-                            PromptArmChart(arms: result.bySurface)
-                        }
-                    }
-                    rescueRows(rescue, starterMinutes: starterMinutes)
-                }
-            }
-        }
-    }
-}
-
-extension InsightsView {
-    /// Rescue loop rows: rescue → start by drift level, and starter blocks that kept going.
-    @ViewBuilder
-    fileprivate func rescueRows(_ rescue: FocusAnalytics.RescueEffectiveness, starterMinutes: Int) -> some View {
-        if rescue.hasRescues {
-            VStack(alignment: .leading, spacing: FFSpace.s) {
-                Text("Rescues by level").ffText(.headline)
-                PromptArmChart(arms: rescue.byLevel)
-                Text("When you drift in a focus window, the ask shrinks: a full block, then 10 minutes, then a \(starterMinutes)-minute starter.")
-                    .ffText(.caption)
-            }
-        }
-        if rescue.starterBlocks > 0 {
-            HStack(alignment: .top, spacing: FFSpace.l) {
-                FFStat(
-                    label: "\(starterMinutes)-min starts that kept going",
-                    value: FFFormat.percent(rescue.keptGoingRate ?? 0),
-                    caption: "\(rescue.startersKeptGoing) of \(rescue.starterBlocks) starter blocks led to 20m or more"
-                )
-            }
-            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -385,7 +210,8 @@ private struct OutcomeByProjectChart: View {
     }
 }
 
-private struct PromptArmChart: View {
+/// Start rate per prompt style, surface or rescue level (Insights coach section).
+struct PromptArmChart: View {
     let arms: [FocusAnalytics.PromptArm]
     @State private var reveal = 0.0
 

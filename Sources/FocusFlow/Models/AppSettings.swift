@@ -17,6 +17,15 @@ final class AppSettings {
 
     // Goals
     var dailyFocusGoal: TimeInterval = 7200
+    // Direction (Dan Koe's protocol; priorities-goals design §3.5). Optional text, no migration.
+    var lifeVision: String?
+    var lifeAntiVision: String?
+    var lifeYearGoal: String?
+    var lifeConstraints: String?
+    /// Notch companion (notch design §2). Nil means on.
+    var notchCompanionEnabled: Bool?
+    /// When the welcome tour was finished or skipped (onboarding design §3). Nil = not yet.
+    var onboardingCompletedAt: Date?
 
     // Integrations
     var calendarIntegrationEnabled: Bool = false
