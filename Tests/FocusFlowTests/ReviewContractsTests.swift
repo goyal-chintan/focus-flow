@@ -200,7 +200,7 @@ final class ReviewContractsTests: XCTestCase {
             "Sources/FocusFlow/Info.plist",
             "Scripts/run.sh",
             "Scripts/build-dmg.sh",
-            "Scripts/install-and-register-smart.sh"
+            "Scripts/install.sh"
         ]
 
         for relativePath in requiredFiles {
