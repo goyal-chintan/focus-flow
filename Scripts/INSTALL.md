@@ -1,204 +1,58 @@
-# FocusFlow Installation Guide
-
-## Quick Install & Register
+# Installing FocusFlow from source
 
 ```bash
-./Scripts/install-and-register.sh
+bash Scripts/install.sh
 ```
 
-This script:
-1. **Builds** the FocusFlow app from source
-2. **Creates** a macOS .app bundle with Info.plist and resources
-3. **Installs** to `~/Applications/FocusFlow.app`
-4. **Registers** with Spotlight for searchability
-5. **Verifies** the installation
+Run it once to install, and again after every `git pull` to update. It:
+
+1. Uses Xcode's toolchain for this build, even when `xcode-select` points at the Command Line Tools. The asset catalog needs Xcode's `actool`.
+2. Builds a **release** binary.
+3. Assembles `FocusFlow.app` with an Info.plist. The build number is the git commit count, so each install is newer than the last.
+4. Signs it with the **FocusFlow Development** certificate. The first run creates it through `setup-codesign.sh`. A stable signature keeps Calendar, Reminders and Automation permissions across reinstalls.
+5. Quits the running copy (asks first, forces after 5 s), then replaces `~/Applications/FocusFlow.app` in one step.
+6. Registers the app with LaunchServices (`lsregister -f`) and refreshes its Spotlight entry (`mdimport`).
+7. Launches it and checks it stays running.
 
 ## Options
 
-### Custom Installation Directory
+| Variable | Default | Effect |
+|---|---|---|
+| `INSTALL_DIR` | `~/Applications` | Where the app goes. `/Applications` also works for an admin user. |
+| `NO_LAUNCH=1` | off | Install without launching. |
+| `VERSION` | `1.0` | Marketing version shown in Finder. |
+| `CODESIGN_IDENTITY` | `FocusFlow Development` | Signing certificate name. |
+| `DEVELOPER_DIR` | auto | Xcode to build with. |
 
-Install to a different location (default: `~/Applications`):
+## Requirements
+
+- macOS 26 or later.
+- Xcode in `/Applications/Xcode.app` (or set `DEVELOPER_DIR`). The Command Line Tools alone cannot build the asset catalog.
+
+## Spotlight
+
+macOS indexes `~/Applications` and `/Applications` by itself. The installer registers the new bundle at once, so Spotlight, Launchpad and `open -a FocusFlow` find it right away. Do not turn Spotlight indexing off and on, or delete `.Spotlight-V100`: neither is needed.
+
+Keep **one** copy. If the installer warns that another `FocusFlow.app` exists, delete that one. Two copies show up twice in Spotlight, and `open -a` may start the old one.
+
+Check what macOS knows about:
 
 ```bash
-INSTALL_DIR=/opt/apps ./Scripts/install-and-register.sh
+mdfind "kMDItemCFBundleIdentifier == 'com.focusflow.app'"
 ```
-
-### Dry-Run Mode
-
-Preview what the script will do without making changes:
-
-```bash
-DRY_RUN=1 ./Scripts/install-and-register.sh
-```
-
-## Features
-
-### ✓ Build Integration
-- Runs `swift build` to compile the latest source
-- Validates the build succeeds before proceeding
-
-### ✓ Bundle Creation
-- Generates proper macOS app bundle structure
-- Creates Info.plist with required metadata:
-  - Bundle identifier: `com.focusflow.app`
-  - Calendar and Reminders usage descriptions
-  - Background execution support
-- Copies executable, resources, and app icon
-
-### ✓ Application Registration
-- Installs app to `~/Applications/` (or custom `$INSTALL_DIR`)
-- Makes executable permissions explicit
-- Safely replaces existing installations
-
-### ✓ Spotlight Indexing
-- Updates Spotlight metadata using `mdimport`
-- Makes the app discoverable via Spotlight search
-- Falls back gracefully if `mdimport` unavailable
-
-### ✓ Launch Support
-- App can be launched via:
-  ```bash
-  open -a FocusFlow
-  ```
-- Or found directly in Spotlight
 
 ## Troubleshooting
 
-### Script fails on build step
-```bash
-# Ensure Swift toolchain is installed
-swift --version
+| Symptom | Fix |
+|---|---|
+| `tool 'actool' requires Xcode` | Install Xcode. To fix it for every tool, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. |
+| macOS asks for Calendar/Reminders again after an update | The app was signed ad hoc. Run `bash Scripts/setup-codesign.sh`, then install again. |
+| Spotlight still opens an old build | Delete the duplicate copy, then run the installer again. |
+| The app does not start | Open Console.app and look for crash reports from `FocusFlow`. |
 
-# Try manual build
-cd path/to/FocusFlow
-swift build --product FocusFlow
-```
+## Other scripts
 
-### App doesn't appear in Spotlight
-```bash
-# Re-index manually
-mdimport ~/Applications/FocusFlow.app
-
-# Check Spotlight status
-mdls ~/Applications/FocusFlow.app | head -10
-```
-
-### Permission denied when running script
-```bash
-chmod +x ./Scripts/install-and-register.sh
-```
-
-### Installation went to wrong directory
-```bash
-# Clean up
-rm -rf ~/Applications/FocusFlow.app
-
-# Reinstall to correct location
-INSTALL_DIR=/Applications ./Scripts/install-and-register.sh
-```
-
-## Script Architecture
-
-### Key Sections
-1. **Environment Setup**: Detects paths and validates directories
-2. **Build**: Compiles the application via `swift build`
-3. **Bundle Creation**: Constructs `.app` bundle with Info.plist
-4. **Installation**: Copies to target directory with safe replacement
-5. **Spotlight Registration**: Updates system metadata caches
-6. **Verification**: Confirms executable is in place and executable
-
-### Safety Features
-- `set -e`: Exits on any error (except explicitly allowed)
-- `set -u`: Fails on undefined variables
-- Checks for existing installations before overwriting
-- Verifies permissions on final executable
-- Dry-run mode for validation without changes
-
-### Output
-Uses color-coded logging:
-- 🔵 **Info** (blue): Progress steps
-- ✓ **Success** (green): Completed milestones
-- ⚠️ **Warning** (yellow): Non-fatal issues
-- ✗ **Error** (red): Fatal problems
-
-## Integration with Development Workflow
-
-### Development Loop
-```bash
-# Edit source...
-./Scripts/install-and-register.sh
-# App updates automatically in ~/Applications/
-```
-
-### CI/CD Integration
-```bash
-# Dry-run validation
-DRY_RUN=1 ./Scripts/install-and-register.sh
-
-# Production install (in CI environment)
-INSTALL_DIR=/usr/local/opt/apps ./Scripts/install-and-register.sh
-```
-
-## Differences from `run.sh`
-
-| Feature | run.sh | install-and-register.sh |
-|---------|--------|-------------------------|
-| Build | ✓ | ✓ |
-| Create bundle | ✓ | ✓ |
-| Launch app | ✓ | ✗ (installs for later use) |
-| Install to ~/Applications | ✗ | ✓ |
-| Spotlight registration | ✗ | ✓ |
-| Custom install dir | ✗ | ✓ (via `$INSTALL_DIR`) |
-| Dry-run mode | ✗ | ✓ |
-| Colored output | ✗ | ✓ |
-| Verification | Implicit | Explicit |
-
-## When to Use Each Script
-
-**Use `run.sh` when:**
-- You want to quickly build and test the app
-- You're actively developing and need instant feedback
-- You want the app to launch immediately
-
-**Use `install-and-register.sh` when:**
-- You want a permanent installation in ~/Applications
-- You need Spotlight discoverability
-- You want to install for multiple users
-- You're setting up a development environment
-- You want reproducible installation with verification
-
-## Uninstallation
-
-Remove FocusFlow from ~/Applications:
-
-```bash
-./Scripts/uninstall.sh
-```
-
-This script:
-1. Stops any running FocusFlow processes
-2. Removes the app from Spotlight index
-3. Deletes the app bundle from ~/Applications
-
-### Custom uninstall directory
-
-```bash
-INSTALL_DIR=/opt/apps ./Scripts/uninstall.sh
-```
-
-### Dry-run uninstall
-
-Preview what will be removed:
-
-```bash
-DRY_RUN=1 ./Scripts/uninstall.sh
-```
-
-## Available Scripts Summary
-
-| Script | Purpose | Usage |
-|--------|---------|-------|
-| `run.sh` | Build & test (from repo) | `./Scripts/run.sh` |
-| `install-and-register.sh` | Build & install to ~/Applications + Spotlight | `./Scripts/install-and-register.sh` |
-| `uninstall.sh` | Remove from ~/Applications | `./Scripts/uninstall.sh` |
-
+- `Scripts/run.sh`: debug build launched from `.build/debug` for quick development runs. It does not install anything.
+- `Scripts/build-dmg.sh`: release DMG for distribution.
+- `Scripts/uninstall.sh`: quits and removes the installed app.
+- `Scripts/install-and-register-smart.sh`: old name; it now runs `install.sh`.

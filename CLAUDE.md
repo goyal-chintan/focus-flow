@@ -11,13 +11,13 @@ bash Scripts/run.sh
 # Build only (no bundle/launch)
 swift build
 
-# Install to Applications
-cp -R .build/debug/FocusFlow.app /Applications/
+# Install (release build → ~/Applications, registered for Spotlight, relaunched)
+bash Scripts/install.sh
 ```
 
 The app cannot run via bare `swift run` — it needs a proper .app bundle for Liquid Glass compositing and UNUserNotificationCenter. `Scripts/run.sh` handles this by creating the bundle structure with Info.plist at `.build/debug/FocusFlow.app`.
 
-Tests: `swift test` (XCTest + Swift Testing in `Tests/FocusFlowTests`). If `xcode-select` points at CommandLineTools, prefix commands with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the build needs `actool`). No external dependencies — pure SwiftUI + SwiftData + Swift Charts.
+Tests: `swift test` (XCTest + Swift Testing in `Tests/FocusFlowTests`). If `xcode-select` points at CommandLineTools, prefix commands with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the build needs `actool`); the scripts in `Scripts/` do this themselves via `Scripts/lib/toolchain.sh`. No external dependencies — pure SwiftUI + SwiftData + Swift Charts.
 
 Visual QA: off-screen renders (`UIEvidenceCaptureTests`, output dir via `FOCUSFLOW_CAPTURE_OUTPUT_DIR`) and in-app `cacheDisplay` captures draw AppKit controls and glass in the wrong appearance. Judge layout from them; judge colour only from real screenshots.
 

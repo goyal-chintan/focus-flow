@@ -164,8 +164,10 @@ brew install --cask focusflow
 ```bash
 git clone https://github.com/goyal-chintan/focus-flow.git
 cd focus-flow
-bash Scripts/install-and-register-smart.sh
+bash Scripts/install.sh
 ```
+
+Re-run `bash Scripts/install.sh` after each `git pull`. It needs Xcode (for the asset catalog), builds a release version, installs `~/Applications/FocusFlow.app`, registers it so Spotlight and `open -a FocusFlow` find it, and relaunches it. See [Scripts/INSTALL.md](Scripts/INSTALL.md).
 
 ## Permissions
 

@@ -34,32 +34,14 @@ FLOW_FILTER=menu_bar_idle,coach_strong_window ./Scripts/capture-ui-evidence.sh
 APPEARANCE_FILTER=dark ./Scripts/capture-ui-evidence.sh
 ```
 
-### 3. `install-and-register.sh` (New)
-**Purpose:** Build, install to ~/Applications, and register with Spotlight
+### 3. `install.sh`
+**Purpose:** Build a release version, install it to `~/Applications`, register it with Spotlight, and relaunch it
 
 ```bash
-./Scripts/install-and-register.sh
+./Scripts/install.sh
 ```
 
-**Features:**
-- Builds latest from source
-- Installs to `~/Applications/FocusFlow.app` (persistent)
-- Updates macOS Spotlight index
-- Executable appears in Spotlight search
-- Color-coded progress output
-- Dry-run mode support
-
-**Environment Variables:**
-```bash
-INSTALL_DIR=/custom/path ./Scripts/install-and-register.sh  # Custom install location
-DRY_RUN=1 ./Scripts/install-and-register.sh                 # Preview without making changes
-```
-
-**Usage after install:**
-```bash
-open -a FocusFlow              # Launch from command line
-# Or search Spotlight for "FocusFlow" and launch from there
-```
+Re-run after each `git pull`. Details and options: [INSTALL.md](INSTALL.md). `install-and-register-smart.sh` is the old name and now runs this script.
 
 ### 4. `uninstall.sh` (New)
 **Purpose:** Remove FocusFlow from system
@@ -87,39 +69,24 @@ DRY_RUN=1 ./Scripts/uninstall.sh  # Preview uninstallation
 ./Scripts/run.sh
 ```
 
-### For Testing Installation
+### For Installing
 ```bash
-# First time setup
-./Scripts/install-and-register.sh
+# Install or update
+./Scripts/install.sh
 
-# Verify it will install correctly
-DRY_RUN=1 ./Scripts/install-and-register.sh
-
-# After changes, reinstall
-./Scripts/install-and-register.sh
-
-# When done
+# Remove
 ./Scripts/uninstall.sh
-```
-
-### For CI/CD
-```bash
-# Validate before installing
-DRY_RUN=1 ./Scripts/install-and-register.sh
-
-# Production installation
-INSTALL_DIR=/usr/local/bin ./Scripts/install-and-register.sh
 ```
 
 ## Key Differences
 
-| Aspect | `run.sh` | `install-and-register.sh` |
+| Aspect | `run.sh` | `install.sh` |
 |--------|----------|---------------------------|
 | **Build** | ✓ | ✓ |
-| **Install** | ✗ (temp) | ✓ (/Applications) |
+| **Install** | ✗ (temp) | ✓ (~/Applications) |
 | **Spotlight** | ✗ | ✓ |
-| **Launch** | ✓ | ✗ |
-| **Dry-run** | ✗ | ✓ |
+| **Launch** | ✓ | ✓ |
+| **Dry-run** | ✗ | ✗ |
 | **Persistence** | Session only | Permanent |
 
 ## Troubleshooting
@@ -139,12 +106,11 @@ mdimport ~/Applications/FocusFlow.app
 ### Want to reset to clean state
 ```bash
 ./Scripts/uninstall.sh
-./Scripts/install-and-register.sh
+./Scripts/install.sh
 ```
 
 ### Testing without affecting system
 ```bash
-DRY_RUN=1 ./Scripts/install-and-register.sh  # See what would happen
 DRY_RUN=1 ./Scripts/uninstall.sh             # See what would be removed
 ```
 
@@ -156,15 +122,17 @@ All scripts follow these patterns:
 2. **Color logging**: Info (blue 🔵), Success (green ✓), Warning (yellow ⚠️), Error (red ✗)
 3. **Safety**: Never overwrites critical files without warning
 4. **Idempotency**: Can be run multiple times safely
-5. **Dry-run**: Preview mode with `DRY_RUN=1` environment variable
+5. **Dry-run**: `uninstall.sh` supports `DRY_RUN=1`
 
 ## Files Created/Modified
 
 ```
 FocusFlow/Scripts/
-├── run.sh                        (existing, unchanged)
-├── install-and-register.sh       (NEW)
-├── uninstall.sh                  (NEW)
-├── INSTALL.md                    (NEW - detailed guide)
-└── SCRIPTS_QUICKREF.md           (NEW - this file)
+├── run.sh                        (debug build + launch)
+├── install.sh                    (release build + install + register + launch)
+├── install-and-register-smart.sh (old name; runs install.sh)
+├── uninstall.sh
+├── lib/toolchain.sh              (uses Xcode for the build)
+├── INSTALL.md                    (detailed guide)
+└── SCRIPTS_QUICKREF.md           (this file)
 ```
