@@ -175,6 +175,7 @@ private struct AppLaunchBridge: View {
     let timerVM: TimerViewModel
     let modelContext: ModelContext
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @Query private var rescueSettings: [AppSettings]
 
     var body: some View {
@@ -197,11 +198,22 @@ private struct AppLaunchBridge: View {
                 if timerVM.hotkeyRegistrar == nil {
                     timerVM.hotkeyRegistrar = CoachGlobalHotkey.shared
                 }
+                timerVM.openCompanionWindow = { tab in
+                    UserDefaults.standard.set(tab.rawValue, forKey: "companionRequestedTab")
+                    WindowPolicyManager.shared.prepareToOpen()
+                    openWindow(id: "stats")
+                }
                 // Coach v4: the decision journal, written in release builds too.
                 if timerVM.coachJournal.fileURL == nil, !timerVM.isEvidenceMode {
                     timerVM.coachJournal = CoachJournal(fileURL: CoachJournal.defaultURL())
                 }
                 timerVM.ensureConfigured(modelContext: modelContext)
+                // Notch companion (notch design §2): on unless turned off in Settings.
+                if timerVM.notchHost == nil, !timerVM.isEvidenceMode {
+                    let notch = NotchController(timerVM: timerVM, modelContainer: modelContext.container)
+                    timerVM.notchHost = notch
+                    notch.setEnabled(timerVM.isNotchCompanionEnabled)
+                }
                 timerVM.syncGlobalHotkey()
                 WindowPolicyManager.shared.start()
             }

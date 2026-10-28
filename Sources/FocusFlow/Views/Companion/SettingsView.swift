@@ -224,6 +224,7 @@ func restoreSettingsWindow() {
 
 private struct GeneralSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(TimerViewModel.self) private var timerVM
     @Query private var allSettings: [AppSettings]
     @State private var saveError: String?
     @State private var loginItemStatus: SMAppService.Status = SMAppService.mainApp.status
@@ -256,6 +257,18 @@ private struct GeneralSettingsTab: View {
                 }
             } header: {
                 Text("Startup")
+            }
+
+            Section {
+                Toggle("Show FocusFlow around the notch", isOn: Binding(
+                    get: { timerVM.isNotchCompanionEnabled },
+                    set: { timerVM.setNotchCompanionEnabled($0) }
+                ))
+            } header: {
+                Text("Notch")
+            } footer: {
+                Text("A ring and the time beside the notch. Hover it for controls, today's lever and one-click starts. Without a notch it sits at the top of the screen.")
+                    .foregroundStyle(.secondary)
             }
 
             Section {

@@ -100,7 +100,7 @@ struct GoalCard: View {
                 }
             }
             if !goal.keyResults.isEmpty {
-                VStack(spacing: 6) {
+                VStack(spacing: 14) {
                     ForEach(Array(zip(goal.sortedKeyResults, summary.keyResults)), id: \.0.id) { pair in
                         KeyResultRow(keyResult: pair.0, pace: pair.1, compact: compact)
                     }
@@ -200,7 +200,7 @@ struct KeyResultRow: View {
                 Spacer(minLength: FFSpace.s)
                 if pace.status == .overdue { PaceStatusPill(status: .overdue) }
             } else {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: FFSpace.s) {
                         Text(keyResult.title).ffText(.body).lineLimit(1)
                         Spacer(minLength: FFSpace.s)
@@ -231,8 +231,15 @@ struct KeyResultRow: View {
         case .notStarted: return "Starts later"
         default:
             let delta = pace.delta
-            let position = abs(delta) < 0.5 ? "On pace" : delta < 0 ? "\(Self.number(-delta)) behind" : "\(Self.number(delta)) ahead"
-            return String(format: "%@ · need %.1f/day", position, pace.neededPerDay ?? 0)
+            let position: String
+            if abs(delta) < 0.5 {
+                position = "On pace"
+            } else if delta < 0 {
+                position = -delta < 1 ? "Slightly behind" : "\(Int((-delta).rounded())) behind"
+            } else {
+                position = "\(Int(delta.rounded())) ahead"
+            }
+            return "\(position) · need \(PaceFormat.rate(pace.neededPerDay ?? 0))"
         }
     }
 

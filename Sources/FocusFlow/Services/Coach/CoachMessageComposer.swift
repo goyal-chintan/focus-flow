@@ -46,6 +46,21 @@ struct CoachFacts: Sendable, Equatable {
     var daysWithoutBlock: Int?
     /// Today's top lever from the goals, e.g. "3 LeetCode questions" (priorities-goals design §3.5).
     var lever: String?
+    /// Where the most urgent goal stands (goal-aware copy).
+    var goal: CoachGoalFact?
+}
+
+/// The most urgent goal's key result, for copy that names the real stakes.
+struct CoachGoalFact: Sendable, Equatable {
+    /// Short goal name ("Interview-ready").
+    var goalTitle: String
+    var resultTitle: String
+    var done: Int
+    var target: Int
+    /// Units behind the even pace (0 when on pace or ahead).
+    var behind: Int
+    var daysLeft: Int
+    var isBehind: Bool { behind > 0 }
 }
 
 /// Everything a rescue message needs (rescue loop design §2–§4).
@@ -326,6 +341,9 @@ enum CoachMessageComposer {
         let minutes = input.target.minutes
         switch input.style {
         case .challenger:
+            if let goal = facts.goal, goal.isBehind {
+                return ("\(goal.daysLeft) day\(goal.daysLeft == 1 ? "" : "s") left. \(shortName(goal.resultTitle)) is \(goal.behind) behind.", true)
+            }
             if let derailer = facts.derailer {
                 return ("\(shortName(derailer.name)) has had \(duration(derailer.minutesThisWeek)) of you this week.", true)
             }
@@ -345,6 +363,9 @@ enum CoachMessageComposer {
                 ? ("1% better daily = 37× in a year.", false)
                 : ("Show up. \(minutes) minutes.", false)
         case .data:
+            if let goal = facts.goal {
+                return ("\(shortName(goal.resultTitle)): \(goal.done) of \(goal.target) · \(goal.isBehind ? "\(goal.behind) behind pace" : "on pace") · \(goal.daysLeft)d left.", true)
+            }
             if let derailer = facts.derailer {
                 return ("\(shortName(derailer.name)): \(duration(derailer.minutesThisWeek)) this week.", true)
             }
@@ -356,6 +377,9 @@ enum CoachMessageComposer {
             }
             return ("Next block: \(minutes) minutes.", false)
         case .gentle:
+            if let lever = facts.lever {
+                return ("Today's step: \(lever)?", false)
+            }
             if let name = input.target.name {
                 return ("Ready for \(shortName(name))?", false)
             }
@@ -395,6 +419,10 @@ enum CoachMessageComposer {
     }
 
     private static func rescueDetail(_ input: CoachComposerInput, _ rescue: CoachRescueContext, hookIsFact: Bool) -> CoachDetail? {
+        // The stakes, when a goal is behind: this time could have been the work that's missing.
+        if !hookIsFact, input.style != .gentle, !rescue.lateNight, let goal = input.facts.goal, goal.isBehind {
+            return .fact("\(shortName(goal.resultTitle)) is \(goal.behind) behind with \(goal.daysLeft) days left.")
+        }
         if !hookIsFact, input.style != .gentle, let fact = rescue.fact {
             return .fact(fact)
         }
@@ -455,7 +483,7 @@ enum CoachMessageComposer {
             if input.style == .data { return nil }
             return .line("Too much? \(cue.starterMinutes) minutes still counts.")
         case .dailyPlan:
-            if let lever = facts.lever { return .fact("Today's lever: \(lever).") }
+            if let lever = facts.lever { return .line("Today's lever: \(lever).") }
             switch input.style {
             case .challenger: return .line("Starting is the hard part. Make it small enough to start now.")
             case .data: return .line("Short, near goals raise starts and persistence (Bandura & Schunk, 1981).")
@@ -493,8 +521,9 @@ enum CoachMessageComposer {
             }
 
         case .startNudge:
-            if !hookIsFact, let lever = facts.lever {
-                return .fact("Today's lever: \(lever).")
+            // The lever is the ask, not a statistic: it shows even when the hook is a fact.
+            if let lever = facts.lever, input.style != .gentle {
+                return .line("Today's lever: \(lever).")
             }
             if !hookIsFact, input.style != .gentle || facts.sessionsToday > 0,
                let fact = startFact(facts) {

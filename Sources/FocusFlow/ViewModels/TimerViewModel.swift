@@ -3151,6 +3151,7 @@ final class TimerViewModel {
 
         var facts = CoachFacts()
         facts.lever = lever?.action
+        facts.goal = GoalDataBuilder.goalFact(goals, now: now)
         facts.goalMinutes = goalMinutes
         facts.doneMinutesToday = doneMinutes
         facts.pacing = pacing
@@ -3447,14 +3448,50 @@ final class TimerViewModel {
         return coachPanel != nil
     }
 
-    /// Popover "Start small, now" (§3.3): the next block at `minutes` on the top priority.
+    /// Popover "Start small, now" (§3.3): the next block at `minutes` on the top priority
+    /// (or on `projectID`, e.g. a lever's project from the notch).
     /// A start here still credits a prompt seen in the last 10 minutes.
     @discardableResult
-    func startNextBlock(minutes: Int, now: Date = Date()) -> Bool {
+    func startNextBlock(minutes: Int, projectID: UUID? = nil, now: Date = Date()) -> Bool {
         let snapshot = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
         var target = snapshot.target
         target.minutes = minutes
+        if let projectID, projectID != target.projectID {
+            target = CoachStartTarget(minutes: minutes, name: historyReader?.project(id: projectID)?.name, projectID: projectID, priorityID: nil)
+        }
         return startCoachPlan(target)
+    }
+
+    /// The running block's intent ("3 LeetCode questions"), for the notch.
+    var currentIntentText: String? { currentSession?.intentText }
+
+    /// Active goals from the store (empty before configure or without the goal entities).
+    func historyReaderActiveGoals() -> [ProjectGoal] { historyReader?.activeGoals() ?? [] }
+
+    /// Logs progress on a key result, linked to the running block when there is one.
+    func logGoalProgress(resultID: UUID, amount: Double, now: Date = Date()) {
+        guard let modelContext,
+              let result = try? modelContext.fetch(FetchDescriptor<GoalKeyResult>(predicate: #Predicate { $0.id == resultID })).first
+        else { return }
+        let entry = GoalProgressEntry(amount: amount, at: now, sessionID: currentSession?.id)
+        modelContext.insert(entry)
+        result.entries.append(entry)
+        saveContext()
+        coachJournal.record(.started, "Logged +\(Int(amount)) \(result.title).", at: now)
+    }
+
+    /// Opens the companion window on a tab (set by FocusFlowApp).
+    var openCompanionWindow: ((CompanionTab) -> Void)?
+
+    /// Notch companion host, set by FocusFlowApp (nil in tests).
+    var notchHost: (any NotchHosting)?
+
+    var isNotchCompanionEnabled: Bool { settings?.notchCompanionEnabled ?? true }
+
+    func setNotchCompanionEnabled(_ enabled: Bool) {
+        settings?.notchCompanionEnabled = enabled
+        saveContext()
+        notchHost?.setEnabled(enabled)
     }
 
     /// A size pill on the start card or a start nudge (§3.3).

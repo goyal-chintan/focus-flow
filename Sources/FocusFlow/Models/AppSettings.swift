@@ -22,6 +22,8 @@ final class AppSettings {
     var lifeAntiVision: String?
     var lifeYearGoal: String?
     var lifeConstraints: String?
+    /// Notch companion (notch design §2). Nil means on.
+    var notchCompanionEnabled: Bool?
 
     // Integrations
     var calendarIntegrationEnabled: Bool = false

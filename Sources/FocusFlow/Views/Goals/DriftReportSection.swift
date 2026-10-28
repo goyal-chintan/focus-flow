@@ -47,10 +47,14 @@ struct DriftReportSection: View {
     private func saidVsDidChart(_ report: DriftReport) -> some View {
         Chart {
             ForEach(report.lines) { line in
-                BarMark(x: .value("Hours a day", line.actualPerDay / 3600), y: .value("Project", label(line)))
+                BarMark(x: .value("Hours a day", line.actualPerDay / 3600), y: .value("Project", label(line)), height: .ratio(0.55))
                     .foregroundStyle(FFPalette.project(line.colorName).opacity(line.area.isOwnWork ? 1 : 0.5))
-                    .annotation(position: .trailing) {
-                        Text(annotation(line)).font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
+                    .cornerRadius(4)
+                // The label sits past whichever is longer, the bar or the target tick, so they never overlap.
+                PointMark(x: .value("End", max(line.actualPerDay, line.targetPerDay ?? 0) / 3600), y: .value("Project", label(line)))
+                    .opacity(0)
+                    .annotation(position: .trailing, spacing: 8) {
+                        Text(annotation(line)).font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
                     }
                 if let target = line.targetPerDay, target > 0 {
                     // A tick at the target, across the project's bar.
@@ -71,7 +75,8 @@ struct DriftReportSection: View {
                 AxisValueLabel { Text("\(value.as(Double.self).map { String(format: "%.0fh", $0) } ?? "")").font(.system(size: 10)) }
             }
         }
-        .frame(height: CGFloat(max(2, report.lines.count)) * 34 + 24)
+        .chartXScale(domain: 0...(xMax(report) * 1.45))
+        .frame(height: CGFloat(max(2, report.lines.count)) * 40 + 24)
         .accessibilityLabel("Daily average per project against its target")
         .overlay(alignment: .topTrailing) {
             FFLegendItem(color: .primary, label: "Target")
@@ -95,6 +100,11 @@ struct DriftReportSection: View {
             .frame(height: 110)
             .accessibilityLabel("Share of each day spent on personal and learning projects")
         }
+    }
+
+    /// Hours: the longest bar or target, so labels fit to its right.
+    private func xMax(_ report: DriftReport) -> Double {
+        max(1, report.lines.map { max($0.actualPerDay, $0.targetPerDay ?? 0) / 3600 }.max() ?? 1)
     }
 
     private func label(_ line: DriftReport.Line) -> String {

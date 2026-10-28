@@ -97,6 +97,24 @@ enum GoalDataBuilder {
         }
     }
 
+    /// The most urgent count result (the top lever's), for goal-aware coach copy.
+    static func goalFact(_ goals: [ProjectGoal], now: Date) -> CoachGoalFact? {
+        let levers = levers(goals, now: now)
+        for lever in levers {
+            for goal in goals where goal.status == .active {
+                guard let kr = goal.keyResults.first(where: { $0.id == lever.id }), kr.kind == .count else { continue }
+                let pace = GoalPacing.pace(target: kr.target, done: kr.done, start: goal.startDate, deadline: goal.deadline, now: now)
+                return CoachGoalFact(
+                    goalTitle: goal.title, resultTitle: kr.title,
+                    done: Int(kr.done.rounded()), target: Int(kr.target.rounded()),
+                    behind: max(0, Int((-pace.delta).rounded())),
+                    daysLeft: max(0, Int(pace.daysLeft.rounded(.up)))
+                )
+            }
+        }
+        return nil
+    }
+
     static func levers(_ goals: [ProjectGoal], now: Date) -> [DailyLever] {
         DailyLevers.levers(leverInputs(goals, now: now), now: now)
     }

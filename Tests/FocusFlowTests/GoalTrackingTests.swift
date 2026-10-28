@@ -104,6 +104,11 @@ final class GoalTrackingTests: XCTestCase {
         XCTAssertEqual(levers.first?.action, "3 LeetCode questions", "52 left over 20 days → 2.6 → 3 today")
         XCTAssertEqual(levers.first?.status, .behind)
         XCTAssertTrue(levers.first?.reason.hasPrefix("need 2.6/day") == true)
+        XCTAssertEqual(PaceFormat.rate(0.3), "1 every 3 days")
+        XCTAssertEqual(PaceFormat.rate(2), "2/day")
+        XCTAssertEqual(DailyLevers.unit("questions", count: 1), "question")
+        XCTAssertEqual(DailyLevers.unit("questions", count: 3), "questions")
+        XCTAssertEqual(DailyLevers.unit("class", count: 1), "class")
         XCTAssertFalse(levers.contains { $0.action.contains("Referral") }, "Done results are not levers")
         XCTAssertFalse(levers.contains { $0.action == "Apply for jobs" }, "A checkbox waits until its time has come")
         // Today's quota already met: no lever.
@@ -147,5 +152,35 @@ final class GoalTrackingTests: XCTestCase {
         context.delete(fetched)
         try context.save()
         XCTAssertTrue(try context.fetch(FetchDescriptor<GoalProgressEntry>()).isEmpty, "Cascade deletes key results and entries")
+    }
+}
+
+/// Goal-aware coach copy.
+final class GoalAwareCopyTests: XCTestCase {
+    private func compose(_ style: CoachStyle, trigger: CoachTrigger = .startNudge, goal: CoachGoalFact?, lever: String? = "3 LeetCode questions") -> CoachComposedMessage {
+        var facts = CoachFacts()
+        facts.goal = goal
+        facts.lever = lever
+        facts.goalMinutes = 120
+        return CoachMessageComposer.compose(CoachComposerInput(style: style, trigger: trigger, facts: facts, target: CoachStartTarget(minutes: 15, name: "Learning")))
+    }
+
+    func testNudgesNameTheRealStakes() {
+        let behind = CoachGoalFact(goalTitle: "Interview-ready by 28 Nov", resultTitle: "LeetCode", done: 14, target: 60, behind: 11, daysLeft: 18)
+        let challenger = compose(.challenger, goal: behind)
+        XCTAssertEqual(challenger.hook, "18 days left. LeetCode is 11 behind.")
+        XCTAssertEqual(challenger.detail, .line("Today's lever: 3 LeetCode questions."))
+        XCTAssertEqual(compose(.data, goal: behind).hook, "LeetCode: 14 of 60 · 11 behind pace · 18d left.")
+        XCTAssertEqual(compose(.gentle, goal: behind).hook, "Today's step: 3 LeetCode questions?")
+        var onPace = behind
+        onPace.behind = 0
+        XCTAssertNotEqual(compose(.challenger, goal: onPace).hook, challenger.hook, "On pace: no alarm")
+    }
+
+    func testRescueShowsWhatTheDriftCosts() {
+        let behind = CoachGoalFact(goalTitle: "Apply", resultTitle: "LeetCode", done: 14, target: 60, behind: 11, daysLeft: 18)
+        let rescue = CoachRescueContext(level: .lost, signal: nil, spanLabel: "today", ask: CoachRescueAsk(kind: .normal, minutes: 15, title: "Start 15m", target: nil), priorityName: "Learning")
+        let message = compose(.challenger, trigger: .rescue(rescue), goal: behind)
+        XCTAssertEqual(message.detail, .fact("LeetCode is 11 behind with 18 days left."))
     }
 }

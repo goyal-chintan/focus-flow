@@ -39,6 +39,16 @@ enum GoalPaceStatus: String, Sendable, Equatable {
     }
 }
 
+/// "2.6/day", or "1 every 3 days" when the rate is below one a day.
+enum PaceFormat {
+    static func rate(_ perDay: Double) -> String {
+        guard perDay > 0 else { return "nothing more needed" }
+        if perDay >= 0.95 { return String(format: perDay.rounded() == perDay ? "%.0f/day" : "%.1f/day", perDay) }
+        let every = max(2, Int((1 / perDay).rounded()))
+        return "1 every \(every) days"
+    }
+}
+
 struct KeyResultPace: Sendable, Equatable {
     let target: Double
     let done: Double
@@ -222,6 +232,15 @@ struct PriorityAllocation: Sendable, Equatable {
         }
     }
 
+    /// One short line for small surfaces: "6h 40m tracked · 55m on your #1 · 14% own work".
+    func shortVerdict(format: (TimeInterval) -> String) -> String {
+        guard totalSeconds > 0 else { return "Nothing tracked yet." }
+        var parts = ["\(format(totalSeconds)) tracked"]
+        if let top { parts.append("\(format(top.seconds)) on your #\(top.rank ?? 1)") }
+        parts.append("\(Int((ownWorkShare * 100).rounded()))% own work")
+        return parts.joined(separator: " · ")
+    }
+
     /// "6h 40m tracked · 55m on Learning, your #1 (target 4h) · 14% your own work".
     func verdict(format: (TimeInterval) -> String) -> String {
         guard totalSeconds > 0 else {
@@ -371,6 +390,12 @@ enum DailyLevers {
 
     static let maxLevers = 3
 
+    /// "questions" → "question" for one (English plural heuristic: a trailing "s").
+    static func unit(_ unit: String, count: Int) -> String {
+        guard count == 1, unit.count > 2, unit.hasSuffix("s"), !unit.hasSuffix("ss") else { return unit }
+        return String(unit.dropLast())
+    }
+
     static func levers(_ inputs: [KeyResultInput], now: Date) -> [DailyLever] {
         inputs.compactMap { input -> DailyLever? in
             let pace = GoalPacing.pace(target: input.target, done: input.done, start: input.start, deadline: input.deadline, now: now)
@@ -392,13 +417,15 @@ enum DailyLevers {
             let quota = (needed - 0.01).rounded(.up)
             let todayAsk = max(1, Int(quota) - Int(input.doneToday))
             guard input.doneToday < quota else { return nil }
-            let unit = input.unit.map { " \($0)" } ?? ""
+            // "3 LeetCode questions" with a unit; "Referral asks: 1 today" without one.
+            let action = input.unit.map { "\(todayAsk) \(input.title) \(DailyLevers.unit($0, count: todayAsk))" }
+                ?? "\(input.title): \(todayAsk) today"
             return DailyLever(
                 id: input.id, goalTitle: input.goalTitle, projectID: input.projectID,
-                action: "\(todayAsk) \(input.title)\(unit.isEmpty ? "" : unit)",
+                action: action,
                 reason: pace.status == .overdue
                     ? "overdue · \(Int(pace.remaining.rounded())) left"
-                    : String(format: "need %.1f/day · %d day%@ left", needed, daysLeft, daysLeft == 1 ? "" : "s"),
+                    : "need \(PaceFormat.rate(needed)) · \(daysLeft) day\(daysLeft == 1 ? "" : "s") left",
                 status: pace.status,
                 urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0)
                     + max(0, -pace.delta) / max(1, input.target) * 10 + needed / max(1, input.target)
