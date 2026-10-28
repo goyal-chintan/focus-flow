@@ -369,6 +369,8 @@ struct DailyLever: Sendable, Equatable, Identifiable {
     let reason: String
     let status: GoalPaceStatus
     let urgency: Double
+    /// How much today's action adds to the key result (3 for "3 LeetCode questions"; 1 for a checkbox).
+    var amount: Double = 1
 }
 
 enum DailyLevers {
@@ -428,7 +430,8 @@ enum DailyLevers {
                     : "need \(PaceFormat.rate(needed)) · \(daysLeft) day\(daysLeft == 1 ? "" : "s") left",
                 status: pace.status,
                 urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0)
-                    + max(0, -pace.delta) / max(1, input.target) * 10 + needed / max(1, input.target)
+                    + max(0, -pace.delta) / max(1, input.target) * 10 + needed / max(1, input.target),
+                amount: Double(todayAsk)
             )
         }
         // Most urgent first: overdue and the boss fight carry large bonuses, then how far behind.

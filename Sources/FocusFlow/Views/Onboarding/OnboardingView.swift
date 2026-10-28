@@ -321,7 +321,7 @@ private struct OnboardingPriorityStep: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    OnboardingLabel("Colour")
+                    OnboardingLabel("Color")
                     colourRow
                 }
             }
@@ -553,11 +553,18 @@ private struct OnboardingCoachStep: View {
     @Binding var draft: OnboardingDraft
     let tint: Color
 
-    private let styles: [(style: CoachStyle, symbol: String, detail: String)] = [
-        (.gentle, "leaf.fill", "Kind nudges. Small steps."),
-        (.data, "chart.bar.fill", "Numbers, pace and facts."),
-        (.challenger, "flame.fill", "Direct. Holds you to it."),
-    ]
+    private var styles: [(style: CoachStyle, symbol: String, detail: String)] {
+        let symbols: [(CoachStyle, String)] = [(.gentle, "leaf.fill"), (.data, "chart.bar.fill"), (.challenger, "flame.fill")]
+        return symbols.map { (style: $0.0, symbol: $0.1, detail: Self.tagline($0.0)) }
+    }
+
+    static func tagline(_ style: CoachStyle) -> String {
+        switch style {
+        case .gentle: "Kind nudges. Small steps."
+        case .data: "Numbers, pace and facts."
+        case .challenger: "Direct. Holds you to it."
+        }
+    }
 
     private let facts: [(symbol: String, text: String)] = [
         ("person.crop.circle.badge.checkmark", "Only speaks when you're at your desk"),
@@ -698,7 +705,7 @@ private struct OnboardingStartStep: View {
                     if draft.hasGoal {
                         summaryRow(symbol: "flag.checkered", title: draft.goalTitle(now: now), detail: "Today's step: \(draft.dailyQuota) \(draft.resultUnit(draft.dailyQuota))")
                     }
-                    summaryRow(symbol: "brain.head.profile", title: "\(draft.coachStyle.displayName) coach", detail: draft.coachPreview(draft.coachStyle).hook)
+                    summaryRow(symbol: "brain.head.profile", title: "\(draft.coachStyle.displayName) coach", detail: OnboardingCoachStep.tagline(draft.coachStyle))
                 }
             }
             HStack(spacing: 8) {
@@ -707,7 +714,7 @@ private struct OnboardingStartStep: View {
                     .padding(.horizontal, 7)
                     .frame(height: 20)
                     .background(RoundedRectangle(cornerRadius: 5).fill(FFPalette.track))
-                Text("starts a 5-minute block from anywhere. Everything else lives in the menu bar icon.")
+                Text("starts a short block on your next step, from anywhere. Everything else lives in the menu bar icon.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

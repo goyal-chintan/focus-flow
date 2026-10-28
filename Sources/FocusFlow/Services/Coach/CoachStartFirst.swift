@@ -90,10 +90,17 @@ enum CoachBlockSizeLadder {
         /// The ask is "5 minutes to find the next step", not a work block.
         var findsNextStep: Bool { why == .findNextStep }
 
+        /// The `.starting` reason, for logs and tooltips. On a start prompt it would be the fourth
+        /// "start small" line (screen audit 2026-10-28), so `panelCaption` drops it.
+        static let startingCaption = "Small starts count."
+
+        /// The line under the size pills on a prompt: nil when there is no real reason to give.
+        var panelCaption: String? { why == .starting ? nil : caption }
+
         /// One line under the size pills, e.g. "5m: the last two asks didn't land".
         var caption: String {
             switch why {
-            case .starting: "Small starts count."
+            case .starting: Self.startingCaption
             case .lastStart: "\(minutes)m is what you started last time."
             case .shrunkAfterDeclines: "\(minutes)m: the last asks didn't land, so smaller."
             case .tooBig: "\(minutes)m: you said it felt too big."

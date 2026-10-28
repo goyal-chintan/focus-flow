@@ -166,6 +166,58 @@ final class CoachV4StartFirstTests: XCTestCase {
         XCTAssertEqual(unclear.primaryTitle, "Find the next step · 5m")
     }
 
+    /// Screen audit 2026-10-28: "start small" once (the hook); the detail names the next task;
+    /// no caption for the default size; the eyebrow names the plan; the button names the task.
+    func testStartCardSaysStartSmallOnceAndNamesTheTask() {
+        var facts = CoachFacts()
+        facts.goalMinutes = 120
+        let target = CoachStartTarget(minutes: 15, name: "SQL prep", taskTitle: "Window functions practice set", rank: 1)
+        let card = CoachMessageComposer.compose(CoachComposerInput(
+            style: .challenger, trigger: .dailyPlan(goalMinutes: 120, firstSuggestion: nil), facts: facts, target: target,
+            pickedDetail: .houseLine("Starting is the whole game. 5 minutes counts.")
+        ))
+        XCTAssertEqual(card.hook, "First block. Start small.")
+        XCTAssertEqual(card.detail, .line("Next: Window functions practice set"))
+        XCTAssertNil(card.motivation, "A house line only when there is no task or lever")
+        XCTAssertEqual(card.eyebrow, "#1 · SQL PREP")
+        XCTAssertEqual(card.primaryTitle, "Start 15m · Window functions practi…", "The task, never the project")
+        let smallCount = card.accessibilityText.lowercased().components(separatedBy: "small").count - 1
+        XCTAssertEqual(smallCount, 1)
+
+        var bare = target
+        bare.taskTitle = nil
+        let bareCard = CoachMessageComposer.compose(CoachComposerInput(
+            style: .challenger, trigger: .dailyPlan(goalMinutes: 120, firstSuggestion: nil), facts: facts, target: bare,
+            pickedDetail: .houseLine("Starting is the whole game. 5 minutes counts.")
+        ))
+        XCTAssertNil(bareCard.detail)
+        XCTAssertEqual(bareCard.motivation, .houseLine("Starting is the whole game. 5 minutes counts."))
+        XCTAssertEqual(bareCard.primaryTitle, "Start 15m on SQL prep")
+
+        // A goal fact wins the eyebrow.
+        facts.goal = CoachGoalFact(goalTitle: "Interview goal", resultTitle: "SQL", done: 4, target: 20, behind: 3, daysLeft: 9)
+        let behind = CoachMessageComposer.compose(CoachComposerInput(style: .gentle, trigger: .startNudge, facts: facts, target: target))
+        XCTAssertEqual(behind.eyebrow, "INTERVIEW GOAL · BEHIND")
+        XCTAssertEqual(behind.detail, .line("Next: Window functions practice set"))
+        XCTAssertNil(CoachMessageComposer.compose(CoachComposerInput(style: .gentle, trigger: .momentum, facts: facts, target: target)).eyebrow)
+
+        // The default size has no caption on the panel; real reasons keep theirs.
+        let starting = CoachBlockSizeLadder.Recommendation(minutes: 15, why: .starting)
+        XCTAssertNil(starting.panelCaption)
+        XCTAssertNil(CoachPanelPresentation(kind: .dailyPlan, message: card, sizeOptions: [5, 15, 25], sizeCaption: starting.caption).sizeCaption)
+        let tooBig = CoachBlockSizeLadder.Recommendation(minutes: 5, why: .tooBig)
+        XCTAssertEqual(CoachPanelPresentation(kind: .dailyPlan, message: card, sizeOptions: [5, 15, 25], sizeCaption: tooBig.caption).sizeCaption, tooBig.caption)
+
+        // One vocabulary for the decline menu.
+        XCTAssertEqual(CoachPanelPresentation(kind: .pseudoProductivity, message: card).menuTitle, "Not now")
+
+        // The neutral fallback names the target when known.
+        XCTAssertEqual(CoachMessageComposer.neutralFallback(isInSession: false).primaryTitle, "Start focus")
+        let named = CoachMessageComposer.neutralFallback(isInSession: false, target: target)
+        XCTAssertEqual(named.hook, "Ready for Window functions practi…?")
+        XCTAssertEqual(named.primaryTitle, "Start 15m · Window functions practi…")
+    }
+
     // MARK: End to end
 
     func testStartCardOffersSizesAndAPopoverStartCreditsIt() throws {
@@ -376,7 +428,7 @@ final class CoachV4StartFirstTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self,
             AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self,
-            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self,
+            InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self,
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         containers.append(container)

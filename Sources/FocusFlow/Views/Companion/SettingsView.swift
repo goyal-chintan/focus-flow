@@ -226,6 +226,7 @@ private struct GeneralSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(TimerViewModel.self) private var timerVM
     @Query private var allSettings: [AppSettings]
+    @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
     @State private var saveError: String?
     @State private var loginItemStatus: SMAppService.Status = SMAppService.mainApp.status
     @State private var loginItemError: String?
@@ -261,7 +262,7 @@ private struct GeneralSettingsTab: View {
 
             Section {
                 LabeledContent {
-                    Button("Show the welcome tour") { timerVM.openOnboarding?() }
+                    Button("Show Tour") { timerVM.openOnboarding?() }
                 } label: {
                     Text("Welcome tour")
                     Text("Pick your #1, a goal and a coach style again. Takes a minute.")
@@ -310,10 +311,23 @@ private struct GeneralSettingsTab: View {
                     range: max(30, focusGoalMinutes)...600,
                     step: 15
                 )
+                // One source of truth: offer to match the own-work project targets when they differ.
+                if let targets = ownWorkTargetMinutes, targets != focusGoalMinutes {
+                    LabeledContent {
+                        Button("Use \(settingsGoalText(minutes: targets))") {
+                            settings.dailyFocusGoal = TimeInterval(targets * 60)
+                            settings.dailyStretchGoal = max(settings.dailyStretchGoal, settings.dailyFocusGoal)
+                            save()
+                        }
+                    } label: {
+                        Text("Your own-work projects aim for \(settingsGoalText(minutes: targets)) a day.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } header: {
                 Text("Daily goals")
             } footer: {
-                Text("Stretch is the bonus target once the personal goal is met.")
+                Text("The personal goal counts your own work: Personal and Learning projects. Stretch is the bonus once it's met.")
                     .foregroundStyle(.secondary)
             }
 
@@ -355,6 +369,12 @@ private struct GeneralSettingsTab: View {
     }
 
     private var focusGoalMinutes: Int { Int(settings.dailyFocusGoal / 60) }
+
+    /// Sum of today's targets on Personal and Learning projects (nil when none is set).
+    private var ownWorkTargetMinutes: Int? {
+        let minutes = projects.filter { $0.area.isOwnWork }.compactMap { $0.dailyTarget(on: Date()) }
+        return minutes.isEmpty ? nil : minutes.reduce(0, +)
+    }
     private var stretchGoalMinutes: Int { max(Int(settings.dailyStretchGoal / 60), focusGoalMinutes) }
 
     private var sleepFooter: String {
@@ -404,7 +424,7 @@ private struct TimerSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                durationRow("Focus", keyPath: \.focusDuration, range: 5...120, step: 5)
+                durationRow("Default block", keyPath: \.focusDuration, range: 5...120, step: 5)
                 durationRow("Short break", keyPath: \.shortBreakDuration, range: 1...30, step: 1)
                 durationRow("Long break", keyPath: \.longBreakDuration, range: 5...60, step: 5)
                 SettingsStepperRow(
@@ -415,6 +435,9 @@ private struct TimerSettingsTab: View {
                 )
             } header: {
                 Text("Durations")
+            } footer: {
+                Text("The default for a manual start. The coach suggests 5, 15 or 25 minutes from what has worked for you.")
+                    .foregroundStyle(.secondary)
             }
 
             Section {

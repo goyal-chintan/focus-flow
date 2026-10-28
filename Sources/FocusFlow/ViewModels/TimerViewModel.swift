@@ -415,6 +415,8 @@ final class TimerViewModel {
     var coachRandom = SplitMix64(seed: UInt64(Date().timeIntervalSince1970 * 1000))
     static let coachPanelAutoHideSeconds: Double = 20
     static let weeklyInviteDefaultsKey = "focusflow.coachWeeklyPrioritiesInviteWeek"
+    /// Weekly priorities stay in the store for history but no longer drive the coach or the UI.
+    static let weeklyPrioritiesRetired = true
     private let defaults: UserDefaults
 
     // MARK: - Coach rescue loop (docs/plans/2026-10-17-coach-rescue-loop-design.md)
@@ -1035,6 +1037,8 @@ final class TimerViewModel {
         let intent = pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines)
         session.intentText = intent.isEmpty ? nil : intent
         session.priorityID = pendingPriorityID
+        session.taskID = pendingTaskID
+        pendingTaskID = nil
         pendingIntentText = ""
         lastPrefilledIntent = nil
         modelContext?.insert(session)
@@ -2606,13 +2610,20 @@ final class TimerViewModel {
         case .open:
             // Opening the notification shows its prompt on screen; it is not a new delivery.
             guard state == .idle, !isOvertime, let decision = pendingCoachNotificationDecision else { return }
-            let message = decision.composed ?? CoachMessageComposer.neutralFallback(isInSession: false)
+            let message = decision.composed ?? CoachMessageComposer.neutralFallback(isInSession: false, target: pendingCoachNotificationPlan)
+            // Same 5·15·25 choice as an on-screen start nudge (v4 §3.3), not a single pacing size.
+            let ladder = startLadderRecommendation()
+            var plan = pendingCoachNotificationPlan
+            plan?.minutes = ladder.minutes
             presentCoachPanel(
                 CoachPanelPresentation(
                     kind: .startNudge,
                     message: message,
-                    plan: pendingCoachNotificationPlan,
-                    attemptID: pendingCoachAttemptID
+                    plan: plan,
+                    attemptID: pendingCoachAttemptID,
+                    sizeOptions: plan?.findNextStep == true ? [] : CoachBlockSizeLadder.sizes,
+                    recommendedMinutes: ladder.minutes,
+                    sizeCaption: ladder.caption
                 ),
                 decision: decision
             )
@@ -2950,10 +2961,16 @@ final class TimerViewModel {
         if let minutes = plan?.minutes ?? idleStarterRecommendedMinutes {
             selectedMinutes = minutes
         }
+        let intentIsFree = pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingIntentText == lastPrefilledIntent
         if plan?.findNextStep == true {
             pendingIntentText = "Find the next step"
-        } else if pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingIntentText == lastPrefilledIntent,
-                  let lever = currentLever(projectID: plan?.projectID) {
+        } else if intentIsFree, pendingTaskID == nil,
+                  let task = DailyTaskPlanner.nextTask(todayTasks(), on: Date(), preferring: plan?.projectID),
+                  plan?.projectID == nil || task.projectID == nil || task.projectID == plan?.projectID {
+            // Your own plan first: the next open task for this project becomes the block's goal.
+            pendingIntentText = task.title
+            pendingTaskID = task.id
+        } else if intentIsFree, let lever = currentLever(projectID: plan?.projectID) {
             // The block's intent is today's lever: a specific output, not "work on it".
             pendingIntentText = lever.action
         }
@@ -3124,9 +3141,10 @@ final class TimerViewModel {
             doneMinutes: doneMinutes,
             windowMinutesLeft: model.goodWindowMinutesRemainingToday(from: now)
         )
-        let topPriority = weeklyPriorities.first { !$0.isDone }
-        // Priorities-goals §3.5: without a weekly priority, the coach aims at the boss-fight goal's
-        // project, then the #1 project; today's lever names the concrete action.
+        // Screen audit (2026-10-28): weekly priorities are retired as a planning layer; ranked
+        // projects, goals and daily tasks plan the week. The coach aims at the boss-fight goal's
+        // project, then the #1 project; the next task or today's lever names the concrete action.
+        let topPriority: WeeklyPriority? = nil
         let goals = reader?.activeGoals() ?? []
         let levers = GoalDataBuilder.levers(goals, now: now)
         let ranked = reader?.rankedProjects() ?? []
@@ -3142,12 +3160,20 @@ final class TimerViewModel {
             minutes = max(15, ((nextEvent - 5) / 5) * 5)
         }
         let projectID = topPriority?.projectID ?? focusProject?.id ?? selectedProject?.id
-        let target = CoachStartTarget(
+        var target = CoachStartTarget(
             minutes: minutes,
             name: topPriority?.title ?? focusProject?.name ?? selectedProject?.name,
             projectID: projectID,
             priorityID: topPriority?.id
         )
+        target.rank = focusProject?.priorityRank
+        // What the block will actually be about: your next task for this project, else the lever.
+        if let task = DailyTaskPlanner.nextTask(todayTasks(now: now), on: now, preferring: projectID),
+           projectID == nil || task.projectID == nil || task.projectID == projectID {
+            target.taskTitle = task.title
+        } else {
+            target.taskTitle = lever?.action
+        }
 
         var facts = CoachFacts()
         facts.lever = lever?.action
@@ -3477,7 +3503,7 @@ final class TimerViewModel {
         modelContext.insert(entry)
         result.entries.append(entry)
         saveContext()
-        coachJournal.record(.started, "Logged +\(Int(amount)) \(result.title).", at: now)
+        coachJournal.record(.logged, "Logged +\(Int(amount)) \(result.title).", at: now)
     }
 
     /// Opens the companion window on a tab (set by FocusFlowApp).
@@ -3485,6 +3511,121 @@ final class TimerViewModel {
 
     /// Opens the welcome tour (set by FocusFlowApp; Settings → General → Getting started).
     var openOnboarding: (() -> Void)?
+
+    // MARK: Daily tasks (daily tasks design: docs/plans/2026-10-28-daily-tasks-design.md)
+
+    /// The task picked for the next block (popover); saved on the session at start.
+    var pendingTaskID: UUID?
+    /// The running block's task, if it was started for one.
+    var currentBlockTaskID: UUID? { currentSession?.taskID }
+    /// Bumped on every task change so views that read tasks through the VM (notch, popover) redraw.
+    private(set) var dailyTaskRevision = 0
+
+    /// Tasks from the last `days` days (enough for today, carry-over and the week strip).
+    func recentDailyTasks(days: Int = 8, now: Date = Date()) -> [DailyTask] {
+        _ = dailyTaskRevision
+        guard let modelContext,
+              let since = Calendar.current.date(byAdding: .day, value: -days, to: Calendar.current.startOfDay(for: now))
+        else { return [] }
+        return (try? modelContext.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.day >= since }))) ?? []
+    }
+
+    func todayTasks(now: Date = Date()) -> [DailyTask] {
+        DailyTaskPlanner.tasks(recentDailyTasks(days: 1, now: now), on: now)
+    }
+
+    func dailyTaskStats(now: Date = Date()) -> DailyTaskStats {
+        DailyTaskPlanner.stats(recentDailyTasks(days: 1, now: now), on: now)
+    }
+
+    @discardableResult
+    func addDailyTask(title: String, projectID: UUID? = nil, keyResultID: UUID? = nil, amount: Double? = nil,
+                      carriedFromID: UUID? = nil, day: Date? = nil, now: Date = Date()) -> DailyTask? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let modelContext, !trimmed.isEmpty else { return nil }
+        let start = Calendar.current.startOfDay(for: day ?? now)
+        let order = (DailyTaskPlanner.tasks(recentDailyTasks(days: 1, now: start), on: start).map(\.order).max() ?? -1) + 1
+        let task = DailyTask(title: trimmed, day: start, order: order, projectID: projectID, keyResultID: keyResultID, amount: amount)
+        task.carriedFromID = carriedFromID
+        modelContext.insert(task)
+        saveContext()
+        dailyTaskRevision += 1
+        return task
+    }
+
+    /// Adds today's lever ("3 LeetCode questions") as a task linked to its key result.
+    @discardableResult
+    func addLeverTask(_ lever: DailyLever, now: Date = Date()) -> DailyTask? {
+        addDailyTask(title: lever.action, projectID: lever.projectID, keyResultID: lever.id, amount: lever.amount, now: now)
+    }
+
+    /// Ticks or unticks a task. A task linked to a key result logs its amount on tick and removes
+    /// exactly that entry on untick, so goal pace stays true.
+    func setDailyTask(_ task: DailyTask, done: Bool, sessionID: UUID? = nil, now: Date = Date()) {
+        guard let modelContext, task.isDone != done else { return }
+        task.isDone = done
+        if done {
+            task.doneAt = now
+            task.sessionID = sessionID ?? currentSession?.id
+            if let resultID = task.keyResultID,
+               let result = try? modelContext.fetch(FetchDescriptor<GoalKeyResult>(predicate: #Predicate { $0.id == resultID })).first {
+                let entry = GoalProgressEntry(amount: task.progressAmount, at: now, note: task.title, sessionID: task.sessionID)
+                modelContext.insert(entry)
+                result.entries.append(entry)
+                task.progressEntryID = entry.id
+            }
+            coachJournal.record(.logged, "Done: \(task.title).", at: now)
+        } else {
+            removeProgressEntry(of: task)
+            task.doneAt = nil
+            task.sessionID = nil
+        }
+        saveContext()
+        dailyTaskRevision += 1
+    }
+
+    func deleteDailyTask(_ task: DailyTask) {
+        guard let modelContext else { return }
+        removeProgressEntry(of: task)
+        modelContext.delete(task)
+        saveContext()
+        dailyTaskRevision += 1
+    }
+
+    /// Moves an open task to tomorrow (keeps its links).
+    func moveDailyTaskToTomorrow(_ task: DailyTask, now: Date = Date()) {
+        guard !task.isDone, let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) else { return }
+        task.day = tomorrow
+        task.order = (DailyTaskPlanner.tasks(recentDailyTasks(days: 0, now: tomorrow), on: tomorrow).map(\.order).max() ?? -1) + 1
+        saveContext()
+        dailyTaskRevision += 1
+    }
+
+    /// Moves an open task to the top of its day.
+    func moveDailyTaskToTop(_ task: DailyTask) {
+        let siblings = DailyTaskPlanner.tasks(recentDailyTasks(days: 1, now: task.day), on: task.day)
+        task.order = (siblings.map(\.order).min() ?? 0) - 1
+        saveContext()
+        dailyTaskRevision += 1
+    }
+
+    /// Copies the last planned day's unfinished tasks to today. Returns how many.
+    @discardableResult
+    func carryOverDailyTasks(now: Date = Date()) -> Int {
+        let candidates = DailyTaskPlanner.carryOverCandidates(recentDailyTasks(days: DailyTaskPlanner.carryOverLookbackDays + 1, now: now), today: now)
+        for task in candidates {
+            addDailyTask(title: task.title, projectID: task.projectID, keyResultID: task.keyResultID, amount: task.amount, carriedFromID: task.id, now: now)
+        }
+        return candidates.count
+    }
+
+    private func removeProgressEntry(of task: DailyTask) {
+        guard let modelContext, let entryID = task.progressEntryID else { return }
+        if let entry = try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.id == entryID })).first {
+            modelContext.delete(entry)
+        }
+        task.progressEntryID = nil
+    }
 
     /// Notch companion host, set by FocusFlowApp (nil in tests).
     var notchHost: (any NotchHosting)?
@@ -3802,6 +3943,8 @@ final class TimerViewModel {
     // MARK: - Weekly priorities invite
 
     func shouldInviteWeeklyPriorities(now: Date) -> Bool {
+        // Retired with weekly priorities (screen audit): goals and daily tasks plan the week.
+        guard Self.weeklyPrioritiesRetired == false else { return false }
         guard let reader = historyReader, reader.hasEntity(named: "WeeklyPriority"), weeklyPriorities.isEmpty else {
             return false
         }
@@ -3891,7 +4034,8 @@ final class TimerViewModel {
         // Cheap checks first: the store is only read after 20 minutes in a work context.
         reloadWeeklyPriorities(now: now)
         let snapshot = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: frontmostCategory)
-        let priority = snapshot.topPriority
+        // What you said matters (screen audit): the next task, else today's lever, else the #1 project.
+        let priority = pseudoProductivityFocusName(snapshot)
         let shouldAsk = CoachPseudoProductivityGuard.shouldAsk(.init(
             now: now,
             inGoodWindow: snapshot.inGoodWindow,
@@ -3917,12 +4061,12 @@ final class TimerViewModel {
             pacing: snapshot.pacing,
             facts: facts,
             target: snapshot.target,
-            topPriority: priority,
+            topPriority: snapshot.topPriority,
             frontCategory: frontmostCategory
         )
         let style = settings.coachStyle
         let motivation = pickMotivation(situation: CoachSituation.isLateNight(now) ? .lateNight : .drift, now: now)
-        let message = composeCoachMessage(trigger: .pseudoProductivity(priority: priority.title), style: style, snapshot: pseudoSnapshot, motivation: motivation)
+        let message = composeCoachMessage(trigger: .pseudoProductivity(priority: priority), style: style, snapshot: pseudoSnapshot, motivation: motivation)
         let attempt = coachEngine.recordDeliveredIntervention(
             kind: .quickPrompt,
             riskScore: 0,
@@ -3942,6 +4086,11 @@ final class TimerViewModel {
             createdAt: now
         ))
         return true
+    }
+
+    /// The name the pseudo-productivity question holds up: the next task, today's lever, or the #1 project.
+    private func pseudoProductivityFocusName(_ snapshot: CoachSnapshot) -> String? {
+        snapshot.topPriority?.title ?? snapshot.target.taskTitle ?? (snapshot.target.rank == 1 ? snapshot.target.name : nil)
     }
 
     private func logPseudoAnswer(_ answer: CoachPseudoAnswer, panel: CoachPanelPresentation, now: Date = Date()) {
@@ -4342,11 +4491,11 @@ final class TimerViewModel {
             guard let style = arm.style else { return false }
             let motivation = pickMotivation(situation: rescueSituation(level: level, facts: snapshot.facts, now: now), now: now)
             let usePseudoPanel: Bool = {
-                guard level <= .lost, snapshot.topPriority != nil, case .pseudo = assessment.dominantSignal else { return false }
+                guard level <= .lost, pseudoProductivityFocusName(snapshot) != nil, case .pseudo = assessment.dominantSignal else { return false }
                 return true
             }()
             let trigger: CoachTrigger = usePseudoPanel
-                ? .pseudoProductivity(priority: snapshot.topPriority?.title ?? "")
+                ? .pseudoProductivity(priority: pseudoProductivityFocusName(snapshot) ?? "")
                 : .rescue(rescue)
             var facts = snapshot.facts
             if usePseudoPanel, let pseudo = assessment.topPseudo {
@@ -4744,6 +4893,13 @@ final class TimerViewModel {
         pauseScreenHost?.hidePauseScreen()
         switch exit {
         case .startStarter:
+            // The button names the next step; start that when there is one (same rule as ⌃⌥Space).
+            let target = coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory).target
+            if target.taskTitle != nil {
+                var plan = target
+                plan.minutes = CoachStarterBlock.clampedMinutes(settings?.coachStarterBlockMinutes ?? 5)
+                return startCoachPlan(plan, attemptID: screen.attemptID)
+            }
             return startStarterBlock(attemptID: screen.attemptID)
         case .escape, .close:
             if let id = screen.attemptID { coachEngine.recordInterventionOutcome(.dismissed, attemptID: id) }
@@ -4798,6 +4954,12 @@ final class TimerViewModel {
         if pauseScreen != nil {
             pauseScreen = nil
             pauseScreenHost?.hidePauseScreen()
+        }
+        // With a concrete next step (a task or today's lever), start it at the learned size;
+        // otherwise the starter block's job is to find the step.
+        let snapshot = coachSnapshot(now: Date(), idleSeconds: 0, frontmostCategory: AppUsageTracker.shared.currentFrontmostCategory)
+        if snapshot.target.taskTitle != nil {
+            return startNextBlock(minutes: startLadderRecommendation().minutes)
         }
         guard startStarterBlock(attemptID: attemptID) else { return false }
         let minutes = Int(totalSeconds / 60)

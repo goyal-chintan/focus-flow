@@ -13,7 +13,7 @@ final class OnboardingTests: XCTestCase {
         let schema = Schema([
             Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self,
             AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self,
-            IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self,
+            IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self,
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         self.container = container
@@ -56,10 +56,11 @@ final class OnboardingTests: XCTestCase {
 
     func testPresetSetsKindColourAndIcon() {
         var draft = OnboardingDraft()
-        draft.apply(OnboardingProjectPreset.all.first { $0.name == "Deep work" }!)
-        XCTAssertEqual(draft.area, .work)
-        XCTAssertEqual(draft.color, "blue")
-        XCTAssertEqual(draft.icon, "briefcase.fill")
+        draft.apply(OnboardingProjectPreset.all.first { $0.name == "Reading" }!)
+        XCTAssertEqual(draft.area, .personal)
+        XCTAssertEqual(draft.color, "indigo")
+        XCTAssertEqual(draft.icon, "book.fill")
+        XCTAssertFalse(OnboardingProjectPreset.all.contains { $0.area == .work }, "A #1 preset is never Work: the honest split leaves Work out of own work")
         draft.apply(OnboardingProjectPreset.all.first { $0.name == "Side project" }!)
         draft.setArea(.learning)
         XCTAssertEqual(draft.icon, "hammer.fill", "A preset's own icon is kept")
@@ -164,7 +165,12 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(Calendar.current.dateComponents([.day], from: goal.startDate, to: goal.deadline).day, 30)
 
         XCTAssertEqual(settings.coachStyle, .data)
+        XCTAssertFalse(settings.coachPauseScreenEnabled, "The pause screen is Challenger's")
         XCTAssertEqual(settings.notchCompanionEnabled, false)
+        let firstTask = try XCTUnwrap(try context.fetch(FetchDescriptor<DailyTask>()).first)
+        XCTAssertEqual(firstTask.title, "2 practice problems")
+        XCTAssertEqual(firstTask.keyResultID, goal.sortedKeyResults.first?.id)
+        XCTAssertEqual(firstTask.amount, 2)
         XCTAssertEqual(settings.onboardingCompletedAt, now)
         XCTAssertEqual(settings.dailyFocusGoal, 150 * 60, "Own work sets the daily goal")
         XCTAssertGreaterThanOrEqual(settings.dailyStretchGoal, settings.dailyFocusGoal)
@@ -215,7 +221,7 @@ final class OnboardingTests: XCTestCase {
     func testSettingsOffersTheTourAgain() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let settings = try String(contentsOf: root.appendingPathComponent("Sources/FocusFlow/Views/Companion/SettingsView.swift"), encoding: .utf8)
-        XCTAssertTrue(settings.contains("Button(\"Show the welcome tour\") { timerVM.openOnboarding?() }"))
+        XCTAssertTrue(settings.contains("Button(\"Show Tour\") { timerVM.openOnboarding?() }"))
         let app = try String(contentsOf: root.appendingPathComponent("Sources/FocusFlow/FocusFlowApp.swift"), encoding: .utf8)
         XCTAssertTrue(app.contains("Window(\"Welcome to FocusFlow\", id: \"onboarding\")"))
         XCTAssertTrue(app.contains("showOnboardingIfNeeded()"))
