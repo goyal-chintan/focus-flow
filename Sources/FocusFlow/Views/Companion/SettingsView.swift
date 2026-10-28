@@ -260,6 +260,17 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                LabeledContent {
+                    Button("Show the welcome tour") { timerVM.openOnboarding?() }
+                } label: {
+                    Text("Welcome tour")
+                    Text("Pick your #1, a goal and a coach style again. Takes a minute.")
+                }
+            } header: {
+                Text("Getting started")
+            }
+
+            Section {
                 Toggle("Show FocusFlow around the notch", isOn: Binding(
                     get: { timerVM.isNotchCompanionEnabled },
                     set: { timerVM.setNotchCompanionEnabled($0) }

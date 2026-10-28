@@ -3483,6 +3483,9 @@ final class TimerViewModel {
     /// Opens the companion window on a tab (set by FocusFlowApp).
     var openCompanionWindow: ((CompanionTab) -> Void)?
 
+    /// Opens the welcome tour (set by FocusFlowApp; Settings → General → Getting started).
+    var openOnboarding: (() -> Void)?
+
     /// Notch companion host, set by FocusFlowApp (nil in tests).
     var notchHost: (any NotchHosting)?
 

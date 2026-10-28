@@ -116,6 +116,20 @@ struct FocusFlowApp: App {
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
 
+        // Welcome tour (onboarding design): first launch, and Settings → General → Getting started.
+        Window("Welcome to FocusFlow", id: "onboarding") {
+            OnboardingView()
+                .environment(timerVM)
+                .environment(\.modelContext, container.mainContext)
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
+        // Opened only by the launch check or Settings, never by window restoration.
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(.suppressed)
+        .modelContainer(container)
+
         // Settings window (⌘, and the popover gear). SettingsView owns its toolbar tab bar;
         // the expanded toolbar style puts the tab title above the centred bar, like the
         // native Settings layout, and the fixed content size keeps the window from jumping.
@@ -203,6 +217,10 @@ private struct AppLaunchBridge: View {
                     WindowPolicyManager.shared.prepareToOpen()
                     openWindow(id: "stats")
                 }
+                timerVM.openOnboarding = {
+                    WindowPolicyManager.shared.prepareToOpen()
+                    openWindow(id: "onboarding")
+                }
                 // Coach v4: the decision journal, written in release builds too.
                 if timerVM.coachJournal.fileURL == nil, !timerVM.isEvidenceMode {
                     timerVM.coachJournal = CoachJournal(fileURL: CoachJournal.defaultURL())
@@ -216,10 +234,28 @@ private struct AppLaunchBridge: View {
                 }
                 timerVM.syncGlobalHotkey()
                 WindowPolicyManager.shared.start()
+                showOnboardingIfNeeded()
             }
             .onChange(of: rescueSettings.first?.coachGlobalHotkeyEnabled) { _, _ in
                 timerVM.syncGlobalHotkey()
             }
+    }
+}
+
+extension AppLaunchBridge {
+    /// First launch on an empty store opens the welcome tour; an existing store is marked done silently.
+    fileprivate func showOnboardingIfNeeded() {
+        guard !timerVM.isEvidenceMode, let settings = timerVM.settings else { return }
+        let hasSessions = ((try? modelContext.fetchCount(FetchDescriptor<FocusSession>())) ?? 0) > 0
+        switch OnboardingLaunch.decide(completedAt: settings.onboardingCompletedAt, hasSessions: hasSessions) {
+        case .show:
+            timerVM.openOnboarding?()
+        case .markDone:
+            settings.onboardingCompletedAt = Date()
+            try? modelContext.save()
+        case .none:
+            break
+        }
     }
 }
 

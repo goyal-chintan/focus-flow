@@ -24,6 +24,8 @@ final class AppSettings {
     var lifeConstraints: String?
     /// Notch companion (notch design §2). Nil means on.
     var notchCompanionEnabled: Bool?
+    /// When the welcome tour was finished or skipped (onboarding design §3). Nil = not yet.
+    var onboardingCompletedAt: Date?
 
     // Integrations
     var calendarIntegrationEnabled: Bool = false
