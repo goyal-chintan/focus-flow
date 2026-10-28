@@ -101,6 +101,9 @@ These rules were established through iterative visual review and must not be vio
 - **Floating panels: measure before animating.** An `animator().setFrame` slide-in overrides any plain `setFrame` made while it runs; measure the hosted content first and resize through the animator (the coach panel was stuck at 120 pt and clipped its buttons).
 - **3-Gate review before presenting:** (1) Pixel match ≥80%, (2) Apple design checklist, (3) Apple UX checklist. If any gate fails, fix before showing user.
 
+### Never write observed state while drawing
+A `TimerViewModel` method that a view calls in `body` (or in a computed property `body` reads) must not assign any observed property, caches included. The write re-invalidates the view inside AppKit layout; on macOS 26.2 that throws "needs another Update Constraints pass" and kills the app (crash 2026-10-28: `PopoverIdleHero` → `goalProgressSeconds` → its cache). Mark pure memos `@ObservationIgnored`, and do real updates in `.task`, `.onChange` or actions. `ViewReadPathTests` guards the read paths views use; add any new body-time read to it.
+
 ### SwiftUI Type-Check Timeout
 Complex view bodies trigger "unable to type-check this expression in reasonable time." Fix by extracting sections into `private var someSection: some View` computed properties or separate structs. This has affected `MenuBarPopoverView`, `ProjectFormView`, and `ManualSessionView`.
 

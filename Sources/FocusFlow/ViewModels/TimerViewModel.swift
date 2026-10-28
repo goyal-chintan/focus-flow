@@ -447,7 +447,10 @@ final class TimerViewModel {
     private var momentumOfferedSessionID: UUID?
     private var coachIdleTickCount = 0
     private var pauseScreenShutoffLogged = false
-    private var goalProgressCache: (at: Date, focusTime: TimeInterval, seconds: TimeInterval)?
+    /// A memo for `goalProgressSeconds`, which views call while drawing. Not observed: writing an
+    /// observed property from a view's body re-invalidates it inside layout, and AppKit kills the app
+    /// ("needs another Update Constraints pass"; crash 2026-10-28, macOS 26.2).
+    @ObservationIgnored private var goalProgressCache: (at: Date, focusTime: TimeInterval, seconds: TimeInterval)?
     /// Test hook: seconds since the last keyboard/mouse input. Nil reads the system.
     var systemIdleSecondsProvider: (() -> TimeInterval)?
     /// Coach v5: Thompson-sample the block size at a real ask. Tests switch it off for determinism.

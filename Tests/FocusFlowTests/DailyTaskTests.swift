@@ -260,3 +260,54 @@ final class DailyTaskTests: XCTestCase {
         window.close()
     }
 }
+
+/// Crash 2026-10-28 (macOS 26.2): `PopoverIdleHero.body` called `goalProgressSeconds`, which wrote an
+/// observed cache. Writing observed state while a view is being drawn invalidates that view inside
+/// layout; AppKit then throws "needs another Update Constraints pass" and the app quits.
+/// Every read the views call while drawing must leave observed state alone.
+@MainActor
+final class ViewReadPathTests: XCTestCase {
+    private var container: ModelContainer?
+
+    func testReadsThatViewsMakeWhileDrawingNeverChangeObservedState() throws {
+        let schema = Schema([
+            Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self,
+            AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self,
+            IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self,
+            GoalProgressEntry.self, DailyTask.self,
+        ])
+        let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        self.container = container
+        let settings = AppSettings()
+        container.mainContext.insert(settings)
+        try container.mainContext.save()
+        let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 }
+        vm.coachExploreSizes = false
+        vm.configureForEvidence(modelContext: container.mainContext, settings: settings)
+
+        // The calls the popover hero, tasks strip, notch, settings preview and insights make in `body`.
+        let reads = {
+            _ = vm.goalProgressSeconds(now: Date())
+            _ = vm.goalProgressSeconds(now: Date().addingTimeInterval(120)) // past the cache window: recomputes
+            _ = vm.todayTasks()
+            _ = vm.dailyTaskStats()
+            _ = vm.historyReaderActiveGoals()
+            _ = vm.startLadderRecommendation(now: Date())
+        }
+        reads() // warm up any first-use work outside the tracked pass
+
+        final class Flag: @unchecked Sendable { var raised = false }
+        let invalidated = Flag()
+        withObservationTracking {
+            _ = vm.state
+            _ = vm.todayFocusTime
+            _ = vm.dailyTaskRevision
+            reads()
+        } onChange: {
+            invalidated.raised = true
+        }
+        reads()
+        XCTAssertFalse(invalidated.raised, "A read made while drawing changed observed state: SwiftUI would loop in layout and crash")
+    }
+}
