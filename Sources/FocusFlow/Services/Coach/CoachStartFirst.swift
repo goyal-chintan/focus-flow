@@ -253,7 +253,10 @@ extension CoachPromptAttribution {
 enum CoachRescueWindowPolicy {
     /// On-screen rescues (panel, pause screen) run only in learned windows. Elsewhere the
     /// rescue stays on the menu-bar counter: 17 rescues at low/medium availability led to 0 starts.
-    static func allowsOnScreen(tier: CoachAvailabilityModel.Tier, modelHasData: Bool) -> Bool {
+    /// `declaredWindowOpen`: with own-work windows declared, only they count (coach audit 2026-10-30);
+    /// nil when none are declared.
+    static func allowsOnScreen(tier: CoachAvailabilityModel.Tier, modelHasData: Bool, declaredWindowOpen: Bool? = nil) -> Bool {
+        if let declaredWindowOpen { return declaredWindowOpen }
         guard modelHasData else { return true }
         return tier == .high
     }

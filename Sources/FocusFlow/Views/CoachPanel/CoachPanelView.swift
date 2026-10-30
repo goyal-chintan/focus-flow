@@ -55,8 +55,8 @@ struct CoachPanelView: View {
                     sizePills
                         .padding(.top, 10)
                 }
-                if presentation.kind == .dailyPlan, !presentation.planSlots.isEmpty {
-                    Text("Or plan it for later today")
+                if presentation.kind == .dailyPlan || presentation.kind == .planTomorrow, !presentation.planSlots.isEmpty {
+                    Text(presentation.kind == .planTomorrow ? "Tap a time for each block" : "Or plan it for later today")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
                         .padding(.top, 10)
@@ -223,7 +223,7 @@ struct CoachPanelView: View {
                 .buttonStyle(.plain)
                 .onHover { hoveredSlot = $0 ? slot.start : (hoveredSlot == slot.start ? nil : hoveredSlot) }
                 .animation(.easeOut(duration: 0.12), value: hoveredSlot)
-                .accessibilityLabel("Plan today's block at \(slot.label()), \(slot.caption)")
+                .accessibilityLabel("Plan \(presentation.kind == .planTomorrow ? "tomorrow's" : "today's") block at \(slot.label()), \(slot.caption)")
             }
         }
         .padding(.trailing, 8)
@@ -444,6 +444,7 @@ struct CoachPanelView: View {
         case .notice: "FOCUS COACH"
         case .plannedStart: "YOUR PLAN · NOW"
         case .dailyPlan: message.eyebrow ?? "FOCUS COACH · START"
+        case .planTomorrow: "FOCUS COACH · TOMORROW"
         }
     }
 
@@ -457,6 +458,7 @@ struct CoachPanelView: View {
         case .notice: return "play.fill"
         case .plannedStart: return "alarm.fill"
         case .dailyPlan: return "play.fill"
+        case .planTomorrow: return "calendar"
         case .rescue:
             switch presentation.level ?? .drifting {
             case .ok, .drifting: return "arrow.uturn.backward"
@@ -474,7 +476,7 @@ struct CoachPanelView: View {
 
     private var primarySymbol: String {
         switch presentation.kind {
-        case .startNudge, .pseudoProductivity, .rescue, .notice, .plannedStart, .dailyPlan: "play.fill"
+        case .startNudge, .pseudoProductivity, .rescue, .notice, .plannedStart, .dailyPlan, .planTomorrow: "play.fill"
         case .inSessionDrift: "arrow.uturn.backward"
         case .weeklyPriorities: "list.bullet"
         case .keepGoing: "forward.fill"
@@ -512,7 +514,13 @@ struct CoachPanelHostView: View {
                 onSecondary: { timerVM.performCoachPanelSecondary($0) },
                 onClose: { timerVM.dismissCoachInterventionWindow() },
                 onHover: { timerVM.coachPanelHoverChanged($0) },
-                onPlanSlot: { timerVM.commitDailyPlan($0) },
+                onPlanSlot: { slot in
+                    if presentation.kind == .planTomorrow {
+                        timerVM.commitTomorrowSlot(slot)
+                    } else {
+                        timerVM.commitDailyPlan(slot)
+                    }
+                },
                 onStartSize: { timerVM.performCoachPanelStart(minutes: $0) }
             )
             .fixedSize(horizontal: false, vertical: true)

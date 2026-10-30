@@ -119,7 +119,9 @@ extension CoachGuardrails.Delivery {
     init(attempt: InterventionAttempt) {
         let surface = attempt.surfaceRawValue.flatMap(CoachSurface.init(rawValue:))
             ?? (attempt.kind == .strongPrompt ? .strongWindow : .badge)
-        let requested = attempt.contextKey.map(CoachPlannedCue.isPlannedContextKey) ?? false
+        // The user's own plan cues and the evening check-in. The start card is the coach's own
+        // ask, so it counts (coach audit 2026-10-30: at most 3 interrupting prompts a day).
+        let requested = attempt.contextKey.map(CoachPlannedCue.isRequestedCueKey) ?? false
         self.init(
             surface: surface,
             deliveredAt: attempt.deliveredAt,

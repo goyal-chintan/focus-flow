@@ -29,6 +29,11 @@ final class AppSettings {
     var notchCompanionEnabled: Bool?
     /// When the welcome tour was finished or skipped (onboarding design §3). Nil = not yet.
     var onboardingCompletedAt: Date?
+    /// Own-work windows the user declared, "420-540,1200-1320" (`CoachOwnWorkWindows`). Nil = none:
+    /// the learned availability model decides when the coach may ask (coach audit 2026-10-30).
+    var coachOwnWorkWindowsRaw: String?
+    /// Evening "When are tomorrow's 2 blocks?" check-in. Nil means on.
+    var coachPlanTomorrowEnabled: Bool?
 
     // Integrations
     var calendarIntegrationEnabled: Bool = false
@@ -83,6 +88,11 @@ final class AppSettings {
     var coachPauseScreenEnabled: Bool = true
     var coachStarterBlockMinutes: Int = 5
     var coachGlobalHotkeyEnabled: Bool = true
+
+    var coachOwnWorkWindows: [CoachOwnWorkWindow] {
+        get { CoachOwnWorkWindows.parse(coachOwnWorkWindowsRaw) }
+        set { coachOwnWorkWindowsRaw = CoachOwnWorkWindows.encode(newValue) }
+    }
 
     var coachStyle: CoachStyle {
         get { CoachStyle(rawValue: coachStyleRawValue) ?? .challenger }

@@ -6,7 +6,7 @@ import Foundation
 
 // MARK: - Reward (§3.1)
 
-/// Reward of a decision, read from the sessions table once 60 minutes have passed:
+/// Reward of a decision, read from the recorded block starts once 60 minutes have passed:
 /// 1 for a start within 20 minutes, plus up to 0.5 for focused minutes in the next hour.
 enum CoachDecisionReward {
     /// 20 minutes: a start 10.6 minutes after a prompt was logged "on your own" (audit 2026-10-30).
@@ -20,6 +20,16 @@ enum CoachDecisionReward {
         let seconds: TimeInterval
         /// The length the block was started at (credits the size learner).
         var plannedMinutes: Int = 25
+        var sessionID: UUID?
+    }
+
+    /// The blocks a reward is read from: every recorded start (`BlockStartEvent`, short blocks
+    /// included), plus sessions without a start record: history from before the record existed,
+    /// manual entries, the second half of a project switch (coach audit 2026-10-30).
+    static func merge(starts: [Block], sessions: [Block]) -> [Block] {
+        let recorded = Set(starts.compactMap(\.sessionID))
+        let unrecorded = sessions.filter { $0.sessionID.map { !recorded.contains($0) } ?? true }
+        return (starts + unrecorded).sorted { $0.start < $1.start }
     }
 
     /// Nil while the hour is still running.
@@ -97,6 +107,8 @@ struct CoachPromptFeatures: Sendable, Equatable {
 enum CoachPromptPolicy {
     /// `InterventionAttempt.decisionRaw` for a Learner A decision point.
     static let decisionKey = "prompt"
+    /// A declared window's guaranteed prompt (coach audit 2026-10-30): certain, so never a learning row.
+    static let guaranteedDecisionKey = "prompt-guaranteed"
     static let minProbability = 0.05
     static let maxProbability = 0.80
     /// A prompt must raise the start chance by about 5 points to be worth the interruption.
