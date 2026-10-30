@@ -40,53 +40,17 @@ struct FocusFlowApp: App {
                 .environment(\.modelContext, container.mainContext)
                 .background(WindowLauncherBridge(timerVM: timerVM))
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: menuBarIconName)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    // A few pulses when a prompt starts waiting, then a static dot (v3 R9: a
-                    // repeating effect re-laid out the status item every frame, ~30% CPU for days).
-                    .symbolEffect(.pulse, options: .repeat(3), value: timerVM.coachMenuBarPulse)
-                    .accessibilityHidden(true)
-
-                // A coach prompt is waiting (panel auto-hid or a badge prompt): clears on open.
-                if timerVM.coachMenuBarPulse {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 5, height: 5)
-                        .accessibilityLabel("Focus coach prompt waiting")
-                }
-
-                // Rescue loop: ambient drift counter while drifting in a focus window.
-                if let driftText = timerVM.driftMenuBarText {
-                    DriftMenuBarCounter(text: driftText)
-                }
-
-                if timerVM.isBlockingActive {
-                    Image(systemName: "shield.checkered")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.green)
-                        .accessibilityHidden(true)
-                }
-
-                if let liveStatusText {
-                    Text(liveStatusText)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .foregroundStyle(liveStatusColor)
-                }
-
-                if timerVM.todayFocusTime > 0 || timerVM.isRunning || timerVM.isOvertime {
-                    if liveStatusText != nil {
-                        Text("·")
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(timerVM.todayFocusTime.formattedFocusTime)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .foregroundStyle(.secondary)
+            Group {
+                if timerVM.isPrivate {
+                    // Screen shared: a plain dot that names nothing (SharePrivacy).
+                    Image(systemName: "circle.fill")
+                        .font(.system(size: 7))
+                        .accessibilityLabel("Private")
+                } else {
+                    liveLabel
                 }
             }
-            .font(.system(size: 12, weight: .medium, design: .rounded))
+            // Outside the branch, so toggling privacy never re-runs the launch wiring.
             .background(AppLaunchBridge(timerVM: timerVM, modelContext: container.mainContext).modelContainer(container))
             #if DEBUG
             .background(DebugWindowCaptureBridge())
@@ -141,6 +105,57 @@ struct FocusFlowApp: App {
         .windowToolbarStyle(.expanded)
         .windowResizability(.contentSize)
         .modelContainer(container)
+    }
+
+    /// The usual label: icon, prompt dot, drift counter, blocking shield, timer and today's total.
+    private var liveLabel: some View {
+        HStack(spacing: 5) {
+            Image(systemName: menuBarIconName)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                // A few pulses when a prompt starts waiting, then a static dot (v3 R9: a
+                // repeating effect re-laid out the status item every frame, ~30% CPU for days).
+                .symbolEffect(.pulse, options: .repeat(3), value: timerVM.coachMenuBarPulse)
+                .accessibilityHidden(true)
+
+            // A coach prompt is waiting (panel auto-hid or a badge prompt): clears on open.
+            if timerVM.coachMenuBarPulse {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 5, height: 5)
+                    .accessibilityLabel("Focus coach prompt waiting")
+            }
+
+            // Rescue loop: ambient drift counter while drifting in a focus window.
+            if let driftText = timerVM.driftMenuBarText {
+                DriftMenuBarCounter(text: driftText)
+            }
+
+            if timerVM.isBlockingActive {
+                Image(systemName: "shield.checkered")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.green)
+                    .accessibilityHidden(true)
+            }
+
+            if let liveStatusText {
+                Text(liveStatusText)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(liveStatusColor)
+            }
+
+            if timerVM.todayFocusTime > 0 || timerVM.isRunning || timerVM.isOvertime {
+                if liveStatusText != nil {
+                    Text("·")
+                        .foregroundStyle(.secondary)
+                }
+                Text(timerVM.todayFocusTime.formattedFocusTime)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.system(size: 12, weight: .medium, design: .rounded))
     }
 
     private var liveStatusText: String? {
@@ -233,6 +248,7 @@ private struct AppLaunchBridge: View {
                     notch.setEnabled(timerVM.isNotchCompanionEnabled)
                 }
                 timerVM.syncGlobalHotkey()
+                if !timerVM.isEvidenceMode { timerVM.startPrivacyMonitor() }
                 WindowPolicyManager.shared.start()
                 showOnboardingIfNeeded()
             }
@@ -311,8 +327,9 @@ private struct WindowLauncherBridge: View {
                     }
                 }
 
-                // Reconcile permissions on launch
+                // Reconcile permissions on launch, then pull synced Reminders lists into today's tasks
                 reconcilePermissionsIfNeeded()
+                timerVM.scheduleReminderSync()
             }
             // Reconcile permissions every time the app becomes active — catches
             // revocations that happened while the app was in the background or
@@ -320,11 +337,14 @@ private struct WindowLauncherBridge: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 reconcilePermissionsIfNeeded()
                 timerVM.checkDayRolloverIfNeeded()
+                timerVM.scheduleReminderSync()
             }
             // Also reconcile when EventKit reports store changes (permission
             // grants/revocations trigger this notification).
+            // A reminder ticked on the phone arrives here too (coalesced; our own writes are no-ops).
             .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
                 reconcilePermissionsIfNeeded()
+                timerVM.scheduleReminderSync()
             }
     }
 

@@ -401,54 +401,6 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertEqual(closeRequests, 3) // startFocus + stopForReflection + continueAfterCompletion
     }
 
-    func testBreakOverrunReasonPromptActivatesDuringOvertime() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
-        vm.coachExploreSizes = false
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.coachReasonPromptsEnabled = true
-        try container.mainContext.save()
-
-        vm.overtimeSeconds = 119
-        vm.showCoachReasonSheet = false
-
-        vm.overtimeSeconds += 1
-        vm.updateBreakOverrunReasonPromptIfNeeded(completedSessionType: .shortBreak)
-
-        XCTAssertTrue(vm.showCoachReasonSheet)
-        XCTAssertEqual(vm.pendingReasonKind, .breakOverrun)
-    }
-
-    func testBreakOverrunReasonPromptDoesNotLoopAfterReasonSubmitted() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
-        vm.coachExploreSizes = false
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        let settings = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<AppSettings>()).first)
-        settings.coachReasonPromptsEnabled = true
-        try container.mainContext.save()
-
-        vm.overtimeSeconds = 120
-        vm.showCoachReasonSheet = false
-
-        vm.updateBreakOverrunReasonPromptIfNeeded(completedSessionType: .shortBreak)
-        XCTAssertTrue(vm.showCoachReasonSheet)
-        XCTAssertEqual(vm.pendingReasonKind, .breakOverrun)
-
-        vm.recordCoachReason(kind: .breakOverrun, reason: .meeting)
-        vm.showCoachReasonSheet = false
-
-        vm.updateBreakOverrunReasonPromptIfNeeded(completedSessionType: .shortBreak)
-        XCTAssertFalse(vm.showCoachReasonSheet, "Reason prompt should not reopen repeatedly in the same overrun episode")
-    }
-
     func testConfigurePurgesExistingFocusSessionsUnderMinimumRetained() throws {
         let container = try makeInMemoryContainer()
         let now = Date()
@@ -540,21 +492,6 @@ final class TimerCompletionFlowTests: XCTestCase {
 
         XCTAssertNotNil(vm.completedBlockContext, "completedBlockContext must survive deferBreakAndStartNextBlock()")
         XCTAssertEqual(vm.completedBlockContext?.sessionId, contextBefore?.sessionId)
-    }
-
-    func testClassifyBreakRecoveryDoneForNowActivatesSuppressionWindow() throws {
-        let container = try makeInMemoryContainer()
-        let vm = TimerViewModel()
-        vm.systemIdleSecondsProvider = { 0 } // at the desk (v4 presence gate)
-        vm.coachExploreSizes = false
-        vm.configure(modelContext: container.mainContext)
-        defer { AppUsageTracker.shared.stop() }
-
-        XCTAssertFalse(vm.isInReleaseWindow, "No release window should be active before classifyBreakRecovery")
-
-        vm.classifyBreakRecovery(.doneForNow)
-
-        XCTAssertTrue(vm.isInReleaseWindow, "classifyBreakRecovery(.doneForNow) must activate the suppression window")
     }
 
     func testBlockForProjectStoresAppContextTargetInBlockedApps() throws {
@@ -1197,7 +1134,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         container.mainContext.insert(newProject)
         try container.mainContext.save()
 
-        vm.switchProject(to: newProject, reason: .requiredSwitch)
+        vm.switchProject(to: newProject)
 
         // Fetch all sessions — should be 2 (old + new)
         let allSessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
@@ -1371,7 +1308,7 @@ final class TimerCompletionFlowTests: XCTestCase {
         container.mainContext.insert(newProject)
         try container.mainContext.save()
 
-        vm.switchProject(to: newProject, reason: .requiredSwitch)
+        vm.switchProject(to: newProject)
 
         let allSessions = try container.mainContext.fetch(FetchDescriptor<FocusSession>())
         let oldSession = allSessions.first(where: { $0.endedAt != nil })
@@ -1412,6 +1349,40 @@ final class TimerCompletionFlowTests: XCTestCase {
     private func openFocusSessions(in container: ModelContainer) throws -> [FocusSession] {
         try container.mainContext.fetch(FetchDescriptor<FocusSession>())
             .filter { $0.type == .focus && $0.endedAt == nil }
+    }
+
+    /// Growing a running warm-up to 25 keeps the time worked, and 25 becomes the regular length.
+    func testSetBlockLengthGrowsTheRunningBlockAndBecomesRegular() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 }
+        vm.coachExploreSizes = false
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.selectedMinutes = 5
+        XCTAssertTrue(vm.startFocus())
+        vm.remainingSeconds = 2 * 60 // 3 minutes worked
+        XCTAssertTrue(vm.setBlockLength(minutes: 25))
+        XCTAssertEqual(vm.totalSeconds, 25 * 60)
+        XCTAssertEqual(vm.remainingSeconds, 22 * 60, "Time worked is kept")
+        XCTAssertEqual(vm.blockLengthMinutes, 25)
+        XCTAssertEqual(vm.regularMinutes, 25)
+
+        // A size that would leave under a minute is refused.
+        vm.remainingSeconds = 21 * 60 - 30 // 4½ minutes worked
+        XCTAssertFalse(vm.canSetBlockLength(5), "Less than a minute would be left")
+        XCTAssertTrue(vm.setBlockLength(minutes: 15))
+        XCTAssertEqual(vm.remainingSeconds, 10 * 60 + 30)
+        XCTAssertEqual(vm.regularMinutes, 15)
+
+        // 5 is the coach's warm-up size: this block only, so it never becomes the regular length.
+        vm.remainingSeconds = 10 * 60 + 30 - 30 // 5 minutes worked: 5m would leave nothing
+        XCTAssertFalse(vm.setBlockLength(minutes: 5))
+        vm.remainingSeconds = 14 * 60 // 1 minute worked
+        XCTAssertTrue(vm.setBlockLength(minutes: 5))
+        XCTAssertEqual(vm.totalSeconds, 5 * 60)
+        XCTAssertEqual(vm.regularMinutes, 15, "Shrinking to 5 is a one-off")
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {

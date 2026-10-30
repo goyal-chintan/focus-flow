@@ -37,27 +37,177 @@ struct DailyTaskCheck: View {
     }
 }
 
+/// A counted task's control: a ring that fills with each +1, a plus inside. Done shows the tick.
+struct DailyTaskCounterButton: View {
+    let logged: Double
+    let target: Double
+    var tint: Color = FFPalette.goal
+    var size: CGFloat = 18
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var fraction: Double { target > 0 ? min(1, logged / target) : 0 }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .padding(0.75)
+                Image(systemName: "plus")
+                    .font(.system(size: size * 0.5, weight: .bold))
+                    .foregroundStyle(tint)
+            }
+            .frame(width: size, height: size)
+            .frame(width: 30, height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: fraction)
+        .accessibilityLabel("Add one")
+        .accessibilityValue("\(DailyTaskReceipt.number(logged)) of \(DailyTaskReceipt.number(target))")
+    }
+}
+
+/// The one control every task row uses (Today, popover, block-end): +1 on an open counted task,
+/// a tick otherwise. The help text says what a tap will log, so nothing happens by surprise.
+struct DailyTaskControl: View {
+    let task: DailyTask
+    var resultTitle: String? = nil
+    var size: CGFloat = 18
+    let action: () -> Void
+
+    var body: some View {
+        Group {
+            if task.isCounted, !task.isDone {
+                DailyTaskCounterButton(logged: task.loggedCount, target: task.progressAmount, size: size, action: action)
+            } else {
+                DailyTaskCheck(isDone: task.isDone, size: size, action: action)
+            }
+        }
+        .help(Self.help(task, resultTitle: resultTitle))
+    }
+
+    /// "Add 1 to Problems solved (1 of 3 today)", "Mark done · adds 1 to SQL", "Mark done".
+    static func help(_ task: DailyTask, resultTitle: String?) -> String {
+        if task.isDone { return "Done. Click to mark not done\(resultTitle.map { " (takes back what it logged to \($0))" } ?? "")." }
+        if task.isCounted {
+            return "Add 1 to \(resultTitle ?? "the goal") (\(DailyTaskReceipt.number(task.loggedCount)) of \(DailyTaskReceipt.number(task.progressAmount)) today)"
+        }
+        if let resultTitle { return "Mark done · adds \(DailyTaskReceipt.number(task.progressAmount)) to \(resultTitle)" }
+        return "Mark done"
+    }
+}
+
+/// "1 of 3" beside a counted task's title.
+struct DailyTaskCountText: View {
+    let task: DailyTask
+
+    var body: some View {
+        if task.isCounted {
+            Text("\(DailyTaskReceipt.number(task.loggedCount)) of \(DailyTaskReceipt.number(task.progressAmount))")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(task.isDone ? FFPalette.goal : FFPalette.accent)
+                .contentTransition(.numericText())
+                .padding(.horizontal, 7)
+                .frame(minHeight: 20)
+                .background(Capsule().fill((task.isDone ? FFPalette.goal : FFPalette.accent).opacity(0.12)))
+                .accessibilityLabel("\(DailyTaskReceipt.number(task.loggedCount)) of \(DailyTaskReceipt.number(task.progressAmount)) today")
+        }
+    }
+}
+
+/// "+1 Problems solved · today 2 of 3 · goal 12 of 40   Undo" for a few seconds after a tap.
+struct DailyTaskReceiptBanner: View {
+    /// Only receipts for these tasks (nil: any).
+    var taskIDs: Set<UUID>? = nil
+    var compact = false
+
+    @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let receipt = timerVM.dailyTaskReceipt.flatMap { r in (taskIDs?.contains(r.taskID) ?? true) ? r : nil }
+        ZStack {
+            if let receipt {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                        .foregroundStyle(FFPalette.goal)
+                        .accessibilityHidden(true)
+                    Text(receipt.text)
+                        .font(.system(size: compact ? 11 : 12, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Button("Undo") {
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) { timerVM.undoDailyTaskReceipt() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: compact ? 11 : 12, weight: .semibold))
+                    .foregroundStyle(FFPalette.accent)
+                    .frame(minHeight: 26)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Undo: \(receipt.text)")
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(FFPalette.goal.opacity(0.1)))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .id(receipt.id)
+            }
+        }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: receipt?.id)
+    }
+}
+
 /// One task: tick, title, where it counts, and a menu.
 struct DailyTaskRow: View {
     let task: DailyTask
     let project: Project?
     let resultTitle: String?
+    /// The control's tap: +1 on an open counted task, tick or untick otherwise.
     let onToggle: () -> Void
+    var onStepDown: (() -> Void)?
+    var onMarkDone: (() -> Void)?
     var onTop: (() -> Void)?
     var onTomorrow: (() -> Void)?
     var onDelete: (() -> Void)?
+    /// The task mirrors a reminder in a list its project still syncs: delete removes both, so it asks.
+    var syncsReminder = false
 
     @State private var hovering = false
+    @State private var confirmDelete = false
+
+    private func requestDelete() {
+        if syncsReminder { confirmDelete = true } else { onDelete?() }
+    }
 
     var body: some View {
         HStack(spacing: FFSpace.s) {
-            DailyTaskCheck(isDone: task.isDone, action: onToggle)
+            DailyTaskControl(task: task, resultTitle: resultTitle, action: onToggle)
             VStack(alignment: .leading, spacing: 2) {
-                Text(task.title)
-                    .ffText(.body)
-                    .strikethrough(task.isDone, color: .secondary)
-                    .foregroundStyle(task.isDone ? .secondary : .primary)
-                    .lineLimit(2)
+                HStack(spacing: FFSpace.s) {
+                    Text(task.title)
+                        .ffText(.body)
+                        .strikethrough(task.isDone, color: .secondary)
+                        .foregroundStyle(task.isDone ? .secondary : .primary)
+                        .lineLimit(2)
+                    DailyTaskCountText(task: task)
+                    if syncsReminder {
+                        Image(systemName: "checklist")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .help("Synced with Reminders")
+                            .accessibilityLabel("Synced with Reminders")
+                    }
+                }
                 if project != nil || resultTitle != nil || task.carriedFromID != nil {
                     HStack(spacing: FFSpace.s) {
                         if let project {
@@ -67,7 +217,7 @@ struct DailyTaskRow: View {
                             }
                         }
                         if let resultTitle {
-                            Label("+\(Self.amountText(task.progressAmount)) \(resultTitle)", systemImage: "target")
+                            Label(SessionTasksSection.goalCaption(task, resultTitle: resultTitle), systemImage: "target")
                                 .labelStyle(.titleAndIcon)
                         }
                         if task.carriedFromID != nil {
@@ -81,7 +231,7 @@ struct DailyTaskRow: View {
             Spacer(minLength: 0)
             if let onDelete {
                 // Always laid out, shown on hover, so rows never shift.
-                Button(action: onDelete) {
+                Button(action: requestDelete) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -90,7 +240,8 @@ struct DailyTaskRow: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(hovering ? 1 : 0)
-                .accessibilityLabel("Delete task")
+                .help(syncsReminder ? "Delete task and its reminder" : "Delete task")
+                .accessibilityLabel(syncsReminder ? "Delete task and its reminder" : "Delete task")
             }
         }
         .padding(.horizontal, FFSpace.xs)
@@ -99,15 +250,27 @@ struct DailyTaskRow: View {
         .onHover { hovering = $0 }
         .animation(.smooth(duration: 0.2), value: hovering)
         .contextMenu {
-            Button(task.isDone ? "Mark not done" : "Mark done", action: onToggle)
+            if task.isCounted, !task.isDone {
+                Button("Add 1", action: onToggle)
+                if task.loggedCount > 0, let onStepDown { Button("Take back 1", action: onStepDown) }
+                if let onMarkDone { Button("Mark all \(Self.amountText(task.progressAmount)) done", action: onMarkDone) }
+            } else {
+                Button(task.isDone ? "Mark not done" : "Mark done", action: onToggle)
+            }
             if !task.isDone {
                 if let onTop { Button("Move to top", action: onTop) }
                 if let onTomorrow { Button("Move to tomorrow", action: onTomorrow) }
             }
-            if let onDelete {
+            if onDelete != nil {
                 Divider()
-                Button("Delete", role: .destructive, action: onDelete)
+                Button(syncsReminder ? "Delete from FocusFlow and Reminders…" : "Delete", role: .destructive, action: requestDelete)
             }
+        }
+        .confirmationDialog("Delete “\(task.title)” from Reminders too?", isPresented: $confirmDelete) {
+            Button("Delete from both", role: .destructive) { onDelete?() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It's synced with \(project?.name ?? "this project")'s Reminders list. To keep the reminder, move the task to tomorrow instead.")
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(task.isDone ? .isSelected : [])
@@ -123,6 +286,7 @@ struct DailyTasksSection: View {
     let now: Date
 
     @Environment(TimerViewModel.self) private var timerVM
+    private var remindersOn: Bool { timerVM.remindersSyncOn }
     @Query private var tasks: [DailyTask]
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
     @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
@@ -147,7 +311,7 @@ struct DailyTasksSection: View {
 
     var body: some View {
         let history = DailyTaskPlanner.history(tasks, endingOn: now)
-        FFSection("Today's tasks", subtitle: "Tick a task linked to a goal and the goal moves.") {
+        FFSection("Today's tasks", subtitle: "Tick what you finish. A task linked to a goal has a counter: each + logs 1 to the goal.") {
             if stats.planned > 0 {
                 DailyTaskProgressBadge(stats: stats)
             }
@@ -156,6 +320,7 @@ struct DailyTasksSection: View {
                 carryOverBanner
                 addRow
                 suggestions
+                DailyTaskReceiptBanner()
                 list
                 // Follow-through needs a little history before it says anything.
                 if history.filter({ $0.planned > 0 }).count >= 2 {
@@ -246,7 +411,7 @@ struct DailyTasksSection: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Ticking a linked task adds 1 to this key result")
+            .help("Link to a goal: finishing this task adds 1 to that result")
         }
     }
 
@@ -255,8 +420,8 @@ struct DailyTasksSection: View {
         let levers = DailyTaskPlanner.leverSuggestions(GoalDataBuilder.levers(activeGoals, now: now), existing: tasks, on: now)
         if !levers.isEmpty {
             HStack(spacing: FFSpace.s) {
-                Text("Today's levers").ffText(.caption)
-                    .help("From your goals' pace: add one as a task")
+                Text("From your goals").ffText(.caption)
+                    .help("What your goals need today to stay on pace. Click one to add it as a task with a counter.")
                 ForEach(levers.prefix(3)) { lever in
                     Button {
                         withAnimation(.smooth(duration: 0.25)) { _ = timerVM.addLeverTask(lever, now: now) }
@@ -291,10 +456,14 @@ struct DailyTasksSection: View {
                         task: task,
                         project: projects.first { $0.id == task.projectID },
                         resultTitle: keyResults.first { $0.result.id == task.keyResultID }?.result.title,
-                        onToggle: { withAnimation(.smooth(duration: 0.3)) { timerVM.setDailyTask(task, done: !task.isDone, now: Date()) } },
+                        onToggle: { withAnimation(.smooth(duration: 0.3)) { timerVM.advanceDailyTask(task, now: Date()) } },
+                        onStepDown: { withAnimation(.smooth(duration: 0.3)) { _ = timerVM.stepDailyTask(task, by: -1, now: Date()) } },
+                        onMarkDone: { withAnimation(.smooth(duration: 0.3)) { timerVM.setDailyTask(task, done: true, now: Date()) } },
                         onTop: { withAnimation(.smooth(duration: 0.3)) { timerVM.moveDailyTaskToTop(task) } },
                         onTomorrow: { withAnimation(.smooth(duration: 0.3)) { timerVM.moveDailyTaskToTomorrow(task, now: now) } },
-                        onDelete: { withAnimation(.smooth(duration: 0.25)) { timerVM.deleteDailyTask(task) } }
+                        onDelete: { withAnimation(.smooth(duration: 0.25)) { timerVM.deleteDailyTask(task) } },
+                        syncsReminder: remindersOn && task.reminderID != nil
+                            && !(projects.first { $0.id == task.projectID }?.reminderListID ?? "").isEmpty
                     )
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }

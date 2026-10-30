@@ -43,10 +43,33 @@ enum GoalDataBuilder {
         Set(projects.filter { !$0.archived && $0.areaRaw != nil && $0.area.isOwnWork }.map(projectKey))
     }
 
+    /// The ★ #1 project: the lowest priority rank among live projects.
+    static func topProject(_ projects: [Project]) -> Project? {
+        projects.filter { !$0.archived && $0.priorityRank != nil }.min { ($0.priorityRank ?? .max) < ($1.priorityRank ?? .max) }
+    }
+
+    /// What the daily goal counts (clarity fixes §4): one definition for the ring, the notch, the
+    /// coach's pace and Today. Your ★ #1 project once one is ranked; else own work once a project is
+    /// marked Work; else every block. Office time never fills the ring of the project you said matters.
+    static func goalScope(_ projects: [Project]) -> GoalScope {
+        if let top = topProject(projects) { return .project(key: projectKey(top), name: top.name) }
+        if ownWorkConfigured(projects) { return .ownWork(keys: ownWorkKeys(projects)) }
+        return .allFocus
+    }
+
+    /// Samples shrunk to the scope's share (split blocks count by their weight); all of them for `.allFocus`.
+    static func scopedSamples(_ samples: [FocusSample], scope: GoalScope) -> [FocusSample] {
+        guard let keys = scope.keys else { return samples }
+        return limited(samples, to: keys)
+    }
+
     /// Samples shrunk to their own-work share (split blocks count by their own-work weight).
     static func ownWorkSamples(_ samples: [FocusSample], projects: [Project]) -> [FocusSample] {
-        let keys = ownWorkKeys(projects)
-        return samples.compactMap { sample in
+        limited(samples, to: ownWorkKeys(projects))
+    }
+
+    private static func limited(_ samples: [FocusSample], to keys: Set<String>) -> [FocusSample] {
+        samples.compactMap { sample in
             let fraction = sample.normalisedShares.filter { keys.contains($0.project.id) }.reduce(0) { $0 + $1.fraction }
             guard fraction > 0 else { return nil }
             return FocusSample(
@@ -117,5 +140,41 @@ enum GoalDataBuilder {
 
     static func levers(_ goals: [ProjectGoal], now: Date) -> [DailyLever] {
         DailyLevers.levers(leverInputs(goals, now: now), now: now)
+    }
+}
+
+/// What the daily goal counts (`GoalDataBuilder.goalScope`).
+enum GoalScope: Equatable, Sendable {
+    case project(key: String, name: String)
+    case ownWork(keys: Set<String>)
+    case allFocus
+
+    /// Project keys that count; nil = every block.
+    var keys: Set<String>? {
+        switch self {
+        case .project(let key, _): [key]
+        case .ownWork(let keys): keys
+        case .allFocus: nil
+        }
+    }
+
+    var isFiltered: Bool { keys != nil }
+
+    /// The ring's label: "★ Learning", "Own work", "Focus today".
+    var label: String {
+        switch self {
+        case .project(_, let name): "★ \(name)"
+        case .ownWork: "Own work"
+        case .allFocus: "Focus today"
+        }
+    }
+
+    /// For sentences: "Learning", "your own work", "your focus".
+    var phrase: String {
+        switch self {
+        case .project(_, let name): name
+        case .ownWork: "your own work"
+        case .allFocus: "your focus"
+        }
     }
 }

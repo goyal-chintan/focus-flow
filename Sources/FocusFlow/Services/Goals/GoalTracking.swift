@@ -364,13 +364,19 @@ struct DailyLever: Sendable, Equatable, Identifiable {
     let goalTitle: String
     let projectID: UUID?
     /// "2 LeetCode questions", "Apply for jobs".
-    let action: String
+    var action: String
     /// "need 2.1/day · 18 days left".
     let reason: String
     let status: GoalPaceStatus
     let urgency: Double
     /// How much today's action adds to the key result (3 for "3 LeetCode questions"; 1 for a checkbox).
     var amount: Double = 1
+    /// The thing being counted, for a counted task: "LeetCode questions", "Problems solved".
+    var countedName: String? = nil
+
+    /// The title for "add as a task". A counted task names what you count; its counter shows how
+    /// many ("Problems solved 0 of 3"). A one-off keeps the action.
+    var taskTitle: String { amount > 1 ? (countedName ?? action) : action }
 }
 
 enum DailyLevers {
@@ -431,7 +437,8 @@ enum DailyLevers {
                 status: pace.status,
                 urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0)
                     + max(0, -pace.delta) / max(1, input.target) * 10 + needed / max(1, input.target),
-                amount: Double(todayAsk)
+                amount: Double(todayAsk),
+                countedName: input.unit.map { "\(input.title) \($0)" } ?? input.title
             )
         }
         // Most urgent first: overdue and the boss fight carry large bonuses, then how far behind.

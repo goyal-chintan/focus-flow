@@ -15,7 +15,6 @@ struct ManualSessionView: View {
     @State private var selectedProject: Project?
     @State private var duration: Int = 25
     @State private var startTime: Date = Date().addingTimeInterval(-25 * 60)
-    @State private var selectedMood: FocusMood?
     @State private var achievement: String = ""
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
@@ -53,7 +52,6 @@ struct ManualSessionView: View {
                 projectSection
                 durationSection
                 whenSection
-                moodSection
                 achievementSection
                 splitSection
                 actionButtons
@@ -154,14 +152,6 @@ struct ManualSessionView: View {
                 displayedComponents: [.date, .hourAndMinute]
             )
             .datePickerStyle(.compact)
-        }
-    }
-
-    private var moodSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Focus Quality")
-
-            MoodSelector(selectedMood: $selectedMood)
         }
     }
 
@@ -296,7 +286,6 @@ struct ManualSessionView: View {
         session.startedAt = startTime
         session.endedAt = computedEndTime
         session.completed = true
-        session.mood = selectedMood
         session.achievement = achievement.isEmpty ? nil : achievement
         modelContext.insert(session)
 

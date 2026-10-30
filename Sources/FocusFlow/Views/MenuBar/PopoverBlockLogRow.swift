@@ -31,9 +31,9 @@ struct PopoverBlockLogRow: View {
     private func taskRow(_ task: DailyTask?, stats: DailyTaskStats) -> some View {
         HStack(spacing: 4) {
             if let task {
-                DailyTaskCheck(isDone: task.isDone, size: 15) {
+                DailyTaskControl(task: task, size: 15) {
                     withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) {
-                        timerVM.setDailyTask(task, done: !task.isDone)
+                        timerVM.advanceDailyTask(task)
                     }
                 }
                 Text(task.title)
@@ -41,6 +41,7 @@ struct PopoverBlockLogRow: View {
                     .foregroundStyle(task.isDone ? .secondary : .primary)
                     .strikethrough(task.isDone)
                     .lineLimit(1)
+                DailyTaskCountText(task: task)
             } else {
                 Image(systemName: "checklist")
                     .font(.system(size: 11, weight: .semibold))

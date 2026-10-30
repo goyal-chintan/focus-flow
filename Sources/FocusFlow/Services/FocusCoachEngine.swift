@@ -2,9 +2,7 @@ import Foundation
 
 /// Protocol for persisting coach data. Enables in-memory testing without SwiftData.
 protocol FocusCoachPersisting: AnyObject {
-    func saveInterruption(_ interruption: CoachInterruption)
     func saveInterventionAttempt(_ attempt: InterventionAttempt)
-    var interruptions: [CoachInterruption] { get }
     var attempts: [InterventionAttempt] { get }
     /// Attempts delivered at or after `date`. Stores with a query engine should override this.
     func attempts(deliveredSince date: Date) -> [InterventionAttempt]
@@ -28,12 +26,7 @@ extension FocusCoachPersisting {
 
 /// In-memory store for unit testing without SwiftData.
 final class InMemoryCoachStore: FocusCoachPersisting {
-    var interruptions: [CoachInterruption] = []
     var attempts: [InterventionAttempt] = []
-
-    func saveInterruption(_ interruption: CoachInterruption) {
-        interruptions.append(interruption)
-    }
 
     func saveInterventionAttempt(_ attempt: InterventionAttempt) {
         attempts.append(attempt)
@@ -72,11 +65,6 @@ final class FocusCoachEngine {
     /// Latest suspicious-context observation from AppUsageTracker (updated each foreground change).
     var latestObservation: SuspiciousContextObservation?
 
-    /// Called when an avoidant observation (procrastinating / lowPriorityWork) arrives during an
-    /// active session and DriftMemory has no project-scoped allowance for it.
-    /// Wire in TimerViewModel to trigger guardian-state escalation.
-    var onAvoidantObservationWithoutAllowance: ((SuspiciousContextObservation) -> Void)?
-
     /// The TaskIntent ID for the current session (set from pre-session card)
     var currentTaskIntentId: UUID?
 
@@ -93,11 +81,6 @@ final class FocusCoachEngine {
     /// Prompt budget (adaptive or from settings)
     var promptBudget: Int = 4
 
-    /// Whether the reason chip sheet should be shown (set by anomaly detection)
-    var shouldShowReasonSheet = false
-    var pendingAnomalyKind: FocusCoachInterruptionKind?
-    /// Prevents repeated drift reason prompts while the same high-risk streak is still active.
-    private var hasPromptedDriftReasonInCurrentStreak = false
     /// The attempt most recently delivered by this engine. Outcomes resolve against it so they
     /// never depend on the store's sort order (bug B3: SwiftData returns newest-first).
     private(set) var lastDeliveredAttempt: InterventionAttempt?
@@ -118,23 +101,6 @@ final class FocusCoachEngine {
     }
 
     // MARK: - Outside-session pattern signals
-
-    /// True when current latest observation matches deterministic repeated risk evidence for the
-    /// current (project, workMode, normalizedContextKey) tuple.
-    func hasRepeatedProjectPatternForLatestObservation() -> Bool {
-        guard let observation = latestObservation else { return false }
-        return hasRepeatedProjectPattern(for: observation)
-    }
-
-    /// True when latest observation has historical missed-start evidence for this project tuple.
-    func hasHistoricalMissedStartPatternForLatestObservation() -> Bool {
-        guard let observation = latestObservation else { return false }
-        return blockingRecommendationEngine.hasMissedStartPattern(
-            projectId: observation.selectedProjectId,
-            workMode: observation.selectedWorkMode,
-            contextKey: observation.normalizedContextKey
-        )
-    }
 
     /// Exposed for unit tests and deterministic planner wiring.
     func hasRepeatedProjectPattern(for observation: SuspiciousContextObservation) -> Bool {
@@ -183,28 +149,11 @@ final class FocusCoachEngine {
 
     // MARK: - Observation Routing
 
-    /// Processes a new suspicious context observation from AppUsageTracker.
-    /// Stores it in `latestObservation` and, during active sessions, routes avoidant
-    /// dispositions to guardian escalation unless DriftMemory grants a project-scoped allowance.
+    /// Keeps the latest suspicious context observation from AppUsageTracker, which
+    /// `recordOutsideSessionClassification` files into drift memory. Escalation from here had no
+    /// receiver and was removed with the reason chips (2026-10-30).
     func handleNewObservation(_ observation: SuspiciousContextObservation) {
         latestObservation = observation
-
-        guard isActive,
-              let disposition = observation.suggestedDisposition,
-              disposition.isAvoidant else { return }
-
-        let contextKey = observation.normalizedContextKey
-        let projectId   = observation.selectedProjectId
-        let workMode    = observation.selectedWorkMode
-
-        // Skip challenge if user has previously confirmed this context as planned work
-        if let store = driftMemoryStore,
-           store.projectScopedAllowance(projectId: projectId, workMode: workMode, appOrDomain: contextKey) {
-            return
-        }
-
-        // Route to guardian advisor for potential escalation
-        onAvoidantObservationWithoutAllowance?(observation)
     }
 
     // MARK: - Session Lifecycle
@@ -217,9 +166,6 @@ final class FocusCoachEngine {
         promptState = .initial
         lastRiskResult = .stable
         lastDecision = .none
-        shouldShowReasonSheet = false
-        pendingAnomalyKind = nil
-        hasPromptedDriftReasonInCurrentStreak = false
 
         // Calibrate personal profile from 14-day rolling window
         calibrateProfile()
@@ -231,9 +177,6 @@ final class FocusCoachEngine {
         currentSessionId = nil
         sessionStartedAt = nil
         currentTaskIntentId = nil
-        shouldShowReasonSheet = false
-        pendingAnomalyKind = nil
-        hasPromptedDriftReasonInCurrentStreak = false
     }
 
     // MARK: - Signal Ingestion
@@ -245,10 +188,6 @@ final class FocusCoachEngine {
 
     func updatePauseCount(_ count: Int) {
         currentSignals.pauseCount = count
-    }
-
-    func updateBreakOverrun(_ seconds: Double) {
-        currentSignals.breakOverrunSeconds = seconds
     }
 
     // MARK: - Tick (called ~every 30s during active session)
@@ -265,7 +204,6 @@ final class FocusCoachEngine {
             promptState.consecutiveHighRiskWindows += 1
         } else {
             promptState.consecutiveHighRiskWindows = 0
-            hasPromptedDriftReasonInCurrentStreak = false
         }
 
         // Use adaptive prompt budget from personal profile if calibrated
@@ -282,15 +220,6 @@ final class FocusCoachEngine {
         )
 
         lastDecision = decision
-
-        // Trigger reason chip sheet for repeated drift (≥3 consecutive high-risk windows)
-        let classifier = FocusCoachAnomalyClassifier()
-        if classifier.shouldPromptReason(event: .repeatedDrift(consecutiveHighRiskWindows: promptState.consecutiveHighRiskWindows)),
-           !hasPromptedDriftReasonInCurrentStreak {
-            shouldShowReasonSheet = true
-            pendingAnomalyKind = .drift
-            hasPromptedDriftReasonInCurrentStreak = true
-        }
 
         return decision.kind == .none ? nil : decision
     }
@@ -342,29 +271,6 @@ final class FocusCoachEngine {
     /// Prompts shown since `date` (any surface), for the non-learnable guardrails.
     func guardrailDeliveries(since date: Date) -> [CoachGuardrails.Delivery] {
         store.attempts(deliveredSince: date).map(CoachGuardrails.Delivery.init(attempt:))
-    }
-
-    // MARK: - Anomaly Reason Recording
-
-    /// Records why an anomaly happened (user-selected reason chip).
-    func recordAnomaly(kind: FocusCoachInterruptionKind, reason: FocusCoachReason?, sessionId: UUID?) {
-        let interruption = CoachInterruption(
-            sessionId: sessionId ?? currentSessionId ?? UUID(),
-            kind: kind,
-            reason: reason,
-            riskScoreAtDetection: lastRiskResult.score
-        )
-        store.saveInterruption(interruption)
-
-        // Update signals: legitimate reason dampens future scoring
-        if let reason, reason.isLegitimate {
-            currentSignals.recentLegitimateReason = true
-        }
-
-        if let reason,
-           let observation = latestObservation {
-            recordClassification(mapDisposition(from: reason), for: observation)
-        }
     }
 
     // MARK: - Intervention Outcome
@@ -474,25 +380,6 @@ final class FocusCoachEngine {
                 contextKey: contextKey,
                 displayName: displayName
             )
-        }
-    }
-
-    private func mapDisposition(from reason: FocusCoachReason) -> ContextDisposition {
-        switch reason {
-        case .meeting, .familyPersonal:
-            return .legitimateInterruption
-        case .plannedResearch:
-            return .plannedResearch
-        case .requiredSwitch:
-            return .requiredContextSwitch
-        case .realBreak:
-            return .realBreak
-        case .fatigue:
-            return .fatigued
-        case .lowPriorityWork:
-            return .lowPriorityWork
-        case .procrastinating, .vibeCodingDrift, .overPlanning, .scrollingBrowsing, .avoidingHardPart:
-            return .procrastinating
         }
     }
 

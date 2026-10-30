@@ -12,15 +12,6 @@ final class SwiftDataCoachStore: @preconcurrency FocusCoachPersisting {
         self.modelContext = modelContext
     }
 
-    func saveInterruption(_ interruption: CoachInterruption) {
-        modelContext.insert(interruption)
-        do {
-            try modelContext.save()
-        } catch {
-            print("[SwiftDataCoachStore] Failed to save interruption: \(error.localizedDescription)")
-        }
-    }
-
     func saveInterventionAttempt(_ attempt: InterventionAttempt) {
         modelContext.insert(attempt)
         do {
@@ -28,13 +19,6 @@ final class SwiftDataCoachStore: @preconcurrency FocusCoachPersisting {
         } catch {
             print("[SwiftDataCoachStore] Failed to save intervention attempt: \(error.localizedDescription)")
         }
-    }
-
-    var interruptions: [CoachInterruption] {
-        let descriptor = FetchDescriptor<CoachInterruption>(
-            sortBy: [SortDescriptor(\.detectedAt, order: .reverse)]
-        )
-        return (try? modelContext.fetch(descriptor)) ?? []
     }
 
     func attempts(deliveredSince date: Date) -> [InterventionAttempt] {

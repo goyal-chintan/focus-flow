@@ -95,6 +95,8 @@ final class GoalProgressEntry {
     var note: String?
     /// The focus block it came from, when logged at the end of a session.
     var sessionID: UUID?
+    /// The daily task it was logged through, so a −1 or an untick removes exactly its entries.
+    var taskID: UUID?
     var keyResult: GoalKeyResult?
 
     init(amount: Double, at: Date = Date(), note: String? = nil, sessionID: UUID? = nil) {

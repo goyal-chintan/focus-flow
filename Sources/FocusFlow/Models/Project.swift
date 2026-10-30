@@ -28,6 +28,9 @@ final class Project {
     var targetWeekdaysOnly: Bool?
     /// One line on why it matters.
     var purpose: String?
+    /// The Apple Reminders list (`EKCalendar.calendarIdentifier`) synced with this project's tasks:
+    /// its reminders due today import as tasks, and ticks, adds and moves go back. Nil = not synced.
+    var reminderListID: String?
 
     @Relationship(deleteRule: .nullify, inverse: \FocusSession.project)
     var sessions: [FocusSession]

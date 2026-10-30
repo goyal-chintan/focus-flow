@@ -1124,7 +1124,6 @@ final class UIEvidenceCaptureTests: XCTestCase {
 
         case "menu_bar_break_overrun":
             let fixture = try fixtures.breakCompletionFixture()
-            fixture.vm.showCoachReasonSheet = false
             return try renderMenuBar(fixture, appearance: appearance)
 
         case "session_complete_focus_complete":
@@ -1144,7 +1143,6 @@ final class UIEvidenceCaptureTests: XCTestCase {
 
         case "session_complete_break_complete":
             let fixture = try fixtures.breakCompletionFixture()
-            fixture.vm.showCoachReasonSheet = false
             return try renderSessionComplete(fixture, appearance: appearance)
 
         case "coach_quick_prompt":
@@ -1185,13 +1183,11 @@ final class UIEvidenceCaptureTests: XCTestCase {
         case "break_complete_reason_sheet_hidden":
             // Replaces old "first_run_initial_render" — captures break-complete window without reason sheet.
             let fixture = try fixtures.breakCompletionFixture()
-            fixture.vm.showCoachReasonSheet = false
             return try renderSessionComplete(fixture, appearance: appearance)
 
         case "break_complete_reason_sheet_visible":
             // Replaces old "first_run_first_toggle" — captures break-complete window with reason sheet expanded.
             let fixture = try fixtures.breakCompletionFixture()
-            fixture.vm.showCoachReasonSheet = true
             return try renderSessionComplete(fixture, appearance: appearance)
 
         case "session_complete_earned_stage":
@@ -1203,7 +1199,6 @@ final class UIEvidenceCaptureTests: XCTestCase {
             // Recovery chips appear when breakEpisodeContext.overrunSeconds > 60. The breakCompletion
             // fixture already seeds overtimeSeconds = 190, which maps to overrunSeconds via the break episode.
             let fixture = try fixtures.breakCompletionFixture()
-            fixture.vm.showCoachReasonSheet = false
             return try renderSessionComplete(fixture, appearance: appearance)
 
         case "coach_window_dismiss":
@@ -1935,7 +1930,6 @@ final class UIEvidenceCaptureTests: XCTestCase {
             duration: 5 * 60,
             overtimeSeconds: 190
         )
-        fixture.vm.showCoachReasonSheet = showReasonSheet
 
         guard fixture.vm.isOvertime, fixture.vm.lastCompletionWasBreak else {
             throw CaptureError.flowFixtureFailed("Failed to reach break-complete overtime state")

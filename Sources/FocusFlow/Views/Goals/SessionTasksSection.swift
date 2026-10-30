@@ -15,8 +15,6 @@ struct SessionTasksSection: View {
     /// The task the block was started for. Shown in "Did you finish it?", not in this list.
     let blockTaskID: UUID?
     let projectID: UUID?
-    /// "Attach reminder" in the header. Nil hides it (Reminders sync off).
-    var onAttachReminder: (() -> Void)? = nil
 
     @Environment(TimerViewModel.self) private var timerVM
     @Query private var tasks: [DailyTask]
@@ -27,11 +25,10 @@ struct SessionTasksSection: View {
 
     static let maxRows = 5
 
-    init(sessionID: UUID, blockTaskID: UUID?, projectID: UUID?, onAttachReminder: (() -> Void)? = nil, now: Date = Date()) {
+    init(sessionID: UUID, blockTaskID: UUID?, projectID: UUID?, now: Date = Date()) {
         self.sessionID = sessionID
         self.blockTaskID = blockTaskID
         self.projectID = projectID
-        self.onAttachReminder = onAttachReminder
         let since = Calendar.current.startOfDay(for: now)
         _tasks = Query(filter: #Predicate<DailyTask> { $0.day >= since })
     }
@@ -61,6 +58,7 @@ struct SessionTasksSection: View {
         VStack(alignment: .leading, spacing: 8) {
             header(stats)
             let rows = shown
+            DailyTaskReceiptBanner(compact: true)
             if !rows.isEmpty {
                 VStack(spacing: 2) {
                     ForEach(rows) { task in
@@ -103,32 +101,24 @@ struct SessionTasksSection: View {
                     .contentTransition(.numericText())
             }
             Spacer(minLength: 4)
-            if let onAttachReminder {
-                Button(action: onAttachReminder) {
-                    Label("Attach reminder", systemImage: "checklist")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(minHeight: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(LiquidDesignTokens.Spectral.electricBlue)
-                .accessibilityLabel("Attach reminder")
-            }
         }
     }
 
     private func row(_ task: DailyTask) -> some View {
         HStack(spacing: 6) {
-            DailyTaskCheck(isDone: task.isDone, size: 17) {
+            DailyTaskControl(task: task, resultTitle: task.keyResultID.flatMap { resultTitles[$0] }, size: 17) {
                 withAnimation(.smooth(duration: 0.25)) {
-                    timerVM.setDailyTask(task, done: !task.isDone, sessionID: sessionID)
+                    timerVM.advanceDailyTask(task, sessionID: sessionID)
                 }
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(task.title)
-                    .font(.system(size: 13))
-                    .strikethrough(task.isDone, color: .secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(task.title)
+                        .font(.system(size: 13))
+                        .strikethrough(task.isDone, color: .secondary)
+                        .lineLimit(1)
+                    DailyTaskCountText(task: task)
+                }
                 if let caption = Self.goalCaption(task, resultTitles: resultTitles) {
                     Text(caption)
                         .font(.system(size: 11))
@@ -141,10 +131,16 @@ struct SessionTasksSection: View {
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(task.isDone ? 0.06 : 0.03)))
     }
 
-    /// "+1 SQL questions" for a task linked to a key result.
     static func goalCaption(_ task: DailyTask, resultTitles: [UUID: String]) -> String? {
         guard let resultID = task.keyResultID, let title = resultTitles[resultID] else { return nil }
-        return "+\(DailyTaskRow.amountText(task.progressAmount)) \(title)"
+        return goalCaption(task, resultTitle: title)
+    }
+
+    /// Says what the control does, then what it did: "Each + logs 1 to SQL" (counted, open),
+    /// "Counts 1 toward SQL" (one-off, open), "Logged 3 to SQL" (done).
+    static func goalCaption(_ task: DailyTask, resultTitle: String) -> String {
+        if task.isDone { return "Logged \(DailyTaskRow.amountText(task.loggedCount)) to \(resultTitle)" }
+        return task.isCounted ? "Each + logs 1 to \(resultTitle)" : "Counts \(DailyTaskRow.amountText(task.progressAmount)) toward \(resultTitle)"
     }
 
     private func entryField(symbol: String, placeholder: String, text: Binding<String>, accessibility: String, submit: @escaping () -> Void) -> some View {

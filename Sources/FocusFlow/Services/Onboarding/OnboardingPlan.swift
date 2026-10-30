@@ -228,10 +228,13 @@ struct OnboardingDraft: Equatable {
                 goal.isBossFight = !goals.contains { $0.status == .active && $0.isBossFight }
                 goal.keyResults = [.init(title: trimmedResult, kind: .count, target: Double(resultTarget))]
                 let saved = goal.apply(in: context, existing: nil)
-                // Today's step becomes the first task, linked, so ticking it moves the goal.
+                // Today's step becomes the first task, linked, so each +1 moves the goal. A counted
+                // task is named for what you count ("Problems solved", counter "0 of 3"), never as a
+                // finished state ("3 problems solved").
                 if let result = saved.sortedKeyResults.first {
                     let quota = dailyQuota
-                    let task = DailyTask(title: "\(quota) \(resultUnit(quota))", day: Calendar.current.startOfDay(for: now),
+                    let title = quota > 1 ? trimmedResult : "\(quota) \(resultUnit(quota))"
+                    let task = DailyTask(title: title, day: Calendar.current.startOfDay(for: now),
                                          projectID: project.id, keyResultID: result.id, amount: Double(quota))
                     context.insert(task)
                 }

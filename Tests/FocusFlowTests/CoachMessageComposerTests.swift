@@ -147,7 +147,7 @@ final class CoachMessageComposerTests: XCTestCase {
 
     func testQuoteLibraryIsSeededOnlyWithAttributedSpecQuotes() {
         let all = CoachQuoteLibrary.all
-        XCTAssertEqual(all.count, 28, "The rescue loop design §4 seed list, plus the approved quotes and Challenger house lines")
+        XCTAssertEqual(all.count, 46, "The rescue loop design §4 seed list, the approved quotes, Challenger house lines and Dan Koe's lines and questions")
         XCTAssertTrue(all.allSatisfy { !$0.situations.isEmpty })
         XCTAssertTrue(all.filter { !$0.isHouseLine }.allSatisfy { !$0.source.isEmpty && !$0.author.isEmpty })
         XCTAssertEqual(all.filter { $0.author == "James Clear" }.count, 5)
@@ -179,6 +179,11 @@ final class CoachMessageComposerTests: XCTestCase {
             // Challenger house lines
             "house-intelligence-discipline", "house-cost-of-procrastination", "house-give-it-minutes",
             "house-secret-getting-started",
+            // Dan Koe, "How to fix your entire life in 1 day" (2025): statements and interrupt questions
+            "koe-not-the-person", "koe-afraid", "koe-learn-from-mistakes", "koe-progress", "koe-anti-vision-stakes",
+            "koe-levers-quests", "koe-q-avoiding", "koe-q-filmed", "koe-q-toward", "koe-q-pretending",
+            "koe-q-identity-protection", "koe-q-alive", "koe-q-safety", "koe-q-smallest-version", "koe-q-complain",
+            "koe-q-embarrassing", "koe-q-tuesday", "koe-q-this-week",
         ]
         XCTAssertEqual(Set(CoachQuoteLibrary.all.map(\.id)), expected)
         XCTAssertEqual(CoachQuoteLibrary.all.filter(\.isHouseLine).count, 4)

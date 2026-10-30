@@ -237,6 +237,7 @@ struct ProjectsListView: View {
             }
             draft.apply(to: target, others: projects, in: modelContext)
             saveWithFeedback(modelContext, errorBinding: $saveError)
+            timerVM.scheduleReminderSync(after: .zero)
             if editingProject == nil {
                 timerVM.selectedProject = target
                 timerVM.noteProjectSelected()

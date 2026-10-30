@@ -34,6 +34,20 @@ struct MenuBarPopoverView: View {
             VStack(spacing: 0) {
                 headerBar
 
+                if timerVM.isPrivate {
+                    PrivacyStrip()
+                        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                        .padding(.top, 12)
+                }
+
+                // Your line for today (own words first, else a verified quote), in every state.
+                if timerVM.recoveryState == nil {
+                    DailyReminderView(style: .strip)
+                        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
+                        .padding(.top, 10)
+                        .padding(.bottom, timerVM.state == .idle && !timerVM.isOvertime ? 0 : 12)
+                }
+
                 activeContextSection
 
                 coachStripSection
@@ -292,6 +306,20 @@ struct MenuBarPopoverView: View {
                 .help("Open Goals: own work against your priorities")
                 .accessibilityLabel("Today's verdict. Opens Goals")
 
+                // Private now: hide FocusFlow from the menu bar, notch and pop-ups (SharePrivacy).
+                Button {
+                    withAnimation(FFMotion.control) { timerVM.setPrivateManually(!timerVM.isPrivateManual) }
+                } label: {
+                    Image(systemName: timerVM.isPrivateManual ? "eye.slash.fill" : "eye.slash")
+                        .font(.system(size: 12))
+                        .foregroundStyle(timerVM.isPrivateManual ? AnyShapeStyle(.tint) : AnyShapeStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7)))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(timerVM.isPrivateManual ? "Show FocusFlow again" : "Private now: hide FocusFlow from the menu bar, notch and pop-ups")
+                .accessibilityLabel(timerVM.isPrivateManual ? "Turn off private mode" : "Turn on private mode")
+
                 Button {
                     openStatsWindow(requestedTab: nil)
                 } label: {
@@ -407,14 +435,17 @@ private struct IdlePopoverContent: View {
 
     @State private var showCustomSlider: Bool = false
     @State private var startCommitting: Bool = false
-    /// The coach's learned size (`startLadderRecommendation`), preselected on open.
+    /// The coach's learned size (`startLadderRecommendation`), marked with a sparkle.
     @State private var suggestion: CoachBlockSizeLadder.Recommendation?
     /// Today's lever (first of `GoalDataBuilder.levers`): the hero and the goal field share it.
     @State private var lever: DailyLever?
     /// The lever text this view put in the goal field, so it can be replaced but never user text.
     @State private var autoIntent: String?
 
-    private static let presetMinutes: [Int] = CoachBlockSizeLadder.sizes
+    /// 5 · 15 · 25, plus your regular length when it is another size (e.g. 45).
+    static func presets(regular: Int) -> [Int] {
+        CoachBlockSizeLadder.sizes.contains(regular) ? CoachBlockSizeLadder.sizes : (CoachBlockSizeLadder.sizes + [regular]).sorted()
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -443,9 +474,10 @@ private struct IdlePopoverContent: View {
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             .padding(.top, 12)
 
+            // "Plan for later" lives in the coach's plan card, where it is asked for; opening the
+            // popover is a moment to start, not to schedule.
             VStack(spacing: 2) {
                 startButton
-                PopoverPlanLaterMenu()
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             .padding(.top, 14)
@@ -454,6 +486,13 @@ private struct IdlePopoverContent: View {
         .task(id: refreshKey) {
             refresh()
         }
+        // Your regular length is preselected when the popover opens and after each block, never
+        // on a task change, so a pill you just tapped stays put. The coach's size has the sparkle.
+        .onAppear {
+            preselectRegularLength()
+            timerVM.scheduleReminderSync()
+        }
+        .onChange(of: timerVM.completedFocusSessions) { _, _ in preselectRegularLength() }
         .onChange(of: timerVM.selectedProject) { _, newValue in
             if newValue != nil { timerVM.noteProjectSelected() }
             applyIntentPrefill()
@@ -473,13 +512,16 @@ private struct IdlePopoverContent: View {
     }
 
     private func refresh() {
-        lever = GoalDataBuilder.levers(timerVM.historyReaderActiveGoals(), now: Date()).first
+        lever = timerVM.todayLevers().first
         let recommendation = timerVM.startLadderRecommendation(now: Date())
         suggestion = recommendation
-        if !showCustomSlider {
-            timerVM.selectedMinutes = recommendation.minutes
-        }
         applyIntentPrefill()
+    }
+
+    /// (Preselecting the coach's size here overwrote 25 with 5 after declined prompts.)
+    private func preselectRegularLength() {
+        guard !showCustomSlider else { return }
+        timerVM.selectedMinutes = timerVM.regularMinutes
     }
 
     // MARK: Goal for this block
@@ -497,6 +539,14 @@ private struct IdlePopoverContent: View {
         let lastIntent = CoachHistoryReader(modelContext: modelContext).lastIntent(projectID: timerVM.selectedProject?.id) ?? ""
         let isAuto = current.isEmpty || current == lastIntent || current == autoIntent
         guard isAuto, let lever else { return }
+        // The lever's goal already has a task today: the block is for that task, so its end asks
+        // "How many did you do?" and the count lands on the task and the goal together.
+        if let task = timerVM.todayTasks().first(where: { $0.keyResultID == lever.id && !$0.isDone }),
+           timerVM.selectedProject == nil || task.projectID == nil || task.projectID == timerVM.selectedProject?.id {
+            pickTask(task)
+            autoIntent = task.title
+            return
+        }
         let projectID = timerVM.selectedProject?.id
         guard projectID == nil || lever.projectID == nil || lever.projectID == projectID else {
             // Another project's lever: fall back to this project's last intent.
@@ -576,7 +626,7 @@ private struct IdlePopoverContent: View {
             }
 
             BlockSizeRow(
-                presets: Self.presetMinutes,
+                presets: Self.presets(regular: timerVM.regularMinutes),
                 suggested: suggestion?.minutes,
                 selectedMinutes: $vm.selectedMinutes,
                 isCustomActive: $showCustomSlider
@@ -935,26 +985,23 @@ private struct FocusingPopoverContent: View {
     @Binding var selectedProject: Project?
     var isStarterBlock: Bool = false
     var starterStep: Binding<String> = .constant("")
-    let canReduceTime: Bool
-    let canExtendTime: Bool
-    let showPauseReasonChips: Bool
+    /// The running block's length and which sizes it can take (`TimerViewModel.setBlockLength`).
+    let blockMinutes: Int
+    let regularMinutes: Int
+    let canSetLength: (Int) -> Bool
     let cycleProgress: Double
     let onPause: () -> Void
-    let onExtendTime: () -> Void
-    let onReduceTime: () -> Void
+    let onSetLength: (Int) -> Void
     let onShowStopConfirmation: () -> Void
     let onSaveStop: () -> Void
     let onDiscardStop: () -> Void
     let onCancelStop: () -> Void
-    let onPauseReasonSelected: (FocusCoachReason) -> Void
-    let onPauseReasonDismissed: () -> Void
-    let onSwitchProject: (Project?, FocusCoachReason) -> Void
+    let onSwitchProject: (Project?) -> Void
 
     @State private var saveAnimating = false
     @State private var discardAnimating = false
     @State private var showProjectSwitcher = false
     @State private var switchTarget: Project?
-    @State private var showSwitchReasonChips = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -962,12 +1009,6 @@ private struct FocusingPopoverContent: View {
             if isStarterBlock {
                 StarterStepField(step: starterStep)
                     .padding(.top, 10)
-            }
-
-            // Inline pause reason chips (shown after resuming from 2+ min pause)
-            if showPauseReasonChips {
-                pauseReasonChipStrip
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
 
             // Pause / Stop buttons — native glass
@@ -991,18 +1032,17 @@ private struct FocusingPopoverContent: View {
             }
             .padding(.top, 14)
 
-            // -5/+5 min Extension buttons
-            extensionButtons
-                .padding(.top, 8)
+            // Block length: 5 · 15 · 25. Grows a warm-up in place and becomes the regular length.
+            if !isStarterBlock {
+                lengthRow
+                    .padding(.top, 8)
+            }
 
             // Switch project inline flow (a starter block needs no project)
             if isStarterBlock {
                 EmptyView()
             } else if showProjectSwitcher {
                 projectSwitcherInline
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
-            } else if showSwitchReasonChips {
-                switchReasonChipStrip
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             } else {
                 Button {
@@ -1032,89 +1072,48 @@ private struct FocusingPopoverContent: View {
         .padding(.bottom, 12)
     }
 
-    private var extensionButtons: some View {
-        HStack(spacing: 12) {
-            Button(action: onReduceTime) {
-                HStack(spacing: 4) {
-                    Image(systemName: "minus")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("5 min")
-                        .font(.system(size: 13, weight: .medium))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-            }
-            .frame(minHeight: 44)
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-            .disabled(!canReduceTime)
-            .opacity(canReduceTime ? 1 : 0.38)
-            .accessibilityLabel("Reduce time by 5 minutes")
-            .help(canReduceTime ? "Reduce session by 5 minutes" : "Less than 6 minutes remaining")
+    /// 5 · 15 · 25, your regular length and this block's length, once each.
+    private var lengthOptions: [Int] {
+        Array(Set(IdlePopoverContent.presets(regular: regularMinutes) + [blockMinutes])).sorted()
+    }
 
-            Button(action: onExtendTime) {
-                HStack(spacing: 4) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("5 min")
-                        .font(.system(size: 13, weight: .medium))
+    private var lengthRow: some View {
+        HStack(spacing: 6) {
+            Text("Length")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+            GlassEffectContainer {
+                HStack(spacing: 6) {
+                    ForEach(lengthOptions, id: \.self) { minutes in
+                        lengthPill(minutes)
+                    }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
-            .frame(minHeight: 44)
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
-            .disabled(!canExtendTime)
-            .opacity(canExtendTime ? 1 : 0.38)
-            .accessibilityLabel("Extend time by 5 minutes")
-            .help(canExtendTime ? "Extend session by 5 minutes" : "Maximum session length (4 hours) reached")
         }
     }
 
-    private var pauseReasonChipStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Long pause — what happened?")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-                Spacer()
-                Button {
-                    withAnimation(FFMotion.section) { onPauseReasonDismissed() }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss pause reason")
-            }
-
-            FlowLayout(spacing: 6) {
-                ForEach(FocusCoachReason.allCases, id: \.self) { reason in
-                    Button {
-                        withAnimation(FFMotion.section) { onPauseReasonSelected(reason) }
-                    } label: {
-                        Text(reason.displayName)
-                            .font(.system(size: 11, weight: .medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
-                    .accessibilityLabel(reason.displayName)
-                }
-            }
+    @ViewBuilder
+    private func lengthPill(_ minutes: Int) -> some View {
+        let isCurrent = minutes == blockMinutes
+        let enabled = isCurrent || canSetLength(minutes)
+        let button = Button { onSetLength(minutes) } label: {
+            Text("\(minutes)m")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 30)
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.orange.opacity(0.08))
-                .strokeBorder(Color.orange.opacity(0.15), lineWidth: 0.5)
-        )
-        .padding(.top, 6)
+        .buttonBorderShape(.capsule)
+        .disabled(!enabled || isCurrent)
+        .opacity(enabled ? 1 : 0.38)
+        .accessibilityLabel(isCurrent ? "Block length \(minutes) minutes, current" : "Make this block \(minutes) minutes")
+        .help(isCurrent ? "This block's length"
+              : !enabled ? "Less than a minute would be left"
+              : minutes >= TimerViewModel.smallestRegularMinutes ? "Make this block \(minutes) minutes, and use \(minutes) for the next blocks"
+              : "Make just this block \(minutes) minutes")
+        if isCurrent {
+            button.buttonStyle(.glassProminent).tint(LiquidDesignTokens.Spectral.primaryContainer)
+        } else {
+            button.buttonStyle(.glass)
+        }
     }
 
     private var projectSwitcherInline: some View {
@@ -1150,46 +1149,12 @@ private struct FocusingPopoverContent: View {
                     }
                     withAnimation(FFMotion.section) {
                         showProjectSwitcher = false
-                        showSwitchReasonChips = true
+                        onSwitchProject(switchTarget)
                     }
                 }
             )
             .disabled(switchTarget == nil || switchTarget?.id == selectedProject?.id)
             .opacity((switchTarget == nil || switchTarget?.id == selectedProject?.id) ? 0.5 : 1.0)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.blue.opacity(0.06))
-                .strokeBorder(Color.blue.opacity(0.12), lineWidth: 0.5)
-        )
-    }
-
-    private var switchReasonChipStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Why switching?")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-
-            let switchReasons: [FocusCoachReason] = [.requiredSwitch, .meeting, .familyPersonal, .procrastinating]
-            FlowLayout(spacing: 6) {
-                ForEach(switchReasons, id: \.self) { reason in
-                    Button {
-                        withAnimation(FFMotion.section) {
-                            showSwitchReasonChips = false
-                            onSwitchProject(switchTarget, reason)
-                        }
-                    } label: {
-                        Text(reason.displayName)
-                            .font(.system(size: 11, weight: .medium))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
-                    .accessibilityLabel(reason.displayName)
-                }
-            }
         }
         .padding(10)
         .background(
@@ -1606,16 +1571,13 @@ extension MenuBarPopoverView {
             selectedProject: $vm.selectedProject,
             isStarterBlock: timerVM.isStarterBlock,
             starterStep: $vm.starterStepText,
-            canReduceTime: timerVM.canReduceTime,
-            canExtendTime: timerVM.canExtendTime,
-            showPauseReasonChips: timerVM.showPauseReasonChips,
+            blockMinutes: timerVM.blockLengthMinutes,
+            regularMinutes: timerVM.regularMinutes,
+            canSetLength: { timerVM.canSetBlockLength($0) },
             cycleProgress: timerVM.cycleProgress,
             onPause: { timerVM.pause() },
-            onExtendTime: {
-                timerVM.extendTimer()
-            },
-            onReduceTime: {
-                timerVM.extendTimer(by: -300)
+            onSetLength: { minutes in
+                withAnimation(FFMotion.control) { _ = timerVM.setBlockLength(minutes: minutes) }
             },
             onShowStopConfirmation: {
                 withAnimation { showStopConfirmation = true }
@@ -1623,9 +1585,7 @@ extension MenuBarPopoverView {
             onSaveStop: { timerVM.stopForReflection() },
             onDiscardStop: { timerVM.abandonSession() },
             onCancelStop: { showStopConfirmation = false },
-            onPauseReasonSelected: { reason in timerVM.recordPauseReason(reason) },
-            onPauseReasonDismissed: { timerVM.dismissPauseReasonChips() },
-            onSwitchProject: { project, reason in timerVM.switchProject(to: project, reason: reason) }
+            onSwitchProject: { project in timerVM.switchProject(to: project) }
         )
     }
 
@@ -1675,7 +1635,7 @@ extension MenuBarPopoverView {
         if let id = timerVM.pendingTaskID, let task = timerVM.todayTasks().first(where: { $0.id == id && !$0.isDone }) {
             return task.title
         }
-        return GoalDataBuilder.levers(timerVM.historyReaderActiveGoals(), now: Date()).first?.action
+        return timerVM.todayLevers().first?.action
     }
 
     fileprivate var overtimeContent: some View {
@@ -1697,5 +1657,39 @@ extension MenuBarPopoverView {
                 timerVM.continueAfterCompletion(action: .endSession)
             }
         )
+    }
+}
+
+/// Shown while FocusFlow hides itself (SharePrivacy): says why, and how to come back.
+private struct PrivacyStrip: View {
+    @Environment(TimerViewModel.self) private var timerVM
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "eye.slash.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Hidden while you share")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(timerVM.isPrivateManual
+                     ? "Menu bar, notch, pop-ups and alerts stay quiet until you turn this off."
+                     : "Your screen is being shared. FocusFlow comes back when the share ends.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            if timerVM.isPrivateManual {
+                Button("Show") { timerVM.setPrivateManually(false) }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.05)))
+        .accessibilityElement(children: .combine)
     }
 }

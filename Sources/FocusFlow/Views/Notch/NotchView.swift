@@ -76,8 +76,18 @@ struct NotchSnapshot {
     /// (the block's own task while focusing).
     var tasks: DailyTaskStats? = nil
     var nextTask: (id: UUID, title: String)? = nil
-    /// The coach's learned block size (`startLadderRecommendation`), highlighted among 5 · 15 · 25.
+    /// The next task is counted: logged so far and today's number ("1 of 3"); its button adds 1.
+    var nextTaskCount: (logged: Double, target: Double)? = nil
+    /// What the last tick or +1 logged, for a few seconds.
+    var receipt: String? = nil
+    /// Today's reminder line (idle).
+    var reminder: DailyReminderLine? = nil
+    /// The coach's learned block size (`startLadderRecommendation`), marked with a sparkle.
     var suggestedMinutes: Int = CoachBlockSizeLadder.defaultMinutes
+    /// Your regular length (`TimerViewModel.regularMinutes`): the prominent start, as everywhere else.
+    var regularMinutes: Int = CoachBlockSizeLadder.defaultMinutes
+    /// The next block size up (5 → 15 → 25) the running block can grow to; nil hides the button.
+    var growToMinutes: Int? = nil
 
     var goalFraction: Double { goalTarget > 0 ? min(1, goalDone / goalTarget) : 0 }
 }
@@ -86,6 +96,12 @@ struct NotchView: View {
     let state: NotchState
     let snapshot: NotchSnapshot
     var actions = NotchActions()
+
+    /// 5 · 15 · 25, plus your regular length when it is another size.
+    private var startSizes: [Int] {
+        CoachBlockSizeLadder.sizes.contains(snapshot.regularMinutes)
+            ? CoachBlockSizeLadder.sizes : (CoachBlockSizeLadder.sizes + [snapshot.regularMinutes]).sorted()
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -250,7 +266,10 @@ struct NotchView: View {
                 } else {
                     NotchButton(title: "Pause", symbol: "pause.fill", action: actions.pause)
                 }
-                NotchButton(title: "+5 min", symbol: "plus", action: actions.extend)
+                if let grow = snapshot.growToMinutes {
+                    NotchButton(title: "Make it \(grow)m", symbol: "plus") { actions.setLength(grow) }
+                        .help("Grow this block to \(grow) minutes and use \(grow) for the next blocks")
+                }
                 NotchButton(title: "Finish", symbol: "checkmark", action: actions.finish)
                 Spacer(minLength: 0)
                 if let result = snapshot.quickResult {
@@ -307,6 +326,23 @@ struct NotchView: View {
 
     private var idleExpanded: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if let reminder = snapshot.reminder {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: reminder.isOwn ? "heart.fill" : (reminder.isQuestion ? "questionmark" : "quote.opening"))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.orange.opacity(0.85))
+                        .accessibilityHidden(true)
+                    Text(reminder.text)
+                        .font(.system(size: 13, weight: .medium, design: .serif))
+                        .italic()
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .help(reminder.attribution)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Reminder: \(reminder.text), \(reminder.attribution)")
+            }
             HStack(alignment: .center, spacing: 18) {
                 GoalRing(fraction: snapshot.goalFraction, done: snapshot.goalDone, target: snapshot.goalTarget, label: snapshot.goalLabel)
                 VStack(alignment: .leading, spacing: 6) {
@@ -330,10 +366,12 @@ struct NotchView: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .lineLimit(1)
                     HStack(spacing: 6) {
-                        ForEach(CoachBlockSizeLadder.sizes, id: \.self) { minutes in
-                            NotchButton(title: "\(minutes) min", symbol: "play.fill", prominent: minutes == snapshot.suggestedMinutes, tint: FFPalette.project(snapshot.projectColor)) {
+                        ForEach(startSizes, id: \.self) { minutes in
+                            let isCoachAsk = minutes == snapshot.suggestedMinutes && minutes != snapshot.regularMinutes
+                            NotchButton(title: "\(minutes) min", symbol: isCoachAsk ? "sparkle" : "play.fill", prominent: minutes == snapshot.regularMinutes, tint: FFPalette.project(snapshot.projectColor)) {
                                 actions.start(minutes)
                             }
+                            .help(isCoachAsk ? "The coach's suggested size" : "Start \(minutes) minutes")
                         }
                     }
                     .padding(.top, 2)
@@ -368,23 +406,60 @@ struct NotchView: View {
     private func taskLine(tint: Color) -> some View {
         if let stats = snapshot.tasks, stats.planned > 0 {
             HStack(spacing: 8) {
-                if let task = snapshot.nextTask {
+                if let receipt = snapshot.receipt {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.green)
+                        .frame(width: 30, height: 30)
+                        .accessibilityHidden(true)
+                    Text(receipt)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Button("Undo", action: actions.undoTask)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(minHeight: 28)
+                        .contentShape(Rectangle())
+                } else if let task = snapshot.nextTask {
                     Button {
                         actions.tickTask(task.id)
                     } label: {
-                        Image(systemName: "circle")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.75))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
+                        Group {
+                            if let count = snapshot.nextTaskCount {
+                                ZStack {
+                                    Circle().strokeBorder(.white.opacity(0.4), lineWidth: 1.5)
+                                    Circle()
+                                        .trim(from: 0, to: count.target > 0 ? min(1, count.logged / count.target) : 0)
+                                        .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                                        .rotationEffect(.degrees(-90))
+                                    Image(systemName: "plus").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
+                                }
+                                .frame(width: 16, height: 16)
+                            } else {
+                                Image(systemName: "circle")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.75))
+                            }
+                        }
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Mark “\(task.title)” done")
-                    .accessibilityLabel("Mark \(task.title) done")
+                    .help(snapshot.nextTaskCount != nil ? "Add 1 to “\(task.title)”" : "Mark “\(task.title)” done")
+                    .accessibilityLabel(snapshot.nextTaskCount != nil ? "Add 1 to \(task.title)" : "Mark \(task.title) done")
                     Text(task.title)
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)
+                    if let count = snapshot.nextTaskCount {
+                        Text("\(DailyTaskReceipt.number(count.logged)) of \(DailyTaskReceipt.number(count.target))")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(tint)
+                    }
                 } else if stats.isComplete {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 15))
@@ -434,7 +509,7 @@ struct NotchView: View {
 struct NotchActions {
     var pause: () -> Void = {}
     var resume: () -> Void = {}
-    var extend: () -> Void = {}
+    var setLength: (Int) -> Void = { _ in }
     var finish: () -> Void = {}
     var keepGoing: () -> Void = {}
     var takeBreak: () -> Void = {}
@@ -444,7 +519,9 @@ struct NotchActions {
     var start: (Int) -> Void = { _ in }
     var logResult: (UUID) -> Void = { _ in }
     var openGoals: () -> Void = {}
+    /// Ticks the task, or adds 1 to a counted one.
     var tickTask: (UUID) -> Void = { _ in }
+    var undoTask: () -> Void = {}
     /// Overtime: open the block-end window to log the block.
     var log: () -> Void = {}
 }

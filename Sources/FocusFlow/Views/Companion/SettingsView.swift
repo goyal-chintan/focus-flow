@@ -284,6 +284,15 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                Toggle("Hide while sharing my screen", isOn: bind(\.coachSuppressPopupsDuringScreenShare))
+            } header: {
+                Text("Screen sharing")
+            } footer: {
+                Text("While your screen is shared (Zoom, Meet, Teams…) or recorded, the menu bar shows a plain dot, the notch hides, and pop-ups and alerts wait; the block-end window opens when the share ends. Being in a meeting without sharing changes nothing. The eye in the menu bar popover hides FocusFlow any time.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 SettingsStepperRow(
                     title: "Personal focus goal",
                     valueText: settingsGoalText(minutes: focusGoalMinutes),
@@ -504,6 +513,7 @@ private struct IntegrationsSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allSettings: [AppSettings]
     @Query(sort: \AppUsageEntry.date) private var appUsageEntries: [AppUsageEntry]
+    @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
     @StateObject private var notificationService = NotificationService.shared
 
     @State private var availableCalendars: [(source: String, calendars: [(id: String, title: String)])] = []
@@ -829,7 +839,6 @@ private struct IntegrationsSettingsTab: View {
                         Task { @MainActor in await enableRemindersIntegration() }
                     } else {
                         settings.remindersIntegrationEnabled = false
-                        settings.selectedReminderListId = ""
                         reminderAuthError = nil
                         save()
                         refreshPermissionHealth()
@@ -850,10 +859,14 @@ private struct IntegrationsSettingsTab: View {
                     LabeledContent(reminderLoadError) {
                         Button("Reload") { loadReminderLists() }
                     }
+                } else if syncedProjects.isEmpty {
+                    Text("No project syncs a list yet.")
+                        .foregroundStyle(.secondary)
                 } else {
-                    Picker("List for new reminders", selection: bind(\.selectedReminderListId)) {
-                        ForEach(availableReminderLists, id: \.id) { list in
-                            Text(list.title).tag(list.id)
+                    ForEach(syncedProjects, id: \.id) { project in
+                        LabeledContent(project.name) {
+                            Text(listTitle(project.reminderListID) ?? "List missing")
+                                .foregroundStyle(listTitle(project.reminderListID) == nil ? .orange : .secondary)
                         }
                     }
                 }
@@ -862,7 +875,7 @@ private struct IntegrationsSettingsTab: View {
             Text("Reminders")
         } footer: {
             if settings.remindersIntegrationEnabled {
-                Text("The Calendar tab shows incomplete reminders from every list.")
+                Text("Pick a list for each project in Projects ▸ Edit. Reminders there that are due today, overdue or undated become that project's tasks; ticks, new tasks, moves and deletes go back to the list.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -883,15 +896,15 @@ private struct IntegrationsSettingsTab: View {
         availableReminderLists = RemindersService.shared.reminderLists()
         if availableReminderLists.isEmpty {
             reminderLoadError = "No reminder lists found."
-            return
         }
+    }
 
-        let selectedId = settings.selectedReminderListId
-        let isSelectedListValid = !selectedId.isEmpty && availableReminderLists.contains(where: { $0.id == selectedId })
-        if !isSelectedListValid, let first = availableReminderLists.first {
-            settings.selectedReminderListId = first.id
-            save()
-        }
+    private var syncedProjects: [Project] {
+        projects.filter { !($0.reminderListID ?? "").isEmpty }
+    }
+
+    private func listTitle(_ id: String?) -> String? {
+        availableReminderLists.first { $0.id == id }?.title
     }
 
     @MainActor private func enableRemindersIntegration() async {
