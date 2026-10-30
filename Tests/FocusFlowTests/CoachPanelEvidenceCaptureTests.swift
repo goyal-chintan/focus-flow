@@ -176,7 +176,7 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
                 input.pickedDetail = picked
                 let presentation = CoachPanelPresentation(
                     kind: .rescue, message: CoachMessageComposer.compose(input), plan: ask.target,
-                    level: level, ask: ask, footerHint: CoachStarterBlock.hotkeyHint(minutes: 5)
+                    level: level, ask: ask, footerHint: CoachStarterBlock.hotkeyHint
                 )
                 let image = try renderPanel(presentation, appearance: appearance, height: 214)
                 try assertVisible(image, "rescue L\(level.rawValue) \(suffix)")

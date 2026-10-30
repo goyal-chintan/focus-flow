@@ -168,7 +168,7 @@ final class ClarityFixesTests: XCTestCase {
         XCTAssertEqual(vm.goalProgressSeconds(), 0, "Office time does not fill Learning's ring")
         let snapshot = CompanionSnapshot(sessions: [session], settings: nil, projects: [learning, office])
         XCTAssertTrue(snapshot.goalSamples.isEmpty)
-        XCTAssertEqual(TodayView.goalTitle(snapshot.goalScope), "★ Learning today")
+        XCTAssertEqual(snapshot.dailyGoal.label, "★ Learning", "Today shows the scope beside the goal's number")
         XCTAssertEqual(GoalDataBuilder.goalScope([office]), .allFocus, "No #1 and no Work project: every block counts")
         XCTAssertEqual(FFFormat.compactDuration(150 * 60), "2h30")
     }

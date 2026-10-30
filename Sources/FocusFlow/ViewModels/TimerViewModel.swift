@@ -1595,7 +1595,7 @@ final class TimerViewModel {
     }
 
     /// Sets the running block to `minutes` (time already worked is kept) and, from 15 up, makes it
-    /// your regular length for the blocks after it (Settings ▸ Default block). A 5- or 15-minute
+    /// your regular length for the blocks after it (Settings ▸ Focus ▸ Your usual block). A 5- or 15-minute
     /// warm-up can grow into a 25 in place; the next "Start" then offers 25, not the warm-up again.
     /// 5 is the coach's warm-up size: shrinking to it is this block only, so it never repeats.
     @discardableResult
@@ -2031,9 +2031,10 @@ final class TimerViewModel {
         guard BlockingService.shared.isActive else { return }
         // If block-until-goal is enabled, keep blocking until daily goal is met
         if blockUntilGoalMet {
-            let goal = settings?.dailyFocusGoal ?? 7200
-            if todayFocusTime < goal {
-                log("Block-until-goal: \(Int(todayFocusTime))s < \(Int(goal))s goal — keeping blocks active")
+            let goal = dailyGoal().seconds
+            let done = goalProgressSeconds()
+            if done < goal {
+                log("Block-until-goal: \(Int(done))s < \(Int(goal))s goal — keeping blocks active")
                 return
             }
         }
@@ -2202,8 +2203,8 @@ final class TimerViewModel {
         } else {
             NotificationService.shared.sendBreakComplete(
                 sessionCount: todaySessionCount,
-                dailyGoalMinutes: Int((settings?.dailyFocusGoal ?? 7200) / 60),
-                completedMinutes: Int(todayFocusTime / 60),
+                dailyGoalMinutes: Int(dailyGoal().seconds / 60),
+                completedMinutes: Int(goalProgressSeconds() / 60),
                 sound: settings?.completionSound ?? "Glass"
             )
         }
@@ -3044,7 +3045,7 @@ final class TimerViewModel {
         let model = availabilityModel
         let reader = historyReader
         let calendar = Calendar.current
-        let goalMinutes = Int((settings?.dailyFocusGoal ?? 7200) / 60)
+        let goalMinutes = Int(dailyGoal(now: now).seconds / 60)
         let doneMinutes = Int(goalProgressSeconds(now: now) / 60)
         let pacing = CoachGoalPacing(
             goalMinutes: goalMinutes,
@@ -3206,7 +3207,7 @@ final class TimerViewModel {
         return .init(minutes: minutes, why: .learned(asks: observations.count))
     }
 
-    /// Your regular block length (Settings ▸ Default block, also set from the running block's
+    /// Your regular block length (Settings ▸ Focus ▸ Your usual block, also set from the running block's
     /// length row). Every "Start" offers it first, so neither a warm-up nor a long break repeats a
     /// 5 or 15; the coach's smaller ask sits beside it. A pure read: views call it from `body`.
     var regularMinutes: Int {
@@ -4657,9 +4658,16 @@ final class TimerViewModel {
         return GoalDataBuilder.goalScope((try? modelContext.fetch(FetchDescriptor<Project>())) ?? [])
     }
 
+    /// Today's daily goal: what it counts and its size (`GoalDataBuilder.dailyGoal`). A store read:
+    /// safe while drawing. Every ring, line and the coach's pace use this, never `dailyFocusGoal`.
+    func dailyGoal(now: Date = Date()) -> DailyGoal {
+        let projects = modelContext.flatMap { try? $0.fetch(FetchDescriptor<Project>()) } ?? []
+        return GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now)
+    }
+
     private func currentPacing(now: Date) -> CoachGoalPacing {
         CoachGoalPacing(
-            goalMinutes: Int((settings?.dailyFocusGoal ?? 7200) / 60),
+            goalMinutes: Int(dailyGoal(now: now).seconds / 60),
             doneMinutes: Int(goalProgressSeconds(now: now) / 60),
             windowMinutesLeft: availabilityModel.goodWindowMinutesRemainingToday(from: now)
         )
@@ -4917,10 +4925,10 @@ final class TimerViewModel {
         }
     }
 
-    /// "⌃⌥Space starts 5 min anytime" while the shortcut is on.
+    /// "⌃⌥Space starts a short block on your next step, from anywhere" while the shortcut is on.
     private var hotkeyFooterHint: String? {
         guard let settings, settings.coachGlobalHotkeyEnabled else { return nil }
-        return CoachStarterBlock.hotkeyHint(minutes: CoachStarterBlock.clampedMinutes(settings.coachStarterBlockMinutes))
+        return CoachStarterBlock.hotkeyHint
     }
 
     // MARK: - Rescue loop: quotes
@@ -5829,7 +5837,7 @@ final class TimerViewModel {
             frontmostAppCategory: appCategory,
             isInActiveSession: isInActiveSession,
             todayFocusSeconds: todayFocusTime,
-            dailyGoalSeconds: settings?.dailyFocusGoal ?? 7200,
+            dailyGoalSeconds: dailyGoal().seconds,
             todaySessionCount: todaySessionCount,
             selectedProjectName: selectedProject?.name,
             selectedWorkMode: selectedProject?.workMode,

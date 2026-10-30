@@ -1,8 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Settings → Distractions: one grouped Form with a summary line, learned suggestions,
-/// distraction rules, allowed (work) targets and blocking profiles.
+/// Settings → Distractions: rules, the allowed (work) list and blocking profiles. The coach's
+/// suggestions and the "Distraction / It's work" answers live where the time shows: Insights and
+/// Today (structural redesign 2026-10-30).
 struct DistractionsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,7 +14,6 @@ struct DistractionsView: View {
 
     @State private var editorDestination: DistractionEditorDestination?
     @State private var itemToDelete: IdleDistractionItem?
-    @State private var confirmDismissAll = false
     @State private var saveError: String?
     @State private var installedApps: [(name: String, bundleID: String)] = []
     @State private var isLoadingInstalledApps = false
@@ -27,18 +27,8 @@ struct DistractionsView: View {
         allDistractionItems.contains { $0.status == .active && $0.targetKind == .website && $0.severity != .allowed }
     }
 
-    private var suggestionItems: [IdleDistractionItem] {
-        allDistractionItems
-            .filter {
-                $0.status == .pending &&
-                $0.evidenceCount >= IdleDistractionCatalog.suggestionEvidenceThreshold
-            }
-            .sorted { lhs, rhs in
-                if lhs.evidenceCount != rhs.evidenceCount {
-                    return lhs.evidenceCount > rhs.evidenceCount
-                }
-                return lhs.updatedAt > rhs.updatedAt
-            }
+    private var suggestionCount: Int {
+        DistractionSuggestionsList.pending(allDistractionItems).count
     }
 
     private var activeRules: [IdleDistractionItem] {
@@ -63,11 +53,6 @@ struct DistractionsView: View {
     var body: some View {
         Form {
             summarySection
-
-            if !suggestionItems.isEmpty {
-                suggestionsSection
-            }
-
             distractionRulesSection
             allowedSection
             BlockingProfilesSection()
@@ -106,18 +91,6 @@ struct DistractionsView: View {
         } message: {
             Text("The coach stops using it unless it learns it again.")
         }
-        .confirmationDialog(
-            "Dismiss all suggestions?",
-            isPresented: $confirmDismissAll,
-            titleVisibility: .visible
-        ) {
-            Button("Dismiss All", role: .destructive) {
-                dismissAllSuggestions()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("FocusFlow will suggest them again only if the pattern returns.")
-        }
     }
 
     private var rowAnimation: Animation? {
@@ -136,9 +109,6 @@ struct DistractionsView: View {
 
     private var summaryLine: String {
         var parts = ["\(distractionRules.count) active"]
-        if !suggestionItems.isEmpty {
-            parts.append("\(suggestionItems.count) suggestion\(suggestionItems.count == 1 ? "" : "s")")
-        }
         parts.append("\(allowedRules.count) allowed")
         return parts.joined(separator: " · ")
     }
@@ -157,6 +127,9 @@ struct DistractionsView: View {
                     .monospacedDigit()
                     .contentTransition(.numericText())
                     .animation(rowAnimation, value: summaryLine)
+                Text(suggestionCount > 0
+                     ? "\(suggestionCount) suggestion\(suggestionCount == 1 ? "" : "s") from the coach wait in Insights → What derails me?"
+                     : "Mark apps and sites from Today or Insights with Distraction or It's work.")
             }
 
             if !domainTrackingEnabled && hasActiveWebsiteRules {
@@ -181,59 +154,6 @@ struct DistractionsView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     }
-                }
-            }
-        }
-    }
-
-    // MARK: Suggestions
-
-    private var suggestionsSection: some View {
-        Section {
-            ForEach(suggestionItems) { item in
-                SettingsListRow(
-                    title: displayName(for: item),
-                    detail: detail(for: item, includeEvidence: true)
-                ) {
-                    targetIcon(for: item)
-                } trailing: {
-                    Button("Distraction") {
-                        accept(item, as: item.severity == .allowed ? .minor : item.severity)
-                    }
-                    .help("Treat \(displayName(for: item)) as a distraction")
-                    .accessibilityLabel("Mark \(displayName(for: item)) as a distraction")
-
-                    Button("It's work") {
-                        accept(item, as: .allowed)
-                    }
-                    .help("Allow \(displayName(for: item)) as work")
-                    .accessibilityLabel("Mark \(displayName(for: item)) as work")
-
-                    Button {
-                        dismissSuggestion(item)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Dismiss")
-                    .accessibilityLabel("Dismiss suggestion for \(displayName(for: item))")
-                }
-                .transition(.opacity)
-            }
-        } header: {
-            HStack {
-                Text("Suggestions")
-                Spacer()
-                if suggestionItems.count > 1 {
-                    Button("Dismiss All") {
-                        confirmDismissAll = true
-                    }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
                 }
             }
         }
@@ -356,52 +276,11 @@ struct DistractionsView: View {
 
     // MARK: Mutations
 
-    /// Activates a suggestion as a distraction (nudge/strong) or as allowed work.
-    private func accept(_ item: IdleDistractionItem, as severity: IdleDistractionSeverity) {
-        do {
-            var existingItems = try modelContext.fetch(FetchDescriptor<IdleDistractionItem>())
-            withAnimation(rowAnimation) {
-                _ = IdleDistractionRuleUpserter.upsert(
-                    items: &existingItems,
-                    preferredItem: item,
-                    targetKind: item.targetKind,
-                    key: item.key,
-                    displayName: displayName(for: item),
-                    severity: severity,
-                    source: .suggested,
-                    now: Date()
-                )
-            }
-            try modelContext.save()
-        } catch {
-            saveWithFeedback(modelContext, errorBinding: $saveError)
-        }
-    }
-
     private func setSeverity(_ severity: IdleDistractionSeverity, for item: IdleDistractionItem) {
         guard item.severity != severity else { return }
         withAnimation(rowAnimation) {
             item.severity = severity
             item.updatedAt = Date()
-        }
-        saveWithFeedback(modelContext, errorBinding: $saveError)
-    }
-
-    private func dismissSuggestion(_ item: IdleDistractionItem) {
-        withAnimation(rowAnimation) {
-            item.status = .dismissed
-            item.updatedAt = Date()
-        }
-        saveWithFeedback(modelContext, errorBinding: $saveError)
-    }
-
-    private func dismissAllSuggestions() {
-        let now = Date()
-        withAnimation(rowAnimation) {
-            for item in suggestionItems {
-                item.status = .dismissed
-                item.updatedAt = now
-            }
         }
         saveWithFeedback(modelContext, errorBinding: $saveError)
     }

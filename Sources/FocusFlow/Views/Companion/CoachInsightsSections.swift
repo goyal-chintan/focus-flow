@@ -32,7 +32,7 @@ private struct CoachInsightsData {
             }
         summary = CoachInsights.summary(
             now: now,
-            goalMinutes: Int((timerVM.settings?.dailyFocusGoal ?? 7200) / 60),
+            goalMinutes: Int(timerVM.dailyGoal(now: now).seconds / 60),
             sessions: sessionInputs,
             plans: planInputs,
             prompts: promptInputs,
@@ -81,41 +81,49 @@ struct CoachAdviceCard: View {
     }
 }
 
-// MARK: - Insights: "Is the coach getting you started?"
+// MARK: - Settings → Coach: "How the coach is doing"
 
-/// Insights → the one coach section (screen audit, Insights): does a prompt lead to a start
-/// (against the moments it stayed quiet), the next ask, what stops you, advice and the log. How the
-/// coach learns sits in a collapsed "How the coach decides".
-struct CoachStartSection: View {
-    let snapshot: CompanionSnapshot
-
+/// Is the coach getting you started? (moved from Insights to Settings → Coach, structural redesign
+/// 2026-10-30: Insights answers your questions, this answers the coach's). Does a prompt lead to a
+/// start (against the moments it stayed quiet), the next ask, what stops you, the research cards and
+/// today's log. How the coach learns sits in a collapsed "How the coach decides".
+struct CoachPerformanceView: View {
     @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.companionNowOverride) private var nowOverride
+    @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
+    @Query private var allSettings: [AppSettings]
+    @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
     @Query(sort: \PlannedBlock.startAt) private var plans: [PlannedBlock]
     @Query(sort: \InterventionAttempt.deliveredAt) private var attempts: [InterventionAttempt]
     @State private var showLog = false
     @State private var showModel = false
 
-    private var now: Date { snapshot.now }
+    /// "A prompt counts when you start a block within 20 minutes · last 14 days".
+    static var countingRule: String {
+        "A prompt counts when you start a block within \(Int(CoachDecisionReward.startWindow / 60)) minutes · last \(CoachInsights.lookbackDays) days"
+    }
 
     var body: some View {
+        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
+        let now = snapshot.now
         let summary = CoachInsightsData(now: now, samples: snapshot.goalSamples, plans: plans, attempts: attempts, timerVM: timerVM).summary
         let learning = timerVM.coachLearningSummary(now: now)
         let ladder = timerVM.startLadderRecommendation(now: now)
-        FFSection("Is the coach getting you started?", subtitle: "A prompt counts when you start a block within 10 minutes · last 14 days") {
-            VStack(alignment: .leading, spacing: FFSpace.l) {
-                headline(summary, learning: learning, ladder: ladder)
-                Divider()
-                promptsAndReasons(summary)
-                if !summary.advice.isEmpty {
-                    HStack(alignment: .top, spacing: FFSpace.m) {
-                        ForEach(summary.advice) { CoachAdviceCard(advice: $0) }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: FFSpace.l) {
+            Text(Self.countingRule).ffText(.caption)
+            headline(summary, learning: learning, ladder: ladder)
+            Divider()
+            promptsAndReasons(summary)
+            if !summary.advice.isEmpty {
+                // Two per row: the Settings pane is narrower than the companion page.
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: FFSpace.m, alignment: .top), GridItem(.flexible(), spacing: FFSpace.m, alignment: .top)], spacing: FFSpace.m) {
+                    ForEach(summary.advice) { CoachAdviceCard(advice: $0) }
                 }
-                logDisclosure
-                modelDisclosure(summary, learning: learning)
             }
+            logDisclosure(now: now)
+            modelDisclosure(summary, learning: learning, snapshot: snapshot)
         }
+        .padding(.vertical, FFSpace.xs)
     }
 
     // MARK: Headline
@@ -188,7 +196,7 @@ struct CoachStartSection: View {
 
     // MARK: Coach log
 
-    private var logDisclosure: some View {
+    private func logDisclosure(now: Date) -> some View {
         let journal = timerVM.coachJournal.entries(on: now)
         return DisclosureGroup(isExpanded: $showLog) {
             VStack(alignment: .leading, spacing: 3) {
@@ -214,7 +222,7 @@ struct CoachStartSection: View {
 
     // MARK: How the coach decides (collapsed)
 
-    private func modelDisclosure(_ summary: CoachInsights.Summary, learning: TimerViewModel.CoachLearningSummary) -> some View {
+    private func modelDisclosure(_ summary: CoachInsights.Summary, learning: TimerViewModel.CoachLearningSummary, snapshot: CompanionSnapshot) -> some View {
         DisclosureGroup(isExpanded: $showModel) {
             VStack(alignment: .leading, spacing: FFSpace.l) {
                 Text("The coach compares moments it prompted with moments it stayed quiet, and learns which moments and block sizes lead to a start. It starts from the research; your own starts take over.")

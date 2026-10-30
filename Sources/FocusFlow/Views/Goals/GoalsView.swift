@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// Goals: every active goal with its pace, then the direction behind them (Dan Koe's protocol)
+/// Goals: the daily goal, every active goal with its pace, then the direction behind them (Dan Koe's protocol)
 /// (priorities-goals design §3.2, §3.5; screen audit: levers live in key-result captions here).
 struct GoalsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -45,7 +45,12 @@ struct GoalsView: View {
                     .buttonStyle(.bordered)
                 }
 
-                // Goal cards first; their key-result captions carry today's pace ("need 2/day"),
+                // The one daily goal, set here only (it used to live in Settings and onboarding too).
+                if let settings = allSettings.first {
+                    DailyGoalCard(settings: settings, projects: projects, now: now)
+                }
+
+                // Goal cards next; their key-result captions carry today's pace ("need 2/day"),
                 // so levers are not repeated here (screen audit: levers once per screen).
                 if activeGoals.isEmpty {
                     FFSection {

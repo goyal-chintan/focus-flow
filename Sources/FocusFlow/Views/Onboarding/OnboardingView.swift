@@ -709,12 +709,12 @@ private struct OnboardingStartStep: View {
                 }
             }
             HStack(spacing: 8) {
-                Text("⌃⌥Space")
+                Text(CoachStarterBlock.hotkeyKeys)
                     .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
                     .padding(.horizontal, 7)
                     .frame(height: 20)
                     .background(RoundedRectangle(cornerRadius: 5).fill(FFPalette.track))
-                Text("starts a short block on your next step, from anywhere. Everything else lives in the menu bar icon.")
+                Text("\(CoachStarterBlock.hotkeyAction). Everything else lives in the menu bar icon.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

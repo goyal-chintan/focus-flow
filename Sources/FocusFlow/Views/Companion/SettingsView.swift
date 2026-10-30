@@ -8,10 +8,11 @@ import CoreGraphics
 /// Tabs of the Settings scene (⌘,), shown in FocusFlow's own toolbar tab bar.
 enum SettingsTab: String, CaseIterable, Identifiable {
     case general
+    /// Shown as "Focus" (usual block, completion sound); the raw value stays "timer".
     case timer
     case coach
     case distractions
-    /// Shown as "Permissions". The raw value stays "integrations" so stored selections and
+    /// Shown as "Permissions & Sync". The raw value stays "integrations" so stored selections and
     /// `settingsRequestedTab` values from earlier builds still resolve.
     case integrations
 
@@ -25,10 +26,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: "General"
-        case .timer: "Timer"
+        case .timer: "Focus"
         case .coach: "Coach"
         case .distractions: "Distractions"
-        case .integrations: "Permissions"
+        case .integrations: "Permissions & Sync"
         }
     }
 
@@ -222,11 +223,12 @@ func restoreSettingsWindow() {
 
 // MARK: - General
 
+/// General (structural redesign 2026-10-30): login, the menu bar and notch, hiding while sharing,
+/// the global shortcut and what happens on sleep. The daily goal moved to Goals.
 private struct GeneralSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(TimerViewModel.self) private var timerVM
     @Query private var allSettings: [AppSettings]
-    @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
     @State private var saveError: String?
     @State private var loginItemStatus: SMAppService.Status = SMAppService.mainApp.status
     @State private var loginItemError: String?
@@ -261,6 +263,50 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                Toggle(isOn: Binding(
+                    get: { timerVM.isNotchCompanionEnabled },
+                    set: { timerVM.setNotchCompanionEnabled($0) }
+                )) {
+                    Text("Show FocusFlow around the notch")
+                    Text("A ring and the time beside the notch. Hover it for controls and one-click starts. Without a notch it sits at the top of the screen.")
+                }
+                Toggle(isOn: bind(\.coachShowDriftInMenuBar)) {
+                    Text("Show drift time in the menu bar")
+                    Text("While you drift in a focus window, the menu bar counts the minutes.")
+                }
+            } header: {
+                Text("Menu bar & notch")
+            }
+
+            Section {
+                Toggle(isOn: bind(\.coachSuppressPopupsDuringScreenShare)) {
+                    Text("Hide while sharing my screen")
+                    Text("While your screen is shared or recorded, the menu bar shows a plain dot, the notch hides, and pop-ups and alerts wait. Being in a meeting without sharing changes nothing. The eye in the popover hides FocusFlow any time.")
+                }
+            } header: {
+                Text("Screen sharing")
+            }
+
+            Section {
+                Toggle(isOn: bind(\.coachGlobalHotkeyEnabled)) {
+                    Text("Global shortcut \(CoachStarterBlock.hotkeyKeys)")
+                    Text(CoachStarterBlock.hotkeyAction.prefix(1).uppercased() + CoachStarterBlock.hotkeyAction.dropFirst() + ".")
+                }
+                .accessibilityIdentifier("settings.general.globalShortcut")
+            } header: {
+                Text("Keyboard")
+            } footer: {
+                Text("In the menu bar popover: ⌘↩ starts, ⌘P pauses or resumes, ⌘. finishes. In the FocusFlow window: ⌘1–⌘5 switch pages.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                SleepRuleRow(settings: settings, save: save)
+            } header: {
+                Text("Sleep")
+            }
+
+            Section {
                 LabeledContent {
                     Button("Show Tour") { timerVM.openOnboarding?() }
                 } label: {
@@ -270,104 +316,6 @@ private struct GeneralSettingsTab: View {
             } header: {
                 Text("Getting started")
             }
-
-            Section {
-                Toggle("Show FocusFlow around the notch", isOn: Binding(
-                    get: { timerVM.isNotchCompanionEnabled },
-                    set: { timerVM.setNotchCompanionEnabled($0) }
-                ))
-            } header: {
-                Text("Notch")
-            } footer: {
-                Text("A ring and the time beside the notch. Hover it for controls, today's lever and one-click starts. Without a notch it sits at the top of the screen.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Hide while sharing my screen", isOn: bind(\.coachSuppressPopupsDuringScreenShare))
-            } header: {
-                Text("Screen sharing")
-            } footer: {
-                Text("While your screen is shared (Zoom, Meet, Teams…) or recorded, the menu bar shows a plain dot, the notch hides, and pop-ups and alerts wait; the block-end window opens when the share ends. Being in a meeting without sharing changes nothing. The eye in the menu bar popover hides FocusFlow any time.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                SettingsStepperRow(
-                    title: "Personal focus goal",
-                    valueText: settingsGoalText(minutes: focusGoalMinutes),
-                    value: Binding(
-                        get: { focusGoalMinutes },
-                        set: { newValue in
-                            settings.dailyFocusGoal = TimeInterval(newValue * 60)
-                            // Stretch always sits at or above the personal goal.
-                            if settings.dailyStretchGoal < settings.dailyFocusGoal {
-                                settings.dailyStretchGoal = settings.dailyFocusGoal
-                            }
-                            save()
-                        }
-                    ),
-                    range: 30...480,
-                    step: 15
-                )
-                SettingsStepperRow(
-                    title: "Stretch goal",
-                    valueText: settingsGoalText(minutes: stretchGoalMinutes),
-                    value: Binding(
-                        get: { stretchGoalMinutes },
-                        set: { settings.dailyStretchGoal = TimeInterval($0 * 60); save() }
-                    ),
-                    range: max(30, focusGoalMinutes)...600,
-                    step: 15
-                )
-                // One source of truth: offer to match the own-work project targets when they differ.
-                if let targets = ownWorkTargetMinutes, targets != focusGoalMinutes {
-                    LabeledContent {
-                        Button("Use \(settingsGoalText(minutes: targets))") {
-                            settings.dailyFocusGoal = TimeInterval(targets * 60)
-                            settings.dailyStretchGoal = max(settings.dailyStretchGoal, settings.dailyFocusGoal)
-                            save()
-                        }
-                    } label: {
-                        Text("Your own-work projects aim for \(settingsGoalText(minutes: targets)) a day.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Text("Daily goals")
-            } footer: {
-                Text("The personal goal counts your own work: Personal and Learning projects. Stretch is the bonus once it's met.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("Resume after a short sleep", isOn: bind(\.autoResumeOnWake))
-
-                if settings.autoResumeOnWake {
-                    SettingsStepperRow(
-                        title: "Short sleep is under",
-                        valueText: settingsMinutesText(settings.autoResumeThresholdSeconds / 60),
-                        value: Binding(
-                            get: { settings.autoResumeThresholdSeconds / 60 },
-                            set: { settings.autoResumeThresholdSeconds = $0 * 60; save() }
-                        ),
-                        range: 1...10
-                    )
-                }
-
-                SettingsStepperRow(
-                    title: "End the session after sleeping",
-                    valueText: settingsMinutesText(settings.autoStopOnSleepThresholdMinutes),
-                    value: bind(\.autoStopOnSleepThresholdMinutes),
-                    range: 5...240,
-                    step: 5
-                )
-            } header: {
-                Text("Sleep")
-            } footer: {
-                Text(sleepFooter)
-                    .foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
         .saveErrorOverlay($saveError)
@@ -375,22 +323,6 @@ private struct GeneralSettingsTab: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshLoginItemStatus()
         }
-    }
-
-    private var focusGoalMinutes: Int { Int(settings.dailyFocusGoal / 60) }
-
-    /// Sum of today's targets on Personal and Learning projects (nil when none is set).
-    private var ownWorkTargetMinutes: Int? {
-        let minutes = projects.filter { $0.area.isOwnWork }.compactMap { $0.dailyTarget(on: Date()) }
-        return minutes.isEmpty ? nil : minutes.reduce(0, +)
-    }
-    private var stretchGoalMinutes: Int { max(Int(settings.dailyStretchGoal / 60), focusGoalMinutes) }
-
-    private var sleepFooter: String {
-        if settings.autoResumeOnWake {
-            return "Sessions pause while your Mac sleeps, resume after a short sleep and end after a long one."
-        }
-        return "Sessions pause while your Mac sleeps and end after a long sleep."
     }
 
     private func save() {
@@ -418,8 +350,70 @@ private struct GeneralSettingsTab: View {
     }
 }
 
-// MARK: - Timer
+/// Sleep as one rule: a block pauses while the Mac sleeps, resumes if you're back within one
+/// time ("Never" turns resuming off) and ends after the other.
+struct SleepRuleRow: View {
+    let settings: AppSettings
+    let save: () -> Void
 
+    static let resumeOptions = [0, 1, 2, 5, 10]
+    static let endOptions = [15, 30, 60, 120, 240]
+
+    private var resumeMinutes: Int {
+        settings.autoResumeOnWake ? max(1, settings.autoResumeThresholdSeconds / 60) : 0
+    }
+
+    /// "Pause it; resume if I'm back within 2 min; end it after 1h."
+    static func sentence(resumeMinutes: Int, endMinutes: Int) -> String {
+        let end = settingsGoalText(minutes: endMinutes)
+        guard resumeMinutes > 0 else { return "A block pauses while your Mac sleeps and ends after \(end) asleep." }
+        return "A block pauses while your Mac sleeps, resumes if you're back within \(resumeMinutes) min, and ends after \(end) asleep."
+    }
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                Picker("Resume within", selection: Binding(
+                    get: { resumeMinutes },
+                    set: { minutes in
+                        settings.autoResumeOnWake = minutes > 0
+                        if minutes > 0 { settings.autoResumeThresholdSeconds = minutes * 60 }
+                        save()
+                    }
+                )) {
+                    ForEach(Self.options(Self.resumeOptions, including: resumeMinutes), id: \.self) { minutes in
+                        Text(minutes == 0 ? "Never resume" : "Resume within \(minutes) min").tag(minutes)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                Picker("End after", selection: Binding(
+                    get: { settings.autoStopOnSleepThresholdMinutes },
+                    set: { settings.autoStopOnSleepThresholdMinutes = $0; save() }
+                )) {
+                    ForEach(Self.options(Self.endOptions, including: settings.autoStopOnSleepThresholdMinutes), id: \.self) { minutes in
+                        Text("End after \(settingsGoalText(minutes: minutes))").tag(minutes)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+        } label: {
+            Text("When your Mac sleeps")
+            Text(Self.sentence(resumeMinutes: resumeMinutes, endMinutes: settings.autoStopOnSleepThresholdMinutes))
+        }
+        .accessibilityIdentifier("settings.general.sleepRule")
+    }
+
+    /// The presets, plus a stored value from an earlier build that isn't one of them.
+    static func options(_ presets: [Int], including value: Int) -> [Int] {
+        presets.contains(value) ? presets : (presets + [value]).sorted()
+    }
+}
+
+// MARK: - Focus
+
+/// Focus: the usual block and the sound at its end.
 private struct TimerSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allSettings: [AppSettings]
@@ -500,7 +494,7 @@ private struct TimerSettingsTab: View {
     ]
 }
 
-// MARK: - Permissions (calendar, reminders, browser domains)
+// MARK: - Permissions & Sync (calendar, reminders, browser domains, macOS permissions)
 
 private struct IntegrationsSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
@@ -513,7 +507,6 @@ private struct IntegrationsSettingsTab: View {
     @State private var availableReminderLists: [(id: String, title: String, source: String)] = []
     @State private var calendarLoadError: String?
     @State private var reminderLoadError: String?
-    @State private var reminderAuthError: String?
     @State private var isRequestingNotificationPermission = false
     @State private var isEnablingCalendar = false
     @State private var isEnablingReminders = false
@@ -530,14 +523,14 @@ private struct IntegrationsSettingsTab: View {
 
     var body: some View {
         ScrollViewReader { proxy in
+            // Sync first (Calendar and Reminders, one toggle row each that asks for access),
+            // then browser domains, then the other macOS permissions.
             Form {
-                permissionsSection
-                calendarSection
+                syncSection
                     .id("calendar")
-                remindersSection
-                    .id("reminders")
                 browserDomainsSection
                     .id("domainTracking")
+                permissionsSection
             }
             .formStyle(.grouped)
             .saveErrorOverlay($saveError)
@@ -563,7 +556,6 @@ private struct IntegrationsSettingsTab: View {
                 availableReminderLists = []
                 calendarLoadError = nil
                 reminderLoadError = nil
-                reminderAuthError = nil
                 refreshPermissionHealth()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -574,7 +566,7 @@ private struct IntegrationsSettingsTab: View {
 
     // MARK: Permissions
 
-    /// Calendar and Reminders permissions are shown inside their own sections, so each
+    /// Calendar and Reminders access is asked for by their own toggles in Sync, so each
     /// permission appears exactly once on this tab.
     private var permissionsSection: some View {
         Section {
@@ -676,17 +668,6 @@ private struct IntegrationsSettingsTab: View {
         }
     }
 
-    /// Shows the Calendar/Reminders permission row inside its integration section
-    /// when access is missing. When access is granted the toggle alone is enough.
-    @ViewBuilder
-    private func inlinePermissionRow(kind: PermissionHealthRow.Kind) -> some View {
-        if let row = permissionRow(kind: kind),
-           row.status != .ready,
-           row.action != .openIntegrationsSection {
-            permissionRow(row)
-        }
-    }
-
     private func refreshPermissionHealth() {
         notificationService.refreshAuthorizationStatus()
         permissionHealthRefreshToken += 1
@@ -717,70 +698,96 @@ private struct IntegrationsSettingsTab: View {
         }
     }
 
+    // MARK: Sync
+
+    private var syncSection: some View {
+        Section {
+            calendarRows
+            remindersRows
+        } header: {
+            Text("Sync")
+        }
+    }
+
     // MARK: Calendar
 
-    private var calendarSection: some View {
-        Section {
-            Toggle("Record sessions to Calendar", isOn: Binding(
-                get: { settings.calendarIntegrationEnabled },
-                set: { newValue in
-                    if newValue {
-                        Task { @MainActor in await enableCalendarIntegration() }
-                    } else {
-                        settings.calendarIntegrationEnabled = false
-                        settings.selectedCalendarId = ""
-                        save()
-                        refreshPermissionHealth()
-                    }
-                }
-            ))
-            .disabled(isEnablingCalendar)
-
-            inlinePermissionRow(kind: .calendar)
-
-            if settings.calendarIntegrationEnabled {
-                if let calendarLoadError {
-                    LabeledContent(calendarLoadError) {
-                        Button("Reload") { loadCalendars() }
-                    }
+    /// One row: the toggle asks macOS for access when it is turned on. The calendar picker
+    /// appears under it once it is on.
+    @ViewBuilder
+    private var calendarRows: some View {
+        Toggle(isOn: Binding(
+            get: { settings.calendarIntegrationEnabled },
+            set: { newValue in
+                if newValue {
+                    Task { @MainActor in await enableCalendarIntegration() }
                 } else {
-                    Picker("Calendar", selection: Binding(
-                        get: { settings.selectedCalendarId.isEmpty ? "__create_new__" : settings.selectedCalendarId },
-                        set: { newValue in
-                            if newValue == "__create_new__" {
-                                settings.selectedCalendarId = ""
-                                settings.calendarName = "FocusFlow"
-                            } else {
-                                settings.selectedCalendarId = newValue
-                                for group in availableCalendars {
-                                    if let cal = group.calendars.first(where: { $0.id == newValue }) {
-                                        settings.calendarName = cal.title
-                                        break
-                                    }
-                                }
-                            }
-                            save()
-                        }
-                    )) {
-                        ForEach(availableCalendars, id: \.source) { group in
-                            Section(group.source) {
-                                ForEach(group.calendars, id: \.id) { cal in
-                                    Text(cal.title).tag(cal.id)
-                                }
-                            }
-                        }
-                        Divider()
-                        Text("New “FocusFlow” calendar").tag("__create_new__")
-                    }
+                    settings.calendarIntegrationEnabled = false
+                    settings.selectedCalendarId = ""
+                    save()
+                    refreshPermissionHealth()
                 }
             }
-        } header: {
-            Text("Calendar")
-        } footer: {
-            if settings.calendarIntegrationEnabled {
-                Text("Completed and saved sessions appear with a 🎯 prefix. Earlier sessions aren't added.")
-                    .foregroundStyle(.secondary)
+        )) {
+            Text("Record blocks to Calendar")
+            Text(Self.syncSubtitle(
+                enabled: settings.calendarIntegrationEnabled,
+                access: CalendarService.shared.authStatus == .authorized ? .authorized
+                    : CalendarService.shared.authStatus == .denied ? .denied : .notDetermined,
+                app: "Calendar",
+                enabledText: "Blocks you keep appear with a 🎯 prefix. Earlier blocks aren't added.",
+                offText: "Writes each block you keep into a calendar."
+            ))
+        }
+        .disabled(isEnablingCalendar)
+        .accessibilityIdentifier("settings.sync.calendar")
+
+        if settings.calendarIntegrationEnabled {
+            if let calendarLoadError {
+                LabeledContent(calendarLoadError) {
+                    Button("Reload") { loadCalendars() }
+                }
+            } else {
+                Picker("Calendar", selection: Binding(
+                    get: { settings.selectedCalendarId.isEmpty ? "__create_new__" : settings.selectedCalendarId },
+                    set: { newValue in
+                        if newValue == "__create_new__" {
+                            settings.selectedCalendarId = ""
+                            settings.calendarName = "FocusFlow"
+                        } else {
+                            settings.selectedCalendarId = newValue
+                            for group in availableCalendars {
+                                if let cal = group.calendars.first(where: { $0.id == newValue }) {
+                                    settings.calendarName = cal.title
+                                    break
+                                }
+                            }
+                        }
+                        save()
+                    }
+                )) {
+                    ForEach(availableCalendars, id: \.source) { group in
+                        Section(group.source) {
+                            ForEach(group.calendars, id: \.id) { cal in
+                                Text(cal.title).tag(cal.id)
+                            }
+                        }
+                    }
+                    Divider()
+                    Text("New “FocusFlow” calendar").tag("__create_new__")
+                }
             }
+        }
+    }
+
+    enum SyncAccess { case authorized, denied, notDetermined }
+
+    /// The toggle's second line: what it does, or what turning it on will ask for.
+    static func syncSubtitle(enabled: Bool, access: SyncAccess, app: String, enabledText: String, offText: String) -> String {
+        if enabled { return enabledText }
+        switch access {
+        case .authorized: return offText
+        case .notDetermined: return "\(offText) Turning it on asks for \(app) access."
+        case .denied: return "\(app) access is off. Turning this on opens System Settings ▸ Privacy & Security ▸ \(app == "Calendar" ? "Calendars" : app)."
         }
     }
 
@@ -798,6 +805,8 @@ private struct IntegrationsSettingsTab: View {
             settings.calendarIntegrationEnabled = false
             availableCalendars = []
             save()
+            // Denied earlier: macOS won't ask again, so the toggle takes you to where it's allowed.
+            if CalendarService.shared.authStatus == .denied { SystemSettingsLink.calendars() }
         }
         refreshPermissionHealth()
         restoreSettingsWindow()
@@ -823,53 +832,50 @@ private struct IntegrationsSettingsTab: View {
 
     // MARK: Reminders
 
-    private var remindersSection: some View {
-        Section {
-            Toggle("Sync Reminders", isOn: Binding(
-                get: { settings.remindersIntegrationEnabled },
-                set: { newValue in
-                    if newValue {
-                        Task { @MainActor in await enableRemindersIntegration() }
-                    } else {
-                        settings.remindersIntegrationEnabled = false
-                        reminderAuthError = nil
-                        save()
-                        refreshPermissionHealth()
-                    }
-                }
-            ))
-            .disabled(isEnablingReminders)
-
-            inlinePermissionRow(kind: .reminders)
-
-            if let reminderAuthError {
-                Text(reminderAuthError)
-                    .foregroundStyle(.secondary)
-            }
-
-            if settings.remindersIntegrationEnabled {
-                if let reminderLoadError {
-                    LabeledContent(reminderLoadError) {
-                        Button("Reload") { loadReminderLists() }
-                    }
-                } else if syncedProjects.isEmpty {
-                    Text("No project syncs a list yet.")
-                        .foregroundStyle(.secondary)
+    /// One row like Calendar's: the toggle asks for Reminders access. The projects that sync a
+    /// list are shown under it once it is on.
+    @ViewBuilder
+    private var remindersRows: some View {
+        Toggle(isOn: Binding(
+            get: { settings.remindersIntegrationEnabled },
+            set: { newValue in
+                if newValue {
+                    Task { @MainActor in await enableRemindersIntegration() }
                 } else {
-                    ForEach(syncedProjects, id: \.id) { project in
-                        LabeledContent(project.name) {
-                            Text(listTitle(project.reminderListID) ?? "List missing")
-                                .foregroundStyle(listTitle(project.reminderListID) == nil ? .orange : .secondary)
-                        }
-                    }
+                    settings.remindersIntegrationEnabled = false
+                        save()
+                    refreshPermissionHealth()
                 }
             }
-        } header: {
-            Text("Reminders")
-        } footer: {
-            if settings.remindersIntegrationEnabled {
-                Text("Pick a list for each project in Projects ▸ Edit. Reminders there that are due today, overdue or undated become that project's tasks; ticks, new tasks, moves and deletes go back to the list.")
+        )) {
+            Text("Sync Reminders")
+            Text(Self.syncSubtitle(
+                enabled: settings.remindersIntegrationEnabled,
+                access: RemindersService.shared.authStatus == .authorized ? .authorized
+                    : RemindersService.shared.authStatus == .denied ? .denied : .notDetermined,
+                app: "Reminders",
+                enabledText: "Pick a list for each project in its Edit sheet. Reminders due today, overdue or undated become its tasks; ticks, new tasks, moves and deletes go back.",
+                offText: "Turns a project's Reminders list into its daily tasks."
+            ))
+        }
+        .disabled(isEnablingReminders)
+        .accessibilityIdentifier("settings.sync.reminders")
+
+        if settings.remindersIntegrationEnabled {
+            if let reminderLoadError {
+                LabeledContent(reminderLoadError) {
+                    Button("Reload") { loadReminderLists() }
+                }
+            } else if syncedProjects.isEmpty {
+                Text("No project syncs a list yet.")
                     .foregroundStyle(.secondary)
+            } else {
+                ForEach(syncedProjects, id: \.id) { project in
+                    LabeledContent(project.name) {
+                        Text(listTitle(project.reminderListID) ?? "List missing")
+                            .foregroundStyle(listTitle(project.reminderListID) == nil ? .orange : .secondary)
+                    }
+                }
             }
         }
     }
@@ -907,15 +913,14 @@ private struct IntegrationsSettingsTab: View {
         _ = await RemindersService.shared.requestAccess()
         if RemindersService.shared.authStatus == .authorized {
             settings.remindersIntegrationEnabled = true
-            reminderAuthError = nil
             reminderLoadError = nil
             save()
             loadReminderLists()
         } else {
-            reminderAuthError = "FocusFlow needs Reminders access."
             settings.remindersIntegrationEnabled = false
             availableReminderLists = []
             save()
+            if RemindersService.shared.authStatus == .denied { SystemSettingsLink.reminders() }
         }
         refreshPermissionHealth()
         restoreSettingsWindow()

@@ -56,7 +56,7 @@ final class CoachRescueFlowTests: XCTestCase {
         XCTAssertEqual(panel.level, .drifting)
         XCTAssertEqual(panel.message.hook, "12m on YouTube today.")
         XCTAssertEqual(panel.message.primaryTitle, "Start 50m focus", "N from pacing: 120m owed → 50m")
-        XCTAssertEqual(panel.footerHint, "⌃⌥Space starts 5 min anytime")
+        XCTAssertEqual(panel.footerHint, CoachStarterBlock.hotkeyHint)
         let attempt = try XCTUnwrap(vm.coachEngine.store.attempt(id: try XCTUnwrap(panel.attemptID)))
         XCTAssertTrue(attempt.contextKey?.hasSuffix("|lvl:1|surf:panel") == true)
         XCTAssertEqual(attempt.surfaceRawValue, "panel")
@@ -293,7 +293,7 @@ final class CoachRescueFlowTests: XCTestCase {
         other.settings?.coachStarterBlockMinutes = 2
         feed(other, youtube, minutes: 12, endingAt: now)
         XCTAssertTrue(other.evaluateRescueLoop(now: now))
-        XCTAssertEqual(other.coachPanel?.footerHint, "⌃⌥Space starts 2 min anytime")
+        XCTAssertEqual(other.coachPanel?.footerHint, CoachStarterBlock.hotkeyHint)
     }
 
     // MARK: Analytics

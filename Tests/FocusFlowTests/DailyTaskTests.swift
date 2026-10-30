@@ -299,6 +299,7 @@ final class ViewReadPathTests: XCTestCase {
             _ = vm.historyReaderActiveGoals()
             _ = vm.startLadderRecommendation(now: Date())
             _ = vm.regularMinutes
+            _ = vm.dailyGoal(now: Date())
         }
         reads() // warm up any first-use work outside the tracked pass
 
