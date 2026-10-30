@@ -227,6 +227,34 @@ final class ReminderTaskSyncTests: XCTestCase {
         XCTAssertEqual(vm.todayTasks(now: today).first?.carriedFromID, old.id)
     }
 
+    /// Bug 2026-10-30: switching a project's list kept the old list's tasks as plain tasks, and
+    /// switching back imported them again. Now the old list's open tasks go; done ones stay.
+    func testSwitchingListsRemovesTheOldListsOpenTasksWithoutDuplicates() async throws {
+        let (vm, fake, project, _) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        fake.open = [item("a1", "From A", list: "work"), item("a2", "Done in A", list: "work"), item("b1", "From B", list: "home")]
+        await vm.syncReminders(now: today)
+        let doneTask = try XCTUnwrap(vm.todayTasks(now: today).first { $0.reminderID == "a2" })
+        vm.setDailyTask(doneTask, done: true, now: today, receipt: false)
+        await vm.reminderWrite?.value
+
+        project.reminderListID = "home"
+        vm.reminderListChanged(forProject: project.id, now: today)
+        await vm.syncReminders(now: today)
+        var titles = vm.todayTasks(now: today).map(\.title).sorted()
+        XCTAssertEqual(titles, ["Done in A", "From B"], "A's open task is gone; the done one stays as history")
+        XCTAssertNil(vm.todayTasks(now: today).first { $0.title == "Done in A" }?.reminderID)
+        XCTAssertTrue(fake.deleted.isEmpty, "Nothing is deleted in Reminders")
+
+        project.reminderListID = "work"
+        vm.reminderListChanged(forProject: project.id, now: today)
+        await vm.syncReminders(now: today)
+        titles = vm.todayTasks(now: today).map(\.title).sorted()
+        XCTAssertEqual(titles, ["Done in A", "From A"], "Back on A: its open reminder once, the done one kept")
+        XCTAssertEqual(vm.todayTasks(now: today).filter { $0.title == "From A" }.count, 1, "No duplicates after switching back")
+        XCTAssertEqual(vm.todayTasks(now: today).filter { $0.title == "From B" }.count, 0, "B's open task is gone")
+    }
+
     func testNothingSyncsWithTheToggleOff() async throws {
         let (vm, fake, project, _) = try makeVM()
         defer { AppUsageTracker.shared.stop() }
@@ -251,7 +279,8 @@ final class FakeReminders: ReminderBridge {
     var deleted: [String] = []
 
     func fetchIncompleteReminders(in listIds: [String]?, dueDateStarting: Date?, dueDateEnding: Date?) async -> [RemindersService.ReminderItem] {
-        open.filter { listIds?.contains($0.listId) ?? true }
+        // Like EventKit: completed reminders are not in the incomplete fetch.
+        open.filter { (listIds?.contains($0.listId) ?? true) && completed[$0.id] != true }
     }
     func reminderState(identifier: String) -> RemindersService.ReminderState { states[identifier] ?? .missing }
     func setReminderCompleted(identifier: String, _ value: Bool) -> Bool { completed[identifier] = value; return true }

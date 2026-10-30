@@ -235,8 +235,12 @@ struct ProjectsListView: View {
                 target = Project(name: "", color: draft.color, icon: draft.icon)
                 modelContext.insert(target)
             }
+            let previousList = target.reminderListID
             draft.apply(to: target, others: projects, in: modelContext)
             saveWithFeedback(modelContext, errorBinding: $saveError)
+            if target.reminderListID != previousList {
+                timerVM.reminderListChanged(forProject: target.id)
+            }
             timerVM.scheduleReminderSync(after: .zero)
             if editingProject == nil {
                 timerVM.selectedProject = target

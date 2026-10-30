@@ -3710,6 +3710,32 @@ final class TimerViewModel {
         writeToReminders { $0.setReminderCompleted(identifier: reminderID, done) }
     }
 
+    /// A project switched lists or stopped syncing. Its open tasks for today and later mirrored the
+    /// old list, so they go (the reminders stay in Reminders, untouched); the new list imports on
+    /// the next sync. Done tasks, past days and tasks with logged goal progress stay as history,
+    /// unlinked, so nothing is ever written to the old list again. (Bug 2026-10-30: unlinking
+    /// everything left a whole wrong list behind as plain tasks, and duplicates on a re-switch.)
+    func reminderListChanged(forProject projectID: UUID, now: Date = Date()) {
+        guard let modelContext else { return }
+        let today = Calendar.current.startOfDay(for: now)
+        let linked = (try? modelContext.fetch(FetchDescriptor<DailyTask>(
+            predicate: #Predicate { $0.projectID == projectID && $0.reminderID != nil }
+        ))) ?? []
+        var removed = 0
+        for task in linked {
+            if !task.isDone, task.day >= today, task.loggedCount == 0 {
+                modelContext.delete(task)
+                removed += 1
+            } else {
+                task.reminderID = nil
+            }
+        }
+        guard !linked.isEmpty else { return }
+        saveContext()
+        dailyTaskRevision += 1
+        log("reminders: list changed, removed \(removed) open tasks of the old list, kept \(linked.count - removed) as history")
+    }
+
     /// Asks for a sync soon (coalesced). Called on launch, app activation, EventKit changes, day
     /// rollover, popover open and when a project's list changes.
     func scheduleReminderSync(after delay: Duration = .milliseconds(800)) {
