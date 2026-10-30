@@ -10,6 +10,9 @@ import SwiftData
 struct SessionGoalSection: View {
     let projectID: UUID?
     let sessionID: UUID
+    /// Key results today's tasks are linked to: those are logged by ticking the task, so their row
+    /// has no ± here (one way to log per screen; ticking and + double-counted the same work).
+    var taskLinkedResultIDs: Set<UUID> = []
 
     @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
 
@@ -24,7 +27,7 @@ struct SessionGoalSection: View {
             VStack(alignment: .leading, spacing: 10) {
                 TrackedLabel(text: "Goal", font: .system(size: 11, weight: .semibold), tracking: 1.8)
                 ForEach(shown) { goal in
-                    SessionGoalCard(goal: goal, sessionID: sessionID)
+                    SessionGoalCard(goal: goal, sessionID: sessionID, taskLinkedResultIDs: taskLinkedResultIDs)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -35,6 +38,7 @@ struct SessionGoalSection: View {
 private struct SessionGoalCard: View {
     let goal: ProjectGoal
     let sessionID: UUID
+    let taskLinkedResultIDs: Set<UUID>
 
     var body: some View {
         let summary = GoalDataBuilder.summary(goal, now: Date())
@@ -50,7 +54,8 @@ private struct SessionGoalCard: View {
                     .monospacedDigit()
             }
             ForEach(Array(zip(goal.sortedKeyResults, summary.keyResults)), id: \.0.id) { pair in
-                SessionKeyResultRow(keyResult: pair.0, pace: pair.1, sessionID: sessionID)
+                SessionKeyResultRow(keyResult: pair.0, pace: pair.1, sessionID: sessionID,
+                                    loggedByTask: taskLinkedResultIDs.contains(pair.0.id))
             }
         }
         .padding(.horizontal, 12)
@@ -63,6 +68,7 @@ private struct SessionKeyResultRow: View {
     let keyResult: GoalKeyResult
     let pace: KeyResultPace
     let sessionID: UUID
+    var loggedByTask = false
 
     @Environment(\.modelContext) private var modelContext
     @State private var bump = 0
@@ -79,41 +85,7 @@ private struct SessionKeyResultRow: View {
             .max { $0.at < $1.at }
     }
 
-    var body: some View {
-        if keyResult.kind == .checkbox {
-            checkboxRow
-        } else {
-            countRow
-        }
-    }
-
-    private var checkboxRow: some View {
-        let done = pace.status == .done
-        return HStack(spacing: 8) {
-            Button {
-                if done {
-                    if let entry = lastStepperEntry { remove(entry) }
-                } else {
-                    add(1)
-                }
-            } label: {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(done ? FFPalette.goal : .secondary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(done && lastStepperEntry == nil)
-            .accessibilityLabel(done ? "Mark \(keyResult.title) not done" : "Mark \(keyResult.title) done")
-            Text(keyResult.title)
-                .font(.system(size: 12))
-                .strikethrough(done, color: .secondary)
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            if addedThisBlock > 0 { thisBlockChip }
-        }
-    }
+    var body: some View { countRow }
 
     private var countRow: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -131,12 +103,19 @@ private struct SessionKeyResultRow: View {
                 }
                 PaceBar(fraction: pace.fraction, expected: pace.expectedFraction, color: pace.status.color, height: 6)
             }
-            HStack(spacing: 2) {
-                stepButton("minus", label: "Remove one logged this block") {
-                    if let entry = lastStepperEntry { remove(entry) }
+            if loggedByTask {
+                Text("Tick its task")
+                    .font(.system(size: 11))
+                    .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                    .help("A task today counts toward this. Ticking the task logs it here.")
+            } else {
+                HStack(spacing: 2) {
+                    stepButton("minus", label: "Remove one logged this block") {
+                        if let entry = lastStepperEntry { remove(entry) }
+                    }
+                    .disabled(lastStepperEntry == nil)
+                    stepButton("plus", label: "Add one") { add(1) }
                 }
-                .disabled(lastStepperEntry == nil)
-                stepButton("plus", label: "Add one") { add(1) }
             }
         }
         .sensoryFeedback(.increase, trigger: bump)

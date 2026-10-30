@@ -181,9 +181,15 @@ struct DailyTaskRow: View {
     var onDelete: (() -> Void)?
     /// The task mirrors a reminder in a list its project still syncs: delete removes both, so it asks.
     var syncsReminder = false
+    /// Count key results a task can count toward ("LeetCode · Interview-ready"), for "Link to goal".
+    var goalOptions: [(id: UUID, title: String)] = []
+    var onLink: ((UUID?) -> Void)?
+    var onRename: ((String) -> Void)?
 
     @State private var hovering = false
     @State private var confirmDelete = false
+    @State private var renaming = false
+    @State private var renameText = ""
 
     private func requestDelete() {
         if syncsReminder { confirmDelete = true } else { onDelete?() }
@@ -261,10 +267,34 @@ struct DailyTaskRow: View {
                 if let onTop { Button("Move to top", action: onTop) }
                 if let onTomorrow { Button("Move to tomorrow", action: onTomorrow) }
             }
+            Divider()
+            if onRename != nil {
+                Button("Rename…") {
+                    renameText = task.title
+                    renaming = true
+                }
+            }
+            if let onLink, !goalOptions.isEmpty {
+                // Any task (an imported reminder too) can count toward a goal: ticking it logs progress.
+                Menu("Link to goal") {
+                    linkButton("Not linked", id: nil, onLink: onLink)
+                    Divider()
+                    ForEach(goalOptions, id: \.id) { option in
+                        linkButton(option.title, id: option.id, onLink: onLink)
+                    }
+                }
+            }
             if onDelete != nil {
                 Divider()
                 Button(syncsReminder ? "Delete from FocusFlow and Reminders…" : "Delete", role: .destructive, action: requestDelete)
             }
+        }
+        .alert("Rename task", isPresented: $renaming) {
+            TextField("Title", text: $renameText)
+            Button("Rename") { onRename?(renameText) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if syncsReminder { Text("The reminder is renamed too.") }
         }
         .confirmationDialog("Delete “\(task.title)” from Reminders too?", isPresented: $confirmDelete) {
             Button("Delete from both", role: .destructive) { onDelete?() }
@@ -274,6 +304,15 @@ struct DailyTaskRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(task.isDone ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private func linkButton(_ title: String, id: UUID?, onLink: @escaping (UUID?) -> Void) -> some View {
+        if task.keyResultID == id {
+            Button { onLink(id) } label: { Label(title, systemImage: "checkmark") }
+        } else {
+            Button(title) { onLink(id) }
+        }
     }
 
     static func amountText(_ amount: Double) -> String {
@@ -305,8 +344,9 @@ struct DailyTasksSection: View {
     private var todays: [DailyTask] { DailyTaskPlanner.tasks(tasks, on: now) }
     private var stats: DailyTaskStats { DailyTaskPlanner.stats(tasks, on: now) }
     private var activeGoals: [ProjectGoal] { goals.filter { $0.status == .active } }
+    /// Count key results only: a goal is measured in numbers; one-off steps are tasks.
     private var keyResults: [(result: GoalKeyResult, goal: ProjectGoal)] {
-        activeGoals.flatMap { goal in goal.sortedKeyResults.map { ($0, goal) } }
+        activeGoals.flatMap { goal in goal.sortedKeyResults.filter { $0.kind == .count }.map { ($0, goal) } }
     }
 
     var body: some View {
@@ -353,17 +393,34 @@ struct DailyTasksSection: View {
         }
     }
 
+    /// Type and press Return, or click +. The field is ready when Today opens, and ⌘N jumps to it.
     private var addRow: some View {
-        HStack(spacing: FFSpace.s) {
-            Image(systemName: "plus.circle.fill")
-                .font(.system(size: 15))
-                .foregroundStyle(FFPalette.accent)
-                .frame(width: 30)
+        let canAdd = !draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return HStack(spacing: FFSpace.s) {
+            Button(action: add) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(canAdd ? FFPalette.accent : FFPalette.accent.opacity(0.45))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canAdd)
+            .help(canAdd ? "Add this task (Return)" : "Type a task, then press Return")
+            .accessibilityLabel("Add task")
             TextField(todays.isEmpty ? "What would make today a good day?" : "Add a task", text: $draftTitle)
                 .textFieldStyle(.plain)
                 .ffText(.body)
                 .focused($fieldFocused)
                 .onSubmit(add)
+                .onAppear { fieldFocused = true }
+                .background {
+                    // ⌘N: jump to the field from anywhere on Today.
+                    Button("") { fieldFocused = true }
+                        .keyboardShortcut("n", modifiers: .command)
+                        .opacity(0)
+                        .accessibilityHidden(true)
+                }
             projectMenu
             resultMenu
         }
@@ -463,7 +520,10 @@ struct DailyTasksSection: View {
                         onTomorrow: { withAnimation(.smooth(duration: 0.3)) { timerVM.moveDailyTaskToTomorrow(task, now: now) } },
                         onDelete: { withAnimation(.smooth(duration: 0.25)) { timerVM.deleteDailyTask(task) } },
                         syncsReminder: remindersOn && task.reminderID != nil
-                            && !(projects.first { $0.id == task.projectID }?.reminderListID ?? "").isEmpty
+                            && !(projects.first { $0.id == task.projectID }?.reminderListID ?? "").isEmpty,
+                        goalOptions: keyResults.map { (id: $0.result.id, title: "\($0.result.title) · \($0.goal.title)") },
+                        onLink: { resultID in withAnimation(.smooth(duration: 0.25)) { timerVM.linkDailyTask(task, toResult: resultID, now: Date()) } },
+                        onRename: { title in timerVM.renameDailyTask(task, to: title) }
                     )
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -472,6 +532,7 @@ struct DailyTasksSection: View {
     }
 
     private func add() {
+        guard !draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let resultID = draftResultID
         withAnimation(.smooth(duration: 0.25)) {
             _ = timerVM.addDailyTask(title: draftTitle, projectID: draftProjectID, keyResultID: resultID, now: now)

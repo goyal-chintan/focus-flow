@@ -99,7 +99,7 @@ final class DailyTaskTests: XCTestCase {
 
     func testLeversCarryTheirAmount() {
         let input = DailyLevers.KeyResultInput(
-            id: UUID(), title: "LeetCode", unit: "questions", isCheckbox: false, target: 60, done: 0, doneToday: 0,
+            id: UUID(), title: "LeetCode", unit: "questions", target: 60, done: 0, doneToday: 0,
             goalTitle: "Interview-ready", projectID: nil, start: day(-1), deadline: day(31), isBossFight: true
         )
         let lever = try? XCTUnwrap(DailyLevers.levers([input], now: Date()).first)
@@ -299,6 +299,7 @@ final class ViewReadPathTests: XCTestCase {
             _ = vm.historyReaderActiveGoals()
             _ = vm.startLadderRecommendation(now: Date())
             _ = vm.regularMinutes
+            _ = vm.dailyGoal(now: Date())
         }
         reads() // warm up any first-use work outside the tracked pass
 

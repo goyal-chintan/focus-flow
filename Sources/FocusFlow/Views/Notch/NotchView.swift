@@ -297,10 +297,11 @@ struct NotchView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.white.opacity(0.7))
             HStack(spacing: 8) {
-                NotchButton(title: "Log", symbol: "checkmark.circle", prominent: true, tint: .orange, action: actions.log)
-                NotchButton(title: "Keep going", symbol: "forward.fill", action: actions.keepGoing)
+                // Same verbs, same order as the popover (vocabulary audit 2026-10-30).
+                NotchButton(title: "Log this block", symbol: "checkmark.circle", prominent: true, tint: .orange, action: actions.log)
                 NotchButton(title: "Break 5 min", symbol: "cup.and.saucer.fill", action: actions.takeBreak)
-                NotchButton(title: "End", symbol: "stop.fill", action: actions.end)
+                NotchButton(title: "Keep going", symbol: "forward.fill", action: actions.keepGoing)
+                NotchButton(title: "Done for today", symbol: "stop.fill", action: actions.end)
                 Spacer(minLength: 0)
             }
         }

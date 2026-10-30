@@ -181,7 +181,7 @@ final class NotchController: NotchHosting {
                 let lever = vm.todayLevers().first
                 if vm.startNextBlock(minutes: minutes, projectID: lever?.projectID) { self?.collapse() }
             },
-            logResult: { id in vm.logGoalProgress(resultID: id, amount: 1) },
+            logResult: { id in vm.logOneMore(resultID: id) },
             openGoals: { [weak self] in
                 self?.collapse()
                 vm.openCompanionWindow?(.goals)
@@ -253,7 +253,7 @@ private struct NotchLiveView: View {
         }
 
         let attention = mode == .idle && (vm.coachPanel != nil || vm.coachMenuBarPulse)
-        let scope = GoalDataBuilder.goalScope(projects)
+        let dailyGoal = GoalDataBuilder.dailyGoal(projects: projects, settings: vm.settings, on: now)
         return NotchSnapshot(
             mode: mode,
             time: vm.isOvertime ? vm.overtimeTimeString : vm.timeString,
@@ -262,8 +262,8 @@ private struct NotchLiveView: View {
             projectColor: shownProject?.color,
             intent: vm.currentIntentText,
             goalDone: vm.goalProgressSeconds(now: now),
-            goalTarget: vm.settings?.dailyFocusGoal ?? 7200,
-            goalLabel: scope.label,
+            goalTarget: dailyGoal.seconds,
+            goalLabel: dailyGoal.label,
             lever: levers.first,
             verdict: verdict,
             coachHook: attention ? (vm.coachPanel?.message.hook ?? "The coach has a start for you.") : nil,

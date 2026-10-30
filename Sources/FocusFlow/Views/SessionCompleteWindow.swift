@@ -161,7 +161,7 @@ struct SessionCompleteWindowView: View {
                     }
 
                     LiquidActionButton(
-                        title: "Discard session entirely",
+                        title: "Discard this block",
                         icon: "trash",
                         role: .destructive
                     ) {
@@ -207,7 +207,10 @@ struct SessionCompleteWindowView: View {
                     projectID: session.project?.id
                 )
                 // After the tasks, so a tick visibly moves the bar here.
-                SessionGoalSection(projectID: session.project?.id, sessionID: session.id)
+                SessionGoalSection(
+                    projectID: session.project?.id, sessionID: session.id,
+                    taskLinkedResultIDs: Set(todaysTasks.compactMap(\.keyResultID))
+                )
                 outcomeSection
             }
 
@@ -285,6 +288,13 @@ struct SessionCompleteWindowView: View {
         if timerVM.isManualStop, let name = earnedContext?.projectName { parts.append(name) }
         parts.append("\(totals.blocks) block\(totals.blocks == 1 ? "" : "s")")
         parts.append("\(FFFormat.duration(totals.seconds)) today")
+        // Progress toward the goal after every block (progress principle): what is left, or met.
+        let goal = timerVM.dailyGoal()
+        if goal.seconds > 0 {
+            let left = goal.seconds - timerVM.goalProgressSeconds()
+            // The scope beside the number, as everywhere: "40m to go · ★ Learning".
+            parts.append(left > 0 ? "\(FFFormat.duration(left)) to go · \(goal.label)" : "\(goal.label) goal met")
+        }
         return parts.joined(separator: " · ")
     }
 

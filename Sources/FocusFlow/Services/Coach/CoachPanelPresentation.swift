@@ -36,7 +36,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
     let level: DriftLevel?
     /// Rescue loop: what the primary button starts (normal block or starter block).
     let ask: CoachRescueAsk?
-    /// Quiet footer line, e.g. "⌃⌥Space starts 5 min anytime".
+    /// Quiet footer line, e.g. `CoachStarterBlock.hotkeyHint`.
     let footerHint: String?
     /// Keep-going panel: the step typed during the starter block.
     let step: String?

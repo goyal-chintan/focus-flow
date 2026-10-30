@@ -369,7 +369,7 @@ struct DailyLever: Sendable, Equatable, Identifiable {
     let reason: String
     let status: GoalPaceStatus
     let urgency: Double
-    /// How much today's action adds to the key result (3 for "3 LeetCode questions"; 1 for a checkbox).
+    /// How much today's action adds to the key result (3 for "3 LeetCode questions").
     var amount: Double = 1
     /// The thing being counted, for a counted task: "LeetCode questions", "Problems solved".
     var countedName: String? = nil
@@ -384,7 +384,6 @@ enum DailyLevers {
         let id: UUID
         let title: String
         let unit: String?
-        let isCheckbox: Bool
         let target: Double
         let done: Double
         let doneToday: Double
@@ -394,6 +393,8 @@ enum DailyLevers {
         let deadline: Date
         /// The month's main goal: its levers come first.
         var isBossFight: Bool = false
+        /// Own work and your ★ #1 project come before other projects' goals (`GoalDataBuilder`).
+        var priorityBoost: Double = 0
     }
 
     static let maxLevers = 3
@@ -408,18 +409,9 @@ enum DailyLevers {
         inputs.compactMap { input -> DailyLever? in
             let pace = GoalPacing.pace(target: input.target, done: input.done, start: input.start, deadline: input.deadline, now: now)
             guard pace.status != .done, pace.status != .notStarted else { return nil }
+            // A result of 1 is a one-off step: it belongs in tasks, never a daily ask.
+            guard input.target > 1 else { return nil }
             let daysLeft = Int(pace.daysLeft.rounded(.up))
-            if input.isCheckbox {
-                // A checkbox becomes a lever when its share of the time has come (or it is overdue).
-                guard pace.expectedFraction >= 0.5 || pace.status == .overdue || daysLeft <= 7 else { return nil }
-                return DailyLever(
-                    id: input.id, goalTitle: input.goalTitle, projectID: input.projectID,
-                    action: input.title,
-                    reason: pace.status == .overdue ? "overdue" : "\(daysLeft) day\(daysLeft == 1 ? "" : "s") left",
-                    status: pace.status,
-                    urgency: (pace.status == .overdue ? 100 : 1 / max(1, pace.daysLeft)) + (input.isBossFight ? 50 : 0)
-                )
-            }
             let needed = pace.neededPerDay ?? pace.remaining
             // Round up, but not for clock noise: 3.0000001 a day is 3.
             let quota = (needed - 0.01).rounded(.up)
@@ -435,7 +427,7 @@ enum DailyLevers {
                     ? "overdue · \(Int(pace.remaining.rounded())) left"
                     : "need \(PaceFormat.rate(needed)) · \(daysLeft) day\(daysLeft == 1 ? "" : "s") left",
                 status: pace.status,
-                urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0)
+                urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0) + input.priorityBoost
                     + max(0, -pace.delta) / max(1, input.target) * 10 + needed / max(1, input.target),
                 amount: Double(todayAsk),
                 countedName: input.unit.map { "\(input.title) \($0)" } ?? input.title

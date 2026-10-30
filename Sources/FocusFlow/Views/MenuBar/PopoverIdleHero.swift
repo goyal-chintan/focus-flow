@@ -4,7 +4,7 @@ import SwiftData
 /// Idle popover, top (screen audit 2026-10-28, clarity fixes §4): where today stands on the one
 /// thing being tracked. The ring is the ★ #1 project (else own work, else all focus) against the
 /// daily goal; beside it, the time still to go and the lever's pace. The next step itself lives in
-/// "Goal for this block" below, so the hero never repeats it. A due planned block takes over.
+/// "Working on" below, so the hero never repeats it. A due planned block takes over.
 struct PopoverIdleHero: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,8 +23,9 @@ struct PopoverIdleHero: View {
 
     private func content(now: Date) -> some View {
         let done = timerVM.goalProgressSeconds(now: now)
-        let target = timerVM.settings?.dailyFocusGoal ?? 7200
-        let scope = GoalDataBuilder.goalScope(projects)
+        let goal = GoalDataBuilder.dailyGoal(projects: projects, settings: timerVM.settings, on: now)
+        let target = goal.seconds
+        let scope = goal.scope
         let plan = nextPlan(now: now)
         let isDue = plan.map { $0.startAt <= now } ?? false
         return VStack(alignment: .leading, spacing: 10) {

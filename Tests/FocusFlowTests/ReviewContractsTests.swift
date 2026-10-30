@@ -246,10 +246,10 @@ final class ReviewContractsTests: XCTestCase {
             .appendingPathComponent("SettingsView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        // Settings is a native Settings scene: one Permissions tab (raw value still
+        // Settings is a native Settings scene: one Permissions & Sync tab (raw value still
         // "integrations") holds every permission surface, and About lives in the app menu.
         XCTAssertTrue(source.contains("case integrations"))
-        XCTAssertTrue(source.contains("case .integrations: \"Permissions\""))
+        XCTAssertTrue(source.contains("case .integrations: \"Permissions & Sync\""))
         XCTAssertTrue(source.contains("case .integrations: \"lock.shield\""))
         XCTAssertFalse(source.contains("\"Integrations & Permissions\""))
         XCTAssertTrue(source.contains("permissionsSection"))
@@ -314,10 +314,15 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertTrue(source.contains("Text(\"Help me start\")"))
         XCTAssertTrue(source.contains("settings.antiProcrastinationEnabled = newValue"))
         XCTAssertTrue(source.contains("settings.coachIdleStarterEnabled = newValue"))
-        XCTAssertTrue(source.contains("Toggle(\"Show drift time in the menu bar\", isOn: bind(\\.coachShowDriftInMenuBar))"))
         XCTAssertTrue(source.contains("settings.coachPauseScreenEnabled = newValue"))
         XCTAssertTrue(source.contains("Text(\"Pause screen when I spiral in a focus window\")"))
-        XCTAssertTrue(source.contains("Toggle(\"⌃⌥Space starts a block from anywhere\", isOn: bind(\\.coachGlobalHotkeyEnabled))"))
+        // The menu bar's drift time and the global shortcut live in General (structural redesign 2026-10-30).
+        XCTAssertFalse(source.contains("coachShowDriftInMenuBar"))
+        XCTAssertFalse(source.contains("coachGlobalHotkeyEnabled"))
+        let general = try String(contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/Views/Companion/SettingsView.swift"), encoding: .utf8)
+        XCTAssertTrue(general.contains("Toggle(isOn: bind(\\.coachShowDriftInMenuBar))"))
+        XCTAssertTrue(general.contains("Toggle(isOn: bind(\\.coachGlobalHotkeyEnabled))"))
+        XCTAssertTrue(source.contains("CoachPerformanceView()"), "How the coach is doing moved here from Insights")
         // What v5 learns or what nothing reads has no knob.
         for removed in ["Picker(\"Starter block\"", "Picker(\"Escalation\"", "DisclosureGroup(\"Advanced\"",
                         "First reminder after", "WeeklyPrioritiesSection(", "coachBringAppToFrontOnStrongPrompt",
@@ -360,7 +365,7 @@ final class ReviewContractsTests: XCTestCase {
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
         let statsWindowRange = try XCTUnwrap(source.range(of: "Window(\"FocusFlow\", id: \"stats\")"))
-        let nextWindowRange = try XCTUnwrap(source.range(of: "Window(\"Session Complete\", id: \"session-complete\")"))
+        let nextWindowRange = try XCTUnwrap(source.range(of: "Window(\"Block complete\", id: \"session-complete\")"))
         let statsWindowSource = String(source[statsWindowRange.lowerBound..<nextWindowRange.lowerBound])
 
         XCTAssertTrue(statsWindowSource.contains(".windowResizability(.contentMinSize)"))
@@ -401,7 +406,8 @@ final class ReviewContractsTests: XCTestCase {
             XCTAssertFalse(literals.localizedCaseInsensitiveContains(banned), "Companion screens must not show \"\(banned)\".")
         }
         XCTAssertTrue(all.contains("accessibilityReduceMotion"), "Motion must respect Reduce Motion.")
-        XCTAssertTrue(all.contains("Rate your sessions after each block to see this"))
+        XCTAssertTrue(all.contains("When a block ends, pick Shipped, Moved it forward or Busywork."))
+        XCTAssertFalse(all.contains("CoachStartSection("), "The coach section lives in Settings → Coach")
     }
 
     func testDistractionsViewExposesSuggestionsRulesAndManualAdd() throws {
@@ -415,12 +421,16 @@ final class ReviewContractsTests: XCTestCase {
             .appendingPathComponent("DistractionsView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        // Settings → Distractions is a native grouped Form (2026-10-17 settings polish).
-        XCTAssertTrue(source.contains("Suggestions"))
+        // Settings → Distractions is a native grouped Form (2026-10-17 settings polish) with rules,
+        // the allowed list and blocking profiles; suggestions are answered in Insights (2026-10-30).
+        XCTAssertFalse(source.contains("suggestionsSection"))
         XCTAssertTrue(source.contains("Distraction rules"))
         XCTAssertTrue(source.contains("Allowed (work)"))
         XCTAssertTrue(source.contains("Add Distraction"))
-        XCTAssertTrue(source.contains("Dismiss All"))
+        XCTAssertTrue(source.contains("BlockingProfilesSection()"))
+        let inline = try String(contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/Views/Components/DistractionActions.swift"), encoding: .utf8)
+        XCTAssertTrue(inline.contains("Dismiss All"))
+        XCTAssertTrue(inline.contains("Button(\"It's work\")"))
         XCTAssertTrue(source.contains("Form {"))
         XCTAssertFalse(source.contains("LiquidActionButton("))
         XCTAssertFalse(source.contains("LiquidGlassPanel"))

@@ -8,6 +8,7 @@ struct TodayView: View {
     @Query(sort: \AppUsageEntry.date) private var usageEntries: [AppUsageEntry]
     @Query private var distractionRules: [IdleDistractionItem]
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
+    @Query private var tasks: [DailyTask]
 
     @State private var showManualEntry = false
     @State private var editingSession: FocusSession?
@@ -36,16 +37,14 @@ struct TodayView: View {
                     Button {
                         showManualEntry = true
                     } label: {
-                        Label("Log session", systemImage: "plus")
+                        Label("Log a block", systemImage: "plus")
                     }
                     .buttonStyle(.bordered)
                     .help("Log a focus block you did away from the timer")
                 }
 
-                DailyReminderView(style: .card, now: snapshot.now)
-
                 GoalHeroView(
-                    title: Self.goalTitle(snapshot.goalScope),
+                    scopeLabel: snapshot.dailyGoal.label,
                     progress: progress,
                     next: snapshot.analytics.nextWindow(windows, after: snapshot.now),
                     week: snapshot.analytics.weekOverWeek(snapshot.goalSamples, goal: snapshot.goal, now: snapshot.now),
@@ -53,6 +52,9 @@ struct TodayView: View {
                     missedYesterday: missedYesterday(snapshot),
                     now: snapshot.now
                 )
+
+                // Status first; the day's line is a strip under it, not the tallest card on top.
+                DailyReminderView(style: .strip, now: snapshot.now)
 
                 DailyTasksSection(now: snapshot.now)
 
@@ -68,15 +70,6 @@ struct TodayView: View {
         }
     }
 
-    /// "★ Learning today", "Your own work today", "Daily goal".
-    static func goalTitle(_ scope: GoalScope) -> String {
-        switch scope {
-        case .project: "\(scope.label) today"
-        case .ownWork: "Your own work today"
-        case .allFocus: "Daily goal"
-        }
-    }
-
     // MARK: - Week dots (never miss twice, own work)
 
     /// Monday–Sunday of this week, marked against the daily goal on own work.
@@ -88,14 +81,15 @@ struct TodayView: View {
             let mark: GoalHeroView.WeekDot.Mark
             if total.day > today {
                 mark = .future
-            } else if total.seconds >= snapshot.goal {
+            } else if total.seconds >= snapshot.goal(on: total.day) {
                 mark = .met
             } else if total.seconds > 0 {
                 mark = .partial
             } else {
                 mark = total.day == today ? .open : .missed
             }
-            let fraction = snapshot.goal > 0 ? min(1, total.seconds / snapshot.goal) : 0
+            let goal = snapshot.goal(on: total.day)
+            let fraction = goal > 0 ? min(1, total.seconds / goal) : 0
             return GoalHeroView.WeekDot(day: total.day, seconds: total.seconds, mark: mark, fraction: fraction)
         }
     }
@@ -137,7 +131,7 @@ struct TodayView: View {
                 start: max(session.startedAt, day.start),
                 end: min(session.effectiveEnd, day.end),
                 project: AnalyticsProjectKey(project: session.project, customLabel: session.customLabel).name,
-                title: session.intentText?.isEmpty == false ? session.intentText! : session.label,
+                title: SessionRow.title(intent: session.intentText, taskTitle: taskTitle(session), achievement: nil, fallback: session.label),
                 seconds: FocusSample(session).overlap(with: day)
             )
         }
@@ -164,13 +158,17 @@ struct TodayView: View {
                 } else {
                     VStack(spacing: 2) {
                         ForEach(todaySessions.reversed()) { session in
-                            SessionRow(session: session, today: day) { editingSession = session }
+                            SessionRow(session: session, today: day, taskTitle: taskTitle(session)) { editingSession = session }
                         }
                     }
                     .padding(.horizontal, -FFSpace.s)
                 }
             }
         }
+    }
+
+    private func taskTitle(_ session: FocusSession) -> String? {
+        session.taskID.flatMap { id in tasks.first { $0.id == id }?.title }
     }
 
     // MARK: - Distractions
@@ -188,7 +186,7 @@ struct TodayView: View {
         if !totals.isEmpty {
             let top = Array(totals.prefix(3))
             let peak = Double(top.first?.seconds ?? 1)
-            FFSection("Distractions today", subtitle: "Time outside focus blocks") {
+            FFSection("Distractions today", subtitle: "Time outside focus blocks. Tell the coach which ones count.") {
                 Button("See patterns") { requestedTabRaw = CompanionTab.insights.rawValue }
                     .buttonStyle(.link)
                     .font(FFTextStyle.callout.font)
@@ -196,13 +194,17 @@ struct TodayView: View {
                 VStack(spacing: FFSpace.s) {
                     ForEach(top) { item in
                         HStack(spacing: FFSpace.m) {
-                            Text(item.name).ffText(.body).frame(width: 120, alignment: .leading).lineLimit(1)
-                            FFValueBar(fraction: Double(item.seconds) / peak, color: FFPalette.atRisk)
-                            Text(FFFormat.duration(TimeInterval(item.seconds)))
-                                .ffNumber(.body)
-                                .frame(width: 56, alignment: .trailing)
+                            HStack(spacing: FFSpace.m) {
+                                Text(item.name).ffText(.body).frame(width: 120, alignment: .leading).lineLimit(1)
+                                FFValueBar(fraction: Double(item.seconds) / peak, color: FFPalette.atRisk)
+                                Text(FFFormat.duration(TimeInterval(item.seconds)))
+                                    .ffNumber(.body)
+                                    .frame(width: 56, alignment: .trailing)
+                            }
+                            .accessibilityElement(children: .combine)
+                            DerailerActionButtons(name: item.name, target: item.target, isConfirmed: item.isConfirmed)
                         }
-                        .accessibilityElement(children: .combine)
+                        .transition(.opacity)
                     }
                 }
             }
@@ -213,7 +215,8 @@ struct TodayView: View {
 // MARK: - Goal hero
 
 private struct GoalHeroView: View {
-    let title: String
+    /// What the goal counts ("★ Learning"), shown beside the number as on Goals and the popover.
+    let scopeLabel: String
     let progress: FocusAnalytics.GoalProgress
     let next: FocusAnalytics.NextWindow?
     let week: FocusAnalytics.WeekComparison
@@ -241,10 +244,11 @@ private struct GoalHeroView: View {
         HStack(spacing: FFSpace.xl) {
             ring
             VStack(alignment: .leading, spacing: FFSpace.s) {
-                Text(title).ffText(.callout)
+                Text("Daily goal").ffText(.callout)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(FFFormat.duration(progress.doneSeconds)).ffNumber(.largeTitle)
                     Text("of \(FFFormat.duration(progress.goalSeconds))").ffText(.title3).foregroundStyle(.secondary)
+                    ScopeChip(label: scopeLabel)
                 }
                 statusLine
                 if progress.isMet {

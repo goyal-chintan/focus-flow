@@ -2,12 +2,12 @@ import Foundation
 
 /// Writes bandit rewards onto `InterventionAttempt` rows (Coach v2 design §3 [3], §9).
 ///
-/// Reward per prompt: +1 when a session starts ≤ 10 min after it, +0.5 when that session
+/// Reward per prompt: +1 when a session starts ≤ 20 min after it, +0.5 when that session
 /// completes, ± `SessionOutcome.reward` when the user rates it. Silence or "Not now" = 0.
 /// Attempts are always resolved by id (never `.first` / `.last`; audit bug B3).
 @MainActor
 struct CoachRewardLedger {
-    static let startWindow: TimeInterval = 10 * 60
+    static let startWindow: TimeInterval = CoachDecisionReward.startWindow
     static let startReward = 1.0
     static let completionReward = 0.5
 
@@ -18,7 +18,7 @@ struct CoachRewardLedger {
     }
 
     /// Credits a session start to the prompt that asked for it. Returns false when the prompt
-    /// is unknown, older than 10 minutes, or already credited.
+    /// is unknown, older than the start window (20 minutes), or already credited.
     @discardableResult
     func creditStart(attemptID: UUID, sessionID: UUID, at now: Date = Date()) -> Bool {
         guard let attempt = attempt(id: attemptID),
@@ -35,7 +35,7 @@ struct CoachRewardLedger {
         return true
     }
 
-    /// Credits a start to the most recent prompt the user saw in the last 10 minutes, whatever
+    /// Credits a start to the most recent prompt the user saw in the last 20 minutes, whatever
     /// surface started the block (Coach v4 §3.1). The plan card's starts were made from the
     /// popover a minute later and, before v4, were never credited.
     @discardableResult
@@ -74,7 +74,7 @@ struct CoachRewardLedger {
         return true
     }
 
-    /// Resolves prompts nobody acted on within 10 minutes as reward 0 ("ignored").
+    /// Resolves prompts nobody acted on within the start window as reward 0 ("ignored").
     @discardableResult
     func resolveExpired(now: Date = Date()) -> Int {
         let cutoff = now.addingTimeInterval(-Self.startWindow)

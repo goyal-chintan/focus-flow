@@ -335,6 +335,7 @@ enum CoachMessageComposer {
     /// gets postponed (Bandura & Schunk, 1981). It asks for the next block only.
     private static func startCardHook(_ input: CoachComposerInput) -> (String, Bool) {
         let first = input.facts.sessionsToday == 0
+        if !first, let gradient = gradientHook(input) { return (gradient, true) }
         switch input.style {
         case .challenger:
             if first && input.facts.missedYesterday { return ("Never miss twice. Start small.", false) }
@@ -389,6 +390,19 @@ enum CoachMessageComposer {
 
     // MARK: Hooks
 
+    /// Goal gradient (Kivetz, Urminsky & Zheng, 2006): effort rises as a visible goal gets near,
+    /// and seeing progress is the strongest daily motivator (Amabile & Kramer, 2011). Only once
+    /// you are 40% of the way, so a far-off goal never becomes the ask (Bandura & Schunk, 1981).
+    /// "70 of 150 min today. This 25 puts you at 95." / "This 25 closes today's goal."
+    static func gradientHook(_ input: CoachComposerInput) -> String? {
+        let done = input.facts.doneMinutesToday
+        let goal = input.facts.goalMinutes
+        let minutes = input.target.minutes
+        guard goal > 0, done < goal, Double(done) >= Double(goal) * 0.4, minutes > 0 else { return nil }
+        if done + minutes >= goal { return "\(done) of \(goal) min today. This \(minutes) closes today's goal." }
+        return "\(done) of \(goal) min today. This \(minutes) puts you at \(done + minutes)."
+    }
+
     private static func startHook(_ input: CoachComposerInput) -> (String, Bool) {
         let facts = input.facts
         let minutes = input.target.minutes
@@ -412,6 +426,8 @@ enum CoachMessageComposer {
             if let intent = facts.lastIntent.map(trimmedIntent), !intent.isEmpty {
                 return ("You said: “\(intent)”.", false)
             }
+            // Distance to today's goal beats a generic line once you're on the way.
+            if let gradient = gradientHook(input) { return (gradient, true) }
             return input.seed % 2 == 0
                 ? ("1% better daily = 37× in a year.", false)
                 : ("Show up. \(minutes) minutes.", false)

@@ -182,47 +182,24 @@ struct KeyResultRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: FFSpace.m) {
-            if keyResult.kind == .checkbox {
-                Button {
-                    log(pace.status == .done ? -keyResult.done : 1)
-                } label: {
-                    // Leading-aligned in its 30 pt target, so the circle lines up with the count rows' bars.
-                    HStack(spacing: FFSpace.s) {
-                        Image(systemName: pace.status == .done ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 18))
-                            .foregroundStyle(pace.status == .done ? FFPalette.goal : .secondary)
-                        Text(keyResult.title)
-                            .ffText(.body)
-                            .strikethrough(pace.status == .done, color: .secondary)
-                            .foregroundStyle(.primary)
-                    }
-                    .frame(minHeight: 30)
-                    .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: FFSpace.s) {
+                    Text(keyResult.title).ffText(.body).lineLimit(1)
+                    Spacer(minLength: FFSpace.s)
+                    Text("\(Self.number(pace.done)) / \(Self.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
+                        .ffText(.headline)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(pace.status == .done ? "Mark \(keyResult.title) not done" : "Mark \(keyResult.title) done")
-                Spacer(minLength: FFSpace.s)
-                if pace.status == .overdue { PaceStatusPill(status: .overdue) }
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: FFSpace.s) {
-                        Text(keyResult.title).ffText(.body).lineLimit(1)
-                        Spacer(minLength: FFSpace.s)
-                        Text("\(Self.number(pace.done)) / \(Self.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
-                            .ffText(.headline)
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                    }
-                    PaceBar(fraction: pace.fraction, expected: pace.expectedFraction, color: pace.status.color, height: 6)
-                    if !compact {
-                        Text(caption).ffText(.caption).monospacedDigit()
-                    }
+                PaceBar(fraction: pace.fraction, expected: pace.expectedFraction, color: pace.status.color, height: 6)
+                if !compact {
+                    Text(caption).ffText(.caption).monospacedDigit()
                 }
-                HStack(spacing: 2) {
-                    stepButton("minus", amount: -1, label: "Remove one")
-                        .disabled(pace.done <= 0)
-                    stepButton("plus", amount: 1, label: "Add one")
-                }
+            }
+            HStack(spacing: 2) {
+                stepButton("minus", amount: -1, label: "Remove one")
+                    .disabled(pace.done <= 0)
+                stepButton("plus", amount: 1, label: "Add one")
             }
         }
         .sensoryFeedback(.increase, trigger: bump)
@@ -385,14 +362,15 @@ struct PriorityBreakdownView: View {
     }
 
     private func rankBadge(_ row: PriorityRow) -> some View {
-        Text(row.rank.map { "#\($0)" } ?? "–")
+        Text(row.rank.map { "#\($0)" } ?? "")
             .font(.system(size: 11, weight: .bold, design: .rounded))
             .foregroundStyle(row.rank == 1 ? Color.white : .secondary)
             .frame(width: 28, height: 22)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(row.rank == 1 ? FFPalette.project(row.colorName) : FFPalette.track)
+                    .fill(row.rank == nil ? Color.clear : row.rank == 1 ? FFPalette.project(row.colorName) : FFPalette.track)
             )
+            .help(row.rank.map { "Priority \($0)" } ?? "No priority")
             .accessibilityLabel(row.rank.map { "Priority \($0)" } ?? "Unranked")
     }
 

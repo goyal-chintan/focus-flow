@@ -66,9 +66,22 @@ struct CoachHistoryReader {
     }
 
     /// Inputs for `CoachAvailabilityModel`.
+    /// Focus sessions that count toward the goal: once any project is marked Work, only own work
+    /// (personal, learning) and project-less blocks (starters); otherwise every block. The coach
+    /// learns when you do *your* work, not when the office keeps you busy (audit 2026-10-30).
+    func ownWorkSessions(since date: Date) -> [FocusSession] {
+        let sessions = focusSessions(since: date)
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        guard GoalDataBuilder.ownWorkConfigured(projects) else { return sessions }
+        return sessions.filter { session in
+            guard let project = session.project else { return true }
+            return project.areaRaw != nil && project.area.isOwnWork
+        }
+    }
+
     func availabilityInputs(now: Date) -> (sessions: [CoachAvailabilityModel.Session], activeDays: [Date]) {
         let since = calendar.date(byAdding: .day, value: -Self.lookbackDays, to: calendar.startOfDay(for: now)) ?? now
-        let sessions = focusSessions(since: since)
+        let sessions = ownWorkSessions(since: since)
             .filter { $0.endedAt != nil }
             .map { CoachAvailabilityModel.Session(start: $0.startedAt, end: $0.effectiveEnd) }
         let entryDescriptor = FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= since })

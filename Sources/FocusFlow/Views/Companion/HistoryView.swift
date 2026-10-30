@@ -38,7 +38,7 @@ struct HistoryView: View {
         let days = snapshot.analytics.dailyTotals(snapshot.samples, trailing: range.dayCount, endingAt: snapshot.now)
         // Goal marks count own work once a project is marked Work: office time never meets the goal.
         let goalDays = snapshot.goalDays(days.map(\.day))
-        let goalMet = Set(goalDays.filter { $0.seconds >= snapshot.goal }.map(\.day))
+        let goalMet = Set(goalDays.filter { $0.seconds >= snapshot.goal(on: $0.day) }.map(\.day))
         let summary = snapshot.analytics.rangeSummary(days, goal: snapshot.goal)
         let colors = ProjectColorScale(days.flatMap { $0.byProject.map(\.project) }, faded: snapshot.workKeys)
 
@@ -93,7 +93,7 @@ struct HistoryView: View {
         HStack(alignment: .top, spacing: FFSpace.l) {
             FFStat(label: "Total", value: FFFormat.duration(summary.totalSeconds))
             Divider()
-            FFStat(label: "Daily average", value: FFFormat.duration(summary.dailyAverageSeconds), caption: "Goal \(FFFormat.duration(goal))")
+            FFStat(label: "Daily average", value: FFFormat.duration(summary.dailyAverageSeconds), caption: "Goal \(FFFormat.duration(goal)) · \(scope.label)")
             Divider()
             FFStat(
                 label: "Days goal met",
@@ -141,12 +141,12 @@ struct HistoryView: View {
         }
         return VStack(alignment: .leading, spacing: FFSpace.l) {
             Grid(alignment: .leading, horizontalSpacing: FFSpace.xl, verticalSpacing: FFSpace.l) {
+                // "Goal met N of M days" is the summary tile at the top; not repeated here.
                 GridRow {
-                    FFStat(label: "Goal met", value: "\(met.count) of \(days.count) days", valueColor: met.isEmpty ? nil : FFPalette.goal)
                     FFStat(label: "Days with any focus", value: "\(active)")
+                    FFStat(label: "Longest run", value: longest == 1 ? "1 day" : "\(longest) days")
                 }
                 GridRow {
-                    FFStat(label: "Longest run", value: longest == 1 ? "1 day" : "\(longest) days")
                     if let bestIndex, byWeekday[bestIndex] > 0 {
                         FFStat(label: "Most reliable day", value: FFFormat.weekdayShort[bestIndex], caption: "Goal met \(byWeekday[bestIndex]) times")
                     } else {

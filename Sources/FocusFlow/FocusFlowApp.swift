@@ -71,7 +71,7 @@ struct FocusFlowApp: App {
         .windowResizability(.contentMinSize)
         .modelContainer(container)
 
-        Window("Session Complete", id: "session-complete") {
+        Window("Block complete", id: "session-complete") {
             SessionCompleteWindowView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
@@ -248,7 +248,10 @@ private struct AppLaunchBridge: View {
                     notch.setEnabled(timerVM.isNotchCompanionEnabled)
                 }
                 timerVM.syncGlobalHotkey()
-                if !timerVM.isEvidenceMode { timerVM.startPrivacyMonitor() }
+                if !timerVM.isEvidenceMode {
+                    timerVM.startPrivacyMonitor()
+                    timerVM.startReminderSyncObservers()
+                }
                 WindowPolicyManager.shared.start()
                 showOnboardingIfNeeded()
             }
@@ -327,9 +330,9 @@ private struct WindowLauncherBridge: View {
                     }
                 }
 
-                // Reconcile permissions on launch, then pull synced Reminders lists into today's tasks
+                // Reconcile permissions when the popover first opens (Reminders sync has its own
+                // always-on triggers: `TimerViewModel.startReminderSyncObservers`).
                 reconcilePermissionsIfNeeded()
-                timerVM.scheduleReminderSync()
             }
             // Reconcile permissions every time the app becomes active — catches
             // revocations that happened while the app was in the background or
@@ -337,14 +340,11 @@ private struct WindowLauncherBridge: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 reconcilePermissionsIfNeeded()
                 timerVM.checkDayRolloverIfNeeded()
-                timerVM.scheduleReminderSync()
             }
             // Also reconcile when EventKit reports store changes (permission
             // grants/revocations trigger this notification).
-            // A reminder ticked on the phone arrives here too (coalesced; our own writes are no-ops).
             .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
                 reconcilePermissionsIfNeeded()
-                timerVM.scheduleReminderSync()
             }
     }
 

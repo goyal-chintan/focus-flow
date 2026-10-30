@@ -47,8 +47,8 @@ final class CoachLearningTests: XCTestCase {
         XCTAssertNil(CoachDecisionReward.reward(decidedAt: t, now: t.addingTimeInterval(59 * 60), blocks: blocks), "Wait for the hour")
         // 25 min + 30 min (clipped at the hour) = 55 → capped at 50 → 1 + 0.5.
         XCTAssertEqual(CoachDecisionReward.reward(decidedAt: t, now: t.addingTimeInterval(3600), blocks: blocks)!, 1.5, accuracy: 1e-9)
-        // A start after 10 minutes is momentum only, not a start.
-        let late = [CoachDecisionReward.Block(start: t.addingTimeInterval(20 * 60), seconds: 25 * 60)]
+        // A start after the 20-minute window is momentum only, not a start.
+        let late = [CoachDecisionReward.Block(start: t.addingTimeInterval(35 * 60), seconds: 25 * 60)]
         XCTAssertEqual(CoachDecisionReward.reward(decidedAt: t, now: t.addingTimeInterval(7200), blocks: late)!, 0.25, accuracy: 1e-9)
         XCTAssertEqual(CoachDecisionReward.reward(decidedAt: t, now: t.addingTimeInterval(7200), blocks: [])!, 0)
     }

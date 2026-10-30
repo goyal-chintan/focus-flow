@@ -69,7 +69,7 @@ struct PopoverBlockLogRow: View {
 
     private func resultButton(_ result: (id: UUID, title: String, done: Double, target: Double)) -> some View {
         Button {
-            timerVM.logGoalProgress(resultID: result.id, amount: 1)
+            timerVM.logOneMore(resultID: result.id)
             withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { resultRevision += 1 }
         } label: {
             HStack(spacing: 6) {
