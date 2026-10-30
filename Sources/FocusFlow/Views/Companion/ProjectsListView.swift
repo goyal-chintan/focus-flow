@@ -1,239 +1,129 @@
 import SwiftUI
 import SwiftData
 
-/// Projects: master list on the left, this week's time, blocks and outcome mix on the right.
-struct ProjectsListView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(TimerViewModel.self) private var timerVM
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+// Projects live in the companion window's main sidebar (structural redesign 2026-10-30): one row
+// per project under "Projects", no list inside the page. Selecting a row shows `ProjectsListView`
+// for that project.
 
-    @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
-    private var projects: [Project]
-    @Query(filter: #Predicate<Project> { $0.archived }, sort: \Project.createdAt)
-    private var archivedProjects: [Project]
-    @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
-    @Query private var allSettings: [AppSettings]
+/// Ranked projects first (#1, #2, …), then the rest in creation order.
+func orderedProjects(_ projects: [Project]) -> [Project] {
+    projects.sorted { lhs, rhs in
+        switch (lhs.priorityRank, rhs.priorityRank) {
+        case let (l?, r?): return l < r
+        case (_?, nil): return true
+        case (nil, _?): return false
+        case (nil, nil): return lhs.createdAt < rhs.createdAt
+        }
+    }
+}
+
+/// The sidebar's "Projects" section: rank, icon, name and this week's time (the header names the period).
+struct ProjectsSidebarSection: View {
+    let onNewProject: () -> Void
+
+    @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
+    @Query(filter: #Predicate<Project> { $0.archived }) private var archivedProjects: [Project]
+    @Query(sort: \FocusSession.startedAt, order: .reverse) private var sessions: [FocusSession]
     @Environment(\.companionNowOverride) private var nowOverride
 
-    @State private var selectedID: UUID?
-    @State private var showingForm = false
-    @State private var editingProject: Project?
-    @State private var editingSession: FocusSession?
-    @State private var projectToArchive: Project?
-    @State private var showArchived = false
-    @State private var saveError: String?
-
-    @State private var draft = ProjectDraft()
-    @State private var goalSheet: GoalSheet?
-    @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
-
-    /// Ranked projects first (#1, #2, …), then the rest in creation order.
-    private var orderedProjects: [Project] {
-        projects.sorted { lhs, rhs in
-            switch (lhs.priorityRank, rhs.priorityRank) {
-            case let (l?, r?): return l < r
-            case (_?, nil): return true
-            case (nil, _?): return false
-            case (nil, nil): return lhs.createdAt < rhs.createdAt
+    var body: some View {
+        let now = nowOverride ?? Date()
+        let analytics = FocusAnalytics()
+        let week = analytics.weekInterval(containing: now)
+        // Newest first: stop a day before the week, which still catches a block across Monday 00:00.
+        let samples = sessions.prefix { $0.startedAt > week.start.addingTimeInterval(-86_400) }
+            .filter { $0.type == .focus }
+            .map(FocusSample.init)
+        let totals = GoalDataBuilder.seconds(samples: samples, in: week)
+        Section {
+            ForEach(orderedProjects(projects)) { project in
+                ProjectSidebarRow(project: project, weekSeconds: totals[GoalDataBuilder.projectKey(project)] ?? 0)
+                    .tag(CompanionDestination.project(project.id))
+            }
+            if !archivedProjects.isEmpty {
+                Label("Archived (\(archivedProjects.count))", systemImage: "archivebox")
+                    .foregroundStyle(.secondary)
+                    .tag(CompanionDestination.archivedProjects)
+            }
+        } header: {
+            HStack(spacing: FFSpace.xs) {
+                Text("Projects")
+                Spacer(minLength: FFSpace.xs)
+                if !projects.isEmpty {
+                    Text("this week")
+                        .font(.system(size: 10, weight: .regular))
+                        .help("The time beside each project is this week's focus on it")
+                }
+                Button(action: onNewProject) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 30, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("New project")
+                .accessibilityLabel("New project")
             }
         }
     }
+}
 
-    private var selectedProject: Project? {
-        projects.first { $0.id == selectedID } ?? orderedProjects.first
+private struct ProjectSidebarRow: View {
+    let project: Project
+    let weekSeconds: TimeInterval
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: project.icon ?? "folder.fill")
+                .foregroundStyle(FFPalette.project(project.color))
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            Text(project.name).lineLimit(1)
+            if let rank = project.priorityRank {
+                // Unranked shows nothing, not a "–" that reads like a remove button.
+                Text(rank == 1 ? "★" : "#\(rank)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(rank == 1 ? FFPalette.project(project.color) : .secondary)
+                    .help("Priority \(rank)")
+            }
+            Spacer(minLength: 4)
+            // Nothing this week shows nothing, not a "–" that reads like a remove button.
+            Text(weekSeconds >= 60 ? FFFormat.compactDuration(weekSeconds) : "")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(project.priorityRank.map { "Priority \($0), " } ?? "")\(project.name), \(FFFormat.duration(weekSeconds)) this week")
+    }
+}
+
+/// Create or edit one project (sidebar "+", a project's Edit button).
+struct ProjectEditorSheet: View {
+    let project: Project?
+    var onSaved: (Project) -> Void = { _ in }
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(TimerViewModel.self) private var timerVM
+    @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
+    @State private var draft: ProjectDraft
+    @State private var saveError: String?
+
+    init(project: Project?, onSaved: @escaping (Project) -> Void = { _ in }) {
+        self.project = project
+        self.onSaved = onSaved
+        _draft = State(initialValue: project.map(ProjectDraft.init(project:)) ?? ProjectDraft())
     }
 
     var body: some View {
-        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
-        let weekTotals = snapshot.analytics.projectTotals(snapshot.samples, in: snapshot.thisWeek)
-
-        VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
-            FFPageHeader("Projects", subtitle: projects.isEmpty ? nil : "\(projects.count) active") {
-                Button {
-                    startCreate()
-                } label: {
-                    Label("New project", systemImage: "plus")
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if projects.isEmpty {
-                FFSection {
-                    FFEmptyState(
-                        systemImage: "folder.badge.plus",
-                        message: "No projects yet",
-                        detail: "Projects colour your charts and let you see where the week went."
-                    )
-                }
-                Spacer(minLength: 0)
-            } else {
-                HStack(alignment: .top, spacing: FFSpace.l) {
-                    projectList(weekTotals: weekTotals, today: GoalDataBuilder.seconds(samples: snapshot.samples, in: snapshot.today))
-                        .frame(width: 260)
-                    if let project = selectedProject {
-                        ScrollView {
-                            ProjectDetail(
-                                project: project,
-                                snapshot: snapshot,
-                                sessions: sessions,
-                                goals: goals.filter { $0.projectID == project.id && $0.status == .active },
-                                onEdit: { startEdit(project) },
-                                onArchive: { projectToArchive = project },
-                                onSelectSession: { editingSession = $0 },
-                                onAddGoal: { goalSheet = GoalSheet(goal: nil, projectID: project.id) }
-                            )
-                            .id(project.id)
-                            .transition(.opacity)
-                        }
-                        .scrollIndicators(.automatic)
-                    }
-                }
-                .animation(FFAnimation.gated(FFAnimation.page, reduceMotion: reduceMotion), value: selectedProject?.id)
-            }
-        }
-        .padding(FFSpace.page)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .sheet(isPresented: $showingForm) { projectForm }
-        .sheet(item: $editingSession) { SessionEditView(session: $0) }
-        .sheet(item: $goalSheet) { sheet in GoalFormView(goal: sheet.goal, defaultProjectID: sheet.projectID) }
-        .saveErrorOverlay($saveError)
-        .confirmationDialog(
-            "Archive \(projectToArchive?.name ?? "project")?",
-            isPresented: Binding(get: { projectToArchive != nil }, set: { if !$0 { projectToArchive = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Archive", role: .destructive) { archive() }
-            Button("Cancel", role: .cancel) { projectToArchive = nil }
-        } message: {
-            Text("It disappears from pickers and charts. Its sessions are kept and you can restore it below the list.")
-        }
-    }
-
-    // MARK: - List
-
-    private func projectList(weekTotals: [FocusAnalytics.ProjectTotal], today: [String: TimeInterval]) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(orderedProjects) { project in
-                let seconds = weekTotals.first { $0.project.projectUUID == project.id }?.seconds ?? 0
-                let todaySeconds = today[GoalDataBuilder.projectKey(project)] ?? 0
-                let target = project.dailyTarget(on: nowOverride ?? Date()).map { TimeInterval($0 * 60) }
-                Button {
-                    selectedID = project.id
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: FFSpace.s) {
-                            // Unranked shows nothing, not a "–" that reads like a remove button.
-                            Text(project.priorityRank.map { "#\($0)" } ?? "")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundStyle(project.priorityRank == 1 ? Color.white : .secondary)
-                                .frame(width: 24, height: 18)
-                                .background(RoundedRectangle(cornerRadius: 5).fill(project.priorityRank == nil ? Color.clear : project.priorityRank == 1 ? FFPalette.project(project.color) : FFPalette.track))
-                                .help(project.priorityRank.map { "Priority \($0)" } ?? "No priority")
-                            Image(systemName: project.icon ?? "folder.fill")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(FFPalette.project(project.color))
-                                .frame(width: 18)
-                                .accessibilityHidden(true)
-                            Text(project.name).ffText(.body).lineLimit(1)
-                            Spacer(minLength: FFSpace.xs)
-                            Text(seconds > 0 ? "\(FFFormat.duration(seconds)) this week" : "—")
-                                .ffText(.caption)
-                                .monospacedDigit()
-                                .help("Focus on this project this week")
-                        }
-                        if let target, target > 0 {
-                            PaceBar(fraction: min(1, todaySeconds / target), expected: 0, color: FFPalette.project(project.color), height: 4)
-                                .padding(.leading, 56)
-                                .help("Today: \(FFFormat.duration(todaySeconds)) of \(FFFormat.duration(target))")
-                        }
-                    }
-                    .padding(.horizontal, FFSpace.s)
-                    .padding(.vertical, 6)
-                    .ffHoverRow(isSelected: project.id == selectedProject?.id)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(project.priorityRank.map { "Priority \($0), " } ?? "")\(project.name), \(FFFormat.duration(seconds)) this week")
-                .accessibilityAddTraits(project.id == selectedProject?.id ? .isSelected : [])
-            }
-
-            if !archivedProjects.isEmpty {
-                Divider().padding(.vertical, FFSpace.s)
-                Button {
-                    withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { showArchived.toggle() }
-                } label: {
-                    HStack {
-                        Text("Archived (\(archivedProjects.count))").ffText(.callout)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(showArchived ? 90 : 0))
-                    }
-                    .padding(.horizontal, FFSpace.s)
-                    .frame(height: 30)
-                    .ffHoverRow()
-                }
-                .buttonStyle(.plain)
-
-                if showArchived {
-                    ForEach(archivedProjects) { project in
-                        HStack(spacing: FFSpace.s) {
-                            Text(project.name).ffText(.callout).lineLimit(1)
-                            Spacer()
-                            Button("Restore") { restore(project) }
-                                .buttonStyle(.link)
-                                .font(FFTextStyle.caption.font)
-                        }
-                        .padding(.horizontal, FFSpace.s)
-                        .frame(height: 28)
-                    }
-                    .transition(.opacity)
-                }
-            }
-        }
-        .padding(FFSpace.s - 2)
-        .ffSurface()
-    }
-
-    // MARK: - Actions
-
-    private func startCreate() {
-        draft = ProjectDraft()
-        draft.rank = projects.contains { $0.priorityRank != nil } ? nil : 1
-        editingProject = nil
-        showingForm = true
-    }
-
-    private func startEdit(_ project: Project) {
-        draft = ProjectDraft(project: project)
-        editingProject = project
-        showingForm = true
-    }
-
-    private func archive() {
-        guard let project = projectToArchive else { return }
-        project.archived = true
-        if timerVM.selectedProject?.id == project.id { timerVM.selectedProject = nil }
-        if selectedID == project.id { selectedID = projects.first { $0.id != project.id }?.id }
-        saveWithFeedback(modelContext, errorBinding: $saveError)
-        projectToArchive = nil
-    }
-
-    private func restore(_ project: Project) {
-        project.archived = false
-        saveWithFeedback(modelContext, errorBinding: $saveError)
-        selectedID = project.id
-    }
-
-    private var projectForm: some View {
         ProjectFormView(
             draft: $draft,
-            project: editingProject,
-            title: editingProject == nil ? "New project" : "Edit project"
+            project: project,
+            title: project == nil ? "New project" : "Edit project"
         ) {
             let target: Project
-            if let editing = editingProject {
-                target = editing
+            if let project {
+                target = project
             } else {
                 target = Project(name: "", color: draft.color, icon: draft.icon)
                 modelContext.insert(target)
@@ -245,14 +135,177 @@ struct ProjectsListView: View {
                 timerVM.reminderListChanged(forProject: target.id)
             }
             timerVM.scheduleReminderSync(after: .zero)
-            if editingProject == nil {
+            if project == nil {
                 timerVM.selectedProject = target
                 timerVM.noteProjectSelected()
             }
-            selectedID = target.id
+            onSaved(target)
+        }
+        .saveErrorOverlay($saveError)
+        .onAppear {
+            // The first project becomes #1, so the goal has something to count.
+            if project == nil, !projects.contains(where: { $0.priorityRank != nil }) { draft.rank = 1 }
+        }
+    }
+}
+
+/// One project's page: header, stats, goals, this week and its blocks. Shows `projectID`, or the
+/// first project when none is chosen.
+struct ProjectsListView: View {
+    var projectID: UUID?
+    var onSelectProject: (UUID?) -> Void = { _ in }
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt)
+    private var projects: [Project]
+    @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
+    @Query private var allSettings: [AppSettings]
+    @Query private var tasks: [DailyTask]
+    @Environment(\.companionNowOverride) private var nowOverride
+
+    @State private var editor: ProjectEditorTarget?
+    @State private var editingSession: FocusSession?
+    @State private var projectToArchive: Project?
+    @State private var saveError: String?
+    @State private var goalSheet: GoalSheet?
+    @Query(sort: \ProjectGoal.deadline) private var goals: [ProjectGoal]
+
+    private var selectedProject: Project? {
+        projects.first { $0.id == projectID } ?? orderedProjects(projects).first
+    }
+
+    var body: some View {
+        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
+
+        Group {
+            if let project = selectedProject {
+                ScrollView {
+                    ProjectDetail(
+                        project: project,
+                        snapshot: snapshot,
+                        sessions: sessions,
+                        taskTitles: Dictionary(tasks.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first }),
+                        goals: goals.filter { $0.projectID == project.id && $0.status == .active },
+                        onEdit: { editor = ProjectEditorTarget(project: project) },
+                        onArchive: { projectToArchive = project },
+                        onSelectSession: { editingSession = $0 },
+                        onAddGoal: { goalSheet = GoalSheet(goal: nil, projectID: project.id) }
+                    )
+                    .padding(FFSpace.page)
+                    .frame(maxWidth: 920, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .id(project.id)
+                    .transition(.opacity)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
+                    FFPageHeader("Projects") {
+                        Button {
+                            editor = ProjectEditorTarget(project: nil)
+                        } label: {
+                            Label("New project", systemImage: "plus")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    FFSection {
+                        FFEmptyState(
+                            systemImage: "folder.badge.plus",
+                            message: "No projects yet",
+                            detail: "Projects colour your charts, carry daily targets and let you see where the week went. They appear in the sidebar."
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(FFSpace.page)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .animation(FFAnimation.gated(FFAnimation.page, reduceMotion: reduceMotion), value: selectedProject?.id)
+        .sheet(item: $editor) { target in
+            ProjectEditorSheet(project: target.project) { onSelectProject($0.id) }
+        }
+        .sheet(item: $editingSession) { SessionEditView(session: $0) }
+        .sheet(item: $goalSheet) { sheet in GoalFormView(goal: sheet.goal, defaultProjectID: sheet.projectID) }
+        .saveErrorOverlay($saveError)
+        .confirmationDialog(
+            "Archive \(projectToArchive?.name ?? "project")?",
+            isPresented: Binding(get: { projectToArchive != nil }, set: { if !$0 { projectToArchive = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Archive", role: .destructive) { archive() }
+            Button("Cancel", role: .cancel) { projectToArchive = nil }
+        } message: {
+            Text("It disappears from pickers and charts. Its sessions are kept and you can restore it from Archived in the sidebar.")
         }
     }
 
+    private func archive() {
+        guard let project = projectToArchive else { return }
+        project.archived = true
+        if timerVM.selectedProject?.id == project.id { timerVM.selectedProject = nil }
+        saveWithFeedback(modelContext, errorBinding: $saveError)
+        onSelectProject(orderedProjects(projects).first { $0.id != project.id }?.id)
+        projectToArchive = nil
+    }
+}
+
+private struct ProjectEditorTarget: Identifiable {
+    let id = UUID()
+    let project: Project?
+}
+
+/// Sidebar → Archived: archived projects, each with Restore.
+struct ArchivedProjectsView: View {
+    var onRestore: (UUID) -> Void = { _ in }
+
+    @Environment(\.modelContext) private var modelContext
+    @Query(filter: #Predicate<Project> { $0.archived }, sort: \Project.createdAt) private var archivedProjects: [Project]
+    @State private var saveError: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
+                FFPageHeader("Archived projects", subtitle: "Their blocks are kept. Restore one to see it in pickers and charts again.")
+                FFSection {
+                    if archivedProjects.isEmpty {
+                        FFEmptyState(systemImage: "archivebox", message: "Nothing archived")
+                    } else {
+                        VStack(spacing: 2) {
+                            ForEach(archivedProjects) { project in
+                                HStack(spacing: FFSpace.m) {
+                                    Image(systemName: project.icon ?? "folder.fill")
+                                        .foregroundStyle(FFPalette.project(project.color))
+                                        .frame(width: 18)
+                                        .accessibilityHidden(true)
+                                    Text(project.name).ffText(.body).lineLimit(1)
+                                    Spacer()
+                                    Button("Restore") { restore(project) }
+                                        .buttonStyle(.bordered)
+                                }
+                                .padding(.horizontal, FFSpace.s)
+                                .frame(minHeight: 36)
+                                .ffHoverRow()
+                            }
+                        }
+                        .padding(.horizontal, -FFSpace.s)
+                    }
+                }
+            }
+            .padding(FFSpace.page)
+            .frame(maxWidth: 920, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .saveErrorOverlay($saveError)
+    }
+
+    private func restore(_ project: Project) {
+        project.archived = false
+        saveWithFeedback(modelContext, errorBinding: $saveError)
+        onRestore(project.id)
+    }
 }
 
 /// A goal to create or edit from a project's detail.
@@ -268,6 +321,8 @@ private struct ProjectDetail: View {
     let project: Project
     let snapshot: CompanionSnapshot
     let sessions: [FocusSession]
+    /// Today's and earlier tasks by id, so a block shows the task it was started for.
+    var taskTitles: [UUID: String] = [:]
     let goals: [ProjectGoal]
     let onEdit: () -> Void
     let onArchive: () -> Void
@@ -308,13 +363,13 @@ private struct ProjectDetail: View {
                 )
             }
 
-            FFSection("Blocks this week") {
+            FFSection("Blocks this week", subtitle: "What each block was for: its intent or task.") {
                 if weekSessions.isEmpty {
                     FFEmptyState(systemImage: "tray", message: "No blocks on \(project.name) this week")
                 } else {
                     VStack(spacing: 2) {
                         ForEach(weekSessions) { session in
-                            SessionRow(session: session) { onSelectSession(session) }
+                            SessionRow(session: session, taskTitle: session.taskID.flatMap { taskTitles[$0] }, hidesProject: true) { onSelectSession(session) }
                         }
                     }
                     .padding(.horizontal, -FFSpace.s)

@@ -210,7 +210,7 @@ final class CoachRescueLoopTests: XCTestCase {
         XCTAssertEqual(l3?.title, "2 minutes. Plan the next step.")
         XCTAssertEqual(l3?.minutes, 2)
         XCTAssertEqual(CoachStarterBlock.pauseScreenTitle(minutes: 2), "Start 2 minutes")
-        XCTAssertEqual(CoachStarterBlock.hotkeyHint(minutes: 2), "⌃⌥Space starts 2 min anytime")
+        XCTAssertEqual(CoachStarterBlock.hotkeyHint, "⌃⌥Space starts a short block on your next step, from anywhere")
         XCTAssertEqual(CoachStarterBlock.startedNotice(minutes: 2), "Starter block started · 2 min")
         XCTAssertEqual(CoachOnePercent.todayShare(give: 2), "1% of today is 14 minutes. Give 2 now.")
         let screen = CoachPauseScreenPresentation(style: .challenger, headline: nil, fact: nil, starterMinutes: 2, attemptID: nil)

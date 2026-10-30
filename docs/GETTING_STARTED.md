@@ -54,7 +54,7 @@ You can press **Skip** at any time. Nothing is saved until the last step.
 A project is anything you want time for, for example "Interview prep", "Office" or "Side project".
 
 1. Open the main window: click the menu bar icon, then the chart button at the top.
-2. Click **Projects**, then **New project**.
+2. In the sidebar, click **+** beside **Projects**.
 3. Fill in the cards, top to bottom:
 
 | Card | What to enter |
@@ -69,7 +69,7 @@ A project is anything you want time for, for example "Interview prep", "Office" 
 
 4. Click **Save**.
 
-To change a project later, select it in **Projects** and click **Edit**. To rank projects, give each one a priority.
+Every project is listed in the sidebar under **Projects**, with its time this week. To change one, select it and click **Edit**. To rank projects, give each one a priority. Its daily target adds to your daily goal (Goals → Daily goal).
 
 ### Add a goal
 
@@ -156,10 +156,10 @@ Then take the break you earned, start the next block, or click **Done for today*
 
 ## 5. See the truth
 
-- **Today:** your own work against your daily goal, and where the day went: for example "6h tracked · 1h on your #1 · 15% own work". When a project is marked Work, the daily goal counts only your own work.
-- **Goals:** each goal's pace, and how many a day you need.
-- **Insights → Said vs did:** what you planned for each project against what it got, and how many planned tasks you finished.
-- **Insights → Is the coach getting you started?:** how often a prompt led to a start, compared with no prompt.
+- **Today:** your own work against your daily goal, and where the day went: for example "6h tracked · 1h on your #1 · 15% own work". When a project is marked Work, the daily goal counts only your own work. Under **Distractions today**, click **Distraction** or **It's work** on each app or site.
+- **Goals:** the daily goal (what it counts, shown beside the number, and its size: the sum of your projects' daily targets, or a fixed number), each goal's pace, and how many a day you need.
+- **Insights:** four questions for 7 days, 30 days or 8 weeks (one control at the top): When do I focus best? What derails me? Real work or busywork? Did I do what I said? The coach's suggestions wait under **What derails me?**.
+- **Settings → Coach → How the coach is doing:** how often a prompt led to a start, compared with no prompt.
 - **History:** the days you showed up.
 
 ---
@@ -169,17 +169,18 @@ Then take the break you earned, start the next block, or click **Done for today*
 | I want to… | Go to |
 |---|---|
 | Plan today's tasks | Main window → Today → Today's tasks |
-| Start a block fast | ⌃⌥Space, or the notch |
-| Add or rank projects | Main window → Projects → New project |
+| Start a block fast | ⌃⌥Space from anywhere, ⌘↩ in the menu bar panel, or the notch |
+| Add or rank projects | Main window → sidebar → Projects → + |
 | Add a goal | Main window → Goals → New goal |
 | Log goal progress | +1 on the goal, or tick a linked task |
 | Change the coach's tone | Settings → Coach → Style |
 | Stop the coach asking | Settings → Coach → Help me start |
 | Set quiet hours | Settings → Coach → Limits |
-| Hide the notch display | Settings → General → Notch |
-| Set my daily goal | Settings → General → Daily goals |
+| Hide the notch display | Settings → General → Menu bar & notch |
+| Set my daily goal | Main window → Goals → Daily goal |
 | See the tour again | Settings → General → Getting started → Show Tour |
-| Check permissions | Settings → Permissions |
+| Check permissions, Calendar and Reminders | Settings → Permissions & Sync |
+| Mark an app as a distraction or as work | Today or Insights → Distraction / It's work; rules in Settings → Distractions |
 
 ---
 

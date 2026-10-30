@@ -2,35 +2,26 @@ import SwiftUI
 import SwiftData
 import Charts
 
-/// Insights → "Said vs did": each project's daily average against its target over 7 or 30 days,
-/// your own work as a share of each day, and the plain findings (priorities-goals design §3.4).
+/// Insights → "Did I do what I said?": each project's daily average against its target over the
+/// page's range, your own work as a share of each day, and the plain findings (priorities-goals
+/// design §3.4). The range comes from the page's one control (structural redesign 2026-10-30).
 struct DriftReportSection: View {
     let snapshot: CompanionSnapshot
+    var days: Int = 7
 
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
     @Query private var tasks: [DailyTask]
-    @State private var span: Span = .week
-
-    enum Span: Int, CaseIterable, Identifiable {
-        case week = 7
-        case month = 30
-        var id: Int { rawValue }
-        var label: String { self == .week ? "7 days" : "30 days" }
-    }
 
     var body: some View {
-        let report = GoalDataBuilder.drift(samples: snapshot.samples, projects: projects, now: snapshot.now, days: span.rawValue, calendar: snapshot.calendar)
+        let report = GoalDataBuilder.drift(samples: snapshot.samples, projects: projects, now: snapshot.now, days: days, calendar: snapshot.calendar)
         let targeted = report.lines.contains { ($0.targetPerDay ?? 0) > 0 }
-        FFSection("Said vs did", subtitle: "What you planned each project to get, and what it got (daily average).") {
-            HStack(spacing: FFSpace.m) {
-                if targeted {
-                    targetLegend
-                }
-                FFSegmentedPicker(title: "Period", options: Span.allCases, selection: $span, label: \.label)
+        FFSection("Did I do what I said?", subtitle: "Said vs did: what you planned each project to get, and what it got (daily average).") {
+            if targeted {
+                targetLegend
             }
         } content: {
             if report.lines.isEmpty {
-                FFEmptyState(systemImage: "chart.bar.xaxis", message: "No focus in this period")
+                FFEmptyState(systemImage: "chart.bar.xaxis", message: "No focus in the last \(days) days", detail: "Projects appear here with their daily average once you log blocks on them.")
             } else {
                 VStack(alignment: .leading, spacing: FFSpace.l) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -40,13 +31,13 @@ struct DriftReportSection: View {
                                 .labelStyle(.titleAndIcon)
                         }
                         // Planned tasks against ticked ones (daily tasks design §2).
-                        if let tasksLine = DailyTaskPlanner.weekSummary(DailyTaskPlanner.history(tasks, endingOn: snapshot.now, days: span.rawValue, calendar: snapshot.calendar)) {
+                        if let tasksLine = DailyTaskPlanner.weekSummary(DailyTaskPlanner.history(tasks, endingOn: snapshot.now, days: days, calendar: snapshot.calendar)) {
                             Label("Tasks: \(tasksLine)", systemImage: "checklist")
                                 .ffText(.body)
                                 .labelStyle(.titleAndIcon)
                         }
                         if !targeted {
-                            Text("Give your projects a daily target (Projects → Edit) to compare plan and reality.").ffText(.caption)
+                            Text("Give your projects a daily target (select one in the sidebar, then Edit) to compare plan and reality.").ffText(.caption)
                         }
                     }
                     saidVsDidChart(report)
@@ -92,6 +83,12 @@ struct DriftReportSection: View {
             }
         }
         .chartXScale(domain: 0...(xMax(report) * 1.45))
+        // Project names left of the plot, so they never sit on a gridline or a bar.
+        .chartYAxis {
+            AxisMarks(preset: .aligned, position: .leading) { _ in
+                AxisValueLabel(centered: true, anchor: .trailing, horizontalSpacing: 8).font(.system(size: 11))
+            }
+        }
         .frame(height: CGFloat(max(2, report.lines.count)) * 40 + 24)
         .accessibilityLabel("Daily average per project against its target")
     }
@@ -117,21 +114,47 @@ struct DriftReportSection: View {
     }
 
     private func ownShareChart(_ report: DriftReport) -> some View {
-        VStack(alignment: .leading, spacing: FFSpace.s) {
+        let hasOwnProjects = projects.contains { $0.areaRaw != nil && $0.area.isOwnWork }
+        let hasOwnWork = report.daily.contains { $0.ownWork > 0 }
+        return VStack(alignment: .leading, spacing: FFSpace.s) {
             Text("Your own work, share of each day").ffText(.headline)
-            Chart(report.daily) { day in
-                BarMark(x: .value("Day", day.day, unit: .day), y: .value("Own work", day.ownShare * 100))
-                    .foregroundStyle(day.total == 0 ? FFPalette.track : FFPalette.accent)
-            }
-            .chartYScale(domain: 0...100)
-            .chartYAxis {
-                AxisMarks(values: [0, 50, 100]) { value in
-                    AxisGridLine().foregroundStyle(FFPalette.gridLine)
-                    AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%").font(.system(size: 10)) }
+            if !hasOwnProjects {
+                // No axes over nothing: say what would fill it.
+                FFEmptyState(
+                    systemImage: "person.crop.circle.badge.questionmark",
+                    message: "No project is marked Personal or Learning",
+                    detail: "Mark your own projects in their Edit sheet to see how much of each day is yours."
+                )
+            } else if !hasOwnWork {
+                FFEmptyState(systemImage: "chart.bar", message: "No own work in the last \(report.daily.count) days")
+            } else {
+                Chart(report.daily) { day in
+                    BarMark(x: .value("Day", day.day, unit: .day), y: .value("Own work", day.ownShare * 100))
+                        .foregroundStyle(day.total == 0 ? FFPalette.track : FFPalette.accent)
                 }
+                .chartYScale(domain: 0...100)
+                .chartYAxis {
+                    AxisMarks(values: [0, 50, 100]) { value in
+                        AxisGridLine().foregroundStyle(FFPalette.gridLine)
+                        AxisValueLabel { Text("\(value.as(Int.self) ?? 0)%").font(.system(size: 10)) }
+                    }
+                }
+                .chartXAxis {
+                    // A label every day for a week, every week beyond, so dates never collide.
+                    AxisMarks(values: .stride(by: .day, count: report.daily.count > 10 ? 7 : 1)) { value in
+                        AxisValueLabel {
+                            if let date = value.as(Date.self) {
+                                Text(report.daily.count > 10
+                                     ? date.formatted(.dateTime.day().month(.abbreviated))
+                                     : date.formatted(.dateTime.weekday(.abbreviated)))
+                                    .font(.system(size: 10))
+                            }
+                        }
+                    }
+                }
+                .frame(height: 110)
+                .accessibilityLabel("Share of each day spent on personal and learning projects")
             }
-            .frame(height: 110)
-            .accessibilityLabel("Share of each day spent on personal and learning projects")
         }
     }
 

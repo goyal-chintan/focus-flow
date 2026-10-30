@@ -2,8 +2,10 @@ import SwiftUI
 import SwiftData
 import Charts
 
-/// Insights: when do I focus best, what derails me, is my work real, is the coach helping?
-/// Every number here is computed from the local store by FocusAnalytics; nothing is hardcoded.
+/// Insights (structural redesign 2026-10-30) answers four questions in order: when do I focus best,
+/// what derails me, real work or busywork, did I do what I said. One range control drives the page.
+/// How the coach is doing moved to Settings → Coach. Every number here is computed from the local
+/// store by FocusAnalytics; nothing is hardcoded.
 struct InsightsView: View {
     @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
@@ -11,17 +13,21 @@ struct InsightsView: View {
     @Query(sort: \AppUsageEntry.date) private var usageEntries: [AppUsageEntry]
     @Query private var distractionRules: [IdleDistractionItem]
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
+    /// The page's one range, remembered per Mac.
+    @AppStorage("insightsRange") private var range: InsightsRange = .month
 
     var body: some View {
         let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
         ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
-                FFPageHeader("Insights", subtitle: "From your sessions and app usage over the last 8 weeks")
-                DriftReportSection(snapshot: snapshot)
-                CoachStartSection(snapshot: snapshot)
+                FFPageHeader("Insights", subtitle: "Four questions, answered from your blocks and app usage") {
+                    FFSegmentedPicker(title: "Range", options: InsightsRange.allCases, selection: $range, label: \.label)
+                        .accessibilityIdentifier("insights.range")
+                }
                 whenYouFocus(snapshot)
                 derailers(snapshot)
                 realWork(snapshot)
+                DriftReportSection(snapshot: snapshot, days: range.days)
             }
             .padding(FFSpace.page)
             .frame(maxWidth: 920, alignment: .leading)
@@ -29,17 +35,17 @@ struct InsightsView: View {
         }
     }
 
-    // MARK: - When you focus
+    // MARK: - When do I focus best?
 
     private func whenYouFocus(_ snapshot: CompanionSnapshot) -> some View {
-        let matrix = snapshot.analytics.hourOfWeek(snapshot.samples, weeks: 8, now: snapshot.now)
+        let matrix = snapshot.analytics.hourOfWeek(snapshot.samples, weeks: range.weeks, now: snapshot.now)
         let windows = snapshot.analytics.bestWindows(matrix)
         let subtitle: String = windows.isEmpty
-            ? "Focus minutes by weekday and hour"
+            ? "Focus minutes by weekday and hour · \(range.phrase)"
             : "Your best windows: \(FocusAnalytics.windowsSummary(windows))"
-        return FFSection("When you focus", subtitle: subtitle) {
+        return FFSection("When do I focus best?", subtitle: subtitle) {
             if matrix.isEmpty {
-                FFEmptyState(systemImage: "clock", message: "No focus blocks in the last 8 weeks", detail: "Your usual focus hours appear here once you've logged a few blocks.")
+                FFEmptyState(systemImage: "clock", message: "No focus blocks \(range.phrase)", detail: "Your usual focus hours appear here once you've logged a few blocks. Try a longer range.")
             } else {
                 HourOfWeekHeatmap(matrix: matrix, windows: windows)
                 Text("Minutes focused, averaged over \(matrix.weeksObserved) week\(matrix.weeksObserved == 1 ? "" : "s").")
@@ -48,48 +54,52 @@ struct InsightsView: View {
         }
     }
 
-    // MARK: - Derailers
+    // MARK: - What derails me?
 
     private func derailers(_ snapshot: CompanionSnapshot) -> some View {
         let keys = DerailerRuleKeys.from(distractionRules)
         let items = snapshot.analytics.derailers(
             usageEntries.map(UsageSample.init),
+            lastDays: range.days,
             now: snapshot.now,
             confirmedKeys: keys.confirmed,
             allowedKeys: keys.allowed,
             limit: 6
         )
-        return FFSection("What derails you", subtitle: "Time outside focus blocks. Work tools like Slack, Cursor and Claude never count.") {
+        return FFSection("What derails me?", subtitle: "Time outside focus blocks. Work tools like Slack, Cursor and Claude never count. Answer each one: it teaches the coach.") {
             if !items.isEmpty {
                 HStack(spacing: FFSpace.m) {
-                    FFLegendItem(color: FFPalette.atRisk, label: "This week")
-                    FFLegendItem(color: FFPalette.comparison, label: "Last week")
+                    FFLegendItem(color: FFPalette.atRisk, label: range.currentLabel)
+                    FFLegendItem(color: FFPalette.comparison, label: range.previousLabel)
                 }
             }
         } content: {
-            if items.isEmpty {
-                FFEmptyState(systemImage: "checkmark.seal", message: "No derailers tracked this week or last", detail: "Streaming and social sites you visit outside focus show up here.")
-            } else {
-                DerailerChart(items: items)
+            VStack(alignment: .leading, spacing: FFSpace.l) {
+                if items.isEmpty {
+                    FFEmptyState(systemImage: "checkmark.seal", message: "No derailers tracked \(range.phrase) or the \(range.days) days before", detail: "Streaming and social sites you visit outside focus show up here.")
+                } else {
+                    DerailerChart(items: items)
+                }
+                DistractionSuggestionsList()
             }
         }
     }
 
-    // MARK: - Real work vs busywork
+    // MARK: - Real work or busywork?
 
     private func realWork(_ snapshot: CompanionSnapshot) -> some View {
-        let interval = DateInterval(start: snapshot.calendar.date(byAdding: .day, value: -28, to: snapshot.today.start) ?? snapshot.today.start, end: snapshot.now)
+        let interval = range.interval(now: snapshot.now, calendar: snapshot.calendar)
         let overall = snapshot.analytics.outcomeMix(snapshot.samples, in: interval)
         let byProject = snapshot.analytics.outcomeMixByProject(snapshot.samples, in: interval)
         let subtitle = overall.ratedCount > 0
-            ? "\(FFFormat.percent(overall.realWorkShare)) of rated blocks moved real work forward · last 4 weeks"
-            : "Your own rating of each block · last 4 weeks"
-        return FFSection("Real work vs busywork", subtitle: subtitle) {
+            ? "\(FFFormat.percent(overall.realWorkShare)) of rated blocks moved real work forward · \(range.phrase)"
+            : "Your own rating of each block · \(range.phrase)"
+        return FFSection("Real work or busywork?", subtitle: subtitle) {
             if overall.ratedCount == 0 {
                 FFEmptyState(
                     systemImage: "checklist",
-                    message: "Rate your sessions after each block to see this",
-                    detail: "Pick Shipped, Moved it forward or Busywork when a block ends."
+                    message: "No rated blocks \(range.phrase)",
+                    detail: "When a block ends, pick Shipped, Moved it forward or Busywork."
                 )
             } else {
                 VStack(alignment: .leading, spacing: FFSpace.l) {
@@ -103,6 +113,44 @@ struct InsightsView: View {
                 }
             }
         }
+    }
+}
+
+/// The Insights page's one range (7 days, 30 days, 8 weeks).
+enum InsightsRange: Int, CaseIterable, Identifiable {
+    case week = 7
+    case month = 30
+    case eightWeeks = 56
+
+    var id: Int { rawValue }
+    var days: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .week: "7 days"
+        case .month: "30 days"
+        case .eightWeeks: "8 weeks"
+        }
+    }
+
+    /// "in the last 30 days".
+    var phrase: String { "in the last \(label)" }
+    var currentLabel: String { "Last \(label)" }
+    var previousLabel: String { "The \(label) before" }
+
+    /// Calendar weeks the focus heatmap averages over.
+    var weeks: Int {
+        switch self {
+        case .week: 1
+        case .month: 5
+        case .eightWeeks: 8
+        }
+    }
+
+    /// The last `days` days, today included, up to now.
+    func interval(now: Date, calendar: Calendar) -> DateInterval {
+        let start = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now)) ?? now
+        return DateInterval(start: start, end: max(start, now))
     }
 }
 
@@ -147,6 +195,7 @@ private struct BarRow<Bars: ChartContent>: View {
     }
 }
 
+/// Derailer rows: this period against the one before, each with "Distraction / It's work".
 private struct DerailerChart: View {
     let items: [FocusAnalytics.Derailer]
     @State private var reveal = 0.0
@@ -158,20 +207,24 @@ private struct DerailerChart: View {
     var body: some View {
         VStack(spacing: 2) {
             ForEach(items) { item in
-                BarRow(
-                    label: item.name,
-                    value: FFFormat.duration(TimeInterval(item.thisWeekSeconds)),
-                    valueDetail: "last week \(FFFormat.duration(TimeInterval(item.lastWeekSeconds)))",
-                    domain: 0...maxHours,
-                    barHeight: 24
-                ) {
-                    BarMark(x: .value("Hours", Double(item.thisWeekSeconds) / 3600 * reveal), y: .value("Week", "This week"), height: .ratio(0.78))
-                        .foregroundStyle(FFPalette.atRisk)
-                        .cornerRadius(3)
-                    BarMark(x: .value("Hours", Double(item.lastWeekSeconds) / 3600 * reveal), y: .value("Week", "Last week"), height: .ratio(0.78))
-                        .foregroundStyle(FFPalette.comparison)
-                        .cornerRadius(3)
+                HStack(spacing: FFSpace.s) {
+                    BarRow(
+                        label: item.name,
+                        value: FFFormat.duration(TimeInterval(item.thisWeekSeconds)),
+                        valueDetail: item.lastWeekSeconds > 0 ? "was \(FFFormat.duration(TimeInterval(item.lastWeekSeconds)))" : "new",
+                        domain: 0...maxHours,
+                        barHeight: 24
+                    ) {
+                        BarMark(x: .value("Hours", Double(item.thisWeekSeconds) / 3600 * reveal), y: .value("Week", "This week"), height: .ratio(0.78))
+                            .foregroundStyle(FFPalette.atRisk)
+                            .cornerRadius(3)
+                        BarMark(x: .value("Hours", Double(item.lastWeekSeconds) / 3600 * reveal), y: .value("Week", "Last week"), height: .ratio(0.78))
+                            .foregroundStyle(FFPalette.comparison)
+                            .cornerRadius(3)
+                    }
+                    DerailerActionButtons(name: item.name, target: item.target, isConfirmed: item.isConfirmed)
                 }
+                .transition(.opacity)
             }
         }
         .padding(.horizontal, -FFSpace.s)

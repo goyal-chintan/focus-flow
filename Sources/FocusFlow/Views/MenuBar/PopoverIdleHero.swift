@@ -23,8 +23,9 @@ struct PopoverIdleHero: View {
 
     private func content(now: Date) -> some View {
         let done = timerVM.goalProgressSeconds(now: now)
-        let target = timerVM.settings?.dailyFocusGoal ?? 7200
-        let scope = GoalDataBuilder.goalScope(projects)
+        let goal = GoalDataBuilder.dailyGoal(projects: projects, settings: timerVM.settings, on: now)
+        let target = goal.seconds
+        let scope = goal.scope
         let plan = nextPlan(now: now)
         let isDue = plan.map { $0.startAt <= now } ?? false
         return VStack(alignment: .leading, spacing: 10) {

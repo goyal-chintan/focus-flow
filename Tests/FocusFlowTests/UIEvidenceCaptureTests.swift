@@ -643,6 +643,9 @@ final class UIEvidenceCaptureTests: XCTestCase {
                 ("history_3_months", AnyView(HistoryView(initialRange: .quarter))),
                 ("insights_full", AnyView(InsightsView())),
                 ("projects", AnyView(ProjectsListView())),
+                ("goals", AnyView(GoalsView())),
+                // Settings → Coach → How the coach is doing, expanded (moved from Insights 2026-10-30).
+                ("coach_performance", AnyView(Form { Section { CoachPerformanceView() } }.formStyle(.grouped).frame(width: SettingsLayout.width))),
             ]
             for (name, screen) in screens {
                 let image = try renderCompanionScreen(

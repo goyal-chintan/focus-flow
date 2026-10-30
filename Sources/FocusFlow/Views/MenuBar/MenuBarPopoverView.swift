@@ -682,6 +682,8 @@ private struct IdlePopoverContent: View {
         )
         .scaleEffect(startCommitting ? 0.95 : 1.0)
         .animation(reduceMotion ? nil : FFMotion.commit, value: startCommitting)
+        .keyboardShortcut(PopoverShortcut.start)
+        .help("Start (⌘↩)")
     }
 
     private func recoveryBanner(_ recovery: CrashRecoveryState) -> some View {
@@ -778,6 +780,16 @@ private struct IdlePopoverContent: View {
         }
     }
 
+}
+
+// MARK: - Keyboard
+
+/// The popover's block shortcuts (structural redesign 2026-10-30), also listed in Settings → General.
+enum PopoverShortcut {
+    static let start = KeyboardShortcut(.return, modifiers: .command)
+    /// Pause in a running block, Resume in a paused one.
+    static let pause = KeyboardShortcut("p", modifiers: .command)
+    static let finish = KeyboardShortcut(".", modifiers: .command)
 }
 
 // MARK: - Intent Capture (Coach v2 §9 step 2)
@@ -1034,6 +1046,8 @@ private struct FocusingPopoverContent: View {
                     foregroundColor: .white,
                     action: onPause
                 )
+                .keyboardShortcut(PopoverShortcut.pause)
+                .help("Pause (⌘P)")
                 .accessibilityLabel("Pause focus session")
 
                 GradientCTAButton(
@@ -1042,6 +1056,8 @@ private struct FocusingPopoverContent: View {
                     gradient: LiquidDesignTokens.Gradient.stop,
                     action: { withAnimation(FFMotion.section) { onShowStopConfirmation() } }
                 )
+                .keyboardShortcut(PopoverShortcut.finish)
+                .help("Finish (⌘.)")
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)
@@ -1267,6 +1283,8 @@ private struct PausedPopoverContent: View {
                 foregroundColor: .white,
                 action: onResume
             )
+            .keyboardShortcut(PopoverShortcut.pause)
+            .help("Resume (⌘P)")
 
             // End Session — plain text link
             Button {
@@ -1283,6 +1301,8 @@ private struct PausedPopoverContent: View {
                 }
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(PopoverShortcut.finish)
+            .help("Finish (⌘.)")
             .accessibilityLabel("End paused session")
 
             if showStopConfirmation {
@@ -1503,6 +1523,8 @@ private struct BreakPopoverContent: View {
                     }
                     .buttonStyle(.glassProminent)
                     .buttonBorderShape(.capsule)
+                    .keyboardShortcut(PopoverShortcut.start)
+                    .help("Start (⌘↩)")
                     .accessibilityLabel("Skip break and start next focus block")
 
                     // Secondary actions row

@@ -17,6 +17,9 @@ final class AppSettings {
 
     // Goals
     var dailyFocusGoal: TimeInterval = 7200
+    /// The daily goal is the sum of today's targets of the projects it counts (Goals tab).
+    /// Nil means on; `dailyFocusGoal` is the fixed goal used when off or no project has a target.
+    var dailyGoalFollowsTargets: Bool?
     // Direction (Dan Koe's protocol; priorities-goals design §3.5). Optional text, no migration.
     var lifeVision: String?
     var lifeAntiVision: String?

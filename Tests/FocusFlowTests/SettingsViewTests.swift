@@ -77,10 +77,10 @@ final class SettingsViewTests: XCTestCase {
     // MARK: Tab bar and transitions
 
     func testPermissionsTabKeepsStoredRawValueAndLockShieldSymbol() {
-        XCTAssertEqual(SettingsTab.integrations.title, "Permissions")
+        XCTAssertEqual(SettingsTab.integrations.title, "Permissions & Sync")
         XCTAssertEqual(SettingsTab.integrations.icon, "lock.shield")
         XCTAssertEqual(SettingsTab(rawValue: "integrations"), .integrations)
-        XCTAssertEqual(SettingsTab.allCases.map(\.title), ["General", "Timer", "Coach", "Distractions", "Permissions"])
+        XCTAssertEqual(SettingsTab.allCases.map(\.title), ["General", "Focus", "Coach", "Distractions", "Permissions & Sync"])
         XCTAssertEqual(SettingsTab.allCases.map(\.order), [0, 1, 2, 3, 4])
     }
 
