@@ -122,11 +122,13 @@ struct ProjectsListView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: FFSpace.s) {
-                            Text(project.priorityRank.map { "#\($0)" } ?? "–")
+                            // Unranked shows nothing, not a "–" that reads like a remove button.
+                            Text(project.priorityRank.map { "#\($0)" } ?? "")
                                 .font(.system(size: 10, weight: .bold, design: .rounded))
                                 .foregroundStyle(project.priorityRank == 1 ? Color.white : .secondary)
                                 .frame(width: 24, height: 18)
-                                .background(RoundedRectangle(cornerRadius: 5).fill(project.priorityRank == 1 ? FFPalette.project(project.color) : FFPalette.track))
+                                .background(RoundedRectangle(cornerRadius: 5).fill(project.priorityRank == nil ? Color.clear : project.priorityRank == 1 ? FFPalette.project(project.color) : FFPalette.track))
+                                .help(project.priorityRank.map { "Priority \($0)" } ?? "No priority")
                             Image(systemName: project.icon ?? "folder.fill")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(FFPalette.project(project.color))
@@ -134,9 +136,10 @@ struct ProjectsListView: View {
                                 .accessibilityHidden(true)
                             Text(project.name).ffText(.body).lineLimit(1)
                             Spacer(minLength: FFSpace.xs)
-                            Text(seconds > 0 ? FFFormat.duration(seconds) : "—")
+                            Text(seconds > 0 ? "\(FFFormat.duration(seconds)) this week" : "—")
                                 .ffText(.caption)
                                 .monospacedDigit()
+                                .help("Focus on this project this week")
                         }
                         if let target, target > 0 {
                             PaceBar(fraction: min(1, todaySeconds / target), expected: 0, color: FFPalette.project(project.color), height: 4)

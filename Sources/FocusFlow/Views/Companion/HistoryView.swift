@@ -141,12 +141,12 @@ struct HistoryView: View {
         }
         return VStack(alignment: .leading, spacing: FFSpace.l) {
             Grid(alignment: .leading, horizontalSpacing: FFSpace.xl, verticalSpacing: FFSpace.l) {
+                // "Goal met N of M days" is the summary tile at the top; not repeated here.
                 GridRow {
-                    FFStat(label: "Goal met", value: "\(met.count) of \(days.count) days", valueColor: met.isEmpty ? nil : FFPalette.goal)
                     FFStat(label: "Days with any focus", value: "\(active)")
+                    FFStat(label: "Longest run", value: longest == 1 ? "1 day" : "\(longest) days")
                 }
                 GridRow {
-                    FFStat(label: "Longest run", value: longest == 1 ? "1 day" : "\(longest) days")
                     if let bestIndex, byWeekday[bestIndex] > 0 {
                         FFStat(label: "Most reliable day", value: FFFormat.weekdayShort[bestIndex], caption: "Goal met \(byWeekday[bestIndex]) times")
                     } else {

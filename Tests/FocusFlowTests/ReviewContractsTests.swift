@@ -360,7 +360,7 @@ final class ReviewContractsTests: XCTestCase {
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
         let statsWindowRange = try XCTUnwrap(source.range(of: "Window(\"FocusFlow\", id: \"stats\")"))
-        let nextWindowRange = try XCTUnwrap(source.range(of: "Window(\"Session Complete\", id: \"session-complete\")"))
+        let nextWindowRange = try XCTUnwrap(source.range(of: "Window(\"Block complete\", id: \"session-complete\")"))
         let statsWindowSource = String(source[statsWindowRange.lowerBound..<nextWindowRange.lowerBound])
 
         XCTAssertTrue(statsWindowSource.contains(".windowResizability(.contentMinSize)"))

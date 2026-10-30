@@ -36,13 +36,11 @@ struct TodayView: View {
                     Button {
                         showManualEntry = true
                     } label: {
-                        Label("Log session", systemImage: "plus")
+                        Label("Log a block", systemImage: "plus")
                     }
                     .buttonStyle(.bordered)
                     .help("Log a focus block you did away from the timer")
                 }
-
-                DailyReminderView(style: .card, now: snapshot.now)
 
                 GoalHeroView(
                     title: Self.goalTitle(snapshot.goalScope),
@@ -53,6 +51,9 @@ struct TodayView: View {
                     missedYesterday: missedYesterday(snapshot),
                     now: snapshot.now
                 )
+
+                // Status first; the day's line is a strip under it, not the tallest card on top.
+                DailyReminderView(style: .strip, now: snapshot.now)
 
                 DailyTasksSection(now: snapshot.now)
 

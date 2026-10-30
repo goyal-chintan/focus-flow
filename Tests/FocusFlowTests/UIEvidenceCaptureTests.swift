@@ -513,9 +513,9 @@ final class UIEvidenceCaptureTests: XCTestCase {
             newDraft.addsGoal = true
             newDraft.goal.title = "Apply for jobs by 28 Nov"
             newDraft.goal.keyResults = [
-                .init(title: "LeetCode", kind: .count, target: 60, unit: "questions"),
-                .init(title: "SQL", kind: .count, target: 10, unit: "questions"),
-                .init(title: "Apply for jobs", kind: .checkbox, target: 1),
+                .init(title: "LeetCode", target: 60, unit: "questions"),
+                .init(title: "SQL", target: 10, unit: "questions"),
+                .init(title: "Job applications", target: 10),
             ]
             let newForm = ScrollView { ProjectFormView(draft: .constant(newDraft), project: nil, title: "New project") {} }
                 .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
@@ -564,7 +564,7 @@ final class UIEvidenceCaptureTests: XCTestCase {
         let leet = GoalKeyResult(title: "LeetCode", kind: .count, target: 60, unit: "questions", order: 0)
         let sql = GoalKeyResult(title: "SQL", kind: .count, target: 10, unit: "questions", order: 1)
         let referrals = GoalKeyResult(title: "Referral asks", kind: .count, target: 3, order: 2)
-        let apply = GoalKeyResult(title: "Apply for 10 jobs", kind: .checkbox, target: 1, order: 3)
+        let apply = GoalKeyResult(title: "Job applications", kind: .count, target: 10, order: 3)
         [leet, sql, referrals, apply].forEach { context.insert($0) }
         goal.keyResults = [leet, sql, referrals, apply]
         for (index, amount) in [2.0, 1, 3, 0, 2, 1, 2, 3].enumerated() where amount > 0 {

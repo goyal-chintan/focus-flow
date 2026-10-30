@@ -56,7 +56,7 @@ enum CoachBlockSizeLadder {
         enum Kind: Sendable, Equatable {
             /// A prompt the user saw and did not act on. `reason` is the "Not now" reason, if any.
             case declined(reason: FocusCoachSkipReason?)
-            /// A block started from (or within 10 minutes of) a prompt.
+            /// A block started from (or within 20 minutes of) a prompt.
             case startedFromPrompt(minutes: Int)
             /// A focus block ended (prompted or not).
             case blockEnded(minutes: Int, completed: Bool)
@@ -102,7 +102,7 @@ enum CoachBlockSizeLadder {
             switch why {
             case .starting: Self.startingCaption
             case .lastStart: "\(minutes)m is what you started last time."
-            case .shrunkAfterDeclines: "\(minutes)m: the last asks didn't land, so smaller."
+            case .shrunkAfterDeclines: "\(minutes)m: an easy way in."
             case .tooBig: "\(minutes)m: you said it felt too big."
             case .findNextStep: "\(minutes)m to find the next step. That's the whole job."
             case .grew: "\(minutes)m: you finished your last three. Step up."
@@ -147,6 +147,9 @@ enum CoachBlockSizeLadder {
             case .blockEnded(let minutes, let completed):
                 guard completed else { completions = 0; continue }
                 if minutes >= sizes[index] - 1 {
+                    // Finishing a block this size proves it isn't too big: earlier unanswered asks
+                    // don't count against it (audit: "5m" while finishing 25s on your own).
+                    declines = 0
                     completions += 1
                     if completions >= completionsToGrow {
                         completions = 0
@@ -217,9 +220,9 @@ enum CoachPromptAttribution {
         let hasContext: Bool
     }
 
-    /// The most recent prompt the user saw in the 10 minutes before `start` that is not yet
+    /// The most recent prompt the user saw in the 20 minutes before `start` that is not yet
     /// credited. Badges are ambient and silent arms showed nothing, so neither gets credit.
-    static func creditTarget(for start: Date, candidates: [Candidate], window: TimeInterval = 10 * 60) -> UUID? {
+    static func creditTarget(for start: Date, candidates: [Candidate], window: TimeInterval = CoachDecisionReward.startWindow) -> UUID? {
         candidates
             .filter { candidate in
                 candidate.hasContext

@@ -576,6 +576,7 @@ final class TimerViewModel {
         loadWakeRecoveryStateFromDefaults()
         purgeShortFocusSessions()
         IdleDistractionLegacyCleanup.runOnce(in: modelContext)
+        migrateCheckboxKeyResults()
         loadTodayStats()
         // Don't call BlockingService.cleanupIfNeeded() here — it prompts for
         // admin password if stale /etc/hosts entries exist, which is jarring on
@@ -1414,7 +1415,8 @@ final class TimerViewModel {
 
     func startBreak(overrideDuration: TimeInterval? = nil) {
         guard let settings, !isOvertime else { return }
-        // Guard against zero/negative sessionsBeforeLongBreak to prevent division-by-zero
+        // Every break is started with its length (earned, or 5 minutes); the old short/long break
+        // settings are no longer shown and only back this fallback.
         let sessionsPerCycle = max(1, settings.sessionsBeforeLongBreak)
         let isLongBreak = overrideDuration == nil
             && completedFocusSessions > 0
@@ -1603,9 +1605,16 @@ final class TimerViewModel {
         remainingSeconds += delta
         totalSeconds += delta
         currentSession?.duration += delta
-        if minutes >= Self.smallestRegularMinutes {
+        if minutes >= Self.smallestRegularMinutes, minutes != regularMinutes {
+            // Said out loud, with Undo: this changes Settings ▸ Your usual block.
+            let note = UsualLengthChange(minutes: minutes, previous: regularMinutes)
+            usualLengthChange = note
             selectedMinutes = minutes
             settings?.focusDuration = TimeInterval(minutes * 60)
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(6))
+                if self?.usualLengthChange == note { self?.usualLengthChange = nil }
+            }
         }
         saveContext()
         saveCrashRecoveryCheckpoint()
@@ -1622,6 +1631,24 @@ final class TimerViewModel {
     }
 
     static let smallestRegularMinutes = 15
+
+    struct UsualLengthChange: Equatable {
+        let id = UUID()
+        let minutes: Int
+        let previous: Int
+    }
+
+    /// "25 min is now your usual block · Undo", for a few seconds after the Length row changed it.
+    private(set) var usualLengthChange: UsualLengthChange?
+
+    /// Puts the usual length back (the running block keeps the length you chose).
+    func undoUsualLengthChange() {
+        guard let change = usualLengthChange else { return }
+        usualLengthChange = nil
+        selectedMinutes = change.previous
+        settings?.focusDuration = TimeInterval(change.previous * 60)
+        saveContext()
+    }
 
     /// The running block's planned length in whole minutes.
     var blockLengthMinutes: Int { Int((totalSeconds / 60).rounded()) }
@@ -2959,7 +2986,7 @@ final class TimerViewModel {
     }
 
     /// Credits the start to the prompt that asked for it: the prompt's own button first, else the
-    /// most recent prompt the user saw in the last 10 minutes (Coach v4 §3.1, F1).
+    /// most recent prompt the user saw in the last 20 minutes (Coach v4 §3.1, F1).
     private func creditCoachPromptForStart(sessionID: UUID, minutes: Int, now: Date = Date()) {
         let pending = pendingCoachAttemptID
         pendingCoachAttemptID = nil
@@ -2976,7 +3003,12 @@ final class TimerViewModel {
                 surface: attempt.surfaceRawValue.flatMap(CoachSurface.init(rawValue:))
             )
             let after = max(0, Int(now.timeIntervalSince(attempt.deliveredAt) / 60))
-            coachJournal.record(.started, "Started \(minutes)m, \(after)m after the \(label). It counts as a win for that prompt.", at: now)
+            if attempt.surfaceRawValue == CoachSurface.silent.rawValue {
+                // The quiet arm: its outcome teaches the coach, but the coach showed you nothing.
+                coachJournal.record(.started, "Started \(minutes)m on your own (the coach had stayed quiet; it learns from that too).", at: now)
+            } else {
+                coachJournal.record(.started, "Started \(minutes)m, \(after)m after the \(label). It counts as a win for that prompt.", at: now)
+            }
             rebuildBandit()
         } else {
             coachJournal.record(.started, "Started \(minutes)m on your own.", at: now)
@@ -3202,13 +3234,17 @@ final class TimerViewModel {
             // A plan the user made and then pushed says nothing about the size of the ask.
             if CoachPlannedCue.isRequestedCueKey(key) { continue }
             switch attempt.outcome {
-            case .ignored?, .dismissed?, .snoozed?:
+            case .ignored?, .dismissed?:
+                events.append(.init(at: attempt.resolvedAt ?? attempt.deliveredAt, kind: .declined(reason: attempt.skipReason)))
+            // A plain snooze is "later", not "too big": only a stated reason ("It feels too big")
+            // reaches the ladder.
+            case .snoozed? where attempt.skipReason != nil:
                 events.append(.init(at: attempt.resolvedAt ?? attempt.deliveredAt, kind: .declined(reason: attempt.skipReason)))
             default:
                 break
             }
         }
-        for session in historyReader?.focusSessions(since: since) ?? [] {
+        for session in historyReader?.ownWorkSessions(since: since) ?? [] {
             let minutes = Int((session.duration / 60).rounded())
             if promptStartedSessions.contains(session.id) {
                 events.append(.init(at: session.startedAt, kind: .startedFromPrompt(minutes: minutes)))
@@ -3249,7 +3285,8 @@ final class TimerViewModel {
 
     /// Focus blocks for reward resolution.
     private func learningBlocks(since: Date) -> [CoachDecisionReward.Block] {
-        (historyReader?.focusSessions(since: since) ?? []).map {
+        // Own work only: the goal is own-work time, so an Office block is not a coach success.
+        (historyReader?.ownWorkSessions(since: since) ?? []).map {
             .init(start: $0.startedAt, seconds: $0.endedAt == nil ? Date().timeIntervalSince($0.startedAt) : $0.actualDuration,
                   plannedMinutes: Int(($0.duration / 60).rounded()))
         }
@@ -3454,7 +3491,8 @@ final class TimerViewModel {
 
     @discardableResult
     func addDailyTask(title: String, projectID: UUID? = nil, keyResultID: UUID? = nil, amount: Double? = nil,
-                      carriedFromID: UUID? = nil, reminderID: String? = nil, day: Date? = nil, now: Date = Date()) -> DailyTask? {
+                      carriedFromID: UUID? = nil, reminderID: String? = nil, pushToReminders: Bool = true,
+                      day: Date? = nil, now: Date = Date()) -> DailyTask? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let modelContext, !trimmed.isEmpty else { return nil }
         let start = Calendar.current.startOfDay(for: day ?? now)
@@ -3465,12 +3503,14 @@ final class TimerViewModel {
         modelContext.insert(task)
         saveContext()
         dailyTaskRevision += 1
-        if reminderID == nil, let listID = reminderListID(forProject: projectID) {
+        if pushToReminders, reminderID == nil, let listID = reminderListID(forProject: projectID) {
             // A new task on a synced project also goes to its Reminders list (due that day).
             let title = task.title, day = task.day
-            writeToReminders { [weak self, weak task] bridge in
+            // The task is held until the write runs: callers often drop it (`_ = addDailyTask…`),
+            // and a weak capture lost every reminder (bug 2026-10-30).
+            writeToReminders { [weak self] bridge in
                 // Deleted before the write ran: create nothing.
-                guard let task, !task.isDeleted, task.modelContext != nil,
+                guard !task.isDeleted, task.modelContext != nil,
                       let id = bridge.createReminder(title: title, dueDay: day, listId: listID) else { return }
                 task.reminderID = id
                 self?.saveContext()
@@ -3482,7 +3522,9 @@ final class TimerViewModel {
     /// Adds today's lever ("3 LeetCode questions") as a task linked to its key result.
     @discardableResult
     func addLeverTask(_ lever: DailyLever, now: Date = Date()) -> DailyTask? {
-        addDailyTask(title: lever.taskTitle, projectID: lever.projectID, keyResultID: lever.id, amount: lever.amount, now: now)
+        // A goal count ("3 LeetCode questions") stays in FocusFlow: it never adds a reminder.
+        addDailyTask(title: lever.taskTitle, projectID: lever.projectID, keyResultID: lever.id, amount: lever.amount,
+                     pushToReminders: false, now: now)
     }
 
     /// Ticks or unticks a task. A linked task logs what is left of its amount on tick and removes
@@ -3621,6 +3663,76 @@ final class TimerViewModel {
         }
     }
 
+    /// Goals count; one-off steps are tasks (tasks and goals review 2026-10-30). Each open "done or
+    /// not" key result becomes a task for today on the goal's project (a synced project also gets
+    /// the reminder), unless today already has a task with that title; then the key result goes.
+    /// Done ones are history and simply go. Runs at launch; does nothing once none are left.
+    func migrateCheckboxKeyResults(now: Date = Date()) {
+        guard let modelContext else { return }
+        let checkbox = GoalKeyResultKind.checkbox.rawValue
+        let legacy = (try? modelContext.fetch(FetchDescriptor<GoalKeyResult>(predicate: #Predicate { $0.kindRaw == checkbox }))) ?? []
+        guard !legacy.isEmpty else { return }
+        let existing = Set(todayTasks(now: now).map { $0.title.lowercased() })
+        var converted = 0
+        for result in legacy {
+            let title = result.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.done < result.target, !title.isEmpty, !existing.contains(title.lowercased()) {
+                addDailyTask(title: title, projectID: result.goal?.projectID, now: now)
+                converted += 1
+            }
+            result.goal?.keyResults.removeAll { $0.id == result.id }
+            modelContext.delete(result)
+        }
+        saveContext()
+        dailyTaskRevision += 1
+        log("goals: \(legacy.count) done-or-not key results removed, \(converted) became tasks")
+    }
+
+    /// "Link to goal": the task now counts toward `resultID` (nil unlinks). A done task moves what it
+    /// logged to the new key result, so goal progress stays true either way.
+    func linkDailyTask(_ task: DailyTask, toResult resultID: UUID?, now: Date = Date()) {
+        guard let modelContext, task.keyResultID != resultID else { return }
+        removeProgressEntries(of: task)
+        task.keyResultID = resultID
+        if resultID == nil {
+            task.amount = nil
+            task.loggedAmount = nil
+        } else if task.isDone, let result = keyResult(for: task) {
+            let entry = GoalProgressEntry(amount: task.progressAmount, at: now, note: task.title, sessionID: task.sessionID)
+            entry.taskID = task.id
+            modelContext.insert(entry)
+            result.entries.append(entry)
+            task.loggedAmount = task.progressAmount
+        } else {
+            task.loggedAmount = 0
+        }
+        saveContext()
+        dailyTaskRevision += 1
+    }
+
+    /// Renames a task; a synced task's reminder follows.
+    func renameDailyTask(_ task: DailyTask, to title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != task.title else { return }
+        task.title = trimmed
+        saveContext()
+        dailyTaskRevision += 1
+        if let reminderID = syncedReminderID(of: task) {
+            writeToReminders { $0.setReminderTitle(identifier: reminderID, trimmed) }
+        }
+    }
+
+    /// "+1" on a key result from the running popover or the notch. When today has an open task
+    /// linked to it, the +1 goes through that task (so the task's count and the goal agree and
+    /// nothing is logged twice); otherwise it is logged on the key result directly.
+    func logOneMore(resultID: UUID, now: Date = Date()) {
+        if let task = todayTasks(now: now).first(where: { $0.keyResultID == resultID && !$0.isDone }) {
+            advanceDailyTask(task, now: now)
+        } else {
+            logGoalProgress(resultID: resultID, amount: 1, now: now)
+        }
+    }
+
     /// Deletes the task; a synced task's reminder is deleted with it (the list mirrors the tasks).
     func deleteDailyTask(_ task: DailyTask) {
         guard let modelContext else { return }
@@ -3736,6 +3848,22 @@ final class TimerViewModel {
         log("reminders: list changed, removed \(removed) open tasks of the old list, kept \(linked.count - removed) as history")
     }
 
+    @ObservationIgnored private var reminderSyncObservers: [NSObjectProtocol] = []
+
+    /// Always-on sync triggers, from launch: a change in Reminders (the phone, the Reminders app,
+    /// another Mac) and coming back to the app. They used to live on a view inside the menu-bar
+    /// popover, so nothing synced until the popover had been opened (bug 2026-10-30).
+    func startReminderSyncObservers() {
+        guard reminderSyncObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        for name in [Notification.Name.EKEventStoreChanged, NSApplication.didBecomeActiveNotification] {
+            reminderSyncObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.scheduleReminderSync() }
+            })
+        }
+        scheduleReminderSync()
+    }
+
     /// Asks for a sync soon (coalesced). Called on launch, app activation, EventKit changes, day
     /// rollover, popover open and when a project's list changes.
     func scheduleReminderSync(after delay: Duration = .milliseconds(800)) {
@@ -3772,7 +3900,10 @@ final class TimerViewModel {
         let refs = tasks.compactMap { task in
             task.reminderID.map { ReminderTaskSync.TaskRef(id: task.id, reminderID: $0, day: task.day, isDone: task.isDone, title: task.title) }
         }
-        let plan = ReminderTaskSync.plan(open: open, projectForList: projectForList, tasks: refs, today: now)
+        let unlinked = DailyTaskPlanner.tasks(tasks, on: now)
+            .filter { $0.reminderID == nil && !$0.isDone }
+            .map { ReminderTaskSync.UnlinkedTask(id: $0.id, title: $0.title, projectID: $0.projectID) }
+        let plan = ReminderTaskSync.plan(open: open, projectForList: projectForList, tasks: refs, unlinkedToday: unlinked, today: now)
         guard !plan.isEmpty else { return }
 
         applyingReminderSync = true
@@ -3788,6 +3919,10 @@ final class TimerViewModel {
             task.reminderID = item.reminderID
             modelContext.insert(task)
             order += 1
+            changed = true
+        }
+        for link in plan.links {
+            byID[link.taskID]?.reminderID = link.reminderID
             changed = true
         }
         for rename in plan.renames {
@@ -4026,8 +4161,9 @@ final class TimerViewModel {
             prompt = forced.surface != .silent
             propensity = nil
         } else {
-            let model = CoachPromptPolicy.model(from: promptLearningObservations(now: now))
-            let decision = CoachPromptPolicy.decide(x: features, model: model, using: &coachRandom)
+            let observations = promptLearningObservations(now: now)
+            let model = CoachPromptPolicy.model(from: observations)
+            let decision = CoachPromptPolicy.decide(x: features, model: model, resolvedDecisions: observations.count, using: &coachRandom)
             prompt = decision.prompt
             propensity = decision.probability
         }

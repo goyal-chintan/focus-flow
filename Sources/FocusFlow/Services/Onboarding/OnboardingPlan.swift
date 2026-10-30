@@ -226,7 +226,7 @@ struct OnboardingDraft: Equatable {
                 goal.startDate = Calendar.current.startOfDay(for: now)
                 goal.deadline = deadline(from: now)
                 goal.isBossFight = !goals.contains { $0.status == .active && $0.isBossFight }
-                goal.keyResults = [.init(title: trimmedResult, kind: .count, target: Double(resultTarget))]
+                goal.keyResults = [.init(title: trimmedResult, target: Double(resultTarget))]
                 let saved = goal.apply(in: context, existing: nil)
                 // Today's step becomes the first task, linked, so each +1 moves the goal. A counted
                 // task is named for what you count ("Problems solved", counter "0 of 3"), never as a

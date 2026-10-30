@@ -181,7 +181,7 @@ final class NotchController: NotchHosting {
                 let lever = vm.todayLevers().first
                 if vm.startNextBlock(minutes: minutes, projectID: lever?.projectID) { self?.collapse() }
             },
-            logResult: { id in vm.logGoalProgress(resultID: id, amount: 1) },
+            logResult: { id in vm.logOneMore(resultID: id) },
             openGoals: { [weak self] in
                 self?.collapse()
                 vm.openCompanionWindow?(.goals)

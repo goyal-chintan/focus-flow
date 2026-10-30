@@ -76,6 +76,9 @@ final class CoachMessageComposerTests: XCTestCase {
         XCTAssertEqual(compose(.challenger, facts: facts).hook, "You said: “Onboarding empty states”.")
 
         facts.lastIntent = nil
+        // On the way to today's goal: the distance to it, not a generic line (goal gradient).
+        XCTAssertTrue(compose(.challenger, facts: facts, seed: 0).hook.hasPrefix("60 of 120 min today."))
+        facts.doneMinutesToday = 10
         XCTAssertEqual(compose(.challenger, facts: facts, seed: 0).hook, "1% better daily = 37× in a year.")
     }
 

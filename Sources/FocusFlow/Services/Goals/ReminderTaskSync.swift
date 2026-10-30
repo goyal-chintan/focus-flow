@@ -22,6 +22,13 @@ enum ReminderTaskSync {
         let title: String
     }
 
+    /// An open task of today with no reminder (made before sync, or while a write was pending).
+    struct UnlinkedTask: Equatable {
+        let id: UUID
+        let title: String
+        let projectID: UUID?
+    }
+
     struct Import: Equatable {
         let reminderID: String
         let title: String
@@ -32,6 +39,8 @@ enum ReminderTaskSync {
 
     struct Plan: Equatable {
         var imports: [Import] = []
+        /// A reminder that matches an unlinked task (same project, same title): linked, not imported.
+        var links: [(taskID: UUID, reminderID: String)] = []
         var renames: [(taskID: UUID, title: String)] = []
         /// Rescheduled to a later day in Reminders: taskID → that day.
         var deferrals: [(taskID: UUID, day: Date)] = []
@@ -46,9 +55,10 @@ enum ReminderTaskSync {
                 && lhs.toCheck.map(\.taskID) == rhs.toCheck.map(\.taskID) && lhs.toCheck.map(\.reminderID) == rhs.toCheck.map(\.reminderID)
                 && lhs.deferrals.map(\.taskID) == rhs.deferrals.map(\.taskID) && lhs.deferrals.map(\.day) == rhs.deferrals.map(\.day)
                 && lhs.reopens == rhs.reopens
+                && lhs.links.map(\.taskID) == rhs.links.map(\.taskID) && lhs.links.map(\.reminderID) == rhs.links.map(\.reminderID)
         }
 
-        var isEmpty: Bool { imports.isEmpty && renames.isEmpty && toCheck.isEmpty && deferrals.isEmpty && reopens.isEmpty }
+        var isEmpty: Bool { imports.isEmpty && links.isEmpty && renames.isEmpty && toCheck.isEmpty && deferrals.isEmpty && reopens.isEmpty }
     }
 
     /// Due today, overdue, or undated: what a day's task list should hold.
@@ -66,6 +76,7 @@ enum ReminderTaskSync {
         open: [RemindersService.ReminderItem],
         projectForList: [String: UUID],
         tasks: [TaskRef],
+        unlinkedToday: [UnlinkedTask] = [],
         today: Date,
         calendar: Calendar = .current
     ) -> Plan {
@@ -73,6 +84,8 @@ enum ReminderTaskSync {
         let todayTasks = tasks.filter { calendar.isDate($0.day, inSameDayAs: today) }
         let linkedToday = Set(todayTasks.map(\.reminderID))
         let openByID = Dictionary(open.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var unlinked = unlinkedToday
+        func normalized(_ title: String) -> String { title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
 
         for reminder in open {
             guard let projectID = projectForList[reminder.listId],
@@ -80,6 +93,11 @@ enum ReminderTaskSync {
                   isDueBy(reminder.dueDate, endOf: today, calendar: calendar) else { continue }
             let title = reminder.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty else { continue }
+            if let index = unlinked.firstIndex(where: { $0.projectID == projectID && normalized($0.title) == normalized(title) }) {
+                plan.links.append((unlinked[index].id, reminder.id))
+                unlinked.remove(at: index)
+                continue
+            }
             let earlier = tasks
                 .filter { $0.reminderID == reminder.id && !$0.isDone && $0.day < calendar.startOfDay(for: today) }
                 .max { $0.day < $1.day }

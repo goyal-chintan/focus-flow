@@ -433,19 +433,12 @@ private struct TimerSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                durationRow("Default block", keyPath: \.focusDuration, range: 5...120, step: 5)
-                durationRow("Short break", keyPath: \.shortBreakDuration, range: 1...30, step: 1)
-                durationRow("Long break", keyPath: \.longBreakDuration, range: 5...60, step: 5)
-                SettingsStepperRow(
-                    title: "Sessions before a long break",
-                    valueText: "\(settings.sessionsBeforeLongBreak)",
-                    value: bind(\.sessionsBeforeLongBreak),
-                    range: 2...8
-                )
+                durationRow("Your usual block", keyPath: \.focusDuration, range: 5...120, step: 5)
             } header: {
-                Text("Durations")
+                Text("Block length")
             } footer: {
-                Text("The default for a manual start. The coach suggests 5, 15 or 25 minutes from what has worked for you.")
+                // Breaks are earned from the block you finish (or 5 minutes), so there is no break knob.
+                Text("What every Start offers first. Choosing 15 or 25 in a running block's Length row changes it too. The coach's smaller size is offered beside it.")
                     .foregroundStyle(.secondary)
             }
 

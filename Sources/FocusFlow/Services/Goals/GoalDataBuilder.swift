@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// Feeds the pure goal and priority logic (`GoalTracking.swift`) from SwiftData models.
 @MainActor
@@ -107,17 +108,28 @@ enum GoalDataBuilder {
 
     static func leverInputs(_ goals: [ProjectGoal], now: Date, calendar: Calendar = .current) -> [DailyLevers.KeyResultInput] {
         let today = calendar.startOfDay(for: now)
+        let projects = (try? goals.first?.modelContext?.fetch(FetchDescriptor<Project>())) ?? []
         return goals.filter { $0.status == .active }.flatMap { goal in
-            goal.sortedKeyResults.map { kr in
+            let boost = priorityBoost(projects.first { $0.id == goal.projectID })
+            return goal.sortedKeyResults.filter { $0.kind == .count }.map { kr in
                 DailyLevers.KeyResultInput(
-                    id: kr.id, title: kr.title, unit: kr.unit, isCheckbox: kr.kind == .checkbox,
+                    id: kr.id, title: kr.title, unit: kr.unit,
                     target: kr.target, done: kr.done,
                     doneToday: kr.entries.filter { $0.at >= today }.reduce(0) { $0 + $1.amount },
                     goalTitle: goal.title, projectID: goal.projectID,
-                    start: goal.startDate, deadline: goal.deadline, isBossFight: goal.isBossFight
+                    start: goal.startDate, deadline: goal.deadline, isBossFight: goal.isBossFight,
+                    priorityBoost: boost
                 )
             }
         }
+    }
+
+    /// Levers favour what you are building for yourself: ★ #1 first, then own work (personal,
+    /// learning), so an office goal never takes all three slots from them.
+    static func priorityBoost(_ project: Project?) -> Double {
+        guard let project else { return 0 }
+        if project.priorityRank == 1 { return 10 }
+        return project.area.isOwnWork ? 5 : 0
     }
 
     /// The most urgent count result (the top lever's), for goal-aware coach copy.

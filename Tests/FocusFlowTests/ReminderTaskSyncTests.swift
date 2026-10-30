@@ -255,6 +255,29 @@ final class ReminderTaskSyncTests: XCTestCase {
         XCTAssertEqual(vm.todayTasks(now: today).filter { $0.title == "From B" }.count, 0, "B's open task is gone")
     }
 
+    /// Bug 2026-10-30: the queued write held the new task weakly; callers that drop the task
+    /// (`_ = addDailyTask…`, as Today's add field does) lost the reminder.
+    func testAddingATaskAndDroppingItStillCreatesItsReminder() async throws {
+        let (vm, fake, project, _) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        _ = vm.addDailyTask(title: "Schema finalisation", projectID: project.id, now: today)
+        await vm.reminderWrite?.value
+        XCTAssertEqual(fake.created.map(\.title), ["Schema finalisation"])
+        XCTAssertEqual(vm.todayTasks(now: today).first?.reminderID, fake.created.first?.id)
+    }
+
+    func testAReminderMatchingAnUnlinkedTaskIsLinkedNotImported() async throws {
+        let (vm, fake, project, _) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        vm.settings?.remindersIntegrationEnabled = false
+        let local = try XCTUnwrap(vm.addDailyTask(title: "Bridge operator suite", projectID: project.id, now: today))
+        vm.settings?.remindersIntegrationEnabled = true
+        fake.open = [item("r9", "bridge operator suite ")]
+        await vm.syncReminders(now: today)
+        XCTAssertEqual(vm.todayTasks(now: today).count, 1, "No duplicate")
+        XCTAssertEqual(local.reminderID, "r9")
+    }
+
     func testNothingSyncsWithTheToggleOff() async throws {
         let (vm, fake, project, _) = try makeVM()
         defer { AppUsageTracker.shared.stop() }
@@ -285,6 +308,8 @@ final class FakeReminders: ReminderBridge {
     func reminderState(identifier: String) -> RemindersService.ReminderState { states[identifier] ?? .missing }
     func setReminderCompleted(identifier: String, _ value: Bool) -> Bool { completed[identifier] = value; return true }
     func setReminderDueDay(identifier: String, _ day: Date?) -> Bool { dueDays[identifier] = day; return true }
+    var titles: [String: String] = [:]
+    func setReminderTitle(identifier: String, _ title: String) -> Bool { titles[identifier] = title; return true }
     func createReminder(title: String, dueDay: Date?, listId: String) -> String? {
         let id = "new-\(created.count)"
         created.append((id, title, listId))
