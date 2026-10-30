@@ -97,6 +97,8 @@ struct CoachPerformanceView: View {
     @Query(sort: \InterventionAttempt.deliveredAt) private var attempts: [InterventionAttempt]
     @State private var showLog = false
     @State private var showModel = false
+    /// The coach log day whose lines are listed (nil: today).
+    @State private var logDay: Date?
 
     /// "A prompt counts when you start a block within 20 minutes · last 14 days".
     static var countingRule: String {
@@ -120,7 +122,7 @@ struct CoachPerformanceView: View {
                     ForEach(summary.advice) { CoachAdviceCard(advice: $0) }
                 }
             }
-            logDisclosure(now: now)
+            logDisclosure(now: now, goalSamples: snapshot.goalSamples)
             modelDisclosure(summary, learning: learning, snapshot: snapshot)
         }
         .padding(.vertical, FFSpace.xs)
@@ -196,12 +198,25 @@ struct CoachPerformanceView: View {
 
     // MARK: Coach log
 
-    private func logDisclosure(now: Date) -> some View {
-        let journal = timerVM.coachJournal.entries(on: now)
+    private func logDisclosure(now: Date, goalSamples: [FocusSample]) -> some View {
+        let days = timerVM.coachLogDays(now: now, goalSamples: goalSamples)
+        let selected = days.first { Calendar.current.isDate($0.day, inSameDayAs: logDay ?? now) } ?? days.first
+        let selectedDay = selected?.day ?? now
+        let journal = timerVM.coachJournal.entries(on: selectedDay)
         return DisclosureGroup(isExpanded: $showLog) {
             VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(days) { day in
+                        CoachLogDayRow(day: day, isSelected: day.day == selected?.day, now: now) { logDay = day.day }
+                    }
+                }
+                .padding(.bottom, FFSpace.s)
+                Divider()
+                Text("\(CoachLogDayRow.dayLabel(selectedDay, now: now)) · why it spoke, or stayed quiet")
+                    .ffText(.callout)
+                    .padding(.top, FFSpace.s)
                 if journal.isEmpty {
-                    Text("Nothing yet today.").ffText(.caption)
+                    Text(Calendar.current.isDate(selectedDay, inSameDayAs: now) ? "Nothing yet today." : "Nothing that day.").ffText(.caption)
                 }
                 ForEach(journal.reversed().prefix(30)) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
@@ -216,7 +231,7 @@ struct CoachPerformanceView: View {
             }
             .padding(.top, FFSpace.xs)
         } label: {
-            Text("Today's coach log · why it spoke, or stayed quiet").ffText(.headline)
+            Text("Coach log · last \(CoachLogSummary.defaultDays) days").ffText(.headline)
         }
     }
 
@@ -311,6 +326,77 @@ struct CoachPerformanceView: View {
         case .arrival: "figure.walk.arrival"
         case .logged: "checkmark.circle"
         }
+    }
+}
+
+/// One day of the coach log: decision moments, shown vs held back (and why), starts after a
+/// prompt vs on your own, own-work minutes against the goal. Click to list that day's lines.
+struct CoachLogDayRow: View {
+    let day: CoachLogDay
+    let isSelected: Bool
+    let now: Date
+    var onSelect: () -> Void = {}
+    @State private var hovering = false
+
+    static func dayLabel(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+
+    /// "4 moments · 2 shown · 2 held back"
+    static func momentsText(_ day: CoachLogDay) -> String {
+        guard day.decisionMoments > 0 else { return "No moments to ask" }
+        return "\(day.decisionMoments) moment\(day.decisionMoments == 1 ? "" : "s") · \(day.shown) shown · \(day.heldBackTotal) held back"
+    }
+
+    /// "kept quiet to measure 2 · daily limit 1"
+    static func heldBackText(_ day: CoachLogDay) -> String? {
+        guard !day.heldBack.isEmpty else { return nil }
+        return day.heldBack.prefix(3).map { "\($0.code.label) \($0.count)" }.joined(separator: " · ")
+    }
+
+    /// "1 after a prompt · 1 on your own"
+    static func startsText(_ day: CoachLogDay) -> String {
+        guard day.starts > 0 else { return "No starts" }
+        return "\(day.startsAfterPrompt) after a prompt · \(day.startsOnYourOwn) on your own"
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .firstTextBaseline, spacing: FFSpace.m) {
+                Text(Self.dayLabel(day.day, now: now))
+                    .ffText(.callout)
+                    .frame(width: 92, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Self.momentsText(day)).ffText(.body)
+                    if let held = Self.heldBackText(day) {
+                        Text(held).ffText(.caption).lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(Self.startsText(day))
+                    .ffText(.caption)
+                    .frame(width: 190, alignment: .leading)
+                Text("\(day.ownWorkMinutes) / \(day.goalMinutes) min")
+                    .ffText(.headline)
+                    .monospacedDigit()
+                    .foregroundStyle(day.ownWorkMinutes >= day.goalMinutes ? FFPalette.goal : Color.primary)
+                    .frame(width: 96, alignment: .trailing)
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, FFSpace.s)
+            .background(
+                RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
+                    .fill(isSelected ? FFPalette.accent.opacity(0.12) : hovering ? FFPalette.rowHover : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(Self.dayLabel(day.day, now: now)): \(Self.momentsText(day)). \(Self.startsText(day)). Own work \(day.ownWorkMinutes) of \(day.goalMinutes) minutes.")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
