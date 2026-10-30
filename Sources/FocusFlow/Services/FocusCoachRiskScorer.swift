@@ -9,8 +9,6 @@ struct FocusCoachSignals: Sendable {
     var inactivityBurstSeconds: Double
     var blockedAppAttempts: Int
     var pauseCount: Int
-    var breakOverrunSeconds: Double
-    var recentLegitimateReason: Bool
 
     static let zero = FocusCoachSignals(
         startDelaySeconds: 0,
@@ -18,9 +16,7 @@ struct FocusCoachSignals: Sendable {
         nonWorkForegroundRatio: 0,
         inactivityBurstSeconds: 0,
         blockedAppAttempts: 0,
-        pauseCount: 0,
-        breakOverrunSeconds: 0,
-        recentLegitimateReason: false
+        pauseCount: 0
     )
 
     /// High-risk sample for testing
@@ -30,9 +26,7 @@ struct FocusCoachSignals: Sendable {
         nonWorkForegroundRatio: 0.75,
         inactivityBurstSeconds: 120,
         blockedAppAttempts: 2,
-        pauseCount: 2,
-        breakOverrunSeconds: 0,
-        recentLegitimateReason: false
+        pauseCount: 2
     )
 }
 
@@ -50,13 +44,14 @@ struct FocusCoachRiskResult: Sendable {
 /// Weighted formula based on procrastination research (Steel 2007):
 /// - Task aversiveness signals: start delay, non-work ratio
 /// - Impulsiveness signals: app switch rate, blocked app attempts
-/// - Self-control deficit signals: pause creep, inactivity bursts, break overrun
+/// - Self-control deficit signals: pause creep, inactivity bursts
 ///
-/// False-positive dampening: when user has provided a legitimate reason,
-/// the raw score is reduced by 40% to avoid punishing genuine interruptions.
+/// Break overrun and the "legitimate reason" dampening were inputs fed by the break-overrun and
+/// reason chips, removed 2026-10-30 (nothing else set them). The weights sum to 0.85 so live
+/// scores and the drift / high-risk thresholds are unchanged.
 struct FocusCoachRiskScorer: Sendable {
 
-    // MARK: - Weights (sum = 1.0)
+    // MARK: - Weights (sum = 0.85; see the type comment)
 
     private let wStartDelay: Double = 0.15
     private let wAppSwitch: Double = 0.20
@@ -64,7 +59,6 @@ struct FocusCoachRiskScorer: Sendable {
     private let wInactivity: Double = 0.10
     private let wBlockedAttempts: Double = 0.10
     private let wPauseCreep: Double = 0.10
-    private let wBreakOverrun: Double = 0.15
 
     // MARK: - Normalization thresholds
 
@@ -78,11 +72,6 @@ struct FocusCoachRiskScorer: Sendable {
     private let maxBlockedAttempts: Double = 5
     /// Pause count that maps to 1.0
     private let maxPauses: Double = 5
-    /// Break overrun seconds that maps to 1.0 (5 minutes)
-    private let maxBreakOverrun: Double = 300
-
-    /// False-positive dampening factor when a legitimate reason was recently given
-    private let legitimateReasonDampeningFactor: Double = 0.6
 
     func score(_ signals: FocusCoachSignals, profile: CoachPersonalProfile? = nil) -> FocusCoachRiskResult {
         let startDelayNorm = normalize(signals.startDelaySeconds, max: maxStartDelay)
@@ -91,27 +80,20 @@ struct FocusCoachRiskScorer: Sendable {
         let inactivityNorm = normalize(signals.inactivityBurstSeconds, max: maxInactivity)
         let blockedNorm = normalize(Double(signals.blockedAppAttempts), max: maxBlockedAttempts)
         let pauseNorm = normalize(Double(signals.pauseCount), max: maxPauses)
-        let breakOverrunNorm = normalize(signals.breakOverrunSeconds, max: maxBreakOverrun)
 
-        var raw = wStartDelay * startDelayNorm
+        let raw = wStartDelay * startDelayNorm
             + wAppSwitch * appSwitchNorm
             + wNonWorkRatio * nonWorkNorm
             + wInactivity * inactivityNorm
             + wBlockedAttempts * blockedNorm
             + wPauseCreep * pauseNorm
-            + wBreakOverrun * breakOverrunNorm
-
-        // Apply false-positive dampening
-        if signals.recentLegitimateReason {
-            raw *= legitimateReasonDampeningFactor
-        }
 
         let finalScore = clamp(raw)
 
         // Confidence increases with more active signals (non-zero components)
         let activeSignals = [
             startDelayNorm, appSwitchNorm, nonWorkNorm,
-            inactivityNorm, blockedNorm, pauseNorm, breakOverrunNorm
+            inactivityNorm, blockedNorm, pauseNorm
         ].filter { $0 > 0.01 }.count
         let confidence = clamp(Double(activeSignals) / 4.0)
 

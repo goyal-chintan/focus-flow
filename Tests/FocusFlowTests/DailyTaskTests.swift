@@ -51,7 +51,7 @@ final class DailyTaskTests: XCTestCase {
         XCTAssertEqual(stats.label, "1 of 3 done")
         XCTAssertEqual(DailyTaskStats(planned: 0, done: 0).label, "No tasks yet")
         XCTAssertEqual(DailyTaskStats(planned: 4, done: 4).label, "All 4 done")
-        XCTAssertEqual(DailyTaskStats(planned: 1, done: 1).label, "Done")
+        XCTAssertEqual(DailyTaskStats(planned: 1, done: 1).label, "1 of 1 done", "Never a bare Done")
     }
 
     func testNextTaskPrefersTheProject() {
@@ -128,15 +128,16 @@ final class DailyTaskTests: XCTestCase {
         vm.setDailyTask(task, done: true)
         XCTAssertGreaterThan(vm.dailyTaskRevision, revision)
         XCTAssertEqual(result.done, 3)
-        XCTAssertNotNil(task.progressEntryID)
-        XCTAssertEqual(vm.dailyTaskStats().label, "Done")
+        XCTAssertEqual(task.loggedCount, 3)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<GoalProgressEntry>()).map(\.taskID), [task.id], "The entry knows its task")
+        XCTAssertEqual(vm.dailyTaskStats().label, "1 of 1 done")
 
         vm.setDailyTask(task, done: true)
         XCTAssertEqual(result.done, 3, "Ticking twice logs once")
 
         vm.setDailyTask(task, done: false)
         XCTAssertEqual(result.done, 0)
-        XCTAssertNil(task.progressEntryID)
+        XCTAssertEqual(task.loggedCount, 0)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<GoalProgressEntry>()), 0)
 
         vm.setDailyTask(task, done: true)
@@ -212,7 +213,10 @@ final class DailyTaskTests: XCTestCase {
         }
         try context.save()
         let solved = try XCTUnwrap(vm.addDailyTask(title: "2 LeetCode questions", projectID: learning.id, keyResultID: leet.id, amount: 2))
-        vm.setDailyTask(solved, done: true)
+        vm.setDailyTask(solved, done: true, receipt: false)
+        // A counted task one of three in, with the receipt of that +1 showing.
+        let counted = try XCTUnwrap(vm.addDailyTask(title: "LeetCode questions", projectID: learning.id, keyResultID: leet.id, amount: 3))
+        vm.stepDailyTask(counted, by: 1)
         _ = vm.addDailyTask(title: "Window functions practice set", projectID: learning.id, keyResultID: sql.id)
         _ = vm.addDailyTask(title: "Ask Priya for a referral", projectID: learning.id)
         _ = vm.addDailyTask(title: "Review the system design notes")
@@ -294,6 +298,7 @@ final class ViewReadPathTests: XCTestCase {
             _ = vm.dailyTaskStats()
             _ = vm.historyReaderActiveGoals()
             _ = vm.startLadderRecommendation(now: Date())
+            _ = vm.regularMinutes
         }
         reads() // warm up any first-use work outside the tracked pass
 
@@ -309,5 +314,27 @@ final class ViewReadPathTests: XCTestCase {
         }
         reads()
         XCTAssertFalse(invalidated.raised, "A read made while drawing changed observed state: SwiftUI would loop in layout and crash")
+    }
+
+    /// Freeze 2026-10-30: the break window called `startLadderRecommendation` (SwiftData fetches and a
+    /// model fit) three times per render while a break overrun re-rendered it every second.
+    func testBlockEndWindowNeverRunsTheLadderWhileDrawing() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let source = try String(
+            contentsOf: testsDirectory.deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Sources/FocusFlow/Views/SessionCompleteWindow.swift"),
+            encoding: .utf8
+        )
+        XCTAssertEqual(source.components(separatedBy: "startLadderRecommendation").count - 1, 1, "The ladder runs once, on appear")
+        XCTAssertTrue(source.contains("coachAsk = timerVM.startLadderRecommendation()"), "…into @State, never from body")
+        XCTAssertTrue(source.contains("BreakOverrunTitle()"), "Only the title view reads the per-second overtime tick")
+    }
+
+    /// After a block or its break, and after a 5/15 warm-up, the next block is your regular length
+    /// (Settings ▸ Default block), not the warm-up again and not the idle ladder.
+    func testNextBlockIsTheRegularLength() {
+        XCTAssertEqual(TimerViewModel.regularMinutes(defaultBlockSeconds: 25 * 60, selectedMinutes: 5), 25, "A 5m warm-up doesn't repeat")
+        XCTAssertEqual(TimerViewModel.regularMinutes(defaultBlockSeconds: nil, selectedMinutes: 15), 15, "No settings: the chosen size")
+        XCTAssertEqual(TimerViewModel.regularMinutes(defaultBlockSeconds: 2 * 60, selectedMinutes: 3), 5, "Never below 5")
     }
 }

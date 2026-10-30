@@ -14,6 +14,8 @@ final class NotificationService: ObservableObject {
     private init() {}
 
     @Published private(set) var authorizationState: AuthorizationState = .notDetermined
+    /// Screen shared (SharePrivacy): no banner and no sound, since banners name the project.
+    var isPrivate = false
     var isAuthorized: Bool { authorizationState == .authorized }
 
     private var canUseUserNotificationsAPI: Bool {
@@ -123,6 +125,7 @@ final class NotificationService: ObservableObject {
     }
 
     func sendSessionCompletePrompt(duration: TimeInterval, label: String, sound: String) {
+        guard !isPrivate else { return }
         NSSound(named: NSSound.Name(sound))?.play()
         guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
@@ -138,6 +141,7 @@ final class NotificationService: ObservableObject {
     }
 
     func sendPauseWarning(minutes: Int) {
+        guard !isPrivate else { return }
         NSSound(named: NSSound.Name("Bottle"))?.play()
         guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
@@ -153,6 +157,7 @@ final class NotificationService: ObservableObject {
     }
 
     func sendPauseCritical(minutes: Int) {
+        guard !isPrivate else { return }
         NSSound(named: NSSound.Name("Sosumi"))?.play()
         guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
@@ -168,6 +173,7 @@ final class NotificationService: ObservableObject {
     }
 
     func sendBreakWarning(minutes: Int) {
+        guard !isPrivate else { return }
         NSSound(named: NSSound.Name("Bottle"))?.play()
         guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
@@ -183,6 +189,7 @@ final class NotificationService: ObservableObject {
     }
 
     func sendBreakCritical(minutes: Int) {
+        guard !isPrivate else { return }
         NSSound(named: NSSound.Name("Sosumi"))?.play()
         guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()
@@ -198,6 +205,7 @@ final class NotificationService: ObservableObject {
     }
 
     private func send(title: String, body: String, sound: String) {
+        guard !isPrivate else { return }
         NSSound(named: NSSound.Name(sound))?.play()
         guard canUseUserNotificationsAPI else { return }
         guard authorizationState == .authorized else { return }
@@ -252,6 +260,7 @@ final class NotificationService: ObservableObject {
 
     /// Sends the idle-starter check-in with actionable Start / Snooze buttons.
     func sendCoachCheckIn(title: String, body: String, sound: String) {
+        guard !isPrivate else { return }
         NSSound(named: NSSound.Name(sound))?.play()
         guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
         let content = UNMutableNotificationContent()

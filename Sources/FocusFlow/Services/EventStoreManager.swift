@@ -51,7 +51,6 @@ final class EventStoreManager {
             if !authorized {
                 logger.warning("Reminders permission revoked — disabling integration flag")
                 settings.remindersIntegrationEnabled = false
-                settings.selectedReminderListId = ""
                 changed = true
             }
         }

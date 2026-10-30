@@ -169,15 +169,6 @@ enum FocusCoachReason: String, Codable, CaseIterable {
             return false
         }
     }
-
-    static let legitimateChips: [FocusCoachReason] = [
-        .meeting, .familyPersonal, .plannedResearch, .requiredSwitch, .realBreak, .fatigue
-    ]
-
-    static let avoidantChips: [FocusCoachReason] = [
-        .lowPriorityWork, .procrastinating, .vibeCodingDrift, .overPlanning,
-        .scrollingBrowsing, .avoidingHardPart
-    ]
 }
 
 // MARK: - Interruption Classification

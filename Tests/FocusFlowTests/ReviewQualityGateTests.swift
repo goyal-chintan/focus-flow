@@ -52,11 +52,6 @@ final class ReviewQualityGateTests: XCTestCase {
             "Menu bar header and dismiss controls must use a 44x44 tap target."
         )
 
-        let reasonSheetSource = try loadSource("Sources/FocusFlow/Views/Components/FocusCoachReasonChipSheet.swift")
-        XCTAssertTrue(
-            reasonSheetSource.contains(".frame(minWidth: 44, minHeight: 44)"),
-            "Reason sheet dismiss control must use a minimum 44x44 tap target."
-        )
     }
 
     func testDomainAnalyticsReviewFlowsRemainInRenderedEvidenceContract() {

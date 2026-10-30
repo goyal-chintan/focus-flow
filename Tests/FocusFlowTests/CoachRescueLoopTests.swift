@@ -422,7 +422,7 @@ final class CoachRescueLoopTests: XCTestCase {
 
     func testOnlyVerifiedQuotesWithAttribution() {
         let all = CoachQuoteLibrary.all
-        XCTAssertEqual(all.count, 28)
+        XCTAssertEqual(all.count, 46)
         XCTAssertEqual(Set(all.map(\.id)).count, all.count)
         for quote in all where !quote.isHouseLine {
             XCTAssertFalse(quote.author.isEmpty)
@@ -465,14 +465,15 @@ final class CoachRescueLoopTests: XCTestCase {
         XCTAssertTrue(seen.contains("why:ship by december"), "Why lines are arms like quotes")
         // v3: the situation's pool is spent, so the picker falls back to another line for the
         // style that was not shown in the last 24 hours (never one of the spiral lines just shown).
-        let fallback = CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: ["Ship by December"], log: log, rewards: [:], now: now.addingTimeInterval(20 * 3600), using: &rng)
+        let afterAll = now.addingTimeInterval(TimeInterval(candidates.count * 3600))
+        let fallback = CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: ["Ship by December"], log: log, rewards: [:], now: afterAll, using: &rng)
         XCTAssertNotNil(fallback)
         XCTAssertFalse(seen.contains(fallback?.id ?? ""), "Fallback never repeats a line shown in the last 24 h")
         var everything = log
         for (index, quote) in CoachQuoteLibrary.lines(for: .challenger).enumerated() {
-            everything.append(CoachQuoteShow(itemID: "quote:\(quote.id)", shownAt: now.addingTimeInterval(TimeInterval(index * 60)), attemptID: nil))
+            everything.append(CoachQuoteShow(itemID: "quote:\(quote.id)", shownAt: afterAll.addingTimeInterval(TimeInterval(-(index + 1) * 60)), attemptID: nil))
         }
-        XCTAssertNil(CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: ["Ship by December"], log: everything, rewards: [:], now: now.addingTimeInterval(20 * 3600), using: &rng),
+        XCTAssertNil(CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: ["Ship by December"], log: everything, rewards: [:], now: afterAll, using: &rng),
                      "Every line shown within a day: nothing rather than a repeat")
         XCTAssertNotNil(CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: [], log: log, rewards: [:], now: now.addingTimeInterval(4 * 86_400), using: &rng))
     }
@@ -494,11 +495,16 @@ final class CoachRescueLoopTests: XCTestCase {
         XCTAssertGreaterThan(w.alpha / (w.alpha + w.beta), 0.6)
         XCTAssertLessThan(l.alpha / (l.alpha + l.beta), 0.1)
         var rng = SplitMix64(seed: 3)
-        var winnerPicks = 0
-        for _ in 0..<40 {
-            if CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: [], log: log, rewards: rewards, now: windowStart, using: &rng)?.id == winner { winnerPicks += 1 }
+        var picks: [String: Int] = [:]
+        for _ in 0..<200 {
+            if let id = CoachQuotePicker.pick(situation: .spiral, style: .challenger, whyLines: [], log: log, rewards: rewards, now: windowStart, using: &rng)?.id {
+                picks[id, default: 0] += 1
+            }
         }
-        XCTAssertGreaterThan(winnerPicks, 20, "An unlearned quote still gets explored, but the proven one leads")
+        // Many unlearned lines (Dan Koe's questions among them) still get explored, but the proven one leads.
+        let winnerPicks = picks[winner, default: 0]
+        XCTAssertEqual(picks.max { $0.value < $1.value }?.key, winner, "The proven quote leads")
+        XCTAssertGreaterThan(winnerPicks, 5 * picks[loser, default: 0])
     }
 
     // MARK: 1% framings

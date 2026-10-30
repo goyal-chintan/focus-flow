@@ -52,7 +52,10 @@ final class PopoverCaptureTests: XCTestCase {
         goal.keyResults = [leet]
         try context.save()
         let solved = try XCTUnwrap(vm.addDailyTask(title: "2 LeetCode questions", projectID: learning.id, keyResultID: leet.id, amount: 2))
-        vm.setDailyTask(solved, done: true)
+        vm.setDailyTask(solved, done: true, receipt: false)
+        // A counted task one of three in, with the receipt of that +1 showing.
+        let counted = try XCTUnwrap(vm.addDailyTask(title: "LeetCode questions", projectID: learning.id, keyResultID: leet.id, amount: 3))
+        vm.stepDailyTask(counted, by: 1)
         let window = try XCTUnwrap(vm.addDailyTask(title: "Window functions practice set", projectID: learning.id))
         _ = vm.addDailyTask(title: "Ask Priya for a referral", projectID: learning.id)
         _ = vm.addDailyTask(title: "Review the system design notes")

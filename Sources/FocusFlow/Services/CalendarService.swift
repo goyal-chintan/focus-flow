@@ -183,6 +183,7 @@ final class CalendarService {
             end: now.addingTimeInterval(lookahead),
             calendars: nil
         )
+        var focusIntervals: [DateInterval] = []
         let busyIntervals = store.events(matching: predicate).compactMap { event -> DateInterval? in
             guard !event.isAllDay,
                   event.availability != .free,
@@ -200,9 +201,15 @@ final class CalendarService {
             if event.attendees?.first(where: { $0.isCurrentUser })?.participantStatus == .declined {
                 return nil
             }
+            // "Deep work" / Focus Time blocks are time set aside for exactly what the coach asks
+            // for: they open a window instead of silencing it (clarity fixes 2026-10-28).
+            if CalendarAvailability.isFocusBlock(title: event.title) {
+                focusIntervals.append(DateInterval(start: start, end: end))
+                return nil
+            }
             return DateInterval(start: start, end: end)
         }
-        let value = CalendarAvailability.compute(busyIntervals: busyIntervals, now: now)
+        let value = CalendarAvailability.compute(busyIntervals: busyIntervals, focusIntervals: focusIntervals, now: now)
         cachedAvailability = (now, value)
         return value
     }
@@ -220,6 +227,8 @@ struct CalendarAvailability: Equatable, Sendable {
     let minutesUntilNextEvent: Int?
     /// Busy events within ±12 h, for planning free start times (Coach v3 §3.1).
     var busyIntervals: [DateInterval] = []
+    /// A focus block ("Deep work", Focus Time) covers `now` and no meeting overlaps it.
+    var isFocusBlockNow: Bool = false
 
     static let unknown = CalendarAvailability(isBusyNow: false, minutesUntilNextEvent: nil)
     static let lookaheadSeconds: TimeInterval = 12 * 60 * 60
@@ -229,7 +238,7 @@ struct CalendarAvailability: Equatable, Sendable {
     /// exactly when personal work happens (v3 R10).
     static let maxMeetingDuration: TimeInterval = 4 * 60 * 60
 
-    static func compute(busyIntervals allIntervals: [DateInterval], now: Date) -> CalendarAvailability {
+    static func compute(busyIntervals allIntervals: [DateInterval], focusIntervals: [DateInterval] = [], now: Date) -> CalendarAvailability {
         let busyIntervals = allIntervals.filter { $0.duration < maxMeetingDuration }
         let isBusyNow = busyIntervals.contains { $0.start <= now && now < $0.end }
         let nextStart = busyIntervals
@@ -237,6 +246,20 @@ struct CalendarAvailability: Equatable, Sendable {
             .filter { $0 > now && $0.timeIntervalSince(now) <= lookaheadSeconds }
             .min()
         let minutes = nextStart.map { Int($0.timeIntervalSince(now) / 60) }
-        return CalendarAvailability(isBusyNow: isBusyNow, minutesUntilNextEvent: minutes, busyIntervals: busyIntervals)
+        let inFocusBlock = focusIntervals.contains { $0.start <= now && now < $0.end }
+        return CalendarAvailability(
+            isBusyNow: isBusyNow, minutesUntilNextEvent: minutes, busyIntervals: busyIntervals,
+            isFocusBlockNow: inFocusBlock && !isBusyNow
+        )
+    }
+
+    /// Phrases that mark a calendar block as protected focus time, not a meeting. Google Calendar's
+    /// Focus Time reaches EventKit as a plain busy event, so the title is all there is.
+    static let focusBlockPhrases = ["deep work", "focus time", "focus block", "heads down", "heads-down", "maker time", "no meetings"]
+
+    /// "Deep work", "Placeholder: Deep Work / Squad 3 Hotline", "Focus time", "Focus".
+    static func isFocusBlock(title: String?) -> Bool {
+        guard let title = title?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else { return false }
+        return title == "focus" || focusBlockPhrases.contains { title.contains($0) }
     }
 }

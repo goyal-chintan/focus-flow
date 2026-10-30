@@ -39,6 +39,9 @@ struct CoachQuote: Sendable, Equatable, Hashable, Identifiable {
     /// Shown only for `.challenger`. Its `text` may hold `{N}`, replaced by the starter length.
     var isHouseLine: Bool = false
 
+    /// A question to answer, not a line to read (Dan Koe's interrupts).
+    var isQuestion: Bool = false
+
     /// "“Discipline equals freedom.” — Jocko Willink". A house line is its text alone.
     var formatted: String { isHouseLine ? text : "“\(text)” — \(author)" }
 
@@ -298,6 +301,165 @@ enum CoachQuoteLibrary {
             attributionNote: nil,
             situations: [.start],
             isHouseLine: true
+        ),
+        // Dan Koe, "How to fix your entire life in 1 day" (newsletter, 23 Dec 2025), checked against
+        // the original post on 2026-10-28. Statements, then his "interrupt" questions: they are meant
+        // to be asked throughout the day, so they ground the daily reminder line and the rescue loop.
+        CoachQuote(
+            id: "koe-not-the-person",
+            text: "You aren't where you want to be because you aren't the person who would be there.",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.start, .drift, .comeback]
+        ),
+        CoachQuote(
+            id: "koe-afraid",
+            text: "You aren't where you want to be because you're afraid to be there.",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.start, .comeback]
+        ),
+        CoachQuote(
+            id: "koe-learn-from-mistakes",
+            text: "The mark of low intelligence is the inability to learn from your mistakes.",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.comeback]
+        ),
+        CoachQuote(
+            id: "koe-progress",
+            text: "Enjoyment is found in progress.",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.start, .keepGoing, .streak]
+        ),
+        CoachQuote(
+            id: "koe-anti-vision-stakes",
+            text: "Your anti-vision is what's at stake.",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.start, .drift]
+        ),
+        CoachQuote(
+            id: "koe-levers-quests",
+            text: "Your daily levers are the quests.",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.start]
+        ),
+        CoachQuote(
+            id: "koe-q-avoiding",
+            text: "What am I avoiding right now by doing what I'm doing?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-filmed",
+            text: "If someone filmed the last two hours, what would they conclude I want from my life?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-toward",
+            text: "Am I moving toward the life I hate or the life I want?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-pretending",
+            text: "What's the most important thing I'm pretending isn't important?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-identity-protection",
+            text: "What did I do today out of identity protection rather than genuine desire?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-alive",
+            text: "When did I feel most alive today? When did I feel most dead?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-safety",
+            text: "Where in my life am I trading aliveness for safety?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-smallest-version",
+            text: "What's the smallest version of the person I want to become that I could be tomorrow?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-complain",
+            text: "What do you complain about repeatedly but never actually change?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-embarrassing",
+            text: "What is the most embarrassing reason you haven't changed?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-tuesday",
+            text: "If absolutely nothing changes for the next five years, describe an average Tuesday.",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
+        ),
+        CoachQuote(
+            id: "koe-q-this-week",
+            text: "What is one thing you would do this week if you were already that person?",
+            author: "Dan Koe",
+            source: "How to fix your entire life in 1 day (letters.thedankoe.com, 23 Dec 2025)",
+            attributionNote: nil,
+            situations: [.drift, .spiral, .comeback],
+            isQuestion: true
         ),
     ]
 

@@ -42,8 +42,10 @@ struct TodayView: View {
                     .help("Log a focus block you did away from the timer")
                 }
 
+                DailyReminderView(style: .card, now: snapshot.now)
+
                 GoalHeroView(
-                    title: snapshot.ownWorkOnly ? "Your own work today" : "Daily goal",
+                    title: Self.goalTitle(snapshot.goalScope),
                     progress: progress,
                     next: snapshot.analytics.nextWindow(windows, after: snapshot.now),
                     week: snapshot.analytics.weekOverWeek(snapshot.goalSamples, goal: snapshot.goal, now: snapshot.now),
@@ -63,6 +65,15 @@ struct TodayView: View {
             .padding(FFSpace.page)
             .frame(maxWidth: 920, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// "★ Learning today", "Your own work today", "Daily goal".
+    static func goalTitle(_ scope: GoalScope) -> String {
+        switch scope {
+        case .project: "\(scope.label) today"
+        case .ownWork: "Your own work today"
+        case .allFocus: "Daily goal"
         }
     }
 

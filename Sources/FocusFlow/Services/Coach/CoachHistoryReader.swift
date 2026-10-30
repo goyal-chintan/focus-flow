@@ -29,14 +29,14 @@ struct CoachHistoryReader {
 
     /// Own-work seconds today (personal and learning projects), or nil when no project is marked
     /// Work, in which case all focus counts.
-    func ownWorkSecondsToday(now: Date) -> TimeInterval? {
+    /// Today's seconds inside the goal's scope (★ #1 project, else own work); nil when every block counts.
+    func goalScopeSecondsToday(now: Date) -> TimeInterval? {
         let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
-        guard GoalDataBuilder.ownWorkConfigured(projects) else { return nil }
+        guard let keys = GoalDataBuilder.goalScope(projects).keys else { return nil }
         let start = calendar.startOfDay(for: now)
         guard let end = calendar.date(byAdding: .day, value: 1, to: start) else { return nil }
         let samples = focusSessions(since: start.addingTimeInterval(-12 * 3600)).map(FocusSample.init)
         let seconds = GoalDataBuilder.seconds(samples: samples, in: DateInterval(start: start, end: end))
-        let keys = GoalDataBuilder.ownWorkKeys(projects)
         return seconds.filter { keys.contains($0.key) }.values.reduce(0, +)
     }
 

@@ -16,6 +16,10 @@ struct ProjectDraft {
     var dailyTargetMinutes = 0
     var weekdaysOnly = false
     var purpose = ""
+    /// The Reminders list synced with this project's tasks (nil = none).
+    var reminderListID: String?
+    /// "New list": create "FocusFlow · <name>" in Reminders on save (never on cancel).
+    var createsReminderList = false
     /// New project, or a project without an active goal: also create this goal on save.
     var addsGoal = false
     var goal = GoalDraft()
@@ -35,6 +39,7 @@ struct ProjectDraft {
         dailyTargetMinutes = project.dailyTargetMinutes ?? 0
         weekdaysOnly = project.targetWeekdaysOnly ?? false
         purpose = project.purpose ?? ""
+        reminderListID = project.reminderListID
     }
 
     var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
@@ -67,6 +72,21 @@ struct ProjectDraft {
         project.targetWeekdaysOnly = dailyTargetMinutes > 0 ? weekdaysOnly : nil
         let why = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         project.purpose = why.isEmpty ? nil : why
+        let previousList = project.reminderListID
+        if createsReminderList {
+            let title = "FocusFlow · \(trimmedName)"
+            project.reminderListID = RemindersService.shared.reminderLists().first { $0.title == title }?.id
+                ?? RemindersService.shared.createList(title: title)
+        } else {
+            project.reminderListID = (reminderListID ?? "").isEmpty ? nil : reminderListID
+        }
+        if project.reminderListID != previousList {
+            // Switched or stopped syncing: the tasks keep their titles but no longer mirror the old
+            // list, so ticks and deletes never reach it.
+            let projectID = project.id
+            let linked = (try? context.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.projectID == projectID && $0.reminderID != nil }))) ?? []
+            for task in linked { task.reminderID = nil }
+        }
         if addsGoal && goal.isValid {
             var goalDraft = goal
             goalDraft.projectID = project.id
@@ -87,7 +107,9 @@ struct ProjectFormView: View {
 
     @Query(sort: \BlockProfile.createdAt) private var blockProfiles: [BlockProfile]
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
+    @Query private var allSettings: [AppSettings]
     @State private var showProtection = false
+    @State private var reminderLists: [(id: String, title: String, source: String)] = []
 
     private let colors: [(name: String, color: Color)] = [
         ("blue", .blue), ("indigo", .indigo), ("purple", .purple),
@@ -113,6 +135,9 @@ struct ProjectFormView: View {
                     priorityCard
                     purposeCard
                     targetCard
+                    if remindersOn {
+                        remindersCard
+                    }
                     // A new project can start with its goal; existing goals are edited in the Goals tab.
                     if project == nil {
                         goalCard
@@ -246,6 +271,49 @@ struct ProjectFormView: View {
         guard let first = moved.first else { return nil }
         let rest = moved.dropFirst().map { "\($0.name) to #\(($0.priorityRank ?? 0) + 1)" }
         return (["\(first.name) moves to #\((first.priorityRank ?? 0) + 1)"] + rest).joined(separator: ", ")
+    }
+
+    // MARK: Reminders
+
+    private var remindersOn: Bool {
+        allSettings.first?.remindersIntegrationEnabled == true && RemindersService.shared.authStatus == .authorized
+    }
+
+    private static let newListTag = "focusflow.new-list"
+
+    /// Lists no other project syncs (one list feeds one project), plus this project's own.
+    private var freeLists: [(id: String, title: String, source: String)] {
+        let taken = Set(projects.filter { $0.id != project?.id }.compactMap(\.reminderListID))
+        return reminderLists.filter { !taken.contains($0.id) }
+    }
+
+    /// One list per project: its reminders due today, overdue or undated become this project's
+    /// tasks, and changes go back.
+    private var remindersCard: some View {
+        card(title: "Reminders list", subtitle: "Reminders in it that are due today, overdue or undated show up as this project's tasks. Ticks, new tasks, moves and deletes sync back.") {
+            Picker("List", selection: Binding(
+                get: { draft.createsReminderList ? Self.newListTag : (draft.reminderListID ?? "") },
+                set: { tag in
+                    draft.createsReminderList = tag == Self.newListTag
+                    draft.reminderListID = tag.isEmpty || tag == Self.newListTag ? nil : tag
+                }
+            )) {
+                Text("Don't sync").tag("")
+                ForEach(freeLists, id: \.id) { list in
+                    Text(list.source.isEmpty ? list.title : "\(list.title) · \(list.source)").tag(list.id)
+                }
+                if let id = draft.reminderListID, !reminderLists.contains(where: { $0.id == id }) {
+                    Text("List missing").tag(id)
+                }
+                if !draft.trimmedName.isEmpty {
+                    Divider()
+                    Text("New list “FocusFlow · \(draft.trimmedName)”").tag(Self.newListTag)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 320, alignment: .leading)
+        }
+        .onAppear { reminderLists = RemindersService.shared.reminderLists() }
     }
 
     // MARK: Why

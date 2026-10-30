@@ -1,8 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Idle popover: today's tasks at a glance (daily tasks design §2). Tick one, or click its title
-/// to make it the next block's goal; the block then remembers the task for the end-of-block log.
+/// Idle popover: today's tasks at a glance (daily tasks design §2). The control ticks a task, or
+/// adds 1 to a counted one; a receipt says what was logged, with Undo. Clicking a title makes it the
+/// next block's goal, marked "Next block" (never a check mark, which reads as done).
 struct PopoverTasksStrip: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -58,6 +59,7 @@ struct PopoverTasksStrip: View {
                 .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: stats.fraction)
                 .accessibilityHidden(true)
             }
+            DailyTaskReceiptBanner(compact: true)
             ForEach(open.prefix(Self.shownCount)) { task in
                 row(task)
             }
@@ -74,10 +76,10 @@ struct PopoverTasksStrip: View {
         let selected = timerVM.pendingTaskID == task.id
         let project = projects.first { $0.id == task.projectID }
         return HStack(spacing: 2) {
-            DailyTaskCheck(isDone: task.isDone, size: 15) {
+            DailyTaskControl(task: task, resultTitle: resultTitle(task), size: 15) {
                 withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) {
-                    if selected { clear(task) }
-                    timerVM.setDailyTask(task, done: true)
+                    if selected, !task.isCounted || task.loggedCount + 1 >= task.progressAmount { clear(task) }
+                    timerVM.advanceDailyTask(task)
                 }
             }
             Button {
@@ -94,10 +96,14 @@ struct PopoverTasksStrip: View {
                         .foregroundStyle(selected ? FFPalette.accent : .primary)
                         .lineLimit(1)
                     Spacer(minLength: 4)
+                    DailyTaskCountText(task: task)
                     if selected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                        Text("Next block")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
                             .foregroundStyle(FFPalette.accent)
+                            .padding(.horizontal, 6)
+                            .frame(minHeight: 18)
+                            .overlay(Capsule().strokeBorder(FFPalette.accent.opacity(0.5), lineWidth: 1))
                             .accessibilityHidden(true)
                     }
                 }
@@ -110,9 +116,14 @@ struct PopoverTasksStrip: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(selected ? "This is the next block's goal. Click to clear." : "Make this the next block's goal")
+            .help(selected ? "The next block is for this task. Click to clear." : "Use this task as the next block's goal")
             .accessibilityLabel(selected ? "\(task.title), goal for the next block" : "Make \(task.title) the next block's goal")
         }
+    }
+
+    private func resultTitle(_ task: DailyTask) -> String? {
+        guard let id = task.keyResultID else { return nil }
+        return timerVM.historyReaderActiveGoals().flatMap(\.keyResults).first { $0.id == id }?.title
     }
 
     /// Fills the block goal and project from the task.

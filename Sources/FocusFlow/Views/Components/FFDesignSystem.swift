@@ -172,6 +172,14 @@ enum FFFormat {
         return "\(minutes)m"
     }
 
+    /// "2h30", "2h", "45m": for tight spaces such as a ring's "of …" line.
+    static func compactDuration(_ seconds: TimeInterval) -> String {
+        let total = Int((max(0, seconds) / 60).rounded())
+        let hours = total / 60, minutes = total % 60
+        if hours == 0 { return "\(minutes)m" }
+        return minutes == 0 ? "\(hours)h" : String(format: "%dh%02d", hours, minutes)
+    }
+
     /// "2.5h" style for axes and compact labels.
     static func hours(_ seconds: TimeInterval) -> String {
         let hours = seconds / 3600

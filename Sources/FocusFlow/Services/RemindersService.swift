@@ -49,62 +49,37 @@ final class RemindersService {
         let calendarItemIdentifier: String
         let reminderListIdentifier: String
         let dueDateComponents: DateComponents?
-        let isCompleted: Bool
         let listTitle: String
-        let notes: String
     }
 
+    /// What the task sync reads from a reminder.
     struct ReminderItem: Identifiable, Sendable, Equatable, Hashable {
         let id: String
         let title: String
         let list: String
         let listId: String
         let dueDate: Date?
-        let isCompleted: Bool
-        let notes: String
-        
-        static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.id == rhs.id &&
-            lhs.title == rhs.title &&
-            lhs.list == rhs.list &&
-            lhs.listId == rhs.listId &&
-            lhs.dueDate == rhs.dueDate &&
-            lhs.isCompleted == rhs.isCompleted &&
-            lhs.notes == rhs.notes
-        }
-        
-        func hash(into hasher: inout Hasher) {
-            hasher.combine(id)
-            hasher.combine(title)
-            hasher.combine(list)
-            hasher.combine(listId)
-            hasher.combine(dueDate)
-            hasher.combine(isCompleted)
-            hasher.combine(notes)
-        }
     }
 
     // MARK: - Fetch
 
-    func fetchIncompleteReminderTitles() async -> [(title: String, id: String, list: String)] {
-        let items = await fetchIncompleteReminders()
-        return items.map { ($0.title, $0.id, $0.list) }
-    }
-
-    /// Fetches incomplete reminders. All EKReminder property access is dispatched
-    /// to the main thread because EventKit's callback runs on an arbitrary queue
-    /// and EKReminder properties have internal main-thread assertions.
+    /// Incomplete reminders in `listIds` (nil = every list). Lists that no longer exist are
+    /// skipped; when none is left the result is empty. EventKit fetches off the main thread; every
+    /// EKReminder property is then read on the main thread (EventKit asserts it).
     func fetchIncompleteReminders(
-        listId: String? = nil,
+        in listIds: [String]?,
         dueDateStarting: Date? = nil,
         dueDateEnding: Date? = nil
     ) async -> [ReminderItem] {
         guard authStatus == .authorized else { return [] }
 
         let calendars: [EKCalendar]?
-        if let listId, !listId.isEmpty {
-            let matched = store.calendars(for: .reminder).filter { $0.calendarIdentifier == listId }
-            calendars = matched.isEmpty ? nil : matched
+        if let listIds {
+            // Lists that no longer exist return nothing, never every list (nil means "all").
+            let wanted = Set(listIds)
+            let matched = store.calendars(for: .reminder).filter { wanted.contains($0.calendarIdentifier) }
+            guard !matched.isEmpty else { return [] }
+            calendars = matched
         } else {
             calendars = nil
         }
@@ -128,9 +103,7 @@ final class RemindersService {
                             calendarItemIdentifier: reminder.calendarItemIdentifier,
                             reminderListIdentifier: reminder.calendar?.calendarIdentifier ?? "",
                             dueDateComponents: reminder.dueDateComponents,
-                            isCompleted: reminder.isCompleted,
-                            listTitle: reminder.calendar?.title ?? "",
-                            notes: reminder.notes ?? ""
+                            listTitle: reminder.calendar?.title ?? ""
                         )
                     }
                     continuation.resume(returning: mapped)
@@ -147,9 +120,7 @@ final class RemindersService {
                     title: $0.title,
                     list: $0.listTitle,
                     listId: $0.reminderListIdentifier,
-                    dueDate: $0.dueDateComponents.flatMap { Calendar.current.date(from: $0) },
-                    isCompleted: $0.isCompleted,
-                    notes: $0.notes
+                    dueDate: $0.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
                 )
             }
             .reduce(into: [ReminderItem]()) { acc, item in
@@ -169,48 +140,74 @@ final class RemindersService {
 
     // MARK: - CRUD
 
-    func completeReminder(identifier: String) -> Bool {
-        guard let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
-        item.isCompleted = true
-        item.completionDate = Date()
-        do { try store.save(item, commit: true); return true }
-        catch { print("[RemindersService] completeReminder failed: \(error.localizedDescription)"); return false }
-    }
-
+    /// Ticks or unticks a reminder. Does nothing (and returns true) when it already matches.
     @discardableResult
-    func deleteReminder(identifier: String) -> Bool {
-        guard let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
-        do { try store.remove(item, commit: true); return true }
-        catch { print("[RemindersService] deleteReminder failed: \(error.localizedDescription)"); return false }
-    }
-
-    func updateReminder(identifier: String, title: String, notes: String?, dueDate: Date?) -> Bool {
-        guard let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
-        item.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        item.notes = notes
-        if let dueDate {
-            item.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
-        } else {
-            item.dueDateComponents = nil
-        }
+    func setReminderCompleted(identifier: String, _ completed: Bool) -> Bool {
+        guard authStatus == .authorized,
+              let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
+        guard item.isCompleted != completed else { return true }
+        item.isCompleted = completed
+        item.completionDate = completed ? Date() : nil
         do { try store.save(item, commit: true); return true }
-        catch { print("[RemindersService] updateReminder failed: \(error.localizedDescription)"); return false }
+        catch { logger.error("setReminderCompleted failed: \(error.localizedDescription, privacy: .public)"); return false }
     }
 
+    enum ReminderState: Equatable {
+        case open(title: String)
+        case completed
+        /// Deleted, or no longer readable.
+        case missing
+    }
+
+    /// One reminder's state, for a linked task whose reminder left the incomplete fetch.
+    func reminderState(identifier: String) -> ReminderState {
+        guard authStatus == .authorized,
+              let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return .missing }
+        return item.isCompleted ? .completed : .open(title: item.title ?? "")
+    }
+
+    /// Sets a reminder's due day (date only, no time), e.g. when its task moves to tomorrow.
     @discardableResult
-    func createReminder(title: String, notes: String?, dueDate: Date?, listId: String?) -> String? {
-        guard authStatus == .authorized else { return nil }
-        guard let cal = resolveReminderCalendar(listId: listId) else { return nil }
+    func setReminderDueDay(identifier: String, _ day: Date?) -> Bool {
+        guard authStatus == .authorized,
+              let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
+        item.dueDateComponents = day.map { Calendar.current.dateComponents([.year, .month, .day], from: $0) }
+        do { try store.save(item, commit: true); return true }
+        catch { logger.error("setReminderDueDay failed: \(error.localizedDescription, privacy: .public)"); return false }
+    }
+
+    /// Creates a reminder in exactly `listId`, due on `day` (date only). Nil when the list is gone,
+    /// so a task never lands in some other list.
+    func createReminder(title: String, dueDay: Date?, listId: String) -> String? {
+        guard authStatus == .authorized,
+              let cal = store.calendars(for: .reminder).first(where: { $0.calendarIdentifier == listId }) else { return nil }
         let reminder = EKReminder(eventStore: store)
         reminder.calendar = cal
         reminder.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        reminder.notes = notes
-        reminder.isCompleted = false
-        if let dueDate {
-            reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: dueDate)
-        }
+        reminder.dueDateComponents = dueDay.map { Calendar.current.dateComponents([.year, .month, .day], from: $0) }
         do { try store.save(reminder, commit: true); return reminder.calendarItemIdentifier }
-        catch { print("[RemindersService] createReminder failed: \(error.localizedDescription)"); return nil }
+        catch { logger.error("createReminder failed: \(error.localizedDescription, privacy: .public)"); return nil }
+    }
+
+    /// Creates a Reminders list named `title` in the same account as the default list.
+    func createList(title: String) -> String? {
+        guard authStatus == .authorized,
+              let source = store.defaultCalendarForNewReminders()?.source
+                ?? store.sources.first(where: { $0.sourceType == .calDAV || $0.sourceType == .local }) else { return nil }
+        let list = EKCalendar(for: .reminder, eventStore: store)
+        list.title = title
+        list.source = source
+        do { try store.saveCalendar(list, commit: true); return list.calendarIdentifier }
+        catch { logger.error("createList failed: \(error.localizedDescription, privacy: .public)"); return nil }
+    }
+
+    /// Deletes a reminder (only after the user confirms "Delete from both" on its task).
+    @discardableResult
+    func deleteReminder(identifier: String) -> Bool {
+        guard authStatus == .authorized,
+              let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
+        do { try store.remove(item, commit: true); return true }
+        catch { logger.error("deleteReminder failed: \(error.localizedDescription, privacy: .public)"); return false }
     }
 
     func reminderLists() -> [(id: String, title: String, source: String)] {
@@ -222,18 +219,21 @@ final class RemindersService {
                 return $0.source < $1.source
             }
     }
+}
 
-    var listNames: [String] {
-        guard authStatus == .authorized else { return [] }
-        return store.calendars(for: .reminder).map(\.title)
-    }
+/// What the task sync needs from Reminders; `RemindersService` in the app, a fake in tests.
+@MainActor
+protocol ReminderBridge: AnyObject {
+    /// Permission granted (the Settings toggle is checked separately).
+    var isAuthorized: Bool { get }
+    func fetchIncompleteReminders(in listIds: [String]?, dueDateStarting: Date?, dueDateEnding: Date?) async -> [RemindersService.ReminderItem]
+    func reminderState(identifier: String) -> RemindersService.ReminderState
+    @discardableResult func setReminderCompleted(identifier: String, _ completed: Bool) -> Bool
+    @discardableResult func setReminderDueDay(identifier: String, _ day: Date?) -> Bool
+    func createReminder(title: String, dueDay: Date?, listId: String) -> String?
+    @discardableResult func deleteReminder(identifier: String) -> Bool
+}
 
-    private func resolveReminderCalendar(listId: String?) -> EKCalendar? {
-        let calendars = store.calendars(for: .reminder)
-        if let listId, !listId.isEmpty,
-           let existing = calendars.first(where: { $0.calendarIdentifier == listId }) {
-            return existing
-        }
-        return store.defaultCalendarForNewReminders() ?? calendars.first
-    }
+extension RemindersService: ReminderBridge {
+    var isAuthorized: Bool { authStatus == .authorized }
 }
