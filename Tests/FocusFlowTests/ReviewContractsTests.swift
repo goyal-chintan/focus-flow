@@ -33,10 +33,10 @@ final class ReviewContractsTests: XCTestCase {
             "A menu still offers the plain 5 minute break."
         )
         XCTAssertTrue(
-            source.contains("LiquidActionButton(title: startTitle, icon: \"play.fill\", role: .secondary)"),
+            source.contains("startButtons(role: .secondary)"),
             "Starting the next block stays a secondary action."
         )
-        XCTAssertTrue(source.contains("saveAndDismiss(action: .continueFocusing, prepare: prepareNextStart)"))
+        XCTAssertTrue(source.contains("saveAndDismiss(action: .continueFocusing, prepare: { prepareNextStart(minutes: minutes) })"))
         XCTAssertTrue(source.contains("\"Done for today\"") && source.contains("saveAndDismiss(action: .endSession)"))
         XCTAssertTrue(source.contains("timerVM.discardManualStop()"), "A manual stop can still be discarded.")
     }
@@ -57,7 +57,7 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertFalse(source.contains("MoodSelector"), "Mood is removed from the block-end window.")
         XCTAssertFalse(source.contains("carryForwardNote"), "The free-text carry-forward note is replaced by Next step tasks.")
         XCTAssertFalse(source.contains("TextEditor("), "Nothing free-text the app then ignores.")
-        XCTAssertTrue(source.contains("mood: nil"), "saveReflection no longer receives a mood.")
+        XCTAssertFalse(source.contains("mood:"), "No mood: nothing read it (audit 2026-10-30).")
         XCTAssertTrue(source.contains("achievement: achievement"), "The achievement saved is the ticked tasks.")
         XCTAssertTrue(source.contains("$0.isDone && $0.sessionID == sessionID"), "Achievement = tasks ticked in this block.")
         XCTAssertTrue(
@@ -68,23 +68,12 @@ final class ReviewContractsTests: XCTestCase {
             source.contains("splits = []"),
             "SessionCompleteWindow should clear split allocations on each appearance."
         )
-        XCTAssertTrue(
-            source.contains("selectedReminderItems = []"),
-            "SessionCompleteWindow should clear reminder selections on each appearance."
-        )
-        XCTAssertTrue(
-            source.contains("capturedReason = nil"),
-            "SessionCompleteWindow should clear the prior coach reason confirmation on each appearance."
-        )
-        XCTAssertTrue(
-            source.contains("onAttachReminder: settings?.remindersIntegrationEnabled == true ? { showReminderPicker = true } : nil"),
-            "Attach reminder shows only with Reminders sync on; otherwise no reminders UI at all."
+        XCTAssertFalse(
+            source.contains("FocusCoachReasonChipSheet"),
+            "No reason chips: nothing in the app read the answers (audit 2026-10-30)."
         )
         XCTAssertFalse(source.contains("Enable Reminders sync in Settings"), "No reminders UI when sync is off.")
-        XCTAssertTrue(
-            source.contains("settings?.remindersIntegrationEnabled == true ? selectedReminderItems.map(\\.id) : []"),
-            "Linked reminders are still completed when used."
-        )
+        XCTAssertFalse(source.contains("ReminderSelectionSheet"), "Reminders sync per project as tasks; no hand-picked attach sheet (2026-10-30).")
     }
 
     func testProjectFormDropdownRowsHaveFullWidthHitTargets() throws {

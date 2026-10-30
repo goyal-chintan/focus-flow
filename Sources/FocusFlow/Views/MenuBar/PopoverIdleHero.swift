@@ -1,9 +1,10 @@
 import SwiftUI
 import SwiftData
 
-/// Idle popover, top (screen audit 2026-10-28): the same hero as the notch's idle view.
-/// Own-work ring "50m of 2h", the coach's hook only when it prompted, then today's lever
-/// ("TODAY'S LEVER" · action · "goal · reason"). A due planned block takes the lever's place.
+/// Idle popover, top (screen audit 2026-10-28, clarity fixes §4): where today stands on the one
+/// thing being tracked. The ring is the ★ #1 project (else own work, else all focus) against the
+/// daily goal; beside it, the time still to go and the lever's pace. The next step itself lives in
+/// "Goal for this block" below, so the hero never repeats it. A due planned block takes over.
 struct PopoverIdleHero: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,6 +24,7 @@ struct PopoverIdleHero: View {
     private func content(now: Date) -> some View {
         let done = timerVM.goalProgressSeconds(now: now)
         let target = timerVM.settings?.dailyFocusGoal ?? 7200
+        let scope = GoalDataBuilder.goalScope(projects)
         let plan = nextPlan(now: now)
         let isDue = plan.map { $0.startAt <= now } ?? false
         return VStack(alignment: .leading, spacing: 10) {
@@ -30,7 +32,7 @@ struct PopoverIdleHero: View {
                 PopoverGoalRing(
                     done: done,
                     target: target,
-                    label: GoalDataBuilder.ownWorkConfigured(projects) ? "Own work" : "Focus today"
+                    label: scope.label
                 )
                 VStack(alignment: .leading, spacing: 3) {
                     if let hook = coachHook {
@@ -44,7 +46,7 @@ struct PopoverIdleHero: View {
                     if let plan, isDue {
                         dueColumn(plan)
                     } else {
-                        leverColumn(goalMet: target > 0 && done >= target)
+                        statusColumn(done: done, target: target, scope: scope)
                     }
                 }
                 Spacer(minLength: 0)
@@ -78,29 +80,41 @@ struct PopoverIdleHero: View {
         return timerVM.coachMenuBarPulse ? "The coach has a start for you." : nil
     }
 
-    // MARK: Lever
+    // MARK: Status
 
-    private func leverColumn(goalMet: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            heroLabel(lever == nil ? "Next block" : "Today's lever", tint: .secondary)
-            Text(lever?.action ?? fallbackAction(goalMet: goalMet))
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(lever.map { "\($0.goalTitle) · \($0.reason)" } ?? (goalMet ? "Rest is part of the system." : "Small starts count."))
+    /// "YOUR #1 TODAY" · "2h 30m to go" · "DSA Revision · need 3.1/day", and the time spent
+    /// elsewhere, so the footer's "26m tracked" never looks like a contradiction.
+    private func statusColumn(done: TimeInterval, target: TimeInterval, scope: GoalScope) -> some View {
+        let met = target > 0 && done >= target
+        let elsewhere = scope.isFiltered ? max(0, timerVM.todayFocusTime - done) : 0
+        return VStack(alignment: .leading, spacing: 3) {
+            heroLabel(Self.eyebrow(scope), tint: .secondary)
+            Text(met ? "Target reached" : "\(FFFormat.duration(target - done)) to go")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(met ? FFPalette.goal : .primary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Text(lever.map { "\($0.goalTitle) · \($0.reason)" } ?? (met ? "Rest is part of the system." : "Small starts count."))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+            if elsewhere >= 60 {
+                Text("\(FFFormat.duration(elsewhere)) on other projects today")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
     }
 
-    private func fallbackAction(goalMet: Bool) -> String {
-        if goalMet { return "Today's goal is done" }
-        let project = timerVM.selectedProject
-            ?? projects.filter { $0.priorityRank != nil }.min { ($0.priorityRank ?? .max) < ($1.priorityRank ?? .max) }
-        return project.map { "Start on \($0.name)" } ?? "Start a small block"
+    static func eyebrow(_ scope: GoalScope) -> String {
+        switch scope {
+        case .project: "Your #1 today"
+        case .ownWork: "Own work today"
+        case .allFocus: "Focus today"
+        }
     }
 
     // MARK: Planned block
@@ -231,7 +245,7 @@ struct PopoverGoalRing: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    Text("of \(FFFormat.duration(target))")
+                    Text("of \(FFFormat.compactDuration(target))")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -243,6 +257,8 @@ struct PopoverGoalRing: View {
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: 84)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(FFFormat.duration(done)) of \(FFFormat.duration(target))")

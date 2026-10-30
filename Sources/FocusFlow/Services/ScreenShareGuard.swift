@@ -10,6 +10,8 @@ struct ScreenShareGuard {
     private let isScreenSharingProvider: () -> Bool
     private let frontmostApplicationProvider: () -> FrontmostApplication?
 
+    /// Call apps. Not Slack: it is where people read and write all day, and treating it as a call
+    /// kept the coach silent through ordinary work (34 min on 2026-10-28).
     private static let sensitiveBundleNeedles: [String] = [
         "us.zoom",
         "zoom",
@@ -17,7 +19,6 @@ struct ScreenShareGuard {
         "teams",
         "webex",
         "cisco.webex",
-        "slack",
         "gotomeeting",
         "ringcentral",
         "whereby",
@@ -38,7 +39,7 @@ struct ScreenShareGuard {
     ]
 
     init(
-        isScreenSharingProvider: @escaping () -> Bool = { false },
+        isScreenSharingProvider: @escaping () -> Bool = { ScreenCapture.isActive },
         frontmostApplicationProvider: @escaping () -> FrontmostApplication? = ScreenShareGuard.defaultFrontmostApplication
     ) {
         self.isScreenSharingProvider = isScreenSharingProvider

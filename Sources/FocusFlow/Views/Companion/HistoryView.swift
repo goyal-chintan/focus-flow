@@ -48,10 +48,10 @@ struct HistoryView: View {
                     FFSegmentedPicker(title: "Range", options: Range.allCases, selection: $range) { $0.rawValue }
                 }
 
-                summaryRow(summary, goalMetDays: goalMet.count, goal: snapshot.goal, ownWork: snapshot.ownWorkOnly)
+                summaryRow(summary, goalMetDays: goalMet.count, goal: snapshot.goal, scope: snapshot.goalScope)
 
                 FFSection("Daily focus", subtitle: snapshot.ownWorkOnly
-                          ? "Stacked by project, Work faded. A dot marks days your own work met the goal."
+                          ? "Stacked by project, Work faded. A dot marks days \(snapshot.goalScope.phrase) met the goal."
                           : "Stacked by project. A dot marks days you met your goal.") {
                     legend(colors)
                 } content: {
@@ -60,7 +60,7 @@ struct HistoryView: View {
 
                 if range != .week {
                     FFSection("Consistency", subtitle: snapshot.ownWorkOnly
-                              ? "Each square is a day of your own work. Green means it met your \(FFFormat.duration(snapshot.goal)) goal."
+                              ? "Each square is a day of \(snapshot.goalScope.phrase). Green means it met your \(FFFormat.duration(snapshot.goal)) goal."
                               : "Each square is a day. Green means you met your \(FFFormat.duration(snapshot.goal)) goal.") {
                         HStack(alignment: .top, spacing: FFSpace.xl) {
                             ConsistencyHeatmap(days: goalDays, goal: snapshot.goal, analytics: snapshot.analytics, now: snapshot.now, selectedDay: $selectedDay)
@@ -89,7 +89,7 @@ struct HistoryView: View {
 
     // MARK: - Summary
 
-    private func summaryRow(_ summary: FocusAnalytics.RangeSummary, goalMetDays: Int, goal: TimeInterval, ownWork: Bool) -> some View {
+    private func summaryRow(_ summary: FocusAnalytics.RangeSummary, goalMetDays: Int, goal: TimeInterval, scope: GoalScope) -> some View {
         HStack(alignment: .top, spacing: FFSpace.l) {
             FFStat(label: "Total", value: FFFormat.duration(summary.totalSeconds))
             Divider()
@@ -98,7 +98,7 @@ struct HistoryView: View {
             FFStat(
                 label: "Days goal met",
                 value: "\(goalMetDays)/\(summary.dayCount)",
-                caption: ownWork ? "On your own work" : nil,
+                caption: scope.isFiltered ? "On \(scope.phrase)" : nil,
                 valueColor: goalMetDays > 0 ? FFPalette.goal : nil
             )
             Divider()

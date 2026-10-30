@@ -32,6 +32,7 @@ final class AppSettings {
     var calendarName: String = "FocusFlow"
     var selectedCalendarId: String = ""
     var remindersIntegrationEnabled: Bool = false
+    /// Unused since per-project lists (2026-10-30); kept so existing stores open without a migration.
     var selectedReminderListId: String = ""
 
     // Focus Coach
@@ -41,6 +42,7 @@ final class AppSettings {
     // Focus Coach v2 — Realtime coaching
     var coachRealtimeEnabled: Bool = true
     var coachPromptBudgetPerSession: Int = 4
+    /// Unused since the reason chips were removed (2026-10-30); kept so stores open without a migration.
     var coachReasonPromptsEnabled: Bool = true
     var coachDefaultSnoozeMinutes: Int = 10
     var coachCollectRawDomains: Bool = false

@@ -181,6 +181,25 @@ final class CoachV2FlowTests: XCTestCase {
         XCTAssertEqual(vm.lastIdleStarterSuppressionReason, .onTrack, "Goal met: stay quiet")
     }
 
+    /// 2026-10-28: "Deep work" Focus Time blocks counted as busy, so the coach was silent exactly
+    /// when it should ask. A focus block now opens a window even outside the learned hours.
+    func testCalendarFocusBlockOpensAWindowInsteadOfSilencingTheCoach() throws {
+        let vm = try makeViewModel()
+        let hour = Calendar.current.component(.hour, from: Date())
+        let otherHour = (hour + 12) % 24
+        let sessions = (1...10).map { offset -> CoachAvailabilityModel.Session in
+            let day = Calendar.current.date(byAdding: .day, value: -offset, to: Calendar.current.startOfDay(for: Date()))!
+            let start = Calendar.current.date(byAdding: .hour, value: otherHour, to: day)!
+            return .init(start: start, end: start.addingTimeInterval(1800))
+        }
+        vm.availabilityModelOverride = CoachAvailabilityModel(sessions: sessions, activeDays: [])
+        vm.calendarAvailabilityProvider = { _ in CalendarAvailability(isBusyNow: false, minutesUntilNextEvent: nil, isFocusBlockNow: true) }
+        vm.evaluateIdleStarterIntervention(idleSeconds: 30 * 60, frontmostCategory: .neutral)
+        XCTAssertNotEqual(vm.lastIdleStarterSuppressionReason, .outsideFocusWindow)
+        XCTAssertNotEqual(vm.lastIdleStarterSuppressionReason, .calendarBusy)
+        XCTAssertNotNil(vm.coachPanel, "A deep-work block is when the coach should ask")
+    }
+
     func testRewardGoesToThePendingPromptEvenWhenAnotherAttemptIsNewer() throws {
         let vm = try makeViewModel()
         vm.evaluateIdleStarterIntervention(idleSeconds: 30 * 60, frontmostCategory: .neutral)

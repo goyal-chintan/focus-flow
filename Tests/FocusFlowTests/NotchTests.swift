@@ -56,6 +56,11 @@ final class NotchTests: XCTestCase {
         var attention = base
         attention.coachHook = "First block. Start small."
         attention.suggestedMinutes = 25
+        attention.reminder = DailyReminderLine(text: "A year from now you may wish you had started today.", attribution: "Karen Lamb", isOwn: false)
+        attention.nextTask = (UUID(), "LeetCode questions")
+        attention.nextTaskCount = (1, 3)
+        var receipt = base
+        receipt.receipt = "+1 LeetCode · today 2 of 3 · goal 15 of 60"
         var focusing = base
         focusing.mode = .focusing
         var focusingNoTask = focusing
@@ -72,7 +77,7 @@ final class NotchTests: XCTestCase {
         let cases: [(String, NotchSnapshot, Bool)] = [
             ("compact_idle", base, false), ("compact_attention", attention, false), ("compact_focusing", focusing, false),
             ("compact_paused", paused, false), ("compact_overtime", overtime, false), ("compact_break", onBreak, false),
-            ("expanded_idle", attention, true), ("expanded_focusing", focusing, true),
+            ("expanded_idle", attention, true), ("expanded_receipt", receipt, true), ("expanded_focusing", focusing, true),
             ("expanded_focusing_no_task", focusingNoTask, true), ("expanded_overtime", overtime, true),
             ("expanded_break", onBreak, true),
         ]

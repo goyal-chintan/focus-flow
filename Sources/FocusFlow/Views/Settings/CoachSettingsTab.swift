@@ -221,7 +221,6 @@ struct CoachSettingsTab: View {
             Toggle("Coach me during blocks", isOn: bind(\.coachRealtimeEnabled))
 
             if settings.coachRealtimeEnabled {
-                Toggle("Ask why after a long pause or break", isOn: bind(\.coachReasonPromptsEnabled))
                 SettingsStepperRow(
                     title: "Snooze for",
                     valueText: settingsMinutesText(settings.coachDefaultSnoozeMinutes),

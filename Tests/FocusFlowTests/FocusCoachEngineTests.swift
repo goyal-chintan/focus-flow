@@ -18,9 +18,7 @@ final class FocusCoachEngineTests: XCTestCase {
             nonWorkForegroundRatio: 0.6,
             inactivityBurstSeconds: 100,
             blockedAppAttempts: 2,
-            pauseCount: 2,
-            breakOverrunSeconds: 60,
-            recentLegitimateReason: false
+            pauseCount: 2
         )
         engine.recordBehaviorSample(signals)
         let decision = engine.tick()
@@ -48,69 +46,6 @@ final class FocusCoachEngineTests: XCTestCase {
         engine.recordBehaviorSample(.sampleHighRisk)
         let decision = engine.tick()
         XCTAssertNil(decision, "Inactive engine should not produce interventions")
-    }
-
-    // MARK: - Anomaly Recording
-
-    func testLegitimateReasonCreatesInterruptionMarkedLegitimate() {
-        let store = InMemoryCoachStore()
-        let engine = FocusCoachEngine(store: store)
-        let sessionId = UUID()
-        engine.startSession(id: sessionId)
-        engine.recordAnomaly(kind: .midSessionStop, reason: .meeting, sessionId: sessionId)
-
-        XCTAssertEqual(store.interruptions.count, 1)
-        XCTAssertTrue(store.interruptions.last?.isLegitimate == true)
-        XCTAssertEqual(store.interruptions.last?.kind, .midSessionStop)
-    }
-
-    func testAvoidanceReasonNotMarkedLegitimate() {
-        let store = InMemoryCoachStore()
-        let engine = FocusCoachEngine(store: store)
-        engine.startSession(id: UUID())
-        engine.recordAnomaly(kind: .drift, reason: .procrastinating, sessionId: nil)
-
-        XCTAssertFalse(store.interruptions.last?.isLegitimate ?? true)
-    }
-
-    func testLegitimateReasonDampensSubsequentScoring() {
-        let store = InMemoryCoachStore()
-        let engine = FocusCoachEngine(store: store)
-        engine.startSession(id: UUID())
-
-        // Record legitimate reason — should set recentLegitimateReason
-        engine.recordAnomaly(kind: .midSessionStop, reason: .meeting, sessionId: nil)
-        XCTAssertTrue(engine.currentSignals.recentLegitimateReason)
-    }
-
-    func testDriftReasonPromptDoesNotLoopWithinSameHighRiskStreak() {
-        let store = InMemoryCoachStore()
-        let engine = FocusCoachEngine(store: store)
-        engine.startSession(id: UUID())
-        engine.recordBehaviorSample(
-            FocusCoachSignals(
-                startDelaySeconds: 480,
-                appSwitchesPerMinute: 15,
-                nonWorkForegroundRatio: 1.0,
-                inactivityBurstSeconds: 180,
-                blockedAppAttempts: 5,
-                pauseCount: 5,
-                breakOverrunSeconds: 300,
-                recentLegitimateReason: false
-            )
-        )
-
-        _ = engine.tick()
-        _ = engine.tick()
-        _ = engine.tick()
-        XCTAssertTrue(engine.shouldShowReasonSheet)
-        XCTAssertEqual(engine.pendingAnomalyKind, .drift)
-
-        engine.shouldShowReasonSheet = false
-        engine.recordAnomaly(kind: .drift, reason: .procrastinating, sessionId: nil)
-
-        _ = engine.tick()
-        XCTAssertFalse(engine.shouldShowReasonSheet, "Drift reason prompt should not reopen repeatedly within the same unresolved streak")
     }
 
     // MARK: - Session Lifecycle
@@ -150,9 +85,7 @@ final class FocusCoachEngineTests: XCTestCase {
             nonWorkForegroundRatio: 0.6,
             inactivityBurstSeconds: 100,
             blockedAppAttempts: 2,
-            pauseCount: 2,
-            breakOverrunSeconds: 60,
-            recentLegitimateReason: false
+            pauseCount: 2
         )
         engine.recordBehaviorSample(signals)
         let decision = engine.tick()
@@ -221,8 +154,6 @@ final class FocusCoachEngineTests: XCTestCase {
         engine.updatePauseCount(3)
         XCTAssertEqual(engine.currentSignals.pauseCount, 3)
 
-        engine.updateBreakOverrun(60)
-        XCTAssertEqual(engine.currentSignals.breakOverrunSeconds, 60)
     }
 
     // MARK: - Outside-session learning loop

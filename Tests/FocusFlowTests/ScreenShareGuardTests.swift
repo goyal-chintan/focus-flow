@@ -60,4 +60,10 @@ final class ScreenShareGuardTests: XCTestCase {
 
         XCTAssertTrue(guardService.shouldSuppressGuardianPopups(enabled: true))
     }
+
+    /// Slack is where people read and write all day; it silenced the coach for 34 minutes on 2026-10-28.
+    func testSlackIsNotTreatedAsAScreenShare() {
+        XCTAssertFalse(ScreenShareGuard.isLikelyScreenShareSensitiveContext(bundleIdentifier: "com.tinyspeck.slackmacgap", appName: "Slack"))
+        XCTAssertTrue(ScreenShareGuard.isLikelyScreenShareSensitiveContext(bundleIdentifier: "us.zoom.xos", appName: "zoom.us"))
+    }
 }

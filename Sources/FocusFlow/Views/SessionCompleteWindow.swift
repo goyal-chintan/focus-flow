@@ -4,8 +4,9 @@ import SwiftData
 /// The block-end window (screen audit 2026-10-28): one stage, 480 pt wide.
 ///
 /// Header ("✦ 25m earned · Deep Work"), "Did you finish it?" for the block's task, today's tasks,
-/// the project's goal, "What did this block produce?", at most one coach question, an optional
-/// time split, and a sticky footer: Break · Start next · Done for today.
+/// the project's goal, "What did this block produce?", the per-app planned/distraction review, an
+/// optional time split, and a sticky footer: Break · Start next (your regular length, and the
+/// coach's smaller size beside it) · Done for today.
 ///
 /// Everything you tap saves at once (ticks, goal steps, the outcome). The tasks ticked in this
 /// block become the session's achievement (history title, Calendar notes).
@@ -22,13 +23,16 @@ struct SessionCompleteWindowView: View {
     @State private var appeared = false
     @State private var showSplits = false
     @State private var splits: [TimeSplitView.SplitEntry] = []
-    @State private var selectedReminderItems: [RemindersService.ReminderItem] = []
-    @State private var showReminderPicker = false
     @State private var hasHandledAction = false
-    @State private var capturedReason: FocusCoachReason? = nil
     @State private var selectedOutcome: SessionOutcome? = nil
     /// "Not yet" on the block's task (nothing is stored; the task just stays open).
     @State private var blockTaskNotYet = false
+    /// "3 blocks · 1h 40m today", read once per appearance: the last block's end moves every
+    /// second of overtime, and reading it in `body` redrew the whole window each second.
+    @State private var todaySummary = ""
+    /// The coach's ask (the learned 5 · 15 · 25 size), read once per appearance: it runs
+    /// SwiftData fetches and a model fit, so never from `body`.
+    @State private var coachAsk: CoachBlockSizeLadder.Recommendation?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
 
@@ -82,11 +86,10 @@ struct SessionCompleteWindowView: View {
             hasHandledAction = false
             showSplits = false
             splits = []
-            selectedReminderItems = []
-            showReminderPicker = false
-            capturedReason = nil
             blockTaskNotYet = false
             selectedOutcome = timerVM.lastCompletedFocusSession?.outcome
+            coachAsk = timerVM.startLadderRecommendation()
+            todaySummary = todayLine
             appeared = disableMotionForEvidence
             if !timerVM.isEvidenceMode {
                 bringWindowToFront()
@@ -201,33 +204,28 @@ struct SessionCompleteWindowView: View {
                 SessionTasksSection(
                     sessionID: session.id,
                     blockTaskID: session.taskID,
-                    projectID: session.project?.id,
-                    onAttachReminder: settings?.remindersIntegrationEnabled == true ? { showReminderPicker = true } : nil
+                    projectID: session.project?.id
                 )
-                if settings?.remindersIntegrationEnabled == true, !selectedReminderItems.isEmpty {
-                    linkedReminders
-                }
                 // After the tasks, so a tick visibly moves the bar here.
                 SessionGoalSection(projectID: session.project?.id, sessionID: session.id)
                 outcomeSection
             }
 
-            coachQuestion
+            // The apps seen in the block, each marked planned or a distraction: the one answer the
+            // coach learns from (drift memory). Reason chips were removed (audit 2026-10-30).
+            if !timerVM.lastSessionDistractingEntries.isEmpty, !timerVM.lastCompletionWasBreak {
+                sessionDistractionReview
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
+                        removal: .opacity
+                    ))
+            }
 
             splitSection
         }
-        .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.showCoachReasonSheet)
         .animation(disableMotionForEvidence ? nil : FFMotion.section, value: timerVM.lastSessionDistractingEntries.isEmpty)
         // TODO: Focus restoration on sheet dismiss for standalone windows (SessionComplete,
         // CoachIntervention) is a known limitation. Avoid NSApplication.shared.activate() here.
-        .sheet(isPresented: $showReminderPicker) {
-            ReminderSelectionSheet(
-                selectedListId: settings?.selectedReminderListId,
-                initialSelectedIds: Set(selectedReminderItems.map(\.id))
-            ) { chosen in
-                selectedReminderItems = chosen
-            }
-        }
     }
 
     // MARK: Header
@@ -243,7 +241,7 @@ struct SessionCompleteWindowView: View {
                     .foregroundStyle(tint)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                Text(todayLine)
+                Text(todaySummary)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     .monospacedDigit()
@@ -335,7 +333,10 @@ struct SessionCompleteWindowView: View {
         let finishedHere = task.isDone && task.sessionID == session.id
         let caption = SessionTasksSection.goalCaption(task, resultTitles: resultTitles)
         return VStack(alignment: .leading, spacing: 8) {
-            TrackedLabel(text: "Did you finish it?", font: .system(size: 11, weight: .semibold), tracking: 1.8)
+            TrackedLabel(text: task.isCounted ? "How many did you do?" : "Did you finish it?", font: .system(size: 11, weight: .semibold), tracking: 1.8)
+            if task.isCounted {
+                countedBlockTask(task, session: session, caption: caption)
+            } else {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(task.title)
@@ -374,7 +375,58 @@ struct SessionCompleteWindowView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.04)))
+            }
+            DailyTaskReceiptBanner(taskIDs: [task.id], compact: true)
         }
+    }
+
+    /// A counted block task ("Problems solved 1 of 3"): − and + log one at a time to the goal.
+    private func countedBlockTask(_ task: DailyTask, session: FocusSession, caption: String?) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let caption {
+                    Text(caption)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                }
+            }
+            Spacer(minLength: 8)
+            stepButton("minus", label: "Take back 1", disabled: task.loggedCount <= 0) {
+                _ = timerVM.stepDailyTask(task, by: -1, sessionID: session.id)
+            }
+            Text("\(DailyTaskReceipt.number(task.loggedCount)) of \(DailyTaskReceipt.number(task.progressAmount))")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(task.isDone ? FFPalette.goal : .primary)
+                .contentTransition(.numericText())
+                .frame(minWidth: 52)
+            stepButton("plus", label: "Add 1", disabled: false) {
+                _ = timerVM.stepDailyTask(task, by: 1, sessionID: session.id)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.04)))
+    }
+
+    private func stepButton(_ symbol: String, label: String, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(disableMotionForEvidence ? nil : .smooth(duration: 0.25)) { action() }
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Color.primary.opacity(0.07)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
+        .accessibilityLabel(label)
     }
 
     /// The tasks ticked in this block, in tick order: the session's achievement.
@@ -399,40 +451,6 @@ struct SessionCompleteWindowView: View {
         guard session.achievement != text else { return }
         session.achievement = text
         try? modelContext.save()
-    }
-
-    // MARK: Reminders (only with Reminders sync on)
-
-    private var linkedReminders: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            ForEach(selectedReminderItems, id: \.id) { item in
-                HStack(spacing: 6) {
-                    Image(systemName: "checklist")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.blue)
-                        .accessibilityHidden(true)
-                    Text(item.title)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer()
-                    Button {
-                        selectedReminderItems.removeAll(where: { $0.id == item.id })
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityLabel("Remove reminder \(item.title)")
-                }
-            }
-            Text("Completed in Reminders when you leave this window.")
-                .font(.system(size: 11))
-                .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
-        }
     }
 
     // MARK: Outcome (Coach v2 §9 step 3)
@@ -508,81 +526,12 @@ struct SessionCompleteWindowView: View {
         }
     }
 
-    // MARK: Coach question (at most one)
-
-    /// The app review, else the coach reason sheet, else the captured reason. Logic unchanged.
-    @ViewBuilder
-    private var coachQuestion: some View {
-        if !timerVM.lastSessionDistractingEntries.isEmpty, !timerVM.lastCompletionWasBreak {
-            // Concrete context first: it suppresses the generic reason sheet.
-            sessionDistractionReview
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                    removal: .opacity
-                ))
-        } else if timerVM.showCoachReasonSheet {
-            coachReasonSection
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.98, anchor: .top)),
-                    removal: .opacity.combined(with: .scale(scale: 0.97))
-                ))
-        } else if let reason = capturedReason {
-            reasonConfirmationPill(reason)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .scale(scale: 0.97)),
-                    removal: .opacity
-                ))
-        }
-    }
-
     /// Inline distraction review section — shows apps seen during the session.
     private var sessionDistractionReview: some View {
         SessionDistractionReviewSection(
             entries: timerVM.lastSessionDistractingEntries,
             projectId: timerVM.completedBlockContext?.projectId,
             projectName: timerVM.completedBlockContext?.projectName
-        )
-    }
-
-    /// The sheet carries its own title ("Why did you stop?"); no second label around it.
-    private var coachReasonSection: some View {
-        FocusCoachReasonChipSheet(
-            anomalyKind: timerVM.pendingReasonKind,
-            onSelect: { reason in
-                capturedReason = reason
-                timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: reason)
-                timerVM.showCoachReasonSheet = false
-            },
-            onSnooze: {
-                timerVM.showCoachReasonSheet = false
-                timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
-            },
-            onDismiss: {
-                timerVM.recordCoachReason(kind: timerVM.pendingReasonKind, reason: nil)
-                timerVM.showCoachReasonSheet = false
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func reasonConfirmationPill(_ reason: FocusCoachReason) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.green)
-                .accessibilityHidden(true)
-            Text("Reason captured: **\(reason.displayName)**")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.green.opacity(0.08))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.green.opacity(0.15), lineWidth: 0.5))
         )
     }
 
@@ -634,12 +583,10 @@ struct SessionCompleteWindowView: View {
 
     private var footerBar: some View {
         VStack(spacing: 8) {
-            // The next block names its task, so it gets the full width.
-            LiquidActionButton(title: startTitle, icon: "play.fill", role: .secondary) {
-                saveAndDismiss(action: .continueFocusing, prepare: prepareNextStart)
+            // The next block names its task, so it gets most of the width; the smaller ask sits beside it.
+            startButtons(role: .secondary) { minutes in
+                saveAndDismiss(action: .continueFocusing, prepare: { prepareNextStart(minutes: minutes) })
             }
-            .help(startTitle)
-            .accessibilityLabel(startTitle)
             HStack(spacing: 8) {
                 breakButton
                 LiquidActionButton(title: "Done for today", icon: "checkmark.circle", role: .secondary) {
@@ -708,9 +655,11 @@ struct SessionCompleteWindowView: View {
         DailyTaskPlanner.nextTask(todaysTasks, on: Date(), preferring: blockProjectID)
     }
 
-    /// The learned size (preselected on every surface).
+    /// Your regular length (`regularMinutes`), so neither a warm-up nor a long break repeats 5 or
+    /// 15. Never the idle ladder from `body`: it runs SwiftData fetches and a model fit (the window
+    /// froze on 2026-10-30); the coach's ask is read once into `coachAsk`.
     private var nextMinutes: Int {
-        timerVM.startLadderRecommendation().minutes
+        timerVM.regularMinutes
     }
 
     private var startTitle: String {
@@ -718,11 +667,39 @@ struct SessionCompleteWindowView: View {
         return "Start \(nextMinutes)m"
     }
 
-    /// Sets up `continueAfterCompletion(.continueFocusing)` to start the learned size on the
-    /// next task (its project too). Returns the restore step for the user's chosen duration.
-    private func prepareNextStart() -> () -> Void {
+    /// The smaller start beside the usual one: the coach's ask when it differs, else 5 minutes.
+    /// Nil when the usual block is already the smallest.
+    private var smallerMinutes: Int? {
+        if let ask = coachAsk?.minutes, ask < nextMinutes { return ask }
+        let smallest = CoachBlockSizeLadder.sizes[0]
+        return nextMinutes > smallest ? smallest : nil
+    }
+
+    /// "Start 25m · task" and, beside it, "5m". `onStart` gets the chosen size.
+    private func startButtons(role: LiquidActionRole, tint: Color? = nil, onStart: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 8) {
+            LiquidActionButton(title: startTitle, icon: "play.fill", role: role, tint: tint) {
+                onStart(nextMinutes)
+            }
+            .help(startTitle)
+            .accessibilityLabel(startTitle)
+            if let small = smallerMinutes {
+                let why = coachAsk?.minutes == small ? coachAsk?.caption : nil
+                LiquidActionButton(title: "\(small)m", icon: "play", role: .secondary) {
+                    onStart(small)
+                }
+                .frame(width: 96)
+                .help(why ?? "A smaller start: \(small) minutes")
+                .accessibilityLabel("Start \(small) minutes instead")
+            }
+        }
+    }
+
+    /// Sets up `continueAfterCompletion(.continueFocusing)` to start `minutes` on the next task
+    /// (its project too). Returns the restore step for the user's chosen duration.
+    private func prepareNextStart(minutes: Int) -> () -> Void {
         let previousMinutes = timerVM.selectedMinutes
-        timerVM.selectedMinutes = nextMinutes
+        timerVM.selectedMinutes = minutes
         if let task = nextTask {
             timerVM.pendingTaskID = task.id
             timerVM.pendingIntentText = task.title
@@ -739,40 +716,16 @@ struct SessionCompleteWindowView: View {
     private var breakContent: some View {
         VStack(spacing: 12) {
             breakHeaderSection
-            if timerVM.showCoachReasonSheet {
-                breakReasonSection
-            }
             breakActionsSection
         }
         .padding(18)
         .frame(width: 420)
     }
 
-    /// Seconds past the planned break (live while the break runs over).
-    private var breakOverSeconds: Int {
-        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isOvertime ? timerVM.overtimeSeconds : 0)
-    }
-
-    /// One title from one source: "Break ran 3m over" (amber) or "Reset complete".
-    private var breakTitle: String {
-        let over = breakOverSeconds
-        guard over > 60 else { return "Reset complete" }
-        return "Break ran \(FFFormat.duration(TimeInterval(over))) over"
-    }
-
     private var breakHeaderSection: some View {
-        let isOverrun = breakOverSeconds > 60
-        return VStack(spacing: 10) {
-            Image(systemName: "cup.and.saucer.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(isOverrun ? LiquidDesignTokens.Spectral.amber : .blue)
-                .accessibilityHidden(true)
-
-            Text(breakTitle)
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(isOverrun ? LiquidDesignTokens.Spectral.amber : LiquidDesignTokens.Surface.onSurface)
-                .monospacedDigit()
-                .contentTransition(.numericText())
+        VStack(spacing: 10) {
+            // The only part that ticks: kept in its own view so the window doesn't re-render each second.
+            BreakOverrunTitle()
 
             // Spec invariant: always show last earned block
             if let ctx = timerVM.completedBlockContext ?? timerVM.breakEpisodeContext?.earnedBlock {
@@ -795,36 +748,14 @@ struct SessionCompleteWindowView: View {
     }
 
     private var breakActionsSection: some View {
-        let overrun = timerVM.breakEpisodeContext?.overrunSeconds ?? 0
-        return EvidenceSafeGlassGroup {
+        EvidenceSafeGlassGroup {
             VStack(spacing: 8) {
-                LiquidActionButton(
-                    title: startTitle,
-                    icon: "play.fill",
-                    role: .primary,
-                    tint: .blue
-                ) {
+                startButtons(role: .primary, tint: .blue) { minutes in
                     hasHandledAction = true
-                    let restore = prepareNextStart()
+                    let restore = prepareNextStart(minutes: minutes)
                     timerVM.continueAfterCompletion(action: .continueFocusing)
                     restore()
                     dismissWindow(id: "session-complete")
-                }
-                .help(startTitle)
-                .accessibilityLabel(startTitle)
-
-                // Short-overrun extension option
-                if overrun > 0 && overrun <= 60 {
-                    LiquidActionButton(
-                        title: "Take 1 More Minute",
-                        icon: "clock.badge.plus",
-                        role: .secondary
-                    ) {
-                        hasHandledAction = true
-                        timerVM.continueAfterCompletion(action: .continueOvertime)
-                        dismissWindow(id: "session-complete")
-                    }
-                    .accessibilityLabel("Take 1 more minute")
                 }
 
                 LiquidActionButton(
@@ -841,30 +772,9 @@ struct SessionCompleteWindowView: View {
         }
     }
 
-    /// The sheet asks the question; the window header already says what happened.
-    private var breakReasonSection: some View {
-        FocusCoachReasonChipSheet(
-            anomalyKind: .breakOverrun,
-            showsTitle: false,
-            showsSnooze: false,
-            onSelect: { reason in
-                timerVM.recordCoachReason(kind: .breakOverrun, reason: reason)
-                timerVM.showCoachReasonSheet = false
-            },
-            onSnooze: {
-                timerVM.showCoachReasonSheet = false
-                timerVM.handleSnooze(minutes: timerVM.settings?.coachDefaultSnoozeMinutes ?? 10)
-            },
-            onDismiss: {
-                timerVM.recordCoachReason(kind: .breakOverrun, reason: nil)
-                timerVM.showCoachReasonSheet = false
-            }
-        )
-    }
-
     // MARK: - Actions
 
-    /// Saves the block's leftovers (achievement from the ticks, splits, reminders), then runs
+    /// Saves the block's leftovers (achievement from the ticks, splits), then runs
     /// `action`. `prepare` runs just before `continueAfterCompletion` and returns its undo.
     private func saveAndDismiss(action: PostCompletionAction, prepare: (() -> (() -> Void))? = nil) {
         // The save is async, so the window stays up for a moment; a second click must not
@@ -874,9 +784,7 @@ struct SessionCompleteWindowView: View {
         let achievement = achievementText
         Task { @MainActor in
             await timerVM.saveReflection(
-                mood: nil,
                 achievement: achievement,
-                reminderIdsToComplete: settings?.remindersIntegrationEnabled == true ? selectedReminderItems.map(\.id) : [],
                 splits: showSplits ? splits : nil
             )
             let restore = prepare?()
@@ -906,6 +814,34 @@ struct SessionCompleteWindowView: View {
                 window.makeKeyAndOrderFront(nil)
                 window.center()
             }
+        }
+    }
+}
+
+/// Cup and "Break ran 3m over" (amber) or "Reset complete". The only part of the break window
+/// that reads the per-second overtime tick, so only this view re-renders while a break runs over.
+private struct BreakOverrunTitle: View {
+    @Environment(TimerViewModel.self) private var timerVM
+
+    /// Seconds past the planned break (live while the break runs over).
+    private var overSeconds: Int {
+        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isOvertime ? timerVM.overtimeSeconds : 0)
+    }
+
+    var body: some View {
+        let over = overSeconds
+        let isOverrun = over > 60
+        VStack(spacing: 10) {
+            Image(systemName: "cup.and.saucer.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(isOverrun ? LiquidDesignTokens.Spectral.amber : .blue)
+                .accessibilityHidden(true)
+
+            Text(isOverrun ? "Break ran \(FFFormat.duration(TimeInterval(over))) over" : "Reset complete")
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(isOverrun ? LiquidDesignTokens.Spectral.amber : LiquidDesignTokens.Surface.onSurface)
+                .monospacedDigit()
+                .contentTransition(.numericText())
         }
     }
 }

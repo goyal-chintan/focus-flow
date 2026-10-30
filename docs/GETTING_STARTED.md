@@ -90,11 +90,24 @@ The goal card then shows your pace: **ahead**, **on pace** or **behind**, and ho
 Open **Today** in the main window. Under **Today's tasks**, write the 3–5 things that would make today a good day. Keep each one small: "2 LeetCode questions" beats "prep".
 
 - **Link a task to a goal.** Pick it in the **Goal** menu next to the field. Ticking the task then adds to that key result.
-- **Use today's levers.** The chips under the field are the steps that keep your goals on pace, for example "+ 3 LeetCode questions". Click one to add it as a linked task.
+- **Add what your goals need.** The chips under **From your goals** are the steps that keep your goals on pace, for example "+ 3 LeetCode questions". Click one to add it as a linked task.
+
+Tasks come in two kinds, and each row says which:
+
+| You see | It means | When you click it |
+|---|---|---|
+| ○ a plain circle | A one-off task | It is done (✓). If it is linked to a goal, it adds 1 to the goal. |
+| ⊕ a ring with a plus, and "1 of 3" | A counted task, for example "LeetCode questions, 3 today" | It adds 1 to the goal and the ring fills. The task is done when you reach today's number. |
+
+After every click, a green line says exactly what was logged, for example "+1 LeetCode · today 2 of 3 · goal 15 of 60". Click **Undo** on it if you clicked by mistake. You can also right-click a counted task and choose **Take back 1**.
 - **Unfinished yesterday?** Click **Bring them over**. Yesterday's list stays as it was, so its count stays honest.
 - **Right-click a task** to move it to the top or to tomorrow, or to delete it.
 
 You see "2 of 5 done" on Today, in the menu bar panel and on the notch.
+
+**What the ring tracks.** The ring on the menu bar panel and the notch shows your ★ #1 project (the project ranked first) against your daily goal, for example "★ Learning · 50m of 2h30". Time on other projects, such as Office, does not fill it. It shows on its own line instead ("26m on other projects today"). Without a #1 project, the ring counts your own work, or every block.
+
+**Tasks and today's lever.** Once a goal has a task for today, that task is today's commitment. The lever shows the task's counter, and it disappears when the task is done.
 
 ### Start a block
 
@@ -102,7 +115,7 @@ A block is a short, timed stretch of focus. Start with 5, 15 or 25 minutes. The 
 
 You can start a block from three places:
 
-- **The menu bar icon:** click a task to make it the block's goal, choose a size, and press **Start**.
+- **The menu bar icon:** click a task's name to make it the block's goal (it gets a **Next block** tag), choose a size, and press **Start**. Clicking the circle in front of a task ticks it, which is not the same thing.
 - **The notch:** move the pointer over the black area around the notch. Click **5**, **15** or **25 min**. The block starts on your next task.
 - **Anywhere:** press **⌃⌥Space** (Control + Option + Space). It starts a short block on your next task. With nothing planned, it starts a short block whose job is to find the next step.
 
@@ -110,7 +123,7 @@ You can start a block from three places:
 
 - The notch shows a ring and the time left.
 - Move the pointer over the notch to pause, add 5 minutes, or **Finish**.
-- Tick the block's task there when it's done. If the project has a goal, **+1** logs one more item.
+- Tick the block's task there when it's done, or click ⊕ to add 1 to a counted task. If the project has a goal, **+1** logs one more item.
 
 ### When the coach speaks
 
@@ -132,7 +145,7 @@ The coach learns which moments and which sizes work for you. It gets better afte
 
 A small window opens. It logs the block against your plan, top to bottom:
 
-1. **Did you finish it?** If the block was for a task, click **Done** or **Not yet**.
+1. **Did you finish it?** If the block was for a task, click **Done** or **Not yet**. For a counted task it asks **How many did you do?** and shows − and +.
 2. **Tasks:** tick anything else you finished. Type in **Add something you finished** for work you hadn't planned. Type in **Next step** to add a task for later.
 3. **Goal:** the key-result bars move as you tick. **+1** logs progress that isn't a task.
 4. **What did this block produce?** Shipped, Moved it forward, or Busywork. The coach learns from this.
@@ -181,7 +194,10 @@ Some features ask for macOS permissions, for example Calendar or browser Automat
 ## 8. Common questions
 
 **The coach never speaks.**
-It stays quiet while you are in a block, when you are away from your Mac, during quiet hours, and after the day's limit. Check Settings → Coach → Starting and Limits.
+It stays quiet while you are in a block, when you are away from your Mac, during a meeting on your calendar, while a call app (Zoom, Teams, Webex) is in front, during quiet hours, and after the day's limit. Calendar blocks named "Deep work", "Focus time" or "Heads down" do not silence it: the coach treats them as the right time to ask. Check Settings → Coach → Starting and Limits.
+
+**Where does the quote at the top come from?**
+It is your line for the day. It shows on the menu bar panel, on the notch and at the top of Today. It stays the same all day; click it for another. One day it is a question from Dan Koe's "How to fix your entire life in 1 day" (for example "What am I avoiding right now by doing what I'm doing?"). The next day it is a challenging line: Dan Koe, Seneca, "1% better daily", and others like them. To write your own, click **Write your own** on Today. You can add up to five lines, for example "If I don't change today, I'll be in the same place a year from now." Your anti-vision and vision on the Goals tab show there too. Your own lines take every other day.
 
 **I don't have a notch.**
 FocusFlow shows a small pill at the top center of the screen instead.

@@ -170,7 +170,7 @@ final class NotchController: NotchHosting {
         return NotchActions(
             pause: { vm.pause() },
             resume: { vm.resume() },
-            extend: { vm.extendTimer(by: 300) },
+            setLength: { minutes in vm.setBlockLength(minutes: minutes) },
             finish: { [weak self] in self?.collapse(); vm.stopForReflection() },
             keepGoing: { vm.continueAfterCompletion(action: .continueOvertime) },
             takeBreak: { vm.continueAfterCompletion(action: .takeBreak(duration: 300)) },
@@ -178,7 +178,7 @@ final class NotchController: NotchHosting {
             skipBreak: { vm.skipBreak() },
             toggleBreak: { vm.isBreakPaused ? vm.resumeBreak() : vm.pauseBreak() },
             start: { [weak self] minutes in
-                let lever = GoalDataBuilder.levers(vm.historyReaderActiveGoals(), now: Date()).first
+                let lever = vm.todayLevers().first
                 if vm.startNextBlock(minutes: minutes, projectID: lever?.projectID) { self?.collapse() }
             },
             logResult: { id in vm.logGoalProgress(resultID: id, amount: 1) },
@@ -187,8 +187,9 @@ final class NotchController: NotchHosting {
                 vm.openCompanionWindow?(.goals)
             },
             tickTask: { id in
-                if let task = vm.todayTasks().first(where: { $0.id == id }) { vm.setDailyTask(task, done: true) }
+                if let task = vm.todayTasks().first(where: { $0.id == id }) { vm.advanceDailyTask(task) }
             },
+            undoTask: { vm.undoDailyTaskReceipt() },
             log: { [weak self] in
                 // Same as the popover's "Log this block": the block-end window.
                 self?.collapse()
@@ -220,7 +221,7 @@ private struct NotchLiveView: View {
         case .onBreak: mode = .onBreak(paused: vm.isBreakPaused)
         }
         let goals = vm.historyReaderActiveGoals()
-        let levers = GoalDataBuilder.levers(goals, now: now)
+        let levers = vm.todayLevers(now: now)
         let projects = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived }))) ?? []
         let topProject = projects.filter { $0.priorityRank != nil }.min { ($0.priorityRank ?? .max) < ($1.priorityRank ?? .max) }
         let leverProject = levers.first?.projectID.flatMap { id in projects.first { $0.id == id } }
@@ -252,7 +253,7 @@ private struct NotchLiveView: View {
         }
 
         let attention = mode == .idle && (vm.coachPanel != nil || vm.coachMenuBarPulse)
-        let ownOnly = GoalDataBuilder.ownWorkConfigured(projects)
+        let scope = GoalDataBuilder.goalScope(projects)
         return NotchSnapshot(
             mode: mode,
             time: vm.isOvertime ? vm.overtimeTimeString : vm.timeString,
@@ -262,14 +263,19 @@ private struct NotchLiveView: View {
             intent: vm.currentIntentText,
             goalDone: vm.goalProgressSeconds(now: now),
             goalTarget: vm.settings?.dailyFocusGoal ?? 7200,
-            goalLabel: ownOnly ? "Your own work" : "Focus today",
+            goalLabel: scope.label,
             lever: levers.first,
             verdict: verdict,
             coachHook: attention ? (vm.coachPanel?.message.hook ?? "The coach has a start for you.") : nil,
             quickResult: quick,
             tasks: taskStats,
             nextTask: next.map { ($0.id, $0.title) },
-            suggestedMinutes: suggested
+            nextTaskCount: next.flatMap { $0.isCounted ? ($0.loggedCount, $0.progressAmount) : nil },
+            receipt: vm.dailyTaskReceipt?.text,
+            reminder: idleOpen ? vm.dailyReminder(now: now) : nil,
+            suggestedMinutes: suggested,
+            regularMinutes: vm.regularMinutes,
+            growToMinutes: CoachBlockSizeLadder.sizes.first { $0 > vm.blockLengthMinutes && vm.canSetBlockLength($0) }
         )
     }
 }

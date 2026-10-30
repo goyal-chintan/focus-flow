@@ -7,7 +7,6 @@ struct SessionEditView: View {
 
     let session: FocusSession
 
-    @State private var selectedMood: FocusMood?
     @State private var achievement: String
     @State private var selectedProject: Project?
     @State private var editedDuration: TimeInterval
@@ -28,7 +27,6 @@ struct SessionEditView: View {
 
     init(session: FocusSession) {
         self.session = session
-        _selectedMood = State(initialValue: session.mood)
         _achievement = State(initialValue: session.achievement ?? "")
         _selectedProject = State(initialValue: session.project)
         _editedDuration = State(initialValue: session.duration)
@@ -69,7 +67,6 @@ struct SessionEditView: View {
                 headerSection
                 timingSection
                 projectSection
-                moodSection
                 achievementSection
                 splitSection
                 actionsSection
@@ -225,14 +222,6 @@ struct SessionEditView: View {
         }
     }
 
-    private var moodSection: some View {
-        VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
-            sectionLabel("Focus Quality")
-
-            MoodSelector(selectedMood: $selectedMood)
-        }
-    }
-
     private var achievementSection: some View {
         VStack(alignment: .leading, spacing: LiquidDesignTokens.Spacing.small) {
             sectionLabel("Achievement")
@@ -370,7 +359,6 @@ struct SessionEditView: View {
 
     private func save() {
         session.project = selectedProject
-        session.mood = selectedMood
         session.achievement = achievement.isEmpty ? nil : achievement
         session.duration = editedDuration
         session.startedAt = editedStartedAt

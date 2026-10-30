@@ -11,12 +11,13 @@ struct CompanionSnapshot {
     let now: Date
     /// Focus blocks of at least one minute (breaks excluded).
     let samples: [FocusSample]
-    /// What counts toward the daily goal: own work (Personal + Learning) once any project is marked
-    /// Work, otherwise every block (screen audit: "own work everywhere"). Every streak, chain,
-    /// "goal met" mark and goal ring uses these, never `samples`.
+    /// What counts toward the daily goal (`GoalDataBuilder.goalScope`): the ★ #1 project, else own
+    /// work once a project is marked Work, else every block. Every streak, chain, "goal met" mark and
+    /// goal ring uses these, never `samples`.
     let goalSamples: [FocusSample]
-    /// True once a project is marked Work, so `goalSamples` is own work only.
-    let ownWorkOnly: Bool
+    let goalScope: GoalScope
+    /// True when `goalSamples` is a subset (a #1 project or own work), not every block.
+    var ownWorkOnly: Bool { goalScope.isFiltered }
     /// Keys (`GoalDataBuilder.projectKey`) of Work projects, drawn faded in charts.
     let workKeys: Set<String>
     let goal: TimeInterval
@@ -31,9 +32,9 @@ struct CompanionSnapshot {
             .map(FocusSample.init)
             .filter { $0.activeSeconds >= 60 }
         self.samples = samples
-        let ownOnly = GoalDataBuilder.ownWorkConfigured(projects)
-        self.ownWorkOnly = ownOnly
-        self.goalSamples = ownOnly ? GoalDataBuilder.ownWorkSamples(samples, projects: projects) : samples
+        let scope = GoalDataBuilder.goalScope(projects)
+        self.goalScope = scope
+        self.goalSamples = GoalDataBuilder.scopedSamples(samples, scope: scope)
         self.workKeys = Set(projects.filter { $0.areaRaw != nil && $0.area == .work }.map(GoalDataBuilder.projectKey))
         self.goal = max(60, settings?.dailyFocusGoal ?? 7200)
         self.stretch = max(self.goal, settings?.dailyStretchGoal ?? 9000)

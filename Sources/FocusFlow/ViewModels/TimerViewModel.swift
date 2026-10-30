@@ -322,8 +322,7 @@ final class TimerViewModel {
             if openCompletionWindow != nil && showWakeRecoveryPrompt && wakeRecoverySession != nil {
                 log("openCompletionWindow did set and wake recovery is active — triggering window open")
                 DispatchQueue.main.async { [weak self] in
-                    self?.openCompletionWindow?()
-                    self?.requestAppActivation?()
+                    self?.showCompletionWindow()
                 }
             }
         }
@@ -447,7 +446,10 @@ final class TimerViewModel {
     private var momentumOfferedSessionID: UUID?
     private var coachIdleTickCount = 0
     private var pauseScreenShutoffLogged = false
-    private var goalProgressCache: (at: Date, focusTime: TimeInterval, seconds: TimeInterval)?
+    /// A memo for `goalProgressSeconds`, which views call while drawing. Not observed: writing an
+    /// observed property from a view's body re-invalidates it inside layout, and AppKit kills the app
+    /// ("needs another Update Constraints pass"; crash 2026-10-28, macOS 26.2).
+    @ObservationIgnored private var goalProgressCache: (at: Date, focusTime: TimeInterval, seconds: TimeInterval)?
     /// Test hook: seconds since the last keyboard/mouse input. Nil reads the system.
     var systemIdleSecondsProvider: (() -> TimeInterval)?
     /// Coach v5: Thompson-sample the block size at a real ask. Tests switch it off for determinism.
@@ -482,15 +484,8 @@ final class TimerViewModel {
     /// Set when the user is shown an idle-starter prompt but dismisses without starting.
     var lastAbandonedStartAt: Date?
 
-    /// Whether the reason chip sheet should be shown (driven by coach engine anomaly detection)
-    var showCoachReasonSheet: Bool = false
-    var pendingReasonKind: FocusCoachInterruptionKind = .drift
     /// Distracting apps/domains detected during the last completed focus session (for post-session review).
     var lastSessionDistractingEntries: [AppUsageTracker.SessionDistractingEntry] = []
-    /// Prevents break-overrun reason prompts from reopening repeatedly in the same break episode.
-    private var hasPromptedBreakOverrunReasonInCurrentEpisode: Bool = false
-    /// Non-blocking inline reason chips shown when resuming from an extended pause (≥2 min).
-    var showPauseReasonChips: Bool = false
     /// True while the coach panel is on screen (kept under its v1 name for callers and tests).
     var showCoachInterventionWindow: Bool = false
     /// Set when a panel action succeeds, so a later dismiss does not record `.dismissed`.
@@ -681,12 +676,6 @@ final class TimerViewModel {
         AppUsageTracker.shared.onSuspiciousObservation = { [weak self] observation in
             self?.coachEngine.handleNewObservation(observation)
         }
-        // Escalate guardian state when an avoidant observation has no project-scoped allowance
-        coachEngine.onAvoidantObservationWithoutAllowance = { [weak self] _ in
-            guard let self else { return }
-            self.coachEngine.shouldShowReasonSheet = true
-            self.coachEngine.pendingAnomalyKind = .drift
-        }
         log("configure() complete")
     }
 
@@ -728,6 +717,7 @@ final class TimerViewModel {
         todayFocusTime = 0
         todaySessionCount = 0
         loadTodayStats()
+        scheduleReminderSync() // a new day: today's reminders become today's tasks
         // Schedule next midnight refresh
         scheduleMidnightRefresh()
     }
@@ -1056,7 +1046,6 @@ final class TimerViewModel {
         strongPromptsShownThisSession = 0
         lastIdleInterventionAt = nil
         clearCoachPrompts()
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
         pseudoContextRunStart = nil
@@ -1099,7 +1088,7 @@ final class TimerViewModel {
     /// - The current session is saved with elapsed time (project A).
     /// - A new session starts with the remaining time (project B).
     /// - Blocking profile swaps if the new project has a different one.
-    func switchProject(to newProject: Project?, reason: FocusCoachReason) {
+    func switchProject(to newProject: Project?) {
         guard state == .focusing || state == .paused, let _ = settings else { return }
         let wasState = state
 
@@ -1123,9 +1112,6 @@ final class TimerViewModel {
                 saveContext()
             }
         }
-
-        // 2. Record the switch as a coach interruption
-        coachEngine.recordAnomaly(kind: .projectSwitch, reason: reason, sessionId: currentSession?.id)
 
         // 3. Deactivate old blocking profile
         deactivateBlocking()
@@ -1409,8 +1395,7 @@ final class TimerViewModel {
             // Try to trigger window opening if bridge is already wired up
             if openCompletionWindow != nil {
                 DispatchQueue.main.async { [weak self] in
-                    self?.openCompletionWindow?()
-                    self?.requestAppActivation?()
+                    self?.showCompletionWindow()
                 }
             }
         }
@@ -1441,7 +1426,6 @@ final class TimerViewModel {
         remainingSeconds = duration
         state = .onBreak(type)
         AppUsageTracker.shared.syncCadence(isFocusing: false)
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
 
         let session = FocusSession(type: type, duration: duration)
         modelContext?.insert(session)
@@ -1560,8 +1544,7 @@ final class TimerViewModel {
             closePopover()
 
             DispatchQueue.main.async { [weak self] in
-                self?.openCompletionWindow?()
-                self?.requestAppActivation?()
+                self?.showCompletionWindow()
             }
             return
         }
@@ -1609,19 +1592,42 @@ final class TimerViewModel {
         currentSession?.duration += seconds
     }
 
-    /// True when -5min button can act (more than 5m + 60s buffer remaining)
-    var canReduceTime: Bool {
-        state == .focusing && !isOvertime && remainingSeconds > 360
+    /// Sets the running block to `minutes` (time already worked is kept) and, from 15 up, makes it
+    /// your regular length for the blocks after it (Settings ▸ Default block). A 5- or 15-minute
+    /// warm-up can grow into a 25 in place; the next "Start" then offers 25, not the warm-up again.
+    /// 5 is the coach's warm-up size: shrinking to it is this block only, so it never repeats.
+    @discardableResult
+    func setBlockLength(minutes: Int) -> Bool {
+        guard canSetBlockLength(minutes) else { return false }
+        let delta = TimeInterval(minutes * 60) - totalSeconds
+        remainingSeconds += delta
+        totalSeconds += delta
+        currentSession?.duration += delta
+        if minutes >= Self.smallestRegularMinutes {
+            selectedMinutes = minutes
+            settings?.focusDuration = TimeInterval(minutes * 60)
+        }
+        saveContext()
+        saveCrashRecoveryCheckpoint()
+        return true
     }
 
-    /// True when +5min button can act (not at the 4-hour ceiling)
-    var canExtendTime: Bool {
-        state == .focusing && !isOvertime && totalSeconds + 300 <= Self.maxSessionSeconds
+    /// A running (or paused) normal block can take `minutes` when at least a minute would be left.
+    /// Starter blocks keep their own short shape.
+    func canSetBlockLength(_ minutes: Int) -> Bool {
+        guard state == .focusing || state == .paused, !isOvertime, !isStarterBlock else { return false }
+        let target = TimeInterval(minutes * 60)
+        guard target <= Self.maxSessionSeconds, target != totalSeconds else { return false }
+        return target - (totalSeconds - remainingSeconds) >= 60
     }
+
+    static let smallestRegularMinutes = 15
+
+    /// The running block's planned length in whole minutes.
+    var blockLengthMinutes: Int { Int((totalSeconds / 60).rounded()) }
 
     func resume() {
         guard state == .paused else { return }
-        let wasPauseExtended = pauseElapsed >= 120 // 2+ min pause
         // Accumulate pause time into the session record before clearing the counter
         let completedPause = pauseStartTime.map { Date().timeIntervalSince($0) } ?? pauseElapsed
         currentSession?.totalPausedSeconds += max(0, completedPause)
@@ -1634,11 +1640,6 @@ final class TimerViewModel {
         AppUsageTracker.shared.syncCadence(isFocusing: true)
         startTimer()
         saveCrashRecoveryCheckpoint() // Persist resumed state for crash recovery
-
-        if wasPauseExtended && settings?.coachReasonPromptsEnabled == true {
-            showPauseReasonChips = true
-            pendingReasonKind = .drift
-        }
 
         closePopover()
     }
@@ -1662,11 +1663,7 @@ final class TimerViewModel {
         isManualStop = false
         isBreakPaused = false
         showSessionComplete = false
-        showCoachReasonSheet = false
-        showPauseReasonChips = false
-        pendingReasonKind = .drift
         lastSessionDistractingEntries = []
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         clearCoachPrompts()
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
@@ -1694,7 +1691,7 @@ final class TimerViewModel {
     }
 
     /// Routes a mid-session stop through SessionCompleteWindow so the user
-    /// can record mood, achievement, and splits before the session is finalised.
+    /// can record the achievement and splits before the session is finalised.
     /// Only used when the session is long enough to be worth reflecting on (≥60s).
     func stopForReflection() {
         log("stopForReflection called, currentSession=\(currentSession != nil)")
@@ -1754,25 +1751,10 @@ final class TimerViewModel {
         currentCoachQuickPromptDecision = nil
         hideCoachPanel()
 
-        // Focus Coach: detect mid-session stop anomaly for reason capture
-        if settings?.coachReasonPromptsEnabled == true, let lastSession = lastCompletedSession {
-            let elapsed = lastSession.endedAt.map { $0.timeIntervalSince(lastSession.startedAt) } ?? 0
-            let classifier = FocusCoachAnomalyClassifier()
-            let event = FocusCoachAnomalyClassifier.SessionEvent.midSessionStop(
-                elapsedSeconds: Int(elapsed),
-                totalSeconds: Int(lastSession.duration)
-            )
-            if classifier.shouldPromptReason(event: event) {
-                showCoachReasonSheet = true
-                pendingReasonKind = .midSessionStop
-            }
-        }
-
         showSessionComplete = true
         closePopover()
         DispatchQueue.main.async { [weak self] in
-            self?.openCompletionWindow?()
-            self?.requestAppActivation?()
+            self?.showCompletionWindow()
         }
         log("stopForReflection: showSessionComplete=\(showSessionComplete), openCompletionWindow called")
     }
@@ -1786,10 +1768,6 @@ final class TimerViewModel {
         }
         isManualStop = false
         showSessionComplete = false
-        showCoachReasonSheet = false
-        showPauseReasonChips = false
-        pendingReasonKind = .drift
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         currentCoachQuickPromptDecision = nil
         hideCoachPanel()
         lastCompletedSession = nil
@@ -1805,10 +1783,6 @@ final class TimerViewModel {
     func preserveManualStop() {
         isManualStop = false
         showSessionComplete = false
-        showCoachReasonSheet = false
-        showPauseReasonChips = false
-        pendingReasonKind = .drift
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         currentCoachQuickPromptDecision = nil
         hideCoachPanel()
         lastCompletedSession = nil
@@ -1832,10 +1806,6 @@ final class TimerViewModel {
         overtimeSeconds = 0
         isManualStop = false
         showSessionComplete = false
-        showCoachReasonSheet = false
-        showPauseReasonChips = false
-        pendingReasonKind = .drift
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         clearCoachPrompts()
         idleStarterSummary = nil
         idleStarterRecommendedMinutes = nil
@@ -1877,7 +1847,6 @@ final class TimerViewModel {
         clearCrashRecoveryState()
         currentSession = nil
         breakEpisodeContext = nil  // Break episode is discarded on skip; completedBlockContext preserved
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
         remainingSeconds = 0
         totalSeconds = 0
         AppUsageTracker.shared.syncCadence(isFocusing: false)
@@ -1924,22 +1893,12 @@ final class TimerViewModel {
         suppressionWindow?.isActive ?? false
     }
 
-    /// Records the user's self-reported break recovery quality.
-    /// If `.doneForNow`, enters a release window. Never clears earned completedBlockContext.
-    func classifyBreakRecovery(_ quality: BreakRecoveryQuality) {
-        breakEpisodeContext?.recoveryQuality = quality
-        if quality == .doneForNow {
-            enterRelease(reason: .doneForNow)
-        }
-    }
-
     /// Clears completedBlockContext after the day-close summary is archived/dismissed.
     /// This is one of the three permitted clear sites.
     func clearCompletedBlockContextAfterDayClose() {
         completedBlockContext = nil
         breakEpisodeContext = nil
         suppressionWindow = nil
-        hasPromptedBreakOverrunReasonInCurrentEpisode = false
     }
 
     private var breakLearningStore: BreakLearningStore? {
@@ -2096,7 +2055,6 @@ final class TimerViewModel {
         if isOvertime {
             overtimeSeconds += 1
             currentSession?.endedAt = Date()
-            updateBreakOverrunReasonPromptIfNeeded()
             // Increment live focus time counter (no DB query needed)
             if state == .focusing || isOvertime {
                 todayFocusTime += 1
@@ -2128,29 +2086,6 @@ final class TimerViewModel {
             if coachTickCounter % 30 == 0 {
                 if let decision = coachEngine.tick() {
                     routeCoachDecision(decision)
-                }
-                // Check if engine triggered reason sheet
-                if coachEngine.shouldShowReasonSheet, !showCoachReasonSheet {
-                    showCoachReasonSheet = true
-                    pendingReasonKind = coachEngine.pendingAnomalyKind ?? .drift
-                    coachEngine.shouldShowReasonSheet = false
-                }
-            }
-        }
-
-        // Focus Coach: feed break overrun signal during breaks
-        if case .onBreak = state, settings?.coachRealtimeEnabled == true {
-            if remainingSeconds <= 0 {
-                let overrunSeconds = Double(overtimeSeconds)
-                coachEngine.updateBreakOverrun(overrunSeconds)
-                // Check for break overrun anomaly (≥2 min) — only check every 30s
-                if overtimeSeconds % 30 == 0 {
-                    let classifier = FocusCoachAnomalyClassifier()
-                    if classifier.shouldPromptReason(event: .breakOverrun(seconds: Int(overrunSeconds))),
-                       !showCoachReasonSheet {
-                        showCoachReasonSheet = true
-                        pendingReasonKind = .breakOverrun
-                    }
                 }
             }
         }
@@ -2258,8 +2193,7 @@ final class TimerViewModel {
         showSessionComplete = true
         closePopover()
         DispatchQueue.main.async { [weak self] in
-            self?.openCompletionWindow?()
-            self?.requestAppActivation?()
+            self?.showCompletionWindow()
         }
         currentCoachQuickPromptDecision = nil
         hideCoachPanel()
@@ -2269,13 +2203,10 @@ final class TimerViewModel {
 
     @MainActor
     func saveReflection(
-        mood: FocusMood?,
         achievement: String?,
-        reminderIdsToComplete: [String] = [],
         splits: [TimeSplitView.SplitEntry]? = nil
     ) async {
         guard let session = lastCompletedSession else { return }
-        session.mood = mood
         session.achievement = achievement
 
         // Save splits if provided — skip zero/negative durations to prevent stat corruption
@@ -2293,15 +2224,6 @@ final class TimerViewModel {
             }
         }
 
-        if !reminderIdsToComplete.isEmpty {
-            for reminderId in reminderIdsToComplete {
-                let ok = RemindersService.shared.completeReminder(identifier: reminderId)
-                if !ok {
-                    print("[TimerViewModel] Failed to complete reminder: \(reminderId)")
-                }
-            }
-        }
-
         if let eventId = session.calendarEventId, !eventId.isEmpty {
             var noteLines: [String] = []
             if let achievement, !achievement.isEmpty {
@@ -2312,10 +2234,6 @@ final class TimerViewModel {
                     .filter({ !$0.isEmpty }) {
                     noteLines.append("• \(line)")
                 }
-            }
-            if !reminderIdsToComplete.isEmpty {
-                noteLines.append("")
-                noteLines.append("Completed reminders: \(reminderIdsToComplete.count)")
             }
             let duration = Int(session.actualDuration / 60)
             noteLines.append("")
@@ -2367,19 +2285,8 @@ final class TimerViewModel {
             log("continueAfterCompletion(\(action)): no pending completion (state=\(state)), ignoring")
             return
         }
-        if showCoachReasonSheet && pendingReasonKind == .breakOverrun {
-            recordCoachReason(kind: .breakOverrun, reason: nil)
-        }
         showSessionComplete = false
         isManualStop = false
-        showCoachReasonSheet = false
-        showPauseReasonChips = false
-        pendingReasonKind = .drift
-        if case .continueOvertime = action {
-            // keep existing flag while staying in the same episode
-        } else {
-            hasPromptedBreakOverrunReasonInCurrentEpisode = false
-        }
 
         if case .continueOvertime = action {
             // Keep overtime state and timer running.
@@ -2432,38 +2339,7 @@ final class TimerViewModel {
         }
     }
 
-    func updateBreakOverrunReasonPromptIfNeeded(completedSessionType: SessionType? = nil) {
-        let sessionType = completedSessionType ?? lastCompletedSession?.type
-        guard settings?.coachReasonPromptsEnabled == true,
-              sessionType != .focus,
-              overtimeSeconds >= 120,
-              !showCoachReasonSheet,
-              !hasPromptedBreakOverrunReasonInCurrentEpisode else { return }
-        showCoachReasonSheet = true
-        pendingReasonKind = .breakOverrun
-        hasPromptedBreakOverrunReasonInCurrentEpisode = true
-    }
-
-    /// Records the pause extension reason and dismisses the inline chips.
-    func recordPauseReason(_ reason: FocusCoachReason?) {
-        coachEngine.recordAnomaly(kind: .drift, reason: reason, sessionId: currentSession?.id)
-        showPauseReasonChips = false
-    }
-
-    /// Dismisses pause reason chips without recording (auto-timeout or user swipe).
-    func dismissPauseReasonChips() {
-        showPauseReasonChips = false
-    }
-
     // MARK: - Focus Coach Actions
-
-    /// Records an anomaly reason (user-selected chip) via the coach engine.
-    func recordCoachReason(kind: FocusCoachInterruptionKind, reason: FocusCoachReason?) {
-        coachEngine.recordAnomaly(kind: kind, reason: reason, sessionId: currentSession?.id)
-        if kind == .breakOverrun {
-            hasPromptedBreakOverrunReasonInCurrentEpisode = true
-        }
-    }
 
     /// Records the user's classification of a detected distracting app from the post-session review.
     /// - isPlanned=true: records a project-scoped allowance in DriftMemory so coach won't flag it again.
@@ -2701,6 +2577,8 @@ final class TimerViewModel {
 
     /// Shows the on-screen panel. One panel at a time: a new one replaces the old.
     func presentCoachPanel(_ presentation: CoachPanelPresentation, decision: FocusCoachDecision? = nil) {
+        // While the screen is shared nothing pops up; the prompt is simply not shown (SharePrivacy).
+        guard !isPrivate else { return }
         coachPanel = presentation
         coachPanelError = nil
         activeCoachInterventionDecision = decision ?? FocusCoachDecision(
@@ -3146,7 +3024,7 @@ final class TimerViewModel {
         // project, then the #1 project; the next task or today's lever names the concrete action.
         let topPriority: WeeklyPriority? = nil
         let goals = reader?.activeGoals() ?? []
-        let levers = GoalDataBuilder.levers(goals, now: now)
+        let levers = DailyTaskPlanner.reconcile(GoalDataBuilder.levers(goals, now: now), with: todayTasks(now: now), on: now)
         let ranked = reader?.rankedProjects() ?? []
         let bossProjectID = goals.first { $0.isBossFight }?.projectID
         let focusProject: Project? = topPriority == nil
@@ -3296,6 +3174,18 @@ final class TimerViewModel {
         return .init(minutes: minutes, why: .learned(asks: observations.count))
     }
 
+    /// Your regular block length (Settings ▸ Default block, also set from the running block's
+    /// length row). Every "Start" offers it first, so neither a warm-up nor a long break repeats a
+    /// 5 or 15; the coach's smaller ask sits beside it. A pure read: views call it from `body`.
+    var regularMinutes: Int {
+        Self.regularMinutes(defaultBlockSeconds: settings?.focusDuration, selectedMinutes: selectedMinutes)
+    }
+
+    static func regularMinutes(defaultBlockSeconds: TimeInterval?, selectedMinutes: Int) -> Int {
+        if let seconds = defaultBlockSeconds, seconds >= 5 * 60 { return Int((seconds / 60).rounded()) }
+        return max(5, selectedMinutes)
+    }
+
     /// The v4 rule: a fold over the last 21 days of prompts and blocks (§3.3 of the v4 design).
     func startRuleRecommendation(now: Date = Date()) -> CoachBlockSizeLadder.Recommendation {
         let since = now.addingTimeInterval(-Double(CoachBlockSizeLadder.lookbackDays) * 24 * 3600)
@@ -3345,8 +3235,12 @@ final class TimerViewModel {
     /// an unrelated block.
     func currentLever(projectID: UUID?, now: Date = Date()) -> DailyLever? {
         guard let projectID else { return nil }
-        let levers = GoalDataBuilder.levers(historyReader?.activeGoals() ?? [], now: now)
-        return levers.first { $0.projectID == projectID }
+        return todayLevers(now: now).first { $0.projectID == projectID }
+    }
+
+    /// Today's levers, reconciled with today's tasks: a task for a key result is the commitment.
+    func todayLevers(now: Date = Date()) -> [DailyLever] {
+        DailyTaskPlanner.reconcile(GoalDataBuilder.levers(historyReader?.activeGoals() ?? [], now: now), with: todayTasks(now: now), on: now)
     }
 
     // MARK: Coach v5: learning engine (docs/plans/2026-10-28-coach-v5-learning-engine-design.md)
@@ -3512,6 +3406,26 @@ final class TimerViewModel {
     /// Opens the welcome tour (set by FocusFlowApp; Settings → General → Getting started).
     var openOnboarding: (() -> Void)?
 
+    // MARK: Daily reminder (clarity design: docs/plans/2026-10-28-clarity-fixes.md)
+
+    /// Your own lines (My why, anti-vision, vision); empty until you write some.
+    var ownReminderLines: [DailyReminderLine] {
+        guard let settings else { return [] }
+        return DailyReminder.ownLines(why: settings.coachMyWhyLines, antiVision: settings.lifeAntiVision, vision: settings.lifeVision)
+    }
+
+    /// Saves "My why" (up to five lines), the first source of the reminder line.
+    func setReminderLines(_ text: String) {
+        guard let settings else { return }
+        settings.coachMyWhyText = CoachSettingsTab.limitedWhyText(text)
+        saveContext()
+    }
+
+    /// Today's reminder line; `offset` steps to another one. A pure read: safe while drawing.
+    func dailyReminder(now: Date = Date(), offset: Int = 0) -> DailyReminderLine? {
+        DailyReminder.line(own: ownReminderLines, style: settings?.coachStyle ?? .challenger, on: now, offset: offset)
+    }
+
     // MARK: Daily tasks (daily tasks design: docs/plans/2026-10-28-daily-tasks-design.md)
 
     /// The task picked for the next block (popover); saved on the session at start.
@@ -3540,53 +3454,180 @@ final class TimerViewModel {
 
     @discardableResult
     func addDailyTask(title: String, projectID: UUID? = nil, keyResultID: UUID? = nil, amount: Double? = nil,
-                      carriedFromID: UUID? = nil, day: Date? = nil, now: Date = Date()) -> DailyTask? {
+                      carriedFromID: UUID? = nil, reminderID: String? = nil, day: Date? = nil, now: Date = Date()) -> DailyTask? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let modelContext, !trimmed.isEmpty else { return nil }
         let start = Calendar.current.startOfDay(for: day ?? now)
         let order = (DailyTaskPlanner.tasks(recentDailyTasks(days: 1, now: start), on: start).map(\.order).max() ?? -1) + 1
         let task = DailyTask(title: trimmed, day: start, order: order, projectID: projectID, keyResultID: keyResultID, amount: amount)
         task.carriedFromID = carriedFromID
+        task.reminderID = reminderID
         modelContext.insert(task)
         saveContext()
         dailyTaskRevision += 1
+        if reminderID == nil, let listID = reminderListID(forProject: projectID) {
+            // A new task on a synced project also goes to its Reminders list (due that day).
+            let title = task.title, day = task.day
+            writeToReminders { [weak self, weak task] bridge in
+                // Deleted before the write ran: create nothing.
+                guard let task, !task.isDeleted, task.modelContext != nil,
+                      let id = bridge.createReminder(title: title, dueDay: day, listId: listID) else { return }
+                task.reminderID = id
+                self?.saveContext()
+            }
+        }
         return task
     }
 
     /// Adds today's lever ("3 LeetCode questions") as a task linked to its key result.
     @discardableResult
     func addLeverTask(_ lever: DailyLever, now: Date = Date()) -> DailyTask? {
-        addDailyTask(title: lever.action, projectID: lever.projectID, keyResultID: lever.id, amount: lever.amount, now: now)
+        addDailyTask(title: lever.taskTitle, projectID: lever.projectID, keyResultID: lever.id, amount: lever.amount, now: now)
     }
 
-    /// Ticks or unticks a task. A task linked to a key result logs its amount on tick and removes
-    /// exactly that entry on untick, so goal pace stays true.
-    func setDailyTask(_ task: DailyTask, done: Bool, sessionID: UUID? = nil, now: Date = Date()) {
+    /// Ticks or unticks a task. A linked task logs what is left of its amount on tick and removes
+    /// all of its entries on untick, so goal pace stays true. Shows a receipt with Undo.
+    /// `inBlock: false` (a tick that came from Reminders) never credits the running block.
+    func setDailyTask(_ task: DailyTask, done: Bool, sessionID: UUID? = nil, inBlock: Bool = true, now: Date = Date(), receipt: Bool = true) {
         guard let modelContext, task.isDone != done else { return }
-        task.isDone = done
+        adoptLegacyProgressEntry(of: task)
+        let result = keyResult(for: task)
+        let before = task.loggedCount
         if done {
+            task.isDone = true
             task.doneAt = now
-            task.sessionID = sessionID ?? currentSession?.id
-            if let resultID = task.keyResultID,
-               let result = try? modelContext.fetch(FetchDescriptor<GoalKeyResult>(predicate: #Predicate { $0.id == resultID })).first {
-                let entry = GoalProgressEntry(amount: task.progressAmount, at: now, note: task.title, sessionID: task.sessionID)
+            task.sessionID = inBlock ? (sessionID ?? currentSession?.id) : sessionID
+            let remaining = task.progressAmount - before
+            if let result, remaining > 0 {
+                let entry = GoalProgressEntry(amount: remaining, at: now, note: task.title, sessionID: task.sessionID)
+                entry.taskID = task.id
                 modelContext.insert(entry)
                 result.entries.append(entry)
-                task.progressEntryID = entry.id
             }
+            if result != nil { task.loggedAmount = task.progressAmount }
             coachJournal.record(.logged, "Done: \(task.title).", at: now)
         } else {
-            removeProgressEntry(of: task)
+            removeProgressEntries(of: task)
+            task.isDone = false
+            task.doneAt = nil
+            task.sessionID = nil
+            if result != nil { task.loggedAmount = 0 }
+        }
+        saveContext()
+        dailyTaskRevision += 1
+        pushReminderCompletion(of: task)
+        guard receipt else { return }
+        showDailyTaskReceipt(DailyTaskReceipt(
+            taskID: task.id,
+            text: DailyTaskReceipt.text(
+                change: done ? .done : .reopened, taskTitle: task.title, resultTitle: result?.title,
+                amount: done ? task.progressAmount - before : before, logged: task.loggedCount, of: task.progressAmount,
+                goalDone: result?.done, goalTarget: result?.target
+            ),
+            undo: done ? .reopen : .markDone,
+            at: now
+        ))
+    }
+
+    /// +1 or −1 on a counted task ("Problems solved 1 of 3"). Each +1 is its own goal entry; −1
+    /// takes back the latest. The task is done when the count reaches its amount.
+    @discardableResult
+    func stepDailyTask(_ task: DailyTask, by delta: Int, sessionID: UUID? = nil, now: Date = Date(), receipt: Bool = true) -> Bool {
+        guard let modelContext, delta != 0, let result = keyResult(for: task) else { return false }
+        adoptLegacyProgressEntry(of: task)
+        var logged = task.loggedCount
+        if delta > 0 {
+            for _ in 0..<delta {
+                let entry = GoalProgressEntry(amount: 1, at: now, note: task.title, sessionID: sessionID ?? currentSession?.id)
+                entry.taskID = task.id
+                modelContext.insert(entry)
+                result.entries.append(entry)
+            }
+            logged += Double(delta)
+        } else {
+            let taskID = task.id
+            var descriptor = FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.taskID == taskID }, sortBy: [SortDescriptor(\.at, order: .reverse)])
+            descriptor.fetchLimit = 50
+            var toRemove = Double(-delta)
+            for entry in (try? modelContext.fetch(descriptor)) ?? [] where toRemove > 0 {
+                let take = min(entry.amount, toRemove)
+                if entry.amount > take { entry.amount -= take } else { modelContext.delete(entry) }
+                toRemove -= take
+                logged -= take
+            }
+            guard toRemove < Double(-delta) else { return false }
+        }
+        task.loggedAmount = max(0, logged)
+        let nowDone = task.loggedCount >= task.progressAmount
+        if nowDone, !task.isDone {
+            task.isDone = true
+            task.doneAt = now
+            task.sessionID = sessionID ?? currentSession?.id
+            coachJournal.record(.logged, "Done: \(task.title).", at: now)
+        } else if !nowDone, task.isDone {
+            task.isDone = false
             task.doneAt = nil
             task.sessionID = nil
         }
         saveContext()
         dailyTaskRevision += 1
+        pushReminderCompletion(of: task)
+        if receipt {
+            showDailyTaskReceipt(DailyTaskReceipt(
+                taskID: task.id,
+                text: DailyTaskReceipt.text(
+                    change: delta > 0 ? .added : .removed, taskTitle: task.title, resultTitle: result.title,
+                    amount: Double(abs(delta)), logged: task.loggedCount, of: task.progressAmount,
+                    goalDone: result.done, goalTarget: result.target
+                ),
+                undo: delta > 0 ? .stepDown : .stepUp,
+                at: now
+            ))
+        }
+        return true
     }
 
+    /// The tap on a task's control: +1 on an open counted task, otherwise tick or untick.
+    func advanceDailyTask(_ task: DailyTask, sessionID: UUID? = nil, now: Date = Date()) {
+        if task.isCounted, !task.isDone {
+            stepDailyTask(task, by: 1, sessionID: sessionID, now: now)
+        } else {
+            setDailyTask(task, done: !task.isDone, sessionID: sessionID, now: now)
+        }
+    }
+
+    /// What the last tick or +1 logged, with Undo; clears itself after a few seconds.
+    private(set) var dailyTaskReceipt: DailyTaskReceipt?
+
+    private func showDailyTaskReceipt(_ receipt: DailyTaskReceipt) {
+        dailyTaskReceipt = receipt
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(DailyTaskReceipt.visibleSeconds))
+            if self?.dailyTaskReceipt?.id == receipt.id { self?.dailyTaskReceipt = nil }
+        }
+    }
+
+    /// Reverses the receipt's change without a new receipt.
+    func undoDailyTaskReceipt(now: Date = Date()) {
+        guard let receipt = dailyTaskReceipt else { return }
+        dailyTaskReceipt = nil
+        guard let task = recentDailyTasks(days: 1, now: now).first(where: { $0.id == receipt.taskID })
+            ?? recentDailyTasks(days: 8, now: now).first(where: { $0.id == receipt.taskID }) else { return }
+        switch receipt.undo {
+        case .reopen: setDailyTask(task, done: false, now: now, receipt: false)
+        case .markDone: setDailyTask(task, done: true, now: now, receipt: false)
+        case .stepDown: stepDailyTask(task, by: -1, now: now, receipt: false)
+        case .stepUp: stepDailyTask(task, by: 1, now: now, receipt: false)
+        }
+    }
+
+    /// Deletes the task; a synced task's reminder is deleted with it (the list mirrors the tasks).
     func deleteDailyTask(_ task: DailyTask) {
         guard let modelContext else { return }
-        removeProgressEntry(of: task)
+        if let reminderID = syncedReminderID(of: task) {
+            writeToReminders { $0.deleteReminder(identifier: reminderID) }
+        }
+        removeProgressEntries(of: task)
         modelContext.delete(task)
         saveContext()
         dailyTaskRevision += 1
@@ -3599,6 +3640,10 @@ final class TimerViewModel {
         task.order = (DailyTaskPlanner.tasks(recentDailyTasks(days: 0, now: tomorrow), on: tomorrow).map(\.order).max() ?? -1) + 1
         saveContext()
         dailyTaskRevision += 1
+        if let reminderID = syncedReminderID(of: task) {
+            // Due tomorrow in Reminders too, so today's sync doesn't bring it back.
+            writeToReminders { $0.setReminderDueDay(identifier: reminderID, tomorrow) }
+        }
     }
 
     /// Moves an open task to the top of its day.
@@ -3614,17 +3659,167 @@ final class TimerViewModel {
     func carryOverDailyTasks(now: Date = Date()) -> Int {
         let candidates = DailyTaskPlanner.carryOverCandidates(recentDailyTasks(days: DailyTaskPlanner.carryOverLookbackDays + 1, now: now), today: now)
         for task in candidates {
-            addDailyTask(title: task.title, projectID: task.projectID, keyResultID: task.keyResultID, amount: task.amount, carriedFromID: task.id, now: now)
+            addDailyTask(title: task.title, projectID: task.projectID, keyResultID: task.keyResultID, amount: task.amount,
+                         carriedFromID: task.id, reminderID: task.reminderID, now: now)
         }
         return candidates.count
     }
 
-    private func removeProgressEntry(of task: DailyTask) {
+    // MARK: Reminders sync (one list per project; design notes in ReminderTaskSync)
+
+    /// EventKit in the app, a fake in tests.
+    var reminderBridge: any ReminderBridge = RemindersService.shared
+    /// The latest queued write to Reminders (tests await it).
+    private(set) var reminderWrite: Task<Void, Never>?
+    private var reminderSyncTask: Task<Void, Never>?
+    private var isSyncingReminders = false
+    private var reminderSyncAgain = false
+    /// Set while the sync applies Reminders' state, so it is not written straight back.
+    private var applyingReminderSync = false
+
+    var remindersSyncOn: Bool { settings?.remindersIntegrationEnabled == true && reminderBridge.isAuthorized }
+
+    func reminderListID(forProject projectID: UUID?) -> String? {
+        guard remindersSyncOn, let projectID, let modelContext,
+              let project = try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })).first,
+              let listID = project.reminderListID, !listID.isEmpty, !project.archived else { return nil }
+        return listID
+    }
+
+    /// Queues an EventKit write after the current UI change, in order, so a tick or delete never
+    /// waits on the Reminders store.
+    private func writeToReminders(_ work: @escaping @MainActor (any ReminderBridge) -> Void) {
+        let previous = reminderWrite
+        let bridge = reminderBridge
+        reminderWrite = Task { @MainActor in
+            await previous?.value
+            work(bridge)
+        }
+    }
+
+    /// The task's reminder, while its project still syncs a list (after "Don't sync" or archiving,
+    /// FocusFlow stops writing to the old list).
+    func syncedReminderID(of task: DailyTask) -> String? {
+        guard let reminderID = task.reminderID, reminderListID(forProject: task.projectID) != nil else { return nil }
+        return reminderID
+    }
+
+    private func pushReminderCompletion(of task: DailyTask) {
+        guard !applyingReminderSync, let reminderID = syncedReminderID(of: task) else { return }
+        let done = task.isDone
+        writeToReminders { $0.setReminderCompleted(identifier: reminderID, done) }
+    }
+
+    /// Asks for a sync soon (coalesced). Called on launch, app activation, EventKit changes, day
+    /// rollover, popover open and when a project's list changes.
+    func scheduleReminderSync(after delay: Duration = .milliseconds(800)) {
+        guard remindersSyncOn else { return }
+        reminderSyncTask?.cancel()
+        reminderSyncTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.syncReminders()
+        }
+    }
+
+    /// Pulls each synced project's list into today's tasks (see `ReminderTaskSync`). The fetch runs
+    /// off the main thread; applying it is a few SwiftData writes.
+    func syncReminders(now: Date = Date()) async {
+        guard remindersSyncOn, let modelContext else { return }
+        guard !isSyncingReminders else { reminderSyncAgain = true; return }
+        isSyncingReminders = true
+        defer {
+            isSyncingReminders = false
+            if reminderSyncAgain { reminderSyncAgain = false; scheduleReminderSync() }
+        }
+        // Oldest first, so if two projects ever name the same list the same one always wins.
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived }, sortBy: [SortDescriptor(\.createdAt)]))) ?? []
+        var projectForList: [String: UUID] = [:]
+        for project in projects {
+            if let listID = project.reminderListID, !listID.isEmpty, projectForList[listID] == nil { projectForList[listID] = project.id }
+        }
+        guard !projectForList.isEmpty else { return }
+        await reminderWrite?.value // our own pending writes land first
+        let open = await reminderBridge.fetchIncompleteReminders(in: Array(projectForList.keys), dueDateStarting: nil, dueDateEnding: nil)
+
+        let tasks = recentDailyTasks(days: DailyTaskPlanner.carryOverLookbackDays + 1, now: now)
+        let refs = tasks.compactMap { task in
+            task.reminderID.map { ReminderTaskSync.TaskRef(id: task.id, reminderID: $0, day: task.day, isDone: task.isDone, title: task.title) }
+        }
+        let plan = ReminderTaskSync.plan(open: open, projectForList: projectForList, tasks: refs, today: now)
+        guard !plan.isEmpty else { return }
+
+        applyingReminderSync = true
+        defer { applyingReminderSync = false }
+        var changed = false
+        let byID = Dictionary(tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // One insert batch, one save: imports never run a fetch or save per task.
+        let day = Calendar.current.startOfDay(for: now)
+        var order = (DailyTaskPlanner.tasks(tasks, on: now).map(\.order).max() ?? -1) + 1
+        for item in plan.imports {
+            let task = DailyTask(title: item.title, day: day, order: order, projectID: item.projectID)
+            task.carriedFromID = item.carriedFromID
+            task.reminderID = item.reminderID
+            modelContext.insert(task)
+            order += 1
+            changed = true
+        }
+        for rename in plan.renames {
+            byID[rename.taskID]?.title = rename.title
+            changed = true
+        }
+        for deferral in plan.deferrals {
+            byID[deferral.taskID]?.day = deferral.day
+            changed = true
+        }
+        for id in plan.reopens {
+            guard let task = byID[id] else { continue }
+            setDailyTask(task, done: false, now: now, receipt: false)
+            changed = true
+        }
+        for check in plan.toCheck {
+            guard let task = byID[check.taskID] else { continue }
+            switch reminderBridge.reminderState(identifier: check.reminderID) {
+            case .completed:
+                setDailyTask(task, done: true, inBlock: false, now: now, receipt: false)
+                changed = true
+            case .missing:
+                task.reminderID = nil // deleted in Reminders: the task stays, unlinked
+                changed = true
+            case .open:
+                break // moved to a list this project doesn't sync: leave it linked
+            }
+        }
+        // Nothing changed, no save and no revision bump, so views keyed on it don't redraw.
+        guard changed else { return }
+        saveContext()
+        dailyTaskRevision += 1
+        log("reminders: synced \(plan.imports.count) new, \(plan.renames.count) renamed, \(plan.deferrals.count) moved, \(plan.reopens.count) reopened")
+    }
+
+    private func keyResult(for task: DailyTask) -> GoalKeyResult? {
+        guard let modelContext, let resultID = task.keyResultID else { return nil }
+        return try? modelContext.fetch(FetchDescriptor<GoalKeyResult>(predicate: #Predicate { $0.id == resultID })).first
+    }
+
+    /// A task ticked before entries carried `taskID`: tag its one entry so −1 and untick find it.
+    private func adoptLegacyProgressEntry(of task: DailyTask) {
         guard let modelContext, let entryID = task.progressEntryID else { return }
         if let entry = try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.id == entryID })).first {
-            modelContext.delete(entry)
+            entry.taskID = task.id
+            if task.loggedAmount == nil { task.loggedAmount = entry.amount }
         }
         task.progressEntryID = nil
+    }
+
+    /// Removes every goal entry logged through `task`.
+    private func removeProgressEntries(of task: DailyTask) {
+        guard let modelContext else { return }
+        adoptLegacyProgressEntry(of: task)
+        let taskID = task.id
+        for entry in (try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.taskID == taskID }))) ?? [] {
+            modelContext.delete(entry)
+        }
     }
 
     /// Notch companion host, set by FocusFlowApp (nil in tests).
@@ -3757,8 +3952,9 @@ final class TimerViewModel {
         ), ladder: ladder)
         updateCoachDebugReadout(snapshot)
 
-        // Coming back to the desk is a breakpoint (v4 §3.2): it opens its own window.
-        guard snapshot.inGoodWindow || arrival else {
+        // Coming back to the desk is a breakpoint (v4 §3.2): it opens its own window. So does a
+        // "Deep work" / Focus Time block on the calendar: you set that time aside for this.
+        guard snapshot.inGoodWindow || arrival || calendarAvailability.isFocusBlockNow else {
             suppressIdlePrompt(.outsideFocusWindow)
             return
         }
@@ -4280,17 +4476,23 @@ final class TimerViewModel {
         driftMonitor.record(at: now, seconds: seconds, kind: kind, switchesPerMinute: frontmost.switchesPerMinute)
     }
 
-    /// Seconds that count toward the daily goal: own work once a project is marked Work (office
-    /// hours must not switch the coach off for the day), otherwise all focus. The store query is
-    /// cached for 30 s, and any change in tracked focus time invalidates it.
+    /// Seconds that count toward the daily goal (`GoalDataBuilder.goalScope`): the ★ #1 project,
+    /// else own work once a project is marked Work, else all focus. Office hours never fill the ring
+    /// or switch the coach off. The store query is cached for 30 s; new focus time invalidates it.
     func goalProgressSeconds(now: Date = Date()) -> TimeInterval {
         if let cached = goalProgressCache, cached.focusTime == todayFocusTime,
            now.timeIntervalSince(cached.at) < 30, cached.at <= now {
             return cached.seconds
         }
-        let seconds = historyReader?.ownWorkSecondsToday(now: now) ?? todayFocusTime
+        let seconds = historyReader?.goalScopeSecondsToday(now: now) ?? todayFocusTime
         goalProgressCache = (now, todayFocusTime, seconds)
         return seconds
+    }
+
+    /// What the daily goal counts, for labels ("★ Learning"). A store read: safe while drawing.
+    func goalScope() -> GoalScope {
+        guard let modelContext else { return .allFocus }
+        return GoalDataBuilder.goalScope((try? modelContext.fetch(FetchDescriptor<Project>())) ?? [])
     }
 
     private func currentPacing(now: Date) -> CoachGoalPacing {
@@ -4879,6 +5081,7 @@ final class TimerViewModel {
     // MARK: - Rescue loop: pause screen
 
     private func presentPauseScreen(_ presentation: CoachPauseScreenPresentation) {
+        guard !isPrivate else { return }
         if coachPanel != nil { hideCoachPanel() }
         pauseScreen = presentation
         pauseScreenHost?.showPauseScreen(presentation)
@@ -5220,9 +5423,93 @@ final class TimerViewModel {
     }
 
     private func shouldSuppressGuardianPopups(using settings: AppSettings) -> Bool {
-        screenShareGuard.shouldSuppressGuardianPopups(
+        isPrivate || screenShareGuard.shouldSuppressGuardianPopups(
             enabled: settings.coachSuppressPopupsDuringScreenShare
         )
+    }
+
+    // MARK: Hide while sharing my screen (SharePrivacy)
+
+    /// FocusFlow is hiding itself: the screen is being shared, or "Private now" is set.
+    private(set) var isPrivate = false
+    /// "Private now" from the popover. Not saved: a relaunch starts visible.
+    private(set) var isPrivateManual = false
+    @ObservationIgnored private var lastSharedAt: Date?
+    @ObservationIgnored private var privacyTimer: Timer?
+    /// The block ended while private: the window opens when the share is over.
+    @ObservationIgnored private var completionWindowDeferred = false
+    /// Tests replace the live signal (`ScreenCapture.isActive`).
+    @ObservationIgnored var shareSignalsProvider: (() -> SharePrivacy.Signals)?
+
+    func setPrivateManually(_ on: Bool) {
+        isPrivateManual = on
+        refreshPrivacy()
+    }
+
+    /// Opens the block-end window, or holds it until the share is over.
+    func showCompletionWindow() {
+        guard !isPrivate else {
+            completionWindowDeferred = true
+            return
+        }
+        openCompletionWindow?()
+        requestAppActivation?()
+    }
+
+    /// Checks once a second (one cheap CoreGraphics call), so FocusFlow is gone within a second
+    /// of a share starting.
+    func startPrivacyMonitor() {
+        guard privacyTimer == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshPrivacy() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        privacyTimer = timer
+        refreshPrivacy()
+    }
+
+    func refreshPrivacy(now: Date = Date()) {
+        var signals = shareSignalsProvider?() ?? liveShareSignals()
+        signals.manual = isPrivateManual
+        if signals.screenShared { lastSharedAt = now }
+        let on = SharePrivacy.isPrivate(signals, lastSharedAt: lastSharedAt, now: now)
+        guard on != isPrivate else { return }
+        isPrivate = on
+        log("privacy: \(on ? "hidden" : "visible") (manual \(signals.manual), screen shared \(signals.screenShared))")
+        applyPrivacy(on)
+    }
+
+    /// The automatic signal follows "Hide while sharing my screen"; "Private now" always works.
+    private func liveShareSignals() -> SharePrivacy.Signals {
+        guard settings?.coachSuppressPopupsDuringScreenShare == true else { return .init() }
+        return .init(screenShared: ScreenCapture.isActive)
+    }
+
+    private func applyPrivacy(_ on: Bool) {
+        NotificationService.shared.isPrivate = on
+        notchHost?.setEnabled(on ? false : isNotchCompanionEnabled)
+        if on {
+            if coachPanel != nil { hideCoachPanel() }
+            if pauseScreen != nil {
+                pauseScreen = nil
+                pauseScreenHost?.hidePauseScreen()
+            }
+            closePopover()
+            // An open block-end window names the project: put it away and bring it back after.
+            for window in NSApp?.windows ?? [] where window.isVisible
+                && window.identifier?.rawValue.contains("session-complete") == true {
+                window.orderOut(nil)
+                completionWindowDeferred = true
+            }
+        }
+        // Best effort for windows you open yourself; some capture paths ignore it (see SharePrivacy).
+        for window in NSApp?.windows ?? [] {
+            window.sharingType = on ? .none : .readOnly
+        }
+        if !on, completionWindowDeferred {
+            completionWindowDeferred = false
+            if showSessionComplete || isOvertime { showCompletionWindow() }
+        }
     }
 
     private func applyProjectBlockRecommendation() {
