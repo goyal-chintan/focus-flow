@@ -138,4 +138,50 @@ final class TasksGoalsClarityTests: XCTestCase {
         XCTAssertFalse(popover.contains("Goal for this block"))
         XCTAssertTrue(popover.contains(#"IdleSectionLabel("Working on")"#))
     }
+
+    /// Review 2026-10-30: a Work task picked earlier never rides along on a Learning block, from any
+    /// start path (`startFocus` drops it), and its prefilled title goes with it.
+    func testPickedTaskFromAnotherProjectNeverStartsWithTheBlock() throws {
+        let (vm, context) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        let learning = Project(name: "Learning"), work = Project(name: "Office")
+        context.insert(learning); context.insert(work)
+        try context.save()
+        let epic = try XCTUnwrap(vm.addDailyTask(title: "Create the backup Epic", projectID: work.id, pushToReminders: false))
+        vm.pendingTaskID = epic.id
+        vm.pendingIntentText = epic.title
+        vm.selectedProject = learning
+        vm.dropPendingTaskOutsideProject()
+        XCTAssertNil(vm.pendingTaskID)
+        XCTAssertEqual(vm.pendingIntentText, "")
+
+        // The block's own project keeps its pick.
+        let sql = try XCTUnwrap(vm.addDailyTask(title: "Window functions", projectID: learning.id, pushToReminders: false))
+        vm.pendingTaskID = sql.id
+        vm.dropPendingTaskOutsideProject()
+        XCTAssertEqual(vm.pendingTaskID, sql.id)
+    }
+
+    /// Block end (2026-10-30): you planned SQL, did another exercise for the same goal. "Add
+    /// something you finished" defaults to the block task's goal and logs 1 to it, on this block.
+    func testSomethingElseYouFinishedCountsTowardTheGoal() throws {
+        let (vm, context) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        let sql = GoalKeyResult(title: "SQL Questions", kind: .count, target: 10)
+        let problems = GoalKeyResult(title: "Problems Solved", kind: .count, target: 40)
+        _ = goal(context, results: [sql, problems])
+
+        XCTAssertEqual(SessionTasksSection.defaultResultID(results: [sql.id, problems.id], blockTaskResultID: sql.id), sql.id)
+        XCTAssertNil(SessionTasksSection.defaultResultID(results: [sql.id, problems.id], blockTaskResultID: nil), "Two goals, no plan: you pick")
+        XCTAssertEqual(SessionTasksSection.defaultResultID(results: [problems.id], blockTaskResultID: nil), problems.id)
+        XCTAssertEqual(SessionTasksSection.defaultResultID(results: [problems.id], blockTaskResultID: sql.id), problems.id,
+                       "A goal outside this project is never the default; the project's own one is")
+
+        let sessionID = UUID()
+        let extra = try XCTUnwrap(vm.addDailyTask(title: "Finished 1 assignment", keyResultID: sql.id, pushToReminders: false))
+        vm.setDailyTask(extra, done: true, sessionID: sessionID)
+        XCTAssertEqual(sql.done, 1)
+        XCTAssertEqual(problems.done, 0)
+        XCTAssertEqual(extra.sessionID, sessionID)
+    }
 }

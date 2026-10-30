@@ -13,7 +13,8 @@ struct PopoverBlockLogRow: View {
     var body: some View {
         let now = Date()
         let todays = timerVM.todayTasks(now: now)
-        let stats = DailyTaskPlanner.stats(todays, on: now)
+        // This block's project only: "2/5 tasks" never counts another project's reminders.
+        let stats = DailyTaskPlanner.stats(DailyTaskPlanner.forProject(todays, timerVM.taskScopeProjectID), on: now)
         let blockTask = timerVM.currentBlockTaskID.flatMap { id in todays.first { $0.id == id } }
         let result = quickResult(now: now)
         if stats.planned > 0 || result != nil {

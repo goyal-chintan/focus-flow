@@ -44,11 +44,17 @@ enum DailyTaskPlanner {
         return DailyTaskStats(planned: todays.count, done: todays.filter(\.isDone).count)
     }
 
-    /// The next open task, preferring one for `projectID` when given.
-    static func nextTask(_ all: [DailyTask], on day: Date, preferring projectID: UUID? = nil, calendar: Calendar = .current) -> DailyTask? {
-        let open = tasks(all, on: day, calendar: calendar).filter { !$0.isDone }
-        if let projectID, let match = open.first(where: { $0.projectID == projectID }) { return match }
-        return open.first
+    /// The tasks that belong with a block on `projectID`: that project's own tasks and its
+    /// Reminders list, nothing else (2026-10-30: office reminders filled a Learning block's end
+    /// window and its "Start next"). With no project, all of them.
+    static func forProject(_ all: [DailyTask], _ projectID: UUID?) -> [DailyTask] {
+        guard let projectID else { return all }
+        return all.filter { $0.projectID == projectID }
+    }
+
+    /// The next open task for a block on `projectID` (`forProject`).
+    static func nextTask(_ all: [DailyTask], on day: Date, for projectID: UUID? = nil, calendar: Calendar = .current) -> DailyTask? {
+        tasks(forProject(all, projectID), on: day, calendar: calendar).first { !$0.isDone }
     }
 
     /// Unfinished tasks from the most recent earlier day that had any tasks (within the lookback),

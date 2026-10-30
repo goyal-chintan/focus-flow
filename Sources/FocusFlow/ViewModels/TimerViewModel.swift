@@ -1052,6 +1052,8 @@ final class TimerViewModel {
             project: selectedProject,
             customLabel: customLabel.isEmpty ? nil : customLabel
         )
+        // A task picked for another project never rides along (review 2026-10-30).
+        dropPendingTaskOutsideProject()
         // Intent capture (Coach v2 §9 step 2): optional, one line, never blocks the start.
         let intent = pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines)
         session.intentText = intent.isEmpty ? nil : intent
@@ -2902,6 +2904,7 @@ final class TimerViewModel {
         let preferredMinutes = selectedMinutes
         if let projectID = plan?.projectID, let project = historyReader?.project(id: projectID) {
             selectedProject = project
+            dropPendingTaskOutsideProject()
         }
         if let priorityID = plan?.priorityID {
             pendingPriorityID = priorityID
@@ -2913,8 +2916,7 @@ final class TimerViewModel {
         if plan?.findNextStep == true {
             pendingIntentText = "Find the next step"
         } else if intentIsFree, pendingTaskID == nil,
-                  let task = DailyTaskPlanner.nextTask(todayTasks(), on: Date(), preferring: plan?.projectID),
-                  plan?.projectID == nil || task.projectID == nil || task.projectID == plan?.projectID {
+                  let task = DailyTaskPlanner.nextTask(todayTasks(), on: Date(), for: plan?.projectID ?? selectedProject?.id) {
             // Your own plan first: the next open task for this project becomes the block's goal.
             pendingIntentText = task.title
             pendingTaskID = task.id
@@ -3108,7 +3110,10 @@ final class TimerViewModel {
         let focusProject: Project? = topPriority == nil
             ? (ranked.first { $0.id == bossProjectID } ?? ranked.first)
             : nil
-        let lever = levers.first { focusProject == nil || $0.projectID == nil || $0.projectID == focusProject?.id } ?? levers.first
+        // The focus project's lever only: another project's lever never names this block.
+        let lever = focusProject == nil
+            ? levers.first
+            : levers.first { $0.projectID == nil || $0.projectID == focusProject?.id }
 
         // Block length: max(25, min(remaining, 50)), shortened to end 5 min before a meeting.
         var minutes = pacing.suggestedBlockMinutes
@@ -3124,8 +3129,7 @@ final class TimerViewModel {
         )
         target.rank = focusProject?.priorityRank
         // What the block will actually be about: your next task for this project, else the lever.
-        if let task = DailyTaskPlanner.nextTask(todayTasks(now: now), on: now, preferring: projectID),
-           projectID == nil || task.projectID == nil || task.projectID == projectID {
+        if let task = DailyTaskPlanner.nextTask(todayTasks(now: now), on: now, for: projectID) {
             target.taskTitle = task.title
         } else {
             target.taskTitle = lever?.action
@@ -3363,6 +3367,23 @@ final class TimerViewModel {
 
     /// Today's top lever for the block's project. Nil without a project: a lever must never label
     /// an unrelated block.
+    /// The project whose tasks and lever a surface shows now: the running block's, else the block
+    /// just earned (break, overtime), else the picked one. Read-only, so views may call it in `body`.
+    var taskScopeProjectID: UUID? {
+        currentSession?.project?.id ?? breakEpisodeContext?.earnedBlock.projectId
+            ?? completedBlockContext?.projectId ?? selectedProject?.id
+    }
+
+    /// Drops a picked task that belongs to another project than the picked one, with the title it
+    /// prefilled, so a start from the coach, notch or a plan never links it (review 2026-10-30).
+    func dropPendingTaskOutsideProject() {
+        guard let id = pendingTaskID, let projectID = selectedProject?.id,
+              let task = todayTasks().first(where: { $0.id == id }),
+              let taskProjectID = task.projectID, taskProjectID != projectID else { return }
+        pendingTaskID = nil
+        if pendingIntentText == task.title { pendingIntentText = "" }
+    }
+
     func currentLever(projectID: UUID?, now: Date = Date()) -> DailyLever? {
         guard let projectID else { return nil }
         return todayLevers(now: now).first { $0.projectID == projectID }
