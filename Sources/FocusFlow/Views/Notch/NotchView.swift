@@ -52,8 +52,22 @@ struct NotchSnapshot {
         case idle
         case focusing
         case paused
+        /// A block finished and is still counting up.
         case overtime
         case onBreak(paused: Bool)
+        /// A break finished and is running over. Not `.overtime`: that one is a block's.
+        case breakOver
+
+        /// Both overtime kinds arrive as `.idle` + `isOvertime`; `isBreakOvertime` splits them.
+        static func from(state: TimerState, isOvertime: Bool, isBreakOvertime: Bool, isBreakPaused: Bool) -> Mode {
+            switch state {
+            case .idle, .focusing:
+                guard isOvertime else { return state == .idle ? .idle : .focusing }
+                return isBreakOvertime ? .breakOver : .overtime
+            case .paused: return .paused
+            case .onBreak: return .onBreak(paused: isBreakPaused)
+            }
+        }
     }
 
     var mode: Mode
@@ -183,6 +197,8 @@ struct NotchView: View {
             MiniRing(progress: 1, color: .orange, symbol: "checkmark")
         case .onBreak:
             Image(systemName: "cup.and.saucer.fill").font(.system(size: 12, weight: .semibold)).foregroundStyle(.green)
+        case .breakOver:
+            Image(systemName: "cup.and.saucer.fill").font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
         case .idle:
             if snapshot.coachHook != nil {
                 BreathingDot(color: .orange)
@@ -199,7 +215,7 @@ struct NotchView: View {
             wingText(snapshot.time, color: .white)
         case .paused:
             wingText(snapshot.time, color: .white.opacity(0.55))
-        case .overtime:
+        case .overtime, .breakOver:
             wingText(snapshot.time, color: .orange)
         case .onBreak(let paused):
             wingText(snapshot.time, color: paused ? .green.opacity(0.55) : .green)
@@ -230,6 +246,7 @@ struct NotchView: View {
         case .focusing, .paused: focusExpanded
         case .overtime: overtimeExpanded
         case .onBreak(let paused): breakExpanded(paused: paused)
+        case .breakOver: breakOverExpanded
         }
     }
 
@@ -320,6 +337,26 @@ struct NotchView: View {
             HStack(spacing: 8) {
                 NotchButton(title: "Start next block", symbol: "play.fill", prominent: true, tint: .green, action: actions.skipBreak)
                 NotchButton(title: paused ? "Resume break" : "Pause break", symbol: paused ? "play" : "pause", action: actions.toggleBreak)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// The break ran over: the same two answers as the popover, never a block's "Keep going".
+    private var breakOverExpanded: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("BREAK OVER").font(.system(size: 10, weight: .bold, design: .rounded)).tracking(1.4).foregroundStyle(.orange)
+            Text(snapshot.time)
+                .font(.system(size: 44, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.orange)
+                .accessibilityLabel("Break ran \(snapshot.time.dropFirst()) over")
+            if let lever = snapshot.lever {
+                Text("Next: \(lever.action)").font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.7))
+            }
+            HStack(spacing: 8) {
+                NotchButton(title: "Start next block", symbol: "play.fill", prominent: true, tint: .green, action: actions.startAfterBreak)
+                NotchButton(title: "Done for today", symbol: "stop.fill", action: actions.end)
                 Spacer(minLength: 0)
             }
         }
@@ -516,6 +553,8 @@ struct NotchActions {
     var takeBreak: () -> Void = {}
     var end: () -> Void = {}
     var skipBreak: () -> Void = {}
+    /// A break that ran over: start the next block.
+    var startAfterBreak: () -> Void = {}
     var toggleBreak: () -> Void = {}
     var start: (Int) -> Void = { _ in }
     var logResult: (UUID) -> Void = { _ in }

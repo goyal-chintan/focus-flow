@@ -73,13 +73,17 @@ final class NotchTests: XCTestCase {
         var onBreak = base
         onBreak.mode = .onBreak(paused: false)
         onBreak.time = "04:21"
+        var breakOver = base
+        breakOver.mode = .breakOver
+        breakOver.time = "+06:40"
 
         let cases: [(String, NotchSnapshot, Bool)] = [
             ("compact_idle", base, false), ("compact_attention", attention, false), ("compact_focusing", focusing, false),
             ("compact_paused", paused, false), ("compact_overtime", overtime, false), ("compact_break", onBreak, false),
+            ("compact_break_over", breakOver, false),
             ("expanded_idle", attention, true), ("expanded_receipt", receipt, true), ("expanded_focusing", focusing, true),
             ("expanded_focusing_no_task", focusingNoTask, true), ("expanded_overtime", overtime, true),
-            ("expanded_break", onBreak, true),
+            ("expanded_break", onBreak, true), ("expanded_break_over", breakOver, true),
         ]
         for (name, snapshot, expanded) in cases {
             let state = NotchState()

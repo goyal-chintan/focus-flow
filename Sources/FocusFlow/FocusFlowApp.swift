@@ -178,6 +178,8 @@ struct FocusFlowApp: App {
     private var menuBarIconName: String {
         switch timerVM.state {
         case .idle:
+            // A break running over keeps the cup: the orange +M:SS is break time, not a block's.
+            if timerVM.isBreakOvertime { return "cup.and.saucer.fill" }
             return timerVM.coachMenuBarPulse ? "bolt.circle.fill" : "bolt.circle"
         case .focusing, .paused:
             return timerVM.selectedProject?.icon ?? "scope"

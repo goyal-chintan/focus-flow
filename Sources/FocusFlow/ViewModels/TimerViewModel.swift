@@ -323,9 +323,11 @@ final class TimerViewModel {
     }
 
     /// True when the completed session was a focus session (not a break).
-    var isFocusOvertime: Bool { isOvertime && lastCompletedSession?.type == .focus }
+    /// Both overtime kinds share `state == .idle` + `isOvertime`; only these two tell them apart,
+    /// so a break that runs over is never shown or counted as a block's overtime.
+    var isFocusOvertime: Bool { isOvertime && !lastCompletionWasBreak }
     /// True when the completed session was a break (break ran past its duration).
-    var isBreakOvertime: Bool { isOvertime && lastCompletedSession?.type != .focus }
+    var isBreakOvertime: Bool { isOvertime && lastCompletionWasBreak }
 
     /// True when the user has paused a running break (countdown frozen).
     var isBreakPaused: Bool = false
@@ -1269,11 +1271,7 @@ final class TimerViewModel {
             saveContext()
 
             // Set up contexts so normal reflection displays correct session stats
-            lastCompletedDuration = session.duration
-            lastCompletedLabel = session.label
-            lastCompletedSession = session
-            lastCompletedFocusSession = session
-            lastCompletionWasBreak = (session.type != .focus)
+            noteWakeRecoveredCompletion(session)
             if session.type == .focus {
                 completedBlockContext = CompletedBlockContext(
                     sessionId: session.id,
@@ -1298,11 +1296,7 @@ final class TimerViewModel {
             session.completed = true
             saveContext()
 
-            lastCompletedDuration = session.duration
-            lastCompletedLabel = session.label
-            lastCompletedSession = session
-            lastCompletedFocusSession = session
-            lastCompletionWasBreak = (session.type != .focus)
+            noteWakeRecoveredCompletion(session)
             if session.type == .focus {
                 completedBlockContext = CompletedBlockContext(
                     sessionId: session.id,
@@ -1326,6 +1320,21 @@ final class TimerViewModel {
             showSessionComplete = false
             clearWakeRecoveryState()
             loadTodayStats()
+        }
+    }
+
+    /// The session a wake recovery resolved becomes the last completion. A break is never the
+    /// last focus block (the block-end window, earned break and "Last earned block" read that),
+    /// and its episode ends where the recovery ended it, not at the live clock.
+    private func noteWakeRecoveredCompletion(_ session: FocusSession) {
+        lastCompletedSession = session
+        lastCompletionWasBreak = (session.type != .focus)
+        if session.type == .focus {
+            lastCompletedDuration = session.duration
+            lastCompletedLabel = session.label
+            lastCompletedFocusSession = session
+        } else {
+            breakEpisodeContext?.breakEnded = session.endedAt
         }
     }
 
@@ -1457,6 +1466,7 @@ final class TimerViewModel {
 
         totalSeconds = duration
         remainingSeconds = duration
+        isBreakPaused = false
         state = .onBreak(type)
         AppUsageTracker.shared.syncCadence(isFocusing: false)
 
@@ -1549,6 +1559,8 @@ final class TimerViewModel {
             pauseTimer = nil
             pauseStartTime = nil
             pauseElapsed = 0
+            // A break paused for sleep is over now; left set, the next break would start "paused".
+            isBreakPaused = false
 
             // Capture wake recovery state
             wakeRecoverySession = currentSession
@@ -1579,6 +1591,14 @@ final class TimerViewModel {
             DispatchQueue.main.async { [weak self] in
                 self?.showCompletionWindow()
             }
+            return
+        }
+
+        // A break that ran over kept running over while the Mac slept (you were away either way).
+        // Its counter restarts whatever the auto-resume setting, which is about focus blocks.
+        if isBreakOvertime {
+            overtimeSeconds += max(0, Int(sleepDuration))
+            startTimer()
             return
         }
 
@@ -1756,6 +1776,11 @@ final class TimerViewModel {
         log("stopForReflection called, currentSession=\(currentSession != nil)")
         guard let session = currentSession else {
             stop()   // nothing to save
+            return
+        }
+        // A break is not a block to log: finishing one just ends it (never a "block done" window).
+        guard session.type == .focus else {
+            stop()
             return
         }
         // Too short to be worth a reflection window — just discard
@@ -2118,8 +2143,8 @@ final class TimerViewModel {
         if isOvertime {
             overtimeSeconds += 1
             currentSession?.endedAt = Date()
-            // Increment live focus time counter (no DB query needed)
-            if state == .focusing || isOvertime {
+            // Live focus time grows with a block's overtime only: a break that ran over is break time.
+            if isFocusOvertime {
                 todayFocusTime += 1
             }
             if overtimeSeconds % 30 == 0 {
