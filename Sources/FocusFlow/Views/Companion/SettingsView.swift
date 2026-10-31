@@ -311,7 +311,7 @@ private struct GeneralSettingsTab: View {
                     Button("Show Tour") { timerVM.openOnboarding?() }
                 } label: {
                     Text("Welcome tour")
-                    Text("Pick your #1, a goal and a coach style again. Takes a minute.")
+                    Text("Your #1, when you work on it, and the first step. Your answers are filled in.")
                 }
             } header: {
                 Text("Getting started")

@@ -12,6 +12,14 @@ struct FocusFlowApp: App {
             .appendingPathComponent("FocusFlow", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("FocusFlow.store")
+        #if DEBUG
+        // FOCUSFLOW_DEBUG_FRESH_STORE=1: an empty in-memory store, so first-run screens (the welcome
+        // tour) can be tried without touching the real store.
+        if ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_FRESH_STORE"] == "1",
+           let fresh = try? ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)) {
+            return fresh
+        }
+        #endif
         do {
             try StoreMigrator.migrateStoreIfNeeded(at: storeURL)
             let config = ModelConfiguration(schema: schema, url: storeURL)
@@ -78,20 +86,6 @@ struct FocusFlowApp: App {
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
-        .modelContainer(container)
-
-        // Welcome tour (onboarding design): first launch, and Settings → General → Getting started.
-        Window("Welcome to FocusFlow", id: "onboarding") {
-            OnboardingView()
-                .environment(timerVM)
-                .environment(\.modelContext, container.mainContext)
-        }
-        .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
-        .defaultPosition(.center)
-        // Opened only by the launch check or Settings, never by window restoration.
-        .restorationBehavior(.disabled)
-        .defaultLaunchBehavior(.suppressed)
         .modelContainer(container)
 
         // Settings window (⌘, and the popover gear). SettingsView owns its toolbar tab bar;
@@ -232,9 +226,10 @@ private struct AppLaunchBridge: View {
                     WindowPolicyManager.shared.prepareToOpen()
                     openWindow(id: "stats")
                 }
-                timerVM.openOnboarding = {
-                    WindowPolicyManager.shared.prepareToOpen()
-                    openWindow(id: "onboarding")
+                if timerVM.openOnboarding == nil {
+                    // Welcome tour, full screen (onboarding v2 §3.5): first launch, and Settings → General → Getting started.
+                    let onboarding = OnboardingController(timerVM: timerVM, modelContainer: modelContext.container)
+                    timerVM.openOnboarding = { onboarding.show() }
                 }
                 // Coach v4: the decision journal, written in release builds too.
                 if timerVM.coachJournal.fileURL == nil, !timerVM.isEvidenceMode {

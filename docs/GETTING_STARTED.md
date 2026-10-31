@@ -2,7 +2,7 @@
 
 FocusFlow helps you start the work that matters to you, one short block at a time. It lives in your menu bar and around your MacBook's notch.
 
-This guide takes about five minutes to read. You need about one minute to set the app up.
+This guide takes about five minutes to read. Setting the app up takes three questions.
 
 ---
 
@@ -29,12 +29,42 @@ FocusFlow has no Dock icon. Look for its icon in the menu bar at the top of the 
 
 ---
 
-## 2. The welcome tour (one minute)
+## 2. Meet your coach
 
-The first time you open FocusFlow, a short tour opens. It has five steps. Each step asks one thing:
+The first time you open FocusFlow, your coach introduces itself, full screen. FocusFlow is a coach for your goals: it learns when you work best, shows up at the right moment with one small step, and keeps track of your goal for you. Setting it up takes about a minute:
 
-| Step | What you do | Why |
+| Screen | The coach asks | Why |
 |---|---|---|
+| **Your direction** | "What do you want to make happen in the next few months?" Tap a goal, such as "Land a better job", or type your own. Add why it matters, if you like. | It becomes your #1. On hard days, the coach reminds you of your why. |
+| **Your measure** | "How will we know it's working?" Something to count, how many and by when, plus the very first step. "Decide later" skips the number. | The coach tracks the number and turns it into a small step each day. |
+| **Your rhythm** | "When are you at your best?" The times you are usually free, and time a day. | The coach speaks up only in these times, at most 3 times a day. |
+| **Your coach** | "How should I talk to you?" Gentle, Data or Challenger. You see its plan for you. | You pick the voice that gets you moving. |
+
+The last button depends on the time:
+
+- **In one of your times:** press **Start now** to start on your first step.
+- **Otherwise:** press **Done**. The coach plans to show up at the start of your next time.
+
+You can press **Skip** at any time. Nothing is saved until the last screen.
+
+**To see it again:** open Settings (⌘,) → **General** → **Getting started** → **Show Tour**. Your answers are filled in.
+
+---|---|---|
+| **What do you want more time for?** | Name the thing, for example "Interview prep", or tap a suggestion. Optionally add one line on why it matters. | It becomes your #1. The coach quotes your why back to you on hard days. |
+| **When can you work on it?** | Pick the times you are usually free, for example "Late night 22:00–00:00", and how much time a day. | The coach speaks up only in these times, at most 3 times a day. |
+| **What's the first step?** | Type one small, concrete step, for example "Solve 2 easy problems". You can also track a number toward a date, for example "60 problems in 1 month". Both are optional. | When the coach asks you to start, it names this step. |
+| **Here's your plan** | Check the plan and choose how the coach talks to you: Gentle, Data or Challenger. | You see what the coach will say, in your words. |
+
+The last button depends on the time:
+
+- **In one of your times:** press **Start now** to start a block on your step.
+- **Otherwise:** press **Done**. FocusFlow plans a block at the start of your next time and shows up then.
+
+You can press **Skip** at any time. Nothing is saved until the last screen.
+
+**To see the tour again:** open Settings (⌘,) → **General** → **Getting started** → **Show Tour**. Your answers are filled in.
+
+---|---|---|
 | **Welcome** | Read three lines. | You learn what the app does. |
 | **What matters most** | Name your #1 thing, for example "Interview prep". Choose its kind and how much time a day you want for it. | Everything else in the app points at your #1. |
 | **One result** | Say what you will count, how many, and by when. For example "60 practice problems in 1 month". You can skip this. | The app turns it into one small step a day. |
