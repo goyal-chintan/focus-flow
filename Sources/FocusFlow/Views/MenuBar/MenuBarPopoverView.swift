@@ -470,14 +470,12 @@ private struct IdlePopoverContent: View {
                     .padding(.top, 16)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             } else {
-                // 1 · Hero (mirrors the notch): own-work ring, coach hook, today's lever.
+                // Hero (mirrors the notch): own-work ring, coach hook, the picked project's lever.
+                // No task list here (2026-10-30): today's tasks are one menu away in "Working on",
+                // scoped to the picked project; Today holds the full list.
                 PopoverIdleHero(lever: lever)
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 16)
-                // 2 · Today's tasks: tick, or click a title to make it the block's goal.
-                PopoverTasksStrip()
-                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                    .padding(.top, 10)
             }
 
             VStack(alignment: .leading, spacing: 14) {
@@ -509,7 +507,9 @@ private struct IdlePopoverContent: View {
         .onChange(of: timerVM.completedFocusSessions) { _, _ in preselectRegularLength() }
         .onChange(of: timerVM.selectedProject) { _, newValue in
             if newValue != nil { timerVM.noteProjectSelected() }
-            applyIntentPrefill()
+            // The hero and the goal field follow the picked project.
+            lever = currentLever()
+            applyIntentPrefill(choosesProject: false)
         }
         .onChange(of: timerVM.pendingIntentText) { _, newValue in
             // Typing something else unlinks the picked task.
@@ -526,10 +526,15 @@ private struct IdlePopoverContent: View {
     }
 
     private func refresh() {
-        lever = timerVM.todayLevers().first
+        lever = currentLever()
         let recommendation = timerVM.startLadderRecommendation(now: Date())
         suggestion = recommendation
         applyIntentPrefill()
+    }
+
+    /// The picked project's lever; with no project picked, today's first lever.
+    private func currentLever() -> DailyLever? {
+        PopoverProjectScope.lever(timerVM.todayLevers(), projectID: timerVM.selectedProject?.id)
     }
 
     /// (Preselecting the coach's size here overwrote 25 with 5 after declined prompts.)
@@ -542,30 +547,40 @@ private struct IdlePopoverContent: View {
 
     /// Prefill order: the picked task, else today's lever (for this project), else the last
     /// intent (the view model's prefill). Text the user typed is never replaced.
-    private func applyIntentPrefill() {
+    /// `choosesProject`: on open, a lever with a project picks it; after you change the project
+    /// (to No Project too), the prefill never changes it back.
+    private func applyIntentPrefill(choosesProject: Bool = true) {
         guard timerVM.state == .idle, !timerVM.isOvertime else { return }
         let current = timerVM.pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let id = timerVM.pendingTaskID, let task = timerVM.todayTasks().first(where: { $0.id == id && !$0.isDone }) {
-            if current.isEmpty { timerVM.pendingIntentText = task.title }
+        let projectID = timerVM.selectedProject?.id
+        let picked = timerVM.pendingTaskID.flatMap { id in timerVM.todayTasks().first { $0.id == id } }
+        if let picked, !picked.isDone, projectID == nil || picked.projectID == nil || picked.projectID == projectID {
+            if current.isEmpty { timerVM.pendingIntentText = picked.title }
             return
         }
+        // No task, or another project's task: unlink it, and its title counts as prefill.
         timerVM.pendingTaskID = nil
-        let lastIntent = CoachHistoryReader(modelContext: modelContext).lastIntent(projectID: timerVM.selectedProject?.id) ?? ""
-        let isAuto = current.isEmpty || current == lastIntent || current == autoIntent
-        guard isAuto, let lever else { return }
+        let lastIntent = CoachHistoryReader(modelContext: modelContext).lastIntent(projectID: projectID) ?? ""
+        let isAuto = current.isEmpty || current == lastIntent || current == autoIntent || current == picked?.title
+        guard isAuto else { return }
+        // You chose No Project: no lever prefill, which would pick its project back.
+        if !choosesProject, projectID == nil {
+            timerVM.pendingIntentText = lastIntent
+            autoIntent = nil
+            return
+        }
+        guard let lever, projectID == nil || lever.projectID == nil || lever.projectID == projectID else {
+            // This project has no lever: its last intent, never another project's goal.
+            timerVM.pendingIntentText = lastIntent
+            autoIntent = nil
+            return
+        }
         // The lever's goal already has a task today: the block is for that task, so its end asks
         // "How many did you do?" and the count lands on the task and the goal together.
         if let task = timerVM.todayTasks().first(where: { $0.keyResultID == lever.id && !$0.isDone }),
-           timerVM.selectedProject == nil || task.projectID == nil || task.projectID == timerVM.selectedProject?.id {
+           projectID == nil || task.projectID == nil || task.projectID == projectID {
             pickTask(task)
             autoIntent = task.title
-            return
-        }
-        let projectID = timerVM.selectedProject?.id
-        guard projectID == nil || lever.projectID == nil || lever.projectID == projectID else {
-            // Another project's lever: fall back to this project's last intent.
-            if current == autoIntent { timerVM.pendingIntentText = lastIntent }
-            autoIntent = nil
             return
         }
         autoIntent = lever.action
@@ -602,7 +617,7 @@ private struct IdlePopoverContent: View {
     private var workingOnSection: some View {
         @Bindable var vm = timerVM
         return VStack(alignment: .leading, spacing: 6) {
-            IdleSectionLabel("Working on")
+            IdleSectionLabel("Project")
             ProjectPickerView(selectedProject: $vm.selectedProject)
         }
     }
@@ -612,7 +627,7 @@ private struct IdlePopoverContent: View {
         return SessionIntentField(
             intentText: $vm.pendingIntentText,
             isTaskLinked: timerVM.pendingTaskID != nil,
-            openTasks: timerVM.todayTasks().filter { !$0.isDone },
+            openTasks: PopoverProjectScope.openTasks(timerVM.todayTasks(), projectID: timerVM.selectedProject?.id),
             lever: lever,
             onPickTask: pickTask,
             onPickLever: pickLever
@@ -780,6 +795,22 @@ private struct IdlePopoverContent: View {
         }
     }
 
+}
+
+// MARK: - Project scope
+
+/// The idle popover follows the picked project (2026-10-30): its lever in the hero and goal field,
+/// and only its tasks in the goal field's menu.
+enum PopoverProjectScope {
+    /// The project's first lever; with no project picked, today's first lever.
+    static func lever(_ levers: [DailyLever], projectID: UUID?) -> DailyLever? {
+        guard let projectID else { return levers.first }
+        return levers.first { $0.projectID == projectID }
+    }
+
+    static func openTasks(_ tasks: [DailyTask], projectID: UUID?) -> [DailyTask] {
+        DailyTaskPlanner.forProject(tasks, projectID).filter { !$0.isDone }
+    }
 }
 
 // MARK: - Keyboard
@@ -1667,12 +1698,14 @@ extension MenuBarPopoverView {
         )
     }
 
-    /// What the next block is about: the picked task, else today's lever.
+    /// What the next block is about: the picked task, else the lever, both for this block's project.
     fileprivate var nextStepLine: String? {
-        if let id = timerVM.pendingTaskID, let task = timerVM.todayTasks().first(where: { $0.id == id && !$0.isDone }) {
+        let projectID = timerVM.taskScopeProjectID
+        if let id = timerVM.pendingTaskID,
+           let task = DailyTaskPlanner.forProject(timerVM.todayTasks(), projectID).first(where: { $0.id == id && !$0.isDone }) {
             return task.title
         }
-        return timerVM.todayLevers().first?.action
+        return PopoverProjectScope.lever(timerVM.todayLevers(), projectID: projectID)?.action
     }
 
     fileprivate var overtimeContent: some View {

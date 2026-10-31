@@ -11,7 +11,8 @@ struct PopoverIdleHero: View {
     @Query(sort: \PlannedBlock.startAt) private var plans: [PlannedBlock]
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
 
-    /// First of `GoalDataBuilder.levers` (computed by the parent so the goal field offers the same one).
+    /// The picked project's lever (`PopoverProjectScope.lever`; the parent computes it so the goal
+    /// field offers the same one).
     let lever: DailyLever?
 
     var body: some View {

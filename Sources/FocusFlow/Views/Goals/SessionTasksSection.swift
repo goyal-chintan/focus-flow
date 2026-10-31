@@ -3,9 +3,11 @@ import SwiftData
 
 /// End-of-block logging against the plan (daily tasks design §2, screen audit 2026-10-28).
 ///
-/// - Today's other tasks (this project first, up to five) with a tick. A tick is credited to
+/// - Today's other tasks for this project only (up to five) with a tick. A tick is credited to
 ///   this block and feeds a linked goal; it saves at once.
-/// - "Add something you finished": a task created already done, credited to this block.
+/// - "Add something you finished": a task created already done, credited to this block. It can
+///   count toward one of this project's goals (2026-10-30: you planned SQL, did another exercise
+///   for the same goal), defaulting to the block task's goal, else the project's only goal.
 /// - "Next step (for later)": an open task for today on this project. It replaces the old
 ///   free-text carry-forward note, which nothing read.
 ///
@@ -22,6 +24,9 @@ struct SessionTasksSection: View {
     @State private var doneTitle = ""
     @State private var nextTitle = ""
     @State private var lastNextStep: String?
+    /// The goal "Add something you finished" counts toward, once you pick one (nil = No goal).
+    @State private var pickedResultID: UUID?
+    @State private var hasPickedResult = false
 
     static let maxRows = 5
 
@@ -33,9 +38,13 @@ struct SessionTasksSection: View {
         _tasks = Query(filter: #Predicate<DailyTask> { $0.day >= since })
     }
 
+    /// This block's project only (`DailyTaskPlanner.forProject`): another project's tasks and
+    /// reminders never show at the end of this block.
+    private var scoped: [DailyTask] { DailyTaskPlanner.forProject(tasks, projectID) }
+
     /// Open tasks plus anything ticked in this block, this project first; never the block's task.
     private var shown: [DailyTask] {
-        let todays = DailyTaskPlanner.tasks(tasks, on: Date())
+        let todays = DailyTaskPlanner.tasks(scoped, on: Date())
         let relevant = todays.filter { $0.id != blockTaskID && (!$0.isDone || $0.sessionID == sessionID) }
         let sorted = relevant.enumerated().sorted { lhs, rhs in
             let left = rank(lhs.element), right = rank(rhs.element)
@@ -49,12 +58,32 @@ struct SessionTasksSection: View {
         return 1
     }
 
+    /// This project's active count goals, for "Counts toward".
+    private var projectResults: [GoalKeyResult] {
+        guard let projectID else { return [] }
+        return goals.filter { $0.status == .active && $0.projectID == projectID }
+            .flatMap(\.sortedKeyResults)
+            .filter { $0.kind == .count }
+    }
+
+    /// Your pick, else the block task's goal, else the project's only goal.
+    private var doneResultID: UUID? {
+        if hasPickedResult { return pickedResultID }
+        return Self.defaultResultID(results: projectResults.map(\.id),
+                                    blockTaskResultID: tasks.first { $0.id == blockTaskID }?.keyResultID)
+    }
+
+    static func defaultResultID(results: [UUID], blockTaskResultID: UUID?) -> UUID? {
+        if let blockTaskResultID, results.contains(blockTaskResultID) { return blockTaskResultID }
+        return results.count == 1 ? results[0] : nil
+    }
+
     private var resultTitles: [UUID: String] {
         Dictionary(goals.flatMap(\.keyResults).map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
     }
 
     var body: some View {
-        let stats = DailyTaskPlanner.stats(tasks, on: Date())
+        let stats = DailyTaskPlanner.stats(scoped, on: Date())
         VStack(alignment: .leading, spacing: 8) {
             header(stats)
             let rows = shown
@@ -72,7 +101,9 @@ struct SessionTasksSection: View {
                 text: $doneTitle,
                 accessibility: "Add a task you finished in this block",
                 submit: addDone
-            )
+            ) {
+                if !projectResults.isEmpty { goalPicker }
+            }
             entryField(
                 symbol: "arrow.right",
                 placeholder: "Next step (for later)",
@@ -143,7 +174,35 @@ struct SessionTasksSection: View {
         return task.isCounted ? "Each + logs 1 to \(resultTitle)" : "Counts \(DailyTaskRow.amountText(task.progressAmount)) toward \(resultTitle)"
     }
 
+    /// "Counts toward": this project's goals, or none. Ticking the new task logs 1 to it.
+    private var goalPicker: some View {
+        let selected = projectResults.first { $0.id == doneResultID }
+        return Menu {
+            ForEach(projectResults) { result in
+                Button(result.title) { hasPickedResult = true; pickedResultID = result.id }
+            }
+            Divider()
+            Button("No goal") { hasPickedResult = true; pickedResultID = nil }
+        } label: {
+            Label(selected?.title ?? "No goal", systemImage: "target")
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .foregroundStyle(selected == nil ? LiquidDesignTokens.Surface.onSurfaceMuted : FFPalette.accent)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(minHeight: 30)
+        .help(selected.map { "What you finished counts 1 toward \($0.title)" } ?? "Count what you finished toward one of this project's goals")
+        .accessibilityLabel(selected.map { "Counts toward \($0.title). Change goal" } ?? "Pick a goal for what you finished")
+    }
+
     private func entryField(symbol: String, placeholder: String, text: Binding<String>, accessibility: String, submit: @escaping () -> Void) -> some View {
+        entryField(symbol: symbol, placeholder: placeholder, text: text, accessibility: accessibility, submit: submit) { EmptyView() }
+    }
+
+    private func entryField<Accessory: View>(symbol: String, placeholder: String, text: Binding<String>, accessibility: String,
+                                             submit: @escaping () -> Void, @ViewBuilder accessory: () -> Accessory) -> some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
@@ -154,6 +213,7 @@ struct SessionTasksSection: View {
                 .font(.system(size: 12))
                 .onSubmit(submit)
                 .accessibilityLabel(accessibility)
+            accessory()
         }
         .padding(.horizontal, 10)
         .frame(height: 30)
@@ -161,7 +221,7 @@ struct SessionTasksSection: View {
     }
 
     private func addDone() {
-        guard let task = timerVM.addDailyTask(title: doneTitle, projectID: projectID) else { return }
+        guard let task = timerVM.addDailyTask(title: doneTitle, projectID: projectID, keyResultID: doneResultID) else { return }
         withAnimation(.smooth(duration: 0.25)) { timerVM.setDailyTask(task, done: true, sessionID: sessionID) }
         doneTitle = ""
     }

@@ -21,7 +21,7 @@ final class ReviewContractsTests: XCTestCase {
         XCTAssertFalse(source.contains("enum CompletionStage"), "The block-end window has one stage.")
         XCTAssertFalse(source.contains("title: \"Continue\""), "No Continue to a second stage.")
         XCTAssertTrue(
-            source.contains("LiquidActionButton(title: title, icon: \"cup.and.saucer.fill\", role: .primary)"),
+            source.contains("LiquidActionButton(title: \"Break \\(minutes)m\", icon: \"cup.and.saucer.fill\", role: .primary)"),
             "The earned break stays the visually prioritized action (no skip-break bias)."
         )
         XCTAssertTrue(
@@ -30,7 +30,7 @@ final class ReviewContractsTests: XCTestCase {
         )
         XCTAssertTrue(
             source.contains("Button(\"Break 5 min\")") && source.contains("saveAndDismiss(action: .takeBreak(duration: 300))"),
-            "A menu still offers the plain 5 minute break."
+            "The break pill's context menu still offers the plain 5 minute break."
         )
         XCTAssertTrue(
             source.contains("startButtons(role: .secondary)"),
