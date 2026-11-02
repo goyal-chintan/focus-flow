@@ -6,12 +6,20 @@ struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self])
+        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self, BlockStartEvent.self])
         let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("FocusFlow", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let storeURL = dir.appendingPathComponent("FocusFlow.store")
+        #if DEBUG
+        // FOCUSFLOW_DEBUG_FRESH_STORE=1: an empty in-memory store, so first-run screens (the welcome
+        // tour) can be tried without touching the real store.
+        if ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_FRESH_STORE"] == "1",
+           let fresh = try? ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)) {
+            return fresh
+        }
+        #endif
         do {
             try StoreMigrator.migrateStoreIfNeeded(at: storeURL)
             let config = ModelConfiguration(schema: schema, url: storeURL)
@@ -71,27 +79,13 @@ struct FocusFlowApp: App {
         .windowResizability(.contentMinSize)
         .modelContainer(container)
 
-        Window("Session Complete", id: "session-complete") {
+        Window("Block complete", id: "session-complete") {
             SessionCompleteWindowView()
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
-        .modelContainer(container)
-
-        // Welcome tour (onboarding design): first launch, and Settings → General → Getting started.
-        Window("Welcome to FocusFlow", id: "onboarding") {
-            OnboardingView()
-                .environment(timerVM)
-                .environment(\.modelContext, container.mainContext)
-        }
-        .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
-        .defaultPosition(.center)
-        // Opened only by the launch check or Settings, never by window restoration.
-        .restorationBehavior(.disabled)
-        .defaultLaunchBehavior(.suppressed)
         .modelContainer(container)
 
         // Settings window (⌘, and the popover gear). SettingsView owns its toolbar tab bar;
@@ -184,6 +178,8 @@ struct FocusFlowApp: App {
     private var menuBarIconName: String {
         switch timerVM.state {
         case .idle:
+            // A break running over keeps the cup: the orange +M:SS is break time, not a block's.
+            if timerVM.isBreakOvertime { return "cup.and.saucer.fill" }
             return timerVM.coachMenuBarPulse ? "bolt.circle.fill" : "bolt.circle"
         case .focusing, .paused:
             return timerVM.selectedProject?.icon ?? "scope"
@@ -232,9 +228,10 @@ private struct AppLaunchBridge: View {
                     WindowPolicyManager.shared.prepareToOpen()
                     openWindow(id: "stats")
                 }
-                timerVM.openOnboarding = {
-                    WindowPolicyManager.shared.prepareToOpen()
-                    openWindow(id: "onboarding")
+                if timerVM.openOnboarding == nil {
+                    // Welcome tour, full screen (onboarding v2 §3.5): first launch, and Settings → General → Getting started.
+                    let onboarding = OnboardingController(timerVM: timerVM, modelContainer: modelContext.container)
+                    timerVM.openOnboarding = { onboarding.show() }
                 }
                 // Coach v4: the decision journal, written in release builds too.
                 if timerVM.coachJournal.fileURL == nil, !timerVM.isEvidenceMode {
@@ -248,7 +245,10 @@ private struct AppLaunchBridge: View {
                     notch.setEnabled(timerVM.isNotchCompanionEnabled)
                 }
                 timerVM.syncGlobalHotkey()
-                if !timerVM.isEvidenceMode { timerVM.startPrivacyMonitor() }
+                if !timerVM.isEvidenceMode {
+                    timerVM.startPrivacyMonitor()
+                    timerVM.startReminderSyncObservers()
+                }
                 WindowPolicyManager.shared.start()
                 showOnboardingIfNeeded()
             }
@@ -327,9 +327,9 @@ private struct WindowLauncherBridge: View {
                     }
                 }
 
-                // Reconcile permissions on launch, then pull synced Reminders lists into today's tasks
+                // Reconcile permissions when the popover first opens (Reminders sync has its own
+                // always-on triggers: `TimerViewModel.startReminderSyncObservers`).
                 reconcilePermissionsIfNeeded()
-                timerVM.scheduleReminderSync()
             }
             // Reconcile permissions every time the app becomes active — catches
             // revocations that happened while the app was in the background or
@@ -337,14 +337,11 @@ private struct WindowLauncherBridge: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 reconcilePermissionsIfNeeded()
                 timerVM.checkDayRolloverIfNeeded()
-                timerVM.scheduleReminderSync()
             }
             // Also reconcile when EventKit reports store changes (permission
             // grants/revocations trigger this notification).
-            // A reminder ticked on the phone arrives here too (coalesced; our own writes are no-ops).
             .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
                 reconcilePermissionsIfNeeded()
-                timerVM.scheduleReminderSync()
             }
     }
 

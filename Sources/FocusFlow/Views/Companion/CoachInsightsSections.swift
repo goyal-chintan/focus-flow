@@ -32,7 +32,7 @@ private struct CoachInsightsData {
             }
         summary = CoachInsights.summary(
             now: now,
-            goalMinutes: Int((timerVM.settings?.dailyFocusGoal ?? 7200) / 60),
+            goalMinutes: Int(timerVM.dailyGoal(now: now).seconds / 60),
             sessions: sessionInputs,
             plans: planInputs,
             prompts: promptInputs,
@@ -81,41 +81,51 @@ struct CoachAdviceCard: View {
     }
 }
 
-// MARK: - Insights: "Is the coach getting you started?"
+// MARK: - Settings → Coach: "How the coach is doing"
 
-/// Insights → the one coach section (screen audit, Insights): does a prompt lead to a start
-/// (against the moments it stayed quiet), the next ask, what stops you, advice and the log. How the
-/// coach learns sits in a collapsed "How the coach decides".
-struct CoachStartSection: View {
-    let snapshot: CompanionSnapshot
-
+/// Is the coach getting you started? (moved from Insights to Settings → Coach, structural redesign
+/// 2026-10-30: Insights answers your questions, this answers the coach's). Does a prompt lead to a
+/// start (against the moments it stayed quiet), the next ask, what stops you, the research cards and
+/// today's log. How the coach learns sits in a collapsed "How the coach decides".
+struct CoachPerformanceView: View {
     @Environment(TimerViewModel.self) private var timerVM
+    @Environment(\.companionNowOverride) private var nowOverride
+    @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
+    @Query private var allSettings: [AppSettings]
+    @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
     @Query(sort: \PlannedBlock.startAt) private var plans: [PlannedBlock]
     @Query(sort: \InterventionAttempt.deliveredAt) private var attempts: [InterventionAttempt]
     @State private var showLog = false
     @State private var showModel = false
+    /// The coach log day whose lines are listed (nil: today).
+    @State private var logDay: Date?
 
-    private var now: Date { snapshot.now }
+    /// "A prompt counts when you start a block within 20 minutes · last 14 days".
+    static var countingRule: String {
+        "A prompt counts when you start a block within \(Int(CoachDecisionReward.startWindow / 60)) minutes · last \(CoachInsights.lookbackDays) days"
+    }
 
     var body: some View {
+        let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
+        let now = snapshot.now
         let summary = CoachInsightsData(now: now, samples: snapshot.goalSamples, plans: plans, attempts: attempts, timerVM: timerVM).summary
         let learning = timerVM.coachLearningSummary(now: now)
         let ladder = timerVM.startLadderRecommendation(now: now)
-        FFSection("Is the coach getting you started?", subtitle: "A prompt counts when you start a block within 10 minutes · last 14 days") {
-            VStack(alignment: .leading, spacing: FFSpace.l) {
-                headline(summary, learning: learning, ladder: ladder)
-                Divider()
-                promptsAndReasons(summary)
-                if !summary.advice.isEmpty {
-                    HStack(alignment: .top, spacing: FFSpace.m) {
-                        ForEach(summary.advice) { CoachAdviceCard(advice: $0) }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: FFSpace.l) {
+            Text(Self.countingRule).ffText(.caption)
+            headline(summary, learning: learning, ladder: ladder)
+            Divider()
+            promptsAndReasons(summary)
+            if !summary.advice.isEmpty {
+                // Two per row: the Settings pane is narrower than the companion page.
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: FFSpace.m, alignment: .top), GridItem(.flexible(), spacing: FFSpace.m, alignment: .top)], spacing: FFSpace.m) {
+                    ForEach(summary.advice) { CoachAdviceCard(advice: $0) }
                 }
-                logDisclosure
-                modelDisclosure(summary, learning: learning)
             }
+            logDisclosure(now: now, goalSamples: snapshot.goalSamples)
+            modelDisclosure(summary, learning: learning, snapshot: snapshot)
         }
+        .padding(.vertical, FFSpace.xs)
     }
 
     // MARK: Headline
@@ -188,12 +198,25 @@ struct CoachStartSection: View {
 
     // MARK: Coach log
 
-    private var logDisclosure: some View {
-        let journal = timerVM.coachJournal.entries(on: now)
+    private func logDisclosure(now: Date, goalSamples: [FocusSample]) -> some View {
+        let days = timerVM.coachLogDays(now: now, goalSamples: goalSamples)
+        let selected = days.first { Calendar.current.isDate($0.day, inSameDayAs: logDay ?? now) } ?? days.first
+        let selectedDay = selected?.day ?? now
+        let journal = timerVM.coachJournal.entries(on: selectedDay)
         return DisclosureGroup(isExpanded: $showLog) {
             VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(days) { day in
+                        CoachLogDayRow(day: day, isSelected: day.day == selected?.day, now: now) { logDay = day.day }
+                    }
+                }
+                .padding(.bottom, FFSpace.s)
+                Divider()
+                Text("\(CoachLogDayRow.dayLabel(selectedDay, now: now)) · why it spoke, or stayed quiet")
+                    .ffText(.callout)
+                    .padding(.top, FFSpace.s)
                 if journal.isEmpty {
-                    Text("Nothing yet today.").ffText(.caption)
+                    Text(Calendar.current.isDate(selectedDay, inSameDayAs: now) ? "Nothing yet today." : "Nothing that day.").ffText(.caption)
                 }
                 ForEach(journal.reversed().prefix(30)) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
@@ -208,13 +231,13 @@ struct CoachStartSection: View {
             }
             .padding(.top, FFSpace.xs)
         } label: {
-            Text("Today's coach log · why it spoke, or stayed quiet").ffText(.headline)
+            Text("Coach log · last \(CoachLogSummary.defaultDays) days").ffText(.headline)
         }
     }
 
     // MARK: How the coach decides (collapsed)
 
-    private func modelDisclosure(_ summary: CoachInsights.Summary, learning: TimerViewModel.CoachLearningSummary) -> some View {
+    private func modelDisclosure(_ summary: CoachInsights.Summary, learning: TimerViewModel.CoachLearningSummary, snapshot: CompanionSnapshot) -> some View {
         DisclosureGroup(isExpanded: $showModel) {
             VStack(alignment: .leading, spacing: FFSpace.l) {
                 Text("The coach compares moments it prompted with moments it stayed quiet, and learns which moments and block sizes lead to a start. It starts from the research; your own starts take over.")
@@ -306,6 +329,77 @@ struct CoachStartSection: View {
     }
 }
 
+/// One day of the coach log: decision moments, shown vs held back (and why), starts after a
+/// prompt vs on your own, own-work minutes against the goal. Click to list that day's lines.
+struct CoachLogDayRow: View {
+    let day: CoachLogDay
+    let isSelected: Bool
+    let now: Date
+    var onSelect: () -> Void = {}
+    @State private var hovering = false
+
+    static func dayLabel(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+
+    /// "4 moments · 2 shown · 2 held back"
+    static func momentsText(_ day: CoachLogDay) -> String {
+        guard day.decisionMoments > 0 else { return "No moments to ask" }
+        return "\(day.decisionMoments) moment\(day.decisionMoments == 1 ? "" : "s") · \(day.shown) shown · \(day.heldBackTotal) held back"
+    }
+
+    /// "kept quiet to measure 2 · daily limit 1"
+    static func heldBackText(_ day: CoachLogDay) -> String? {
+        guard !day.heldBack.isEmpty else { return nil }
+        return day.heldBack.prefix(3).map { "\($0.code.label) \($0.count)" }.joined(separator: " · ")
+    }
+
+    /// "1 after a prompt · 1 on your own"
+    static func startsText(_ day: CoachLogDay) -> String {
+        guard day.starts > 0 else { return "No starts" }
+        return "\(day.startsAfterPrompt) after a prompt · \(day.startsOnYourOwn) on your own"
+    }
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(alignment: .firstTextBaseline, spacing: FFSpace.m) {
+                Text(Self.dayLabel(day.day, now: now))
+                    .ffText(.callout)
+                    .frame(width: 92, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Self.momentsText(day)).ffText(.body)
+                    if let held = Self.heldBackText(day) {
+                        Text(held).ffText(.caption).lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(Self.startsText(day))
+                    .ffText(.caption)
+                    .frame(width: 190, alignment: .leading)
+                Text("\(day.ownWorkMinutes) / \(day.goalMinutes) min")
+                    .ffText(.headline)
+                    .monospacedDigit()
+                    .foregroundStyle(day.ownWorkMinutes >= day.goalMinutes ? FFPalette.goal : Color.primary)
+                    .frame(width: 96, alignment: .trailing)
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, FFSpace.s)
+            .background(
+                RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous)
+                    .fill(isSelected ? FFPalette.accent.opacity(0.12) : hovering ? FFPalette.rowHover : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(Self.dayLabel(day.day, now: now)): \(Self.momentsText(day)). \(Self.startsText(day)). Own work \(day.ownWorkMinutes) of \(day.goalMinutes) minutes.")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
 /// Start rate by prompt style, by where it appeared, and by rescue level · last 4 weeks.
 private struct CoachDeliveryCharts: View {
     let snapshot: CompanionSnapshot
@@ -353,6 +447,7 @@ private struct CoachDeliveryCharts: View {
     }
 }
 
-private extension String {
+extension String {
+    /// "tonight at 22:00" → "Tonight at 22:00".
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

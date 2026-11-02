@@ -58,7 +58,20 @@ final class DailyTaskTests: XCTestCase {
         let learning = UUID()
         let all = [task("Email", on: today, order: 0), task("SQL", on: today, order: 1, project: learning)]
         XCTAssertEqual(DailyTaskPlanner.nextTask(all, on: Date())?.title, "Email")
-        XCTAssertEqual(DailyTaskPlanner.nextTask(all, on: Date(), preferring: learning)?.title, "SQL")
+        XCTAssertEqual(DailyTaskPlanner.nextTask(all, on: Date(), for: learning)?.title, "SQL")
+    }
+
+    /// A Learning block shows Learning's tasks only (2026-10-30): never another project's reminders,
+    /// never unassigned tasks. With no project, everything.
+    func testNextTaskNeverCrossesProjects() {
+        let learning = UUID(), work = UUID()
+        let epic = task("Create the backup Epic", on: today, order: 0, project: work)
+        let loose = task("Call the bank", on: today, order: 1)
+        let sql = task("Window functions", on: today, order: 2, project: learning)
+        XCTAssertEqual(DailyTaskPlanner.nextTask([epic, loose, sql], on: Date(), for: learning)?.title, "Window functions")
+        XCTAssertNil(DailyTaskPlanner.nextTask([epic, loose], on: Date(), for: learning))
+        XCTAssertEqual(DailyTaskPlanner.forProject([epic, loose, sql], learning).map(\.title), ["Window functions"])
+        XCTAssertEqual(DailyTaskPlanner.forProject([epic, loose, sql], nil).count, 3)
     }
 
     func testCarryOverTakesTheLastPlannedDayOnly() {
@@ -99,7 +112,7 @@ final class DailyTaskTests: XCTestCase {
 
     func testLeversCarryTheirAmount() {
         let input = DailyLevers.KeyResultInput(
-            id: UUID(), title: "LeetCode", unit: "questions", isCheckbox: false, target: 60, done: 0, doneToday: 0,
+            id: UUID(), title: "LeetCode", unit: "questions", target: 60, done: 0, doneToday: 0,
             goalTitle: "Interview-ready", projectID: nil, start: day(-1), deadline: day(31), isBossFight: true
         )
         let lever = try? XCTUnwrap(DailyLevers.levers([input], now: Date()).first)
@@ -228,11 +241,6 @@ final class DailyTaskTests: XCTestCase {
                 .background(FFPalette.windowBackground)
             try write(today, size: CGSize(width: 900, height: 620), dark: dark, vm: vm, context: context, to: output.appendingPathComponent("today_tasks_\(suffix).png"))
 
-            let popover = PopoverTasksStrip().padding(16)
-                .frame(width: 300, height: 190)
-                .background(FFPalette.windowBackground)
-            try write(popover, size: CGSize(width: 300, height: 190), dark: dark, vm: vm, context: context, to: output.appendingPathComponent("popover_tasks_\(suffix).png"))
-
             let session = SessionTasksSection(sessionID: UUID(), blockTaskID: vm.todayTasks().first { !$0.isDone }?.id, projectID: learning.id)
                 .padding(24)
                 .frame(width: 480, height: 300)
@@ -299,6 +307,7 @@ final class ViewReadPathTests: XCTestCase {
             _ = vm.historyReaderActiveGoals()
             _ = vm.startLadderRecommendation(now: Date())
             _ = vm.regularMinutes
+            _ = vm.dailyGoal(now: Date())
         }
         reads() // warm up any first-use work outside the tracked pass
 

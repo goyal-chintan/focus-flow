@@ -10,6 +10,9 @@ struct TimerRingView: View {
     var pauseDuration: TimeInterval = 0
     var pauseTimeString: String = "0:00"
     var overrunSeconds: TimeInterval = 0
+    /// The overtime is a break running over (`TimerViewModel.isBreakOvertime`). A finished break
+    /// reports `.idle`, so `state` alone never says it: without this the ring drew a block's overtime.
+    var isBreakOvertime: Bool = false
     var labelColorOverride: Color? = nil
 
     private let ringSize: CGFloat = 170
@@ -22,6 +25,13 @@ struct TimerRingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var disableMotion: Bool { reduceMotion || evidenceMode }
+
+    /// Amber break-overrun ring, not the blue and green of a block's overtime.
+    private var isBreakOverrun: Bool {
+        guard isOvertime else { return false }
+        if case .onBreak = state { return true }
+        return isBreakOvertime
+    }
 
     private var isActive: Bool {
         switch state {
@@ -53,7 +63,7 @@ struct TimerRingView: View {
     }
 
     private var breakOvertimeStrokeWidth: CGFloat {
-        guard case .onBreak = state, isOvertime else { return strokeWidth }
+        guard isBreakOverrun else { return strokeWidth }
         if overrunSeconds > 180 { return 3.5 }
         if overrunSeconds > 60 {
             let t = (overrunSeconds - 60) / 120
@@ -71,17 +81,16 @@ struct TimerRingView: View {
     }
 
     private var outerGlowColor: Color {
+        if isBreakOverrun {
+            // Escalate: >1.0 progress means overtime; use progress magnitude for severity
+            if progress > 1.5 { return .red }
+            if progress > 1.0 { return Color(hex: 0xE6A820) }
+            return ringGlowColor
+        }
         switch state {
         case .paused:
             if pauseDuration > 300 { return .red }
             if pauseDuration > 180 { return Color(hex: 0xE6A820) }
-            return ringGlowColor
-        case .onBreak:
-            if isOvertime {
-                // Escalate: >1.0 progress means overtime; use progress magnitude for severity
-                if progress > 1.5 { return .red }
-                if progress > 1.0 { return Color(hex: 0xE6A820) }
-            }
             return ringGlowColor
         default:
             return ringGlowColor
@@ -242,6 +251,9 @@ struct TimerRingView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(timeString)")
         .accessibilityValue({
+            if isBreakOverrun {
+                return "Break ran over"
+            }
             if isOvertime {
                 return "Overtime, session complete"
             }
@@ -401,7 +413,7 @@ struct TimerRingView: View {
     // Overtime: different treatment for break vs focus
     private var overtimeRings: some View {
         ZStack {
-            if case .onBreak = state {
+            if isBreakOverrun {
                 // Break overtime: full yellow ring + dark yellow overlay filling from 12:00
                 Circle()
                     .stroke(

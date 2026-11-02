@@ -66,9 +66,78 @@ struct CoachHistoryReader {
     }
 
     /// Inputs for `CoachAvailabilityModel`.
+    /// Focus sessions that count toward the goal: once any project is marked Work, only own work
+    /// (personal, learning) and project-less blocks (starters); otherwise every block. The coach
+    /// learns when you do *your* work, not when the office keeps you busy (audit 2026-10-30).
+    func ownWorkSessions(since date: Date) -> [FocusSession] {
+        let sessions = focusSessions(since: date)
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        guard GoalDataBuilder.ownWorkConfigured(projects) else { return sessions }
+        return sessions.filter { Self.isOwnWork($0.project) }
+    }
+
+    /// Own work: personal and learning projects, and project-less blocks (starters).
+    static func isOwnWork(_ project: Project?) -> Bool {
+        guard let project else { return true }
+        return project.areaRaw != nil && project.area.isOwnWork
+    }
+
+    /// Whether a block on `project` counts toward the own-work goal right now.
+    func countsAsOwnWork(_ project: Project?) -> Bool {
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        return !GoalDataBuilder.ownWorkConfigured(projects) || Self.isOwnWork(project)
+    }
+
+    // MARK: Block starts (coach audit 2026-10-30)
+
+    /// Recorded block starts since `date`, oldest first (empty on stores without the entity).
+    func blockStarts(since date: Date) -> [BlockStartEvent] {
+        guard hasEntity(named: "BlockStartEvent") else { return [] }
+        let descriptor = FetchDescriptor<BlockStartEvent>(
+            predicate: #Predicate { $0.startedAt >= date },
+            sortBy: [SortDescriptor(\.startedAt)]
+        )
+        return (try? modelContext.fetch(descriptor)) ?? []
+    }
+
+    /// Own-work starts since `date`: the project's area now, or the area it had at the start
+    /// when the project is gone.
+    func ownWorkBlockStarts(since date: Date) -> [BlockStartEvent] {
+        let starts = blockStarts(since: date)
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        guard GoalDataBuilder.ownWorkConfigured(projects) else { return starts }
+        let byID = Dictionary(projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return starts.filter { start in
+            guard let projectID = start.projectID else { return true }
+            return byID[projectID].map(Self.isOwnWork) ?? start.ownWorkAtStart
+        }
+    }
+
+    /// Own-work blocks the coach's rewards are read from: every recorded start, short ones
+    /// included, plus kept sessions that have no start record (`CoachDecisionReward.merge`).
+    func learningBlocks(since date: Date, now: Date) -> [CoachDecisionReward.Block] {
+        let liveDescriptor = FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= date })
+        let live = Dictionary(((try? modelContext.fetch(liveDescriptor)) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        func seconds(_ session: FocusSession) -> TimeInterval {
+            session.endedAt == nil ? now.timeIntervalSince(session.startedAt) : session.actualDuration
+        }
+        let starts = ownWorkBlockStarts(since: date).map { start in
+            CoachDecisionReward.Block(
+                start: start.startedAt,
+                seconds: live[start.sessionID].map(seconds) ?? start.focusedSeconds ?? 0,
+                plannedMinutes: start.plannedMinutes,
+                sessionID: start.sessionID
+            )
+        }
+        let sessions = ownWorkSessions(since: date).map {
+            CoachDecisionReward.Block(start: $0.startedAt, seconds: seconds($0), plannedMinutes: Int(($0.duration / 60).rounded()), sessionID: $0.id)
+        }
+        return CoachDecisionReward.merge(starts: starts, sessions: sessions)
+    }
+
     func availabilityInputs(now: Date) -> (sessions: [CoachAvailabilityModel.Session], activeDays: [Date]) {
         let since = calendar.date(byAdding: .day, value: -Self.lookbackDays, to: calendar.startOfDay(for: now)) ?? now
-        let sessions = focusSessions(since: since)
+        let sessions = ownWorkSessions(since: since)
             .filter { $0.endedAt != nil }
             .map { CoachAvailabilityModel.Session(start: $0.startedAt, end: $0.effectiveEnd) }
         let entryDescriptor = FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= since })

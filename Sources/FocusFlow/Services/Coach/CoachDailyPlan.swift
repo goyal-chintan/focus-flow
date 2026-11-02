@@ -15,6 +15,10 @@ struct CoachPlanSlot: Equatable, Sendable, Identifiable {
         case soon
         /// A fallback evening time.
         case evening
+        /// One of the user's declared own-work windows.
+        case ownWindow
+        /// A fallback morning time.
+        case morning
     }
 
     let start: Date
@@ -34,6 +38,8 @@ struct CoachPlanSlot: Equatable, Sendable, Identifiable {
             return "Best window"
         case .soon: return "Next free"
         case .evening: return "Evening"
+        case .ownWindow: return "Your window"
+        case .morning: return "Morning"
         }
     }
 }
@@ -222,6 +228,10 @@ enum CoachDailyPlanInvite {
         var log: Log
         /// No suggestion left today (late at night): nothing to offer.
         var hasSuggestions: Bool
+        /// The day's interrupting prompts are used up (the card counts, coach audit 2026-10-30).
+        var capReached: Bool = false
+        /// Own-work windows are declared and none is open: not a moment to ask.
+        var outsideOwnWindow: Bool = false
     }
 
     /// Per-day state, stored in defaults.
@@ -245,7 +255,7 @@ enum CoachDailyPlanInvite {
         let log = input.log.current(for: input.now, calendar: calendar)
         guard !input.hasPlanToday, !input.goalMet, !input.sessionActive, !input.quietHours,
               !input.calendarBusy, !input.screenShare, !input.released, !input.panelShowing,
-              input.hasSuggestions, !log.declined, log.shown < maxPerDay,
+              input.hasSuggestions, !input.capReached, !input.outsideOwnWindow, !log.declined, log.shown < maxPerDay,
               input.userIdleSeconds <= maxIdleSeconds else { return false }
         if let last = log.lastShownAt, input.now.timeIntervalSince(last) < retryAfter { return false }
         return true
@@ -266,5 +276,100 @@ struct CoachDailyPlanInviteStore {
 
     func save(_ log: CoachDailyPlanInvite.Log) {
         if let data = try? JSONEncoder().encode(log) { defaults.set(data, forKey: Self.key) }
+    }
+}
+
+// MARK: - Plan tomorrow (coach audit 2026-10-30)
+
+/// The evening check-in: "When are tomorrow's 2 blocks?" Deciding the night before is an
+/// implementation intention (Gollwitzer & Sheeran, 2006, d ≈ 0.65); each time picked becomes a
+/// `PlannedBlock`, so the planned-start cue shows up at that time tomorrow.
+enum CoachPlanTomorrow {
+    /// A user-requested check-in (on in Settings): never uses up the daily cap of start prompts.
+    static let contextKey = CoachPlannedCue.contextPrefix + "tomorrow"
+    static let blocks = 2
+    /// Not before 19:00, and not before today's last own-work window has ended.
+    static let earliestMinute = 19 * 60
+    /// Times at least this far apart.
+    static let spacing: TimeInterval = 90 * 60
+    static let maxSlots = 4
+    static let fallbackMinutes = [7 * 60 + 30, 21 * 60]
+
+    struct Input: Sendable {
+        var now: Date
+        var enabled: Bool
+        var plannedTomorrow: Int
+        var askedToday: Bool
+        var sessionActive: Bool
+        var quietHours: Bool
+        var screenShare: Bool
+        var panelShowing: Bool
+        var userIdleSeconds: TimeInterval
+        /// End of today's last declared window, minutes after midnight.
+        var lastWindowEndMinute: Int?
+    }
+
+    static func shouldAsk(_ input: Input, calendar: Calendar = .current) -> Bool {
+        let parts = calendar.dateComponents([.hour, .minute], from: input.now)
+        let minute = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+        return input.enabled
+            && minute >= max(earliestMinute, input.lastWindowEndMinute ?? 0)
+            && !input.askedToday
+            && input.plannedTomorrow < blocks
+            && !input.sessionActive && !input.quietHours && !input.screenShare && !input.panelShowing
+            && input.userIdleSeconds <= CoachDailyPlanInvite.maxIdleSeconds
+    }
+
+    /// Start times for tomorrow, in time order: your declared windows' starts first, then the
+    /// learned windows' best hours, then 07:30 and 21:00. Never in quiet hours, never within
+    /// 90 minutes of each other or of a block already planned.
+    static func slots(
+        now: Date,
+        windows: [CoachOwnWorkWindow],
+        model: CoachAvailabilityModel,
+        quietStartMinute: Int,
+        quietEndMinute: Int,
+        planned: [Date] = [],
+        calendar: Calendar = .current
+    ) -> [CoachPlanSlot] {
+        let today = calendar.startOfDay(for: now)
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) else { return [] }
+        var picked: [CoachPlanSlot] = []
+        func at(_ minute: Int) -> Date? { calendar.date(byAdding: .minute, value: minute, to: tomorrow) }
+        func add(_ date: Date?, _ reason: CoachPlanSlot.Reason) {
+            guard let date, picked.count < maxSlots,
+                  !CoachGuardrails.isQuietHours(date, start: quietStartMinute, end: quietEndMinute, calendar: calendar),
+                  (picked.map(\.start) + planned).allSatisfy({ abs($0.timeIntervalSince(date)) >= spacing }) else { return }
+            picked.append(CoachPlanSlot(start: date, reason: reason))
+        }
+        for window in windows { add(at(window.startMinute), .ownWindow) }
+        if windows.isEmpty, model.mode != .noData {
+            let hours = (0..<24).compactMap { at($0 * 60) }.filter { model.isGoodWindow($0) }
+            for date in hours.sorted(by: { model.p($0) > model.p($1) }) {
+                let lift = model.meanRate > 0 ? model.p(date) / model.meanRate : nil
+                add(date, .bestWindow(lift: lift))
+            }
+        }
+        if picked.count < blocks {
+            add(at(fallbackMinutes[0]), .morning)
+            add(at(fallbackMinutes[1]), .evening)
+        }
+        return picked.sorted { $0.start < $1.start }
+    }
+}
+
+/// The day the plan-tomorrow check-in last asked (defaults).
+struct CoachPlanTomorrowStore {
+    static let key = "focusflow.coachPlanTomorrow.v1"
+    let defaults: UserDefaults
+
+    func askedToday(now: Date, calendar: Calendar = .current) -> Bool {
+        let stamp = defaults.double(forKey: Self.key)
+        guard stamp > 0 else { return false }
+        return calendar.isDate(Date(timeIntervalSince1970: stamp), inSameDayAs: now)
+    }
+
+    func markAsked(now: Date) {
+        defaults.set(now.timeIntervalSince1970, forKey: Self.key)
     }
 }

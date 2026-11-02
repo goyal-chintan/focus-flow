@@ -49,6 +49,78 @@ enum PaceFormat {
     }
 }
 
+/// The sentences a goal card leads with (Goals clarity 2026-11-02): where you stand and what keeps
+/// you there, in words, so the bars and the "today" tick only confirm it.
+enum GoalPlainLanguage {
+    /// "1 a day", "2.5 a day", "1 every 3 days".
+    static func rate(_ perDay: Double) -> String {
+        guard perDay > 0 else { return "nothing more" }
+        if perDay >= 0.95 {
+            let rounded = (perDay * 2).rounded(.up) / 2
+            return rounded == rounded.rounded() ? "\(Int(rounded)) a day" : String(format: "%.1f a day", rounded)
+        }
+        return "1 every \(max(2, Int((1 / perDay).rounded(.down)))) days"
+    }
+
+    static func number(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    /// One sentence for the whole goal, about the measure furthest behind.
+    static func verdict(
+        status: GoalPaceStatus,
+        measures: [(name: String, pace: KeyResultPace)],
+        start: Date,
+        deadline: Date
+    ) -> String {
+        let by = deadline.formatted(.dateTime.day().month(.abbreviated))
+        guard !measures.isEmpty else { return "Nothing to count yet, so there's no pace to show." }
+        switch status {
+        case .done:
+            return "Done. Every number reached."
+        case .notStarted:
+            return "Starts \(start.formatted(.dateTime.day().month(.abbreviated)))."
+        default:
+            break
+        }
+        let open = measures.filter { $0.pace.remaining > 0 }
+        guard let focus = open.min(by: { $0.pace.delta < $1.pace.delta }) else { return "Done. Every number reached." }
+        let name = focus.name
+        if status == .overdue {
+            return "The deadline has passed with \(number(focus.pace.remaining)) \(name) to go. Finish it or move the date."
+        }
+        let pace = rate(focus.pace.neededPerDay ?? 0)
+        switch focus.pace.status {
+        case .behind:
+            let gap = max(1, Int((-focus.pace.delta).rounded()))
+            return "Behind by \(gap) on \(name). \(pace.prefix(1).uppercased() + pace.dropFirst()) from now still finishes by \(by)."
+        case .ahead:
+            return "Ahead of pace. \(pace.prefix(1).uppercased() + pace.dropFirst()) on \(name) is enough to finish by \(by)."
+        default:
+            return "On pace. Keep to \(pace) on \(name) to finish by \(by)."
+        }
+    }
+
+    /// The line under one measure: "2 behind · 1 a day finishes on time".
+    static func measureCaption(_ pace: KeyResultPace) -> String {
+        switch pace.status {
+        case .done: return "Reached."
+        case .overdue: return "Past the deadline · \(number(pace.remaining)) to go"
+        case .notStarted: return "Starts later"
+        default:
+            let delta = pace.delta
+            let position: String = if abs(delta) < 0.5 {
+                "On pace"
+            } else if delta < 0 {
+                -delta < 1 ? "Slightly behind" : "\(Int((-delta).rounded())) behind"
+            } else {
+                "\(Int(delta.rounded())) ahead"
+            }
+            return "\(position) · \(rate(pace.neededPerDay ?? 0)) finishes on time"
+        }
+    }
+}
+
 struct KeyResultPace: Sendable, Equatable {
     let target: Double
     let done: Double
@@ -369,7 +441,7 @@ struct DailyLever: Sendable, Equatable, Identifiable {
     let reason: String
     let status: GoalPaceStatus
     let urgency: Double
-    /// How much today's action adds to the key result (3 for "3 LeetCode questions"; 1 for a checkbox).
+    /// How much today's action adds to the key result (3 for "3 LeetCode questions").
     var amount: Double = 1
     /// The thing being counted, for a counted task: "LeetCode questions", "Problems solved".
     var countedName: String? = nil
@@ -384,7 +456,6 @@ enum DailyLevers {
         let id: UUID
         let title: String
         let unit: String?
-        let isCheckbox: Bool
         let target: Double
         let done: Double
         let doneToday: Double
@@ -394,6 +465,8 @@ enum DailyLevers {
         let deadline: Date
         /// The month's main goal: its levers come first.
         var isBossFight: Bool = false
+        /// Own work and your ★ #1 project come before other projects' goals (`GoalDataBuilder`).
+        var priorityBoost: Double = 0
     }
 
     static let maxLevers = 3
@@ -408,18 +481,9 @@ enum DailyLevers {
         inputs.compactMap { input -> DailyLever? in
             let pace = GoalPacing.pace(target: input.target, done: input.done, start: input.start, deadline: input.deadline, now: now)
             guard pace.status != .done, pace.status != .notStarted else { return nil }
+            // A result of 1 is a one-off step: it belongs in tasks, never a daily ask.
+            guard input.target > 1 else { return nil }
             let daysLeft = Int(pace.daysLeft.rounded(.up))
-            if input.isCheckbox {
-                // A checkbox becomes a lever when its share of the time has come (or it is overdue).
-                guard pace.expectedFraction >= 0.5 || pace.status == .overdue || daysLeft <= 7 else { return nil }
-                return DailyLever(
-                    id: input.id, goalTitle: input.goalTitle, projectID: input.projectID,
-                    action: input.title,
-                    reason: pace.status == .overdue ? "overdue" : "\(daysLeft) day\(daysLeft == 1 ? "" : "s") left",
-                    status: pace.status,
-                    urgency: (pace.status == .overdue ? 100 : 1 / max(1, pace.daysLeft)) + (input.isBossFight ? 50 : 0)
-                )
-            }
             let needed = pace.neededPerDay ?? pace.remaining
             // Round up, but not for clock noise: 3.0000001 a day is 3.
             let quota = (needed - 0.01).rounded(.up)
@@ -435,7 +499,7 @@ enum DailyLevers {
                     ? "overdue · \(Int(pace.remaining.rounded())) left"
                     : "need \(PaceFormat.rate(needed)) · \(daysLeft) day\(daysLeft == 1 ? "" : "s") left",
                 status: pace.status,
-                urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0)
+                urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0) + input.priorityBoost
                     + max(0, -pace.delta) / max(1, input.target) * 10 + needed / max(1, input.target),
                 amount: Double(todayAsk),
                 countedName: input.unit.map { "\(input.title) \($0)" } ?? input.title

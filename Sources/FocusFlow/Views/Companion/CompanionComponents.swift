@@ -20,8 +20,12 @@ struct CompanionSnapshot {
     var ownWorkOnly: Bool { goalScope.isFiltered }
     /// Keys (`GoalDataBuilder.projectKey`) of Work projects, drawn faded in charts.
     let workKeys: Set<String>
+    /// Today's daily goal (`GoalDataBuilder.dailyGoal`); `goal` and `stretch` are its sizes.
+    let dailyGoal: DailyGoal
     let goal: TimeInterval
     let stretch: TimeInterval
+    /// The goal's size per weekday (1 = Sunday): a weekday-only target makes weekends differ.
+    private let goalByWeekday: [Int: TimeInterval]
 
     @MainActor
     init(sessions: [FocusSession], settings: AppSettings?, projects: [Project] = [], now: Date = Date(), calendar: Calendar = .current) {
@@ -36,8 +40,21 @@ struct CompanionSnapshot {
         self.goalScope = scope
         self.goalSamples = GoalDataBuilder.scopedSamples(samples, scope: scope)
         self.workKeys = Set(projects.filter { $0.areaRaw != nil && $0.area == .work }.map(GoalDataBuilder.projectKey))
-        self.goal = max(60, settings?.dailyFocusGoal ?? 7200)
-        self.stretch = max(self.goal, settings?.dailyStretchGoal ?? 9000)
+        let dailyGoal = GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now, calendar: calendar)
+        self.dailyGoal = dailyGoal
+        self.goal = max(60, dailyGoal.seconds)
+        self.stretch = max(self.goal, dailyGoal.stretchSeconds)
+        var byWeekday: [Int: TimeInterval] = [:]
+        for offset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: now) else { continue }
+            byWeekday[calendar.component(.weekday, from: day)] = max(60, GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: day, calendar: calendar).seconds)
+        }
+        self.goalByWeekday = byWeekday
+    }
+
+    /// The daily goal's size on `day` (project targets can skip weekends).
+    func goal(on day: Date) -> TimeInterval {
+        goalByWeekday[calendar.component(.weekday, from: day)] ?? goal
     }
 
     var calendar: Calendar { analytics.calendar }
@@ -86,6 +103,10 @@ struct SessionRow: View {
     /// When set, the row shows only the part of the block inside this day. A block that started
     /// on an earlier day gets a "started yesterday" note with its full length.
     var today: DateInterval? = nil
+    /// The task the block was started for (`FocusSession.taskID`), shown when it had no intent.
+    var taskTitle: String? = nil
+    /// On a project's page: never title a row with the project's own name, and drop it from the subtitle.
+    var hidesProject = false
     var onSelect: () -> Void
 
     /// Seconds shown as the main duration: the overlap with `today`, or the full block.
@@ -103,14 +124,18 @@ struct SessionRow: View {
         "\(FFFormat.clock(session.startedAt))–\(FFFormat.clock(session.effectiveEnd))"
     }
 
+    /// What the block was for: its intent, else its task, else what it achieved; the project name
+    /// only where the row isn't already on that project's page.
     private var title: String {
-        if let intent = session.intentText?.trimmingCharacters(in: .whitespacesAndNewlines), !intent.isEmpty {
-            return intent
+        Self.title(intent: session.intentText, taskTitle: taskTitle, achievement: session.achievement,
+                   fallback: hidesProject ? "Focus block" : session.label)
+    }
+
+    static func title(intent: String?, taskTitle: String?, achievement: String?, fallback: String) -> String {
+        for candidate in [intent, taskTitle, achievement] {
+            if let text = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
         }
-        if let achievement = session.achievement?.trimmingCharacters(in: .whitespacesAndNewlines), !achievement.isEmpty {
-            return achievement
-        }
-        return session.label
+        return fallback
     }
 
     var body: some View {
@@ -158,7 +183,7 @@ struct SessionRow: View {
 
     private var subtitle: String {
         let project = session.project?.name ?? session.customLabel
-        if let project, project != title { return "\(timeRange) · \(project)" }
+        if !hidesProject, let project, project != title { return "\(timeRange) · \(project)" }
         return timeRange
     }
 }

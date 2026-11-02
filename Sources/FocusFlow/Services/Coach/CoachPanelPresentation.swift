@@ -20,6 +20,9 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         /// v4 §3.3: the start card: "Start 5 · 15 · 25 now", with time chips for later.
         /// Stays until answered.
         case dailyPlan
+        /// Coach audit 2026-10-30: the evening "When are tomorrow's 2 blocks?" check-in.
+        /// Each time chip plans one block. Stays until answered.
+        case planTomorrow
     }
 
     let id: UUID
@@ -36,7 +39,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
     let level: DriftLevel?
     /// Rescue loop: what the primary button starts (normal block or starter block).
     let ask: CoachRescueAsk?
-    /// Quiet footer line, e.g. "⌃⌥Space starts 5 min anytime".
+    /// Quiet footer line, e.g. `CoachStarterBlock.hotkeyHint`.
     let footerHint: String?
     /// Keep-going panel: the step typed during the starter block.
     let step: String?
@@ -99,7 +102,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .notice: 3.5
         case .keepGoing, .momentum, .inSessionDrift: 20
         case .startNudge, .rescue, .pseudoProductivity, .weeklyPriorities: 180
-        case .plannedStart, .dailyPlan: nil
+        case .plannedStart, .dailyPlan, .planTomorrow: nil
         }
     }
 
@@ -112,6 +115,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .momentum: "Keep it short"
         case .plannedStart: "Not yet"
         case .dailyPlan: "Not now"
+        case .planTomorrow: "Not tonight"
         }
     }
 
@@ -126,6 +130,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .notice: []
         case .plannedStart: [.starterInstead, .push15, .push60, .skipToday]
         case .dailyPlan: [.planLater, .notToday]
+        case .planTomorrow: [.notToday]
         }
     }
 
@@ -155,6 +160,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .notice: nil
         case .plannedStart: .push15
         case .dailyPlan: .planLater
+        case .planTomorrow: .notToday
         }
     }
 
@@ -175,7 +181,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .push60: "Push 1 hour"
         case .skipToday: "Skip today"
         case .planLater: "Ask me in 2 hours"
-        case .notToday: "Not today"
+        case .notToday: kind == .planTomorrow ? "Not tonight" : "Not today"
         case .reasonBusy, .reasonTired, .reasonTooBig, .reasonUnclear:
             action.declineReason.map(CoachDeclineResponse.label) ?? ""
         }

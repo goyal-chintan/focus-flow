@@ -7,6 +7,35 @@ final class GoalTrackingTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
     private func day(_ n: Double) -> Date { start.addingTimeInterval(n * 86_400) }
 
+    // MARK: Plain language (Goals clarity 2026-11-02)
+
+    func testTheGoalCardLeadsWithASentence() {
+        let deadline = day(30)
+        let by = deadline.formatted(.dateTime.day().month(.abbreviated))
+        let behind = GoalPacing.pace(target: 60, done: 8, start: start, deadline: deadline, now: day(10))
+        XCTAssertEqual(
+            GoalPlainLanguage.verdict(status: .behind, measures: [("LeetCode", behind)], start: start, deadline: deadline),
+            "Behind by 12 on LeetCode. 3 a day from now still finishes by \(by)."
+        )
+        let onPace = GoalPacing.pace(target: 30, done: 10, start: start, deadline: deadline, now: day(10))
+        XCTAssertEqual(
+            GoalPlainLanguage.verdict(status: .onTrack, measures: [("SQL", onPace)], start: start, deadline: deadline),
+            "On pace. Keep to 1 a day on SQL to finish by \(by)."
+        )
+        XCTAssertEqual(
+            GoalPlainLanguage.verdict(status: .notStarted, measures: [], start: start, deadline: deadline),
+            "Nothing to count yet, so there's no pace to show."
+        )
+        XCTAssertEqual(GoalPlainLanguage.measureCaption(behind), "12 behind · 3 a day finishes on time")
+    }
+
+    func testRatesReadAsPeopleSayThem() {
+        XCTAssertEqual(GoalPlainLanguage.rate(1), "1 a day")
+        XCTAssertEqual(GoalPlainLanguage.rate(1.2), "1.5 a day")
+        XCTAssertEqual(GoalPlainLanguage.rate(0.4), "1 every 2 days")
+        XCTAssertEqual(GoalPlainLanguage.rate(0.1), "1 every 10 days")
+    }
+
     // MARK: Pacing
 
     func testThirtyDayGoalPacing() {
@@ -91,14 +120,14 @@ final class GoalTrackingTests: XCTestCase {
     // MARK: Levers
 
     func testLeversComeFromTheKeyResultsFurthestBehind() {
-        func input(_ title: String, unit: String?, target: Double, done: Double, doneToday: Double = 0, checkbox: Bool = false) -> DailyLevers.KeyResultInput {
-            .init(id: UUID(), title: title, unit: unit, isCheckbox: checkbox, target: target, done: done, doneToday: doneToday,
-                  goalTitle: "Apply by Nov 28", projectID: nil, start: start, deadline: day(30))
+        func input(_ title: String, unit: String?, target: Double, done: Double, doneToday: Double = 0, boost: Double = 0) -> DailyLevers.KeyResultInput {
+            .init(id: UUID(), title: title, unit: unit, target: target, done: done, doneToday: doneToday,
+                  goalTitle: "Apply by Nov 28", projectID: nil, start: start, deadline: day(30), priorityBoost: boost)
         }
         let levers = DailyLevers.levers([
             input("LeetCode", unit: "questions", target: 60, done: 8),
             input("SQL", unit: "questions", target: 10, done: 4),
-            input("Apply for jobs", unit: nil, target: 1, done: 0, checkbox: true),
+            input("Apply for jobs", unit: nil, target: 1, done: 0),
             input("Referral asks", unit: nil, target: 3, done: 3),
         ], now: day(10))
         XCTAssertEqual(levers.first?.action, "3 LeetCode questions", "52 left over 20 days → 2.6 → 3 today")
@@ -110,11 +139,16 @@ final class GoalTrackingTests: XCTestCase {
         XCTAssertEqual(DailyLevers.unit("questions", count: 3), "questions")
         XCTAssertEqual(DailyLevers.unit("class", count: 1), "class")
         XCTAssertFalse(levers.contains { $0.action.contains("Referral") }, "Done results are not levers")
-        XCTAssertFalse(levers.contains { $0.action == "Apply for jobs" }, "A checkbox waits until its time has come")
+        XCTAssertFalse(levers.contains { $0.action.contains("Apply for jobs") }, "A one-off step (target 1) is a task, never a lever")
         // Today's quota already met: no lever.
         XCTAssertTrue(DailyLevers.levers([input("LeetCode", unit: "questions", target: 60, done: 20, doneToday: 3)], now: day(10)).isEmpty)
-        let late = DailyLevers.levers([input("Apply for jobs", unit: nil, target: 1, done: 0, checkbox: true)], now: day(25))
-        XCTAssertEqual(late.first?.action, "Apply for jobs")
+        XCTAssertTrue(DailyLevers.levers([input("Apply for jobs", unit: nil, target: 1, done: 0)], now: day(25)).isEmpty, "Not even late")
+        // Own work first: with the same pace, the boosted (★ #1 / own work) result leads.
+        let ranked = DailyLevers.levers([
+            input("Office tickets", unit: nil, target: 20, done: 4),
+            input("LeetCode", unit: nil, target: 20, done: 4, boost: 10),
+        ], now: day(10))
+        XCTAssertEqual(ranked.first?.action.hasPrefix("LeetCode"), true)
     }
 
     // MARK: SwiftData

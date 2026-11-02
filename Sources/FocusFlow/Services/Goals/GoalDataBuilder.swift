@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// Feeds the pure goal and priority logic (`GoalTracking.swift`) from SwiftData models.
 @MainActor
@@ -57,6 +58,22 @@ enum GoalDataBuilder {
         return .allFocus
     }
 
+    /// The daily goal (one model, structural redesign 2026-10-30): what it counts (`goalScope`) and
+    /// its size. With "Use project targets" on (nil = on) the size is the sum of today's targets of
+    /// the projects it counts; when it is off, or none of them has a target today, the fixed goal.
+    static func dailyGoal(projects: [Project], settings: AppSettings?, on day: Date = Date(), calendar: Calendar = .current) -> DailyGoal {
+        let scope = goalScope(projects)
+        let live = projects.filter { !$0.archived }
+        let counted = scope.keys.map { keys in live.filter { keys.contains(projectKey($0)) } } ?? live
+        return DailyGoal.resolve(
+            scope: scope,
+            targetMinutes: counted.compactMap { $0.dailyTarget(on: day, calendar: calendar) },
+            fixedSeconds: settings?.dailyFocusGoal ?? DailyGoal.defaultSeconds,
+            stretchSeconds: settings?.dailyStretchGoal ?? DailyGoal.defaultSeconds + DailyGoal.defaultStretchExtra,
+            followsTargets: settings?.dailyGoalFollowsTargets ?? true
+        )
+    }
+
     /// Samples shrunk to the scope's share (split blocks count by their weight); all of them for `.allFocus`.
     static func scopedSamples(_ samples: [FocusSample], scope: GoalScope) -> [FocusSample] {
         guard let keys = scope.keys else { return samples }
@@ -107,17 +124,28 @@ enum GoalDataBuilder {
 
     static func leverInputs(_ goals: [ProjectGoal], now: Date, calendar: Calendar = .current) -> [DailyLevers.KeyResultInput] {
         let today = calendar.startOfDay(for: now)
+        let projects = (try? goals.first?.modelContext?.fetch(FetchDescriptor<Project>())) ?? []
         return goals.filter { $0.status == .active }.flatMap { goal in
-            goal.sortedKeyResults.map { kr in
+            let boost = priorityBoost(projects.first { $0.id == goal.projectID })
+            return goal.sortedKeyResults.filter { $0.kind == .count }.map { kr in
                 DailyLevers.KeyResultInput(
-                    id: kr.id, title: kr.title, unit: kr.unit, isCheckbox: kr.kind == .checkbox,
+                    id: kr.id, title: kr.title, unit: kr.unit,
                     target: kr.target, done: kr.done,
                     doneToday: kr.entries.filter { $0.at >= today }.reduce(0) { $0 + $1.amount },
                     goalTitle: goal.title, projectID: goal.projectID,
-                    start: goal.startDate, deadline: goal.deadline, isBossFight: goal.isBossFight
+                    start: goal.startDate, deadline: goal.deadline, isBossFight: goal.isBossFight,
+                    priorityBoost: boost
                 )
             }
         }
+    }
+
+    /// Levers favour what you are building for yourself: ★ #1 first, then own work (personal,
+    /// learning), so an office goal never takes all three slots from them.
+    static func priorityBoost(_ project: Project?) -> Double {
+        guard let project else { return 0 }
+        if project.priorityRank == 1 { return 10 }
+        return project.area.isOwnWork ? 5 : 0
     }
 
     /// The most urgent count result (the top lever's), for goal-aware coach copy.
@@ -160,12 +188,12 @@ enum GoalScope: Equatable, Sendable {
 
     var isFiltered: Bool { keys != nil }
 
-    /// The ring's label: "★ Learning", "Own work", "Focus today".
+    /// The scope beside every goal number: "★ Learning", "Own work", "All focus".
     var label: String {
         switch self {
         case .project(_, let name): "★ \(name)"
         case .ownWork: "Own work"
-        case .allFocus: "Focus today"
+        case .allFocus: "All focus"
         }
     }
 
@@ -176,5 +204,63 @@ enum GoalScope: Equatable, Sendable {
         case .ownWork: "your own work"
         case .allFocus: "your focus"
         }
+    }
+
+    /// What the goal counts, in one sentence (Goals tab, Settings no longer claims it).
+    var countsSentence: String {
+        switch self {
+        case .project(_, let name): "Counts \(name), your ★ #1 project. Other projects don't fill it."
+        case .ownWork: "Counts your own work: Personal and Learning projects. Work projects don't fill it."
+        case .allFocus: "Counts every focus block. Rank a #1 project or mark one Work to narrow it."
+        }
+    }
+}
+
+/// The one daily goal: what it counts and how big it is today (`GoalDataBuilder.dailyGoal`).
+struct DailyGoal: Equatable, Sendable {
+    enum Source: Equatable, Sendable {
+        /// The sum of today's targets of the counted projects.
+        case projectTargets
+        /// The fixed number set in Goals.
+        case fixed
+    }
+
+    static let defaultSeconds: TimeInterval = 7200
+    static let defaultStretchExtra: TimeInterval = 1800
+
+    let scope: GoalScope
+    let seconds: TimeInterval
+    let stretchSeconds: TimeInterval
+    let source: Source
+    /// Today's targets of the counted projects added up; nil when none of them has one today.
+    let targetSeconds: TimeInterval?
+    let fixedSeconds: TimeInterval
+    let followsTargets: Bool
+
+    var label: String { scope.label }
+
+    /// Stretch keeps its distance above the goal, so it moves with the targets.
+    static func resolve(
+        scope: GoalScope,
+        targetMinutes: [Int],
+        fixedSeconds: TimeInterval,
+        stretchSeconds: TimeInterval,
+        followsTargets: Bool
+    ) -> DailyGoal {
+        let fixed = max(60, fixedSeconds)
+        let positive = targetMinutes.filter { $0 > 0 }
+        let targets = positive.isEmpty ? nil : TimeInterval(positive.reduce(0, +) * 60)
+        let useTargets = followsTargets && targets != nil
+        let seconds = useTargets ? targets ?? fixed : fixed
+        let extra = max(0, stretchSeconds - fixed)
+        return DailyGoal(
+            scope: scope,
+            seconds: seconds,
+            stretchSeconds: seconds + extra,
+            source: useTargets ? .projectTargets : .fixed,
+            targetSeconds: targets,
+            fixedSeconds: fixed,
+            followsTargets: followsTargets
+        )
     }
 }

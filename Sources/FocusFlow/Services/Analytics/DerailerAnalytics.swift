@@ -93,11 +93,38 @@ enum DerailerClassifier {
     }
 }
 
+/// What a "Distraction" or "It's work" click on a derailer row writes a rule for: the site's host,
+/// or the app's bundle id (the one with the most time when a site and its app share a name).
+struct DerailerTarget: Hashable, Sendable {
+    enum Kind: String, Hashable, Sendable { case app, website }
+    let kind: Kind
+    /// Lowercased bundle id or host, as `IdleDistractionItem.key` stores it.
+    let key: String
+
+    init(kind: Kind, key: String) {
+        self.kind = kind
+        self.key = key.lowercased()
+    }
+
+    init(_ sample: UsageSample) {
+        if let host = DerailerClassifier.host(of: sample) {
+            self.init(kind: .website, key: host)
+        } else {
+            self.init(kind: .app, key: sample.bundleIdentifier)
+        }
+    }
+}
+
 extension FocusAnalytics {
     struct Derailer: Hashable, Sendable, Identifiable {
         let name: String
+        /// Time in the period shown (this week, or the Insights range).
         let thisWeekSeconds: Int
+        /// Time in the period before it, of the same length.
         let lastWeekSeconds: Int
+        var target: DerailerTarget?
+        /// The user already marked it a distraction (a confirmed rule matched).
+        var isConfirmed = false
         var id: String { name.lowercased() }
         var deltaSeconds: Int { thisWeekSeconds - lastWeekSeconds }
     }
@@ -105,6 +132,8 @@ extension FocusAnalytics {
     struct DerailerTotal: Hashable, Sendable, Identifiable {
         let name: String
         let seconds: Int
+        var target: DerailerTarget?
+        var isConfirmed = false
         var id: String { name.lowercased() }
     }
 
@@ -116,16 +145,29 @@ extension FocusAnalytics {
         allowedKeys: Set<String> = [],
         minimumSeconds: Int = 0
     ) -> [DerailerTotal] {
-        var totals: [String: (name: String, seconds: Int)] = [:]
+        struct Bucket {
+            var name: String
+            var seconds = 0
+            var confirmed = false
+            var targetSeconds: [DerailerTarget: Int] = [:]
+        }
+        var totals: [String: Bucket] = [:]
         for sample in usage where sample.outsideFocusSeconds > 0 && interval.contains(sample.day) {
             guard DerailerClassifier.isDerailer(sample, confirmedKeys: confirmedKeys, allowedKeys: allowedKeys) else { continue }
             let name = DerailerClassifier.displayName(of: sample)
             let key = name.lowercased()
-            totals[key, default: (name, 0)].seconds += sample.outsideFocusSeconds
+            totals[key, default: Bucket(name: name)].seconds += sample.outsideFocusSeconds
+            totals[key]?.targetSeconds[DerailerTarget(sample), default: 0] += sample.outsideFocusSeconds
+            if DerailerClassifier.matches(sample, keys: confirmedKeys) { totals[key]?.confirmed = true }
         }
         return totals.values
             .filter { $0.seconds >= minimumSeconds && $0.seconds > 0 }
-            .map { DerailerTotal(name: $0.name, seconds: $0.seconds) }
+            .map { bucket in
+                let target = bucket.targetSeconds.max { lhs, rhs in
+                    lhs.value == rhs.value ? lhs.key.key > rhs.key.key : lhs.value < rhs.value
+                }?.key
+                return DerailerTotal(name: bucket.name, seconds: bucket.seconds, target: target, isConfirmed: bucket.confirmed)
+            }
             .sorted { (lhs: DerailerTotal, rhs: DerailerTotal) -> Bool in
                 lhs.seconds == rhs.seconds ? lhs.name < rhs.name : lhs.seconds > rhs.seconds
             }
@@ -142,15 +184,58 @@ extension FocusAnalytics {
         let thisWeek = weekInterval(containing: now)
         let lastWeekStart = calendar.date(byAdding: .weekOfYear, value: -1, to: thisWeek.start) ?? thisWeek.start
         let lastWeek = weekInterval(containing: lastWeekStart)
-        let current = derailerTotals(usage, in: thisWeek, confirmedKeys: confirmedKeys, allowedKeys: allowedKeys)
-        let previous = derailerTotals(usage, in: lastWeek, confirmedKeys: confirmedKeys, allowedKeys: allowedKeys)
+        return derailers(usage, current: thisWeek, previous: lastWeek, confirmedKeys: confirmedKeys, allowedKeys: allowedKeys, limit: limit)
+    }
+
+    /// The last `days` days (today included) against the `days` before them (Insights' range).
+    func derailers(
+        _ usage: [UsageSample],
+        lastDays days: Int,
+        now: Date,
+        confirmedKeys: Set<String> = [],
+        allowedKeys: Set<String> = [],
+        limit: Int = 6
+    ) -> [Derailer] {
+        let today = calendar.startOfDay(for: now)
+        let end = calendar.date(byAdding: .day, value: 1, to: today) ?? now
+        let start = calendar.date(byAdding: .day, value: -(max(1, days) - 1), to: today) ?? today
+        let previousStart = calendar.date(byAdding: .day, value: -max(1, days), to: start) ?? start
+        return derailers(
+            usage,
+            current: DateInterval(start: start, end: end),
+            previous: DateInterval(start: previousStart, end: start),
+            confirmedKeys: confirmedKeys, allowedKeys: allowedKeys, limit: limit
+        )
+    }
+
+    /// `current` against `previous`, sorted by the current period's time.
+    func derailers(
+        _ usage: [UsageSample],
+        current currentInterval: DateInterval,
+        previous previousInterval: DateInterval,
+        confirmedKeys: Set<String> = [],
+        allowedKeys: Set<String> = [],
+        limit: Int = 6
+    ) -> [Derailer] {
+        let current = derailerTotals(usage, in: currentInterval, confirmedKeys: confirmedKeys, allowedKeys: allowedKeys)
+        let previous = derailerTotals(usage, in: previousInterval, confirmedKeys: confirmedKeys, allowedKeys: allowedKeys)
         var names: [String: String] = [:]
         for total in current + previous where names[total.id] == nil { names[total.id] = total.name }
-        let currentByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0.seconds) })
-        let previousByID = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0.seconds) })
+        let currentByID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
+        let previousByID = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0) })
         return Array(
             names
-                .map { Derailer(name: $0.value, thisWeekSeconds: currentByID[$0.key] ?? 0, lastWeekSeconds: previousByID[$0.key] ?? 0) }
+                .map { id, name in
+                    let now = currentByID[id]
+                    let before = previousByID[id]
+                    return Derailer(
+                        name: name,
+                        thisWeekSeconds: now?.seconds ?? 0,
+                        lastWeekSeconds: before?.seconds ?? 0,
+                        target: now?.target ?? before?.target,
+                        isConfirmed: (now?.isConfirmed ?? false) || (before?.isConfirmed ?? false)
+                    )
+                }
                 .sorted {
                     if $0.thisWeekSeconds != $1.thisWeekSeconds { return $0.thisWeekSeconds > $1.thisWeekSeconds }
                     if $0.lastWeekSeconds != $1.lastWeekSeconds { return $0.lastWeekSeconds > $1.lastWeekSeconds }

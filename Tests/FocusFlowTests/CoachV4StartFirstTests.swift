@@ -36,7 +36,7 @@ final class CoachV4StartFirstTests: XCTestCase {
             .init(at: t(60), kind: .declined(reason: nil)),
         ])
         XCTAssertEqual(two, .init(minutes: 5, why: .shrunkAfterDeclines))
-        XCTAssertTrue(two.caption.contains("didn't land"))
+        XCTAssertEqual(two.caption, "5m: an easy way in.", "Never framed as failure (coach audit 2026-10-30)")
     }
 
     func testLadderActsOnTheReason() {
@@ -125,7 +125,7 @@ final class CoachV4StartFirstTests: XCTestCase {
             candidate(0.5, context: false),
         ]
         XCTAssertEqual(CoachPromptAttribution.creditTarget(for: t(0), candidates: candidates), card.id)
-        XCTAssertNil(CoachPromptAttribution.creditTarget(for: t(0), candidates: [candidate(11)]))
+        XCTAssertNil(CoachPromptAttribution.creditTarget(for: t(0), candidates: [candidate(21)]), "Window is 20 minutes")
         XCTAssertEqual(CoachPromptAttribution.label(contextKey: CoachPlannedCue.inviteContextKey, surface: .panel), "start card")
         XCTAssertEqual(CoachPromptAttribution.label(contextKey: "avail:low|idle:30-90|front:neutral|today:0|lvl:2|surf:panel", surface: .panel), "rescue (L2)")
     }

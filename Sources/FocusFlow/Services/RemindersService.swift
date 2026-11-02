@@ -166,6 +166,16 @@ final class RemindersService {
         return item.isCompleted ? .completed : .open(title: item.title ?? "")
     }
 
+    /// Renames a reminder (its task was renamed in FocusFlow).
+    @discardableResult
+    func setReminderTitle(identifier: String, _ title: String) -> Bool {
+        guard authStatus == .authorized,
+              let item = store.calendarItem(withIdentifier: identifier) as? EKReminder else { return false }
+        item.title = title
+        do { try store.save(item, commit: true); return true }
+        catch { logger.error("setReminderTitle failed: \(error.localizedDescription, privacy: .public)"); return false }
+    }
+
     /// Sets a reminder's due day (date only, no time), e.g. when its task moves to tomorrow.
     @discardableResult
     func setReminderDueDay(identifier: String, _ day: Date?) -> Bool {
@@ -230,8 +240,10 @@ protocol ReminderBridge: AnyObject {
     func reminderState(identifier: String) -> RemindersService.ReminderState
     @discardableResult func setReminderCompleted(identifier: String, _ completed: Bool) -> Bool
     @discardableResult func setReminderDueDay(identifier: String, _ day: Date?) -> Bool
+    @discardableResult func setReminderTitle(identifier: String, _ title: String) -> Bool
     func createReminder(title: String, dueDay: Date?, listId: String) -> String?
     @discardableResult func deleteReminder(identifier: String) -> Bool
+    func reminderLists() -> [(id: String, title: String, source: String)]
 }
 
 extension RemindersService: ReminderBridge {

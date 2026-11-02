@@ -76,43 +76,59 @@ struct PaceBar: View {
 
 // MARK: - Goal card
 
+/// A goal, read top to bottom (Goals clarity 2026-11-02): what it is and when it's due, one
+/// sentence on where you stand, then each number with +1. The overall bar shows only when there
+/// are several numbers (with one, it repeats the number's own bar). A goal with nothing to count
+/// says so and offers the two ways forward instead of a 0% bar.
 struct GoalCard: View {
     let goal: ProjectGoal
     let project: Project?
     let now: Date
     var compact: Bool = false
     var onEdit: (() -> Void)?
+    /// Pick reminders (the project's tasks) to count toward this goal; nil when its project has none.
+    var onPickReminders: (() -> Void)?
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showChart = false
 
     var body: some View {
         let summary = GoalDataBuilder.summary(goal, now: now)
         let tint = FFPalette.project(project?.color)
+        let results = goal.sortedKeyResults
         VStack(alignment: .leading, spacing: FFSpace.m) {
-            header(summary, tint: tint)
-            VStack(alignment: .leading, spacing: 4) {
-                PaceBar(fraction: summary.fraction, expected: summary.expectedFraction, color: summary.status.color, height: 10)
-                HStack {
-                    Text("\(Int((summary.fraction * 100).rounded()))% done").ffText(.caption).monospacedDigit()
-                    Spacer()
-                    Text("Should be \(Int((summary.expectedFraction * 100).rounded()))% by today").ffText(.caption).monospacedDigit()
+            header(summary, tint: tint, hasMeasures: !results.isEmpty)
+            if results.isEmpty {
+                GoalFirstStep(onEdit: onEdit, onPickReminders: onPickReminders)
+            } else {
+                Text(GoalPlainLanguage.verdict(
+                    status: summary.status,
+                    measures: Array(zip(results.map(\.title), summary.keyResults)),
+                    start: goal.startDate,
+                    deadline: goal.deadline
+                ))
+                .ffText(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                if results.count > 1 {
+                    overallBar(summary)
                 }
-            }
-            if !goal.keyResults.isEmpty {
                 VStack(spacing: 14) {
-                    ForEach(Array(zip(goal.sortedKeyResults, summary.keyResults)), id: \.0.id) { pair in
+                    ForEach(Array(zip(results, summary.keyResults)), id: \.0.id) { pair in
                         KeyResultRow(keyResult: pair.0, pace: pair.1, compact: compact)
                     }
                 }
-            }
-            if !compact {
-                DisclosureGroup(isExpanded: $showChart) {
-                    GoalPaceChart(goal: goal, now: now, tint: summary.status.color)
-                        .frame(height: 150)
-                        .padding(.top, FFSpace.s)
-                } label: {
-                    Text("Pace chart · actual vs ideal").ffText(.callout)
+                if !compact {
+                    HStack(alignment: .top) {
+                        chartToggle(summary)
+                        if let onPickReminders {
+                            Button(action: onPickReminders) {
+                                Label("Add from Reminders…", systemImage: "checklist")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Pick reminders that count toward this goal")
+                        }
+                    }
                 }
             }
         }
@@ -120,9 +136,51 @@ struct GoalCard: View {
         .ffSurface()
     }
 
-    private func header(_ summary: GoalPacing.GoalSummary, tint: Color) -> some View {
+    private func overallBar(_ summary: GoalPacing.GoalSummary) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            PaceBar(fraction: summary.fraction, expected: summary.expectedFraction, color: summary.status.color, height: 8)
+            HStack {
+                Text("Overall \(Int((summary.fraction * 100).rounded()))% done").ffText(.caption).monospacedDigit()
+                Spacer()
+                Text("Today's mark │ \(Int((summary.expectedFraction * 100).rounded()))%")
+                    .ffText(.caption)
+                    .monospacedDigit()
+                    .help("The tick on the bar is where steady progress would put you today")
+            }
+        }
+    }
+
+    /// The whole row opens and closes the chart, not only its chevron.
+    private func chartToggle(_ summary: GoalPacing.GoalSummary) -> some View {
+        VStack(alignment: .leading, spacing: FFSpace.s) {
+            Button {
+                withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { showChart.toggle() }
+            } label: {
+                HStack(spacing: FFSpace.s) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(showChart ? 90 : 0))
+                        .accessibilityHidden(true)
+                    Text(showChart ? "Hide progress over time" : "Show progress over time").ffText(.callout)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 30)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if showChart {
+                GoalPaceChart(goal: goal, now: now, tint: summary.status.color)
+                    .frame(height: 150)
+                    .transition(.opacity)
+                Text("Solid line: what you've done. Dashed: a steady pace from start to deadline.").ffText(.caption)
+            }
+        }
+    }
+
+    private func header(_ summary: GoalPacing.GoalSummary, tint: Color, hasMeasures: Bool) -> some View {
         HStack(alignment: .top, spacing: FFSpace.m) {
-            Image(systemName: goal.isBossFight ? "flag.checkered" : "scope")
+            Image(systemName: goal.isBossFight ? "star.fill" : "scope")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 34, height: 34)
@@ -132,31 +190,27 @@ struct GoalCard: View {
                 HStack(spacing: FFSpace.s) {
                     Text(goal.title).ffText(.headline).lineLimit(2)
                     if goal.isBossFight {
-                        Text("BOSS FIGHT")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .tracking(0.8)
+                        Label("Main goal", systemImage: "star.fill")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(tint)
                             .padding(.horizontal, 6)
                             .frame(height: 18)
-                            .background(Capsule().strokeBorder(tint.opacity(0.5), lineWidth: 1))
-                            .help("This month's main goal")
+                            .background(Capsule().fill(tint.opacity(0.12)))
+                            .help("Your one main goal: today's suggestions and the coach lean on it first")
                     }
                 }
                 Text(subtitle(summary)).ffText(.caption).lineLimit(1)
             }
             Spacer(minLength: FFSpace.s)
-            PaceStatusPill(status: summary.status)
+            if hasMeasures {
+                PaceStatusPill(status: summary.status)
+            }
             if let onEdit {
-                Button(action: onEdit) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Edit goal")
-                .accessibilityLabel("Edit \(goal.title)")
+                Button("Edit", action: onEdit)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Edit goal")
+                    .accessibilityLabel("Edit \(goal.title)")
             }
         }
     }
@@ -170,7 +224,42 @@ struct GoalCard: View {
     }
 }
 
-/// One key result: progress against the ideal, what is needed per day, and one-click logging.
+/// A goal with nothing to count: the ways to give it a number, not a 0% bar. A goal is never
+/// turned into a task (2026-11-02: "Add to Today's Tasks" made the goal a task and a reminder);
+/// tasks and reminders only count toward a goal's numbers.
+private struct GoalFirstStep: View {
+    var onEdit: (() -> Void)?
+    var onPickReminders: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: FFSpace.s) {
+            Text("Nothing to count yet")
+                .ffText(.body)
+            Text(onPickReminders == nil
+                 ? "Add a number to see if you're on pace, like “3 sections written”."
+                 : "Add a number to see if you're on pace, like “3 sections written”, or pick the reminders that make up this goal: each one done adds 1.")
+                .ffText(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: FFSpace.s) {
+                if let onEdit {
+                    Button("Add a Number", action: onEdit)
+                        .buttonStyle(.bordered)
+                }
+                if let onPickReminders {
+                    Button(action: onPickReminders) {
+                        Label("Add from Reminders…", systemImage: "checklist")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(FFSpace.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous).fill(FFPalette.track))
+    }
+}
+
+/// One number: progress against the steady pace, what keeps it on time, and +1 / −1.
 struct KeyResultRow: View {
     let keyResult: GoalKeyResult
     let pace: KeyResultPace
@@ -182,85 +271,48 @@ struct KeyResultRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: FFSpace.m) {
-            if keyResult.kind == .checkbox {
-                Button {
-                    log(pace.status == .done ? -keyResult.done : 1)
-                } label: {
-                    // Leading-aligned in its 30 pt target, so the circle lines up with the count rows' bars.
-                    HStack(spacing: FFSpace.s) {
-                        Image(systemName: pace.status == .done ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 18))
-                            .foregroundStyle(pace.status == .done ? FFPalette.goal : .secondary)
-                        Text(keyResult.title)
-                            .ffText(.body)
-                            .strikethrough(pace.status == .done, color: .secondary)
-                            .foregroundStyle(.primary)
-                    }
-                    .frame(minHeight: 30)
-                    .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: FFSpace.s) {
+                    Text(keyResult.title).ffText(.body).lineLimit(1)
+                    Spacer(minLength: FFSpace.s)
+                    Text("\(Self.number(pace.done)) of \(Self.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
+                        .ffText(.headline)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+                PaceBar(fraction: pace.fraction, expected: pace.expectedFraction, color: pace.status.color, height: 6)
+                if !compact {
+                    Text(GoalPlainLanguage.measureCaption(pace)).ffText(.caption).monospacedDigit()
+                }
+            }
+            HStack(spacing: 4) {
+                Button { log(-1) } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 11, weight: .bold))
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(FFPalette.track))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(pace.status == .done ? "Mark \(keyResult.title) not done" : "Mark \(keyResult.title) done")
-                Spacer(minLength: FFSpace.s)
-                if pace.status == .overdue { PaceStatusPill(status: .overdue) }
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: FFSpace.s) {
-                        Text(keyResult.title).ffText(.body).lineLimit(1)
-                        Spacer(minLength: FFSpace.s)
-                        Text("\(Self.number(pace.done)) / \(Self.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
-                            .ffText(.headline)
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                    }
-                    PaceBar(fraction: pace.fraction, expected: pace.expectedFraction, color: pace.status.color, height: 6)
-                    if !compact {
-                        Text(caption).ffText(.caption).monospacedDigit()
-                    }
+                .foregroundStyle(.secondary)
+                .disabled(pace.done <= 0)
+                .help("Take back 1")
+                .accessibilityLabel("Take back 1: \(keyResult.title)")
+                Button { log(1) } label: {
+                    Text("+1")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 12)
+                        .frame(minWidth: 44, minHeight: 30)
+                        .background(Capsule().fill(FFPalette.accent.opacity(0.16)))
+                        .contentShape(Capsule())
                 }
-                HStack(spacing: 2) {
-                    stepButton("minus", amount: -1, label: "Remove one")
-                        .disabled(pace.done <= 0)
-                    stepButton("plus", amount: 1, label: "Add one")
-                }
+                .buttonStyle(.plain)
+                .foregroundStyle(FFPalette.accent)
+                .help("Log 1 \(keyResult.unit ?? keyResult.title)")
+                .accessibilityLabel("Log 1: \(keyResult.title)")
             }
         }
         .sensoryFeedback(.increase, trigger: bump)
-    }
-
-    private var caption: String {
-        switch pace.status {
-        case .done: return "Done."
-        case .overdue: return "Past the deadline · \(Self.number(pace.remaining)) left"
-        case .notStarted: return "Starts later"
-        default:
-            let delta = pace.delta
-            let position: String
-            if abs(delta) < 0.5 {
-                position = "On pace"
-            } else if delta < 0 {
-                position = -delta < 1 ? "Slightly behind" : "\(Int((-delta).rounded())) behind"
-            } else {
-                position = "\(Int(delta.rounded())) ahead"
-            }
-            return "\(position) · need \(PaceFormat.rate(pace.neededPerDay ?? 0))"
-        }
-    }
-
-    private func stepButton(_ symbol: String, amount: Double, label: String) -> some View {
-        Button {
-            log(amount)
-        } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(amount > 0 ? FFPalette.accent.opacity(0.16) : FFPalette.track))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(amount > 0 ? FFPalette.accent : .secondary)
-        .help(label)
-        .accessibilityLabel("\(label): \(keyResult.title)")
     }
 
     private func log(_ amount: Double) {
@@ -385,14 +437,15 @@ struct PriorityBreakdownView: View {
     }
 
     private func rankBadge(_ row: PriorityRow) -> some View {
-        Text(row.rank.map { "#\($0)" } ?? "–")
+        Text(row.rank.map { "#\($0)" } ?? "")
             .font(.system(size: 11, weight: .bold, design: .rounded))
             .foregroundStyle(row.rank == 1 ? Color.white : .secondary)
             .frame(width: 28, height: 22)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(row.rank == 1 ? FFPalette.project(row.colorName) : FFPalette.track)
+                    .fill(row.rank == nil ? Color.clear : row.rank == 1 ? FFPalette.project(row.colorName) : FFPalette.track)
             )
+            .help(row.rank.map { "Priority \($0)" } ?? "No priority")
             .accessibilityLabel(row.rank.map { "Priority \($0)" } ?? "Unranked")
     }
 

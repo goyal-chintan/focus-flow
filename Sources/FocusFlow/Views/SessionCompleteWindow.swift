@@ -34,7 +34,6 @@ struct SessionCompleteWindowView: View {
     /// SwiftData fetches and a model fit, so never from `body`.
     @State private var coachAsk: CoachBlockSizeLadder.Recommendation?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
 
     init(now: Date = Date()) {
         let today = Calendar.current.startOfDay(for: now)
@@ -112,6 +111,12 @@ struct SessionCompleteWindowView: View {
 
     // MARK: - Wake Recovery (Issue #32)
 
+    /// Sleep can interrupt a break as well as a block; the copy names which one it was.
+    private var wakeRecoveryIsBreak: Bool {
+        guard let type = timerVM.wakeRecoverySession?.type else { return false }
+        return type != .focus
+    }
+
     private var wakeRecoveryContent: some View {
         VStack(spacing: 24) {
             ZStack {
@@ -131,11 +136,13 @@ struct SessionCompleteWindowView: View {
             .animation(disableMotionForEvidence ? nil : FFMotion.reward, value: appeared)
 
             VStack(spacing: 8) {
-                Text("Resolve Interrupted Session")
+                Text(wakeRecoveryIsBreak ? "Resolve Interrupted Break" : "Resolve Interrupted Session")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                 
-                Text("Your focus session was interrupted by system sleep. Choose how you would like to resolve the session's duration.")
+                Text(wakeRecoveryIsBreak
+                     ? "Your break was interrupted by system sleep. Choose how you would like to resolve the break's duration."
+                     : "Your focus session was interrupted by system sleep. Choose how you would like to resolve the session's duration.")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     .multilineTextAlignment(.center)
@@ -161,7 +168,7 @@ struct SessionCompleteWindowView: View {
                     }
 
                     LiquidActionButton(
-                        title: "Discard session entirely",
+                        title: wakeRecoveryIsBreak ? "Discard this break" : "Discard this block",
                         icon: "trash",
                         role: .destructive
                     ) {
@@ -207,7 +214,10 @@ struct SessionCompleteWindowView: View {
                     projectID: session.project?.id
                 )
                 // After the tasks, so a tick visibly moves the bar here.
-                SessionGoalSection(projectID: session.project?.id, sessionID: session.id)
+                SessionGoalSection(
+                    projectID: session.project?.id, sessionID: session.id,
+                    taskLinkedResultIDs: Set(todaysTasks.compactMap(\.keyResultID))
+                )
                 outcomeSection
             }
 
@@ -285,6 +295,13 @@ struct SessionCompleteWindowView: View {
         if timerVM.isManualStop, let name = earnedContext?.projectName { parts.append(name) }
         parts.append("\(totals.blocks) block\(totals.blocks == 1 ? "" : "s")")
         parts.append("\(FFFormat.duration(totals.seconds)) today")
+        // Progress toward the goal after every block (progress principle): what is left, or met.
+        let goal = timerVM.dailyGoal()
+        if goal.seconds > 0 {
+            let left = goal.seconds - timerVM.goalProgressSeconds()
+            // The scope beside the number, as everywhere: "40m to go · ★ Learning".
+            parts.append(left > 0 ? "\(FFFormat.duration(left)) to go · \(goal.label)" : "\(goal.label) goal met")
+        }
         return parts.joined(separator: " · ")
     }
 
@@ -583,16 +600,23 @@ struct SessionCompleteWindowView: View {
 
     private var footerBar: some View {
         VStack(spacing: 8) {
-            // The next block names its task, so it gets most of the width; the smaller ask sits beside it.
-            startButtons(role: .secondary) { minutes in
-                saveAndDismiss(action: .continueFocusing, prepare: { prepareNextStart(minutes: minutes) })
-            }
-            HStack(spacing: 8) {
-                breakButton
-                LiquidActionButton(title: "Done for today", icon: "checkmark.circle", role: .secondary) {
-                    saveAndDismiss(action: .endSession)
+            // Two rows of equal pills (review 2026-10-30): the next block above, ending below, the
+            // earned break as the one prominent action on the trailing edge. The task is a caption,
+            // so no button label truncates.
+            nextTaskCaption
+            EvidenceSafeGlassGroup {
+                VStack(spacing: 8) {
+                    startButtons(role: .secondary) { minutes in
+                        saveAndDismiss(action: .continueFocusing, prepare: { prepareNextStart(minutes: minutes) })
+                    }
+                    HStack(spacing: 8) {
+                        LiquidActionButton(title: "Done for today", icon: "checkmark.circle", role: .secondary) {
+                            saveAndDismiss(action: .endSession)
+                        }
+                        .accessibilityLabel("Done for today: end and keep this block")
+                        breakButton
+                    }
                 }
-                .accessibilityLabel("Done for today: end and keep this block")
             }
             if timerVM.isManualStop {
                 Button {
@@ -615,44 +639,27 @@ struct SessionCompleteWindowView: View {
         .evidenceSafeMaterial()
     }
 
-    /// The earned break, one click; a menu offers the plain 5 minutes.
-    @ViewBuilder
+    /// The earned break, one click, built like every other footer pill so heights and edges match.
+    /// The plain 5 minutes is in its context menu (the native split menu drew a narrower pill).
     private var breakButton: some View {
         let minutes = timerVM.suggestedEarnedBreakMinutes
-        let title = "Break \(minutes)m"
-        if isEvidenceRendering || minutes == 5 {
-            LiquidActionButton(title: title, icon: "cup.and.saucer.fill", role: .primary) {
-                saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))
-            }
-            .accessibilityLabel("Take the earned \(minutes) minute break")
-        } else {
-            Menu {
-                Button("Break 5 min") {
-                    saveAndDismiss(action: .takeBreak(duration: 300))
-                }
-                .accessibilityLabel("Take a 5 minute break")
-            } label: {
-                Label(title, systemImage: "cup.and.saucer.fill")
-                    .font(LiquidDesignTokens.Typography.controlLabel)
-                    .frame(maxWidth: .infinity)
-            } primaryAction: {
-                saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))
-            }
-            .menuStyle(.button)
-            .buttonStyle(.glassProminent)
-            .tint(LiquidDesignTokens.Spectral.primaryContainer)
-            .buttonBorderShape(.capsule)
-            .controlSize(.extraLarge)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("Take the earned \(minutes) minute break")
+        return LiquidActionButton(title: "Break \(minutes)m", icon: "cup.and.saucer.fill", role: .primary) {
+            saveAndDismiss(action: .takeBreak(duration: timerVM.suggestedEarnedBreakSeconds))
         }
+        .contextMenu {
+            if minutes != 5 {
+                Button("Break 5 min") { saveAndDismiss(action: .takeBreak(duration: 300)) }
+            }
+        }
+        .help(minutes == 5 ? "Take a 5 minute break" : "Take the earned \(minutes) minute break. Right-click for 5 minutes.")
+        .accessibilityLabel("Take the earned \(minutes) minute break")
     }
 
     // MARK: Next block
 
-    /// What the next block is about: the next open task, this project first.
+    /// What the next block is about: the next open task for this block's project, never another's.
     private var nextTask: DailyTask? {
-        DailyTaskPlanner.nextTask(todaysTasks, on: Date(), preferring: blockProjectID)
+        DailyTaskPlanner.nextTask(todaysTasks, on: Date(), for: blockProjectID)
     }
 
     /// Your regular length (`regularMinutes`), so neither a warm-up nor a long break repeats 5 or
@@ -662,9 +669,26 @@ struct SessionCompleteWindowView: View {
         timerVM.regularMinutes
     }
 
-    private var startTitle: String {
-        if let task = nextTask { return "Start \(nextMinutes)m · \(task.title)" }
-        return "Start \(nextMinutes)m"
+    private var startTitle: String { "Start \(nextMinutes)m" }
+
+    /// "Next: <task>" above the start pills, one line, full title on hover.
+    @ViewBuilder
+    private var nextTaskCaption: some View {
+        if let task = nextTask {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text("Next: \(task.title)")
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+            .help(task.title)
+        }
     }
 
     /// The smaller start beside the usual one: the coach's ask when it differs, else 5 minutes.
@@ -675,20 +699,19 @@ struct SessionCompleteWindowView: View {
         return nextMinutes > smallest ? smallest : nil
     }
 
-    /// "Start 25m · task" and, beside it, "5m". `onStart` gets the chosen size.
+    /// "Start 25m" and, beside it at the same width, "Start 15m". `onStart` gets the chosen size.
     private func startButtons(role: LiquidActionRole, tint: Color? = nil, onStart: @escaping (Int) -> Void) -> some View {
         HStack(spacing: 8) {
             LiquidActionButton(title: startTitle, icon: "play.fill", role: role, tint: tint) {
                 onStart(nextMinutes)
             }
-            .help(startTitle)
-            .accessibilityLabel(startTitle)
+            .help(nextTask.map { "\(startTitle) on \($0.title)" } ?? startTitle)
+            .accessibilityLabel(nextTask.map { "\(startTitle) on \($0.title)" } ?? startTitle)
             if let small = smallerMinutes {
                 let why = coachAsk?.minutes == small ? coachAsk?.caption : nil
-                LiquidActionButton(title: "\(small)m", icon: "play", role: .secondary) {
+                LiquidActionButton(title: "Start \(small)m", icon: "play", role: .secondary) {
                     onStart(small)
                 }
-                .frame(width: 96)
                 .help(why ?? "A smaller start: \(small) minutes")
                 .accessibilityLabel("Start \(small) minutes instead")
             }
@@ -750,6 +773,7 @@ struct SessionCompleteWindowView: View {
     private var breakActionsSection: some View {
         EvidenceSafeGlassGroup {
             VStack(spacing: 8) {
+                nextTaskCaption
                 startButtons(role: .primary, tint: .blue) { minutes in
                     hasHandledAction = true
                     let restore = prepareNextStart(minutes: minutes)
@@ -825,7 +849,7 @@ private struct BreakOverrunTitle: View {
 
     /// Seconds past the planned break (live while the break runs over).
     private var overSeconds: Int {
-        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isOvertime ? timerVM.overtimeSeconds : 0)
+        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isBreakOvertime ? timerVM.overtimeSeconds : 0)
     }
 
     var body: some View {

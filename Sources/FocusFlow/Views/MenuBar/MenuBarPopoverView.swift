@@ -205,6 +205,8 @@ struct MenuBarPopoverView: View {
             evidenceMode: timerVM.isEvidenceMode,
             pauseDuration: timerVM.pauseElapsed,
             pauseTimeString: timerVM.pauseTimeString,
+            overrunSeconds: timerVM.isBreakOvertime ? TimeInterval(timerVM.overtimeSeconds) : 0,
+            isBreakOvertime: timerVM.isBreakOvertime,
             labelColorOverride: stateLabelColor
         )
         .padding(.top, (timerVM.state == .idle && !timerVM.isOvertime) ? 20 : 10)
@@ -321,19 +323,30 @@ struct MenuBarPopoverView: View {
                 .accessibilityLabel(timerVM.isPrivateManual ? "Turn off private mode" : "Turn on private mode")
 
                 Button {
-                    openStatsWindow(requestedTab: nil)
+                    openStatsWindow(requestedTab: .today)
                 } label: {
-                    Image(systemName: "chart.bar.xaxis")
+                    Image(systemName: "macwindow")
                         .font(.system(size: 12))
                         .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
                         .frame(width: 30, height: 30)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open insights")
+                .help("Open FocusFlow (Today, Goals, History, Insights, Projects)")
+                .accessibilityLabel("Open FocusFlow")
 
-                Button {
-                    openSettingsWindow()
+                // Settings, the tour and Quit in one place (a menu-bar app had no Quit at all).
+                Menu {
+                    Button("Settings…") { openSettingsWindow() }
+                        .keyboardShortcut(",", modifiers: .command)
+                    Button("Open FocusFlow") { openStatsWindow(requestedTab: .today) }
+                    Button("Welcome tour") {
+                        timerVM.closePopover()
+                        timerVM.openOnboarding?()
+                    }
+                    Divider()
+                    Button("Quit FocusFlow") { NSApplication.shared.terminate(nil) }
+                        .keyboardShortcut("q", modifiers: .command)
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 12))
@@ -341,8 +354,11 @@ struct MenuBarPopoverView: View {
                         .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open Settings")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Settings, welcome tour, Quit")
+                .accessibilityLabel("Settings and more")
             }
             .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
             .padding(.vertical, 10)
@@ -456,14 +472,12 @@ private struct IdlePopoverContent: View {
                     .padding(.top, 16)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             } else {
-                // 1 · Hero (mirrors the notch): own-work ring, coach hook, today's lever.
+                // Hero (mirrors the notch): own-work ring, coach hook, the picked project's lever.
+                // No task list here (2026-10-30): today's tasks are one menu away in "Working on",
+                // scoped to the picked project; Today holds the full list.
                 PopoverIdleHero(lever: lever)
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 16)
-                // 2 · Today's tasks: tick, or click a title to make it the block's goal.
-                PopoverTasksStrip()
-                    .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                    .padding(.top, 10)
             }
 
             VStack(alignment: .leading, spacing: 14) {
@@ -495,7 +509,9 @@ private struct IdlePopoverContent: View {
         .onChange(of: timerVM.completedFocusSessions) { _, _ in preselectRegularLength() }
         .onChange(of: timerVM.selectedProject) { _, newValue in
             if newValue != nil { timerVM.noteProjectSelected() }
-            applyIntentPrefill()
+            // The hero and the goal field follow the picked project.
+            lever = currentLever()
+            applyIntentPrefill(choosesProject: false)
         }
         .onChange(of: timerVM.pendingIntentText) { _, newValue in
             // Typing something else unlinks the picked task.
@@ -512,10 +528,15 @@ private struct IdlePopoverContent: View {
     }
 
     private func refresh() {
-        lever = timerVM.todayLevers().first
+        lever = currentLever()
         let recommendation = timerVM.startLadderRecommendation(now: Date())
         suggestion = recommendation
         applyIntentPrefill()
+    }
+
+    /// The picked project's lever; with no project picked, today's first lever.
+    private func currentLever() -> DailyLever? {
+        PopoverProjectScope.lever(timerVM.todayLevers(), projectID: timerVM.selectedProject?.id)
     }
 
     /// (Preselecting the coach's size here overwrote 25 with 5 after declined prompts.)
@@ -524,34 +545,44 @@ private struct IdlePopoverContent: View {
         timerVM.selectedMinutes = timerVM.regularMinutes
     }
 
-    // MARK: Goal for this block
+    // MARK: Working on (what this block is for)
 
     /// Prefill order: the picked task, else today's lever (for this project), else the last
     /// intent (the view model's prefill). Text the user typed is never replaced.
-    private func applyIntentPrefill() {
+    /// `choosesProject`: on open, a lever with a project picks it; after you change the project
+    /// (to No Project too), the prefill never changes it back.
+    private func applyIntentPrefill(choosesProject: Bool = true) {
         guard timerVM.state == .idle, !timerVM.isOvertime else { return }
         let current = timerVM.pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let id = timerVM.pendingTaskID, let task = timerVM.todayTasks().first(where: { $0.id == id && !$0.isDone }) {
-            if current.isEmpty { timerVM.pendingIntentText = task.title }
+        let projectID = timerVM.selectedProject?.id
+        let picked = timerVM.pendingTaskID.flatMap { id in timerVM.todayTasks().first { $0.id == id } }
+        if let picked, !picked.isDone, projectID == nil || picked.projectID == nil || picked.projectID == projectID {
+            if current.isEmpty { timerVM.pendingIntentText = picked.title }
             return
         }
+        // No task, or another project's task: unlink it, and its title counts as prefill.
         timerVM.pendingTaskID = nil
-        let lastIntent = CoachHistoryReader(modelContext: modelContext).lastIntent(projectID: timerVM.selectedProject?.id) ?? ""
-        let isAuto = current.isEmpty || current == lastIntent || current == autoIntent
-        guard isAuto, let lever else { return }
+        let lastIntent = CoachHistoryReader(modelContext: modelContext).lastIntent(projectID: projectID) ?? ""
+        let isAuto = current.isEmpty || current == lastIntent || current == autoIntent || current == picked?.title
+        guard isAuto else { return }
+        // You chose No Project: no lever prefill, which would pick its project back.
+        if !choosesProject, projectID == nil {
+            timerVM.pendingIntentText = lastIntent
+            autoIntent = nil
+            return
+        }
+        guard let lever, projectID == nil || lever.projectID == nil || lever.projectID == projectID else {
+            // This project has no lever: its last intent, never another project's goal.
+            timerVM.pendingIntentText = lastIntent
+            autoIntent = nil
+            return
+        }
         // The lever's goal already has a task today: the block is for that task, so its end asks
         // "How many did you do?" and the count lands on the task and the goal together.
         if let task = timerVM.todayTasks().first(where: { $0.keyResultID == lever.id && !$0.isDone }),
-           timerVM.selectedProject == nil || task.projectID == nil || task.projectID == timerVM.selectedProject?.id {
+           projectID == nil || task.projectID == nil || task.projectID == projectID {
             pickTask(task)
             autoIntent = task.title
-            return
-        }
-        let projectID = timerVM.selectedProject?.id
-        guard projectID == nil || lever.projectID == nil || lever.projectID == projectID else {
-            // Another project's lever: fall back to this project's last intent.
-            if current == autoIntent { timerVM.pendingIntentText = lastIntent }
-            autoIntent = nil
             return
         }
         autoIntent = lever.action
@@ -588,7 +619,7 @@ private struct IdlePopoverContent: View {
     private var workingOnSection: some View {
         @Bindable var vm = timerVM
         return VStack(alignment: .leading, spacing: 6) {
-            IdleSectionLabel("Working on")
+            IdleSectionLabel("Project")
             ProjectPickerView(selectedProject: $vm.selectedProject)
         }
     }
@@ -598,7 +629,7 @@ private struct IdlePopoverContent: View {
         return SessionIntentField(
             intentText: $vm.pendingIntentText,
             isTaskLinked: timerVM.pendingTaskID != nil,
-            openTasks: timerVM.todayTasks().filter { !$0.isDone },
+            openTasks: PopoverProjectScope.openTasks(timerVM.todayTasks(), projectID: timerVM.selectedProject?.id),
             lever: lever,
             onPickTask: pickTask,
             onPickLever: pickLever
@@ -668,6 +699,8 @@ private struct IdlePopoverContent: View {
         )
         .scaleEffect(startCommitting ? 0.95 : 1.0)
         .animation(reduceMotion ? nil : FFMotion.commit, value: startCommitting)
+        .keyboardShortcut(PopoverShortcut.start)
+        .help("Start (⌘↩)")
     }
 
     private func recoveryBanner(_ recovery: CrashRecoveryState) -> some View {
@@ -687,7 +720,7 @@ private struct IdlePopoverContent: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.orange)
                     .accessibilityHidden(true)
-                Text("Session Interrupted")
+                Text("Block interrupted")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                 Spacer()
@@ -766,6 +799,32 @@ private struct IdlePopoverContent: View {
 
 }
 
+// MARK: - Project scope
+
+/// The idle popover follows the picked project (2026-10-30): its lever in the hero and goal field,
+/// and only its tasks in the goal field's menu.
+enum PopoverProjectScope {
+    /// The project's first lever; with no project picked, today's first lever.
+    static func lever(_ levers: [DailyLever], projectID: UUID?) -> DailyLever? {
+        guard let projectID else { return levers.first }
+        return levers.first { $0.projectID == projectID }
+    }
+
+    static func openTasks(_ tasks: [DailyTask], projectID: UUID?) -> [DailyTask] {
+        DailyTaskPlanner.forProject(tasks, projectID).filter { !$0.isDone }
+    }
+}
+
+// MARK: - Keyboard
+
+/// The popover's block shortcuts (structural redesign 2026-10-30), also listed in Settings → General.
+enum PopoverShortcut {
+    static let start = KeyboardShortcut(.return, modifiers: .command)
+    /// Pause in a running block, Resume in a paused one.
+    static let pause = KeyboardShortcut("p", modifiers: .command)
+    static let finish = KeyboardShortcut(".", modifiers: .command)
+}
+
 // MARK: - Intent Capture (Coach v2 §9 step 2)
 
 /// Section label in sentence case, 11 pt semibold, secondary colour. Shared by the idle sections.
@@ -783,7 +842,7 @@ private struct IdleSectionLabel: View {
     }
 }
 
-/// "Goal for this block": prefilled with the picked task, else today's lever, else the last
+/// "Working on": prefilled with the picked task, else today's lever, else the last
 /// intent. The trailing menu offers today's open tasks, then the lever. Start never waits on it.
 private struct SessionIntentField: View {
     @Binding var intentText: String
@@ -801,7 +860,7 @@ private struct SessionIntentField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            IdleSectionLabel("Goal for this block")
+            IdleSectionLabel("Working on")
             HStack(spacing: 8) {
                 Image(systemName: isTaskLinked ? "checklist.checked" : "checkmark.seal")
                     .font(.system(size: 11, weight: .semibold))
@@ -811,7 +870,7 @@ private struct SessionIntentField: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, weight: .regular))
                     .lineLimit(1)
-                    .accessibilityLabel("Goal for this block")
+                    .accessibilityLabel("Working on")
                 if !openTasks.isEmpty || menuLever != nil {
                     Menu {
                         if !openTasks.isEmpty {
@@ -1020,14 +1079,18 @@ private struct FocusingPopoverContent: View {
                     foregroundColor: .white,
                     action: onPause
                 )
+                .keyboardShortcut(PopoverShortcut.pause)
+                .help("Pause (⌘P)")
                 .accessibilityLabel("Pause focus session")
 
                 GradientCTAButton(
-                    title: "Stop",
+                    title: "Finish",
                     icon: "stop.fill",
                     gradient: LiquidDesignTokens.Gradient.stop,
                     action: { withAnimation(FFMotion.section) { onShowStopConfirmation() } }
                 )
+                .keyboardShortcut(PopoverShortcut.finish)
+                .help("Finish (⌘.)")
                 .accessibilityLabel("Stop focus session")
             }
             .padding(.top, 14)
@@ -1036,6 +1099,7 @@ private struct FocusingPopoverContent: View {
             if !isStarterBlock {
                 lengthRow
                     .padding(.top, 8)
+                UsualLengthReceipt()
             }
 
             // Switch project inline flow (a starter block needs no project)
@@ -1171,8 +1235,8 @@ private struct FocusingPopoverContent: View {
                 .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
 
             GradientCTAButton(
-                title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Save & End",
-                icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "square.and.arrow.down",
+                title: "Finish & log",
+                icon: "checkmark.circle.fill",
                 gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress)
             ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -1193,7 +1257,7 @@ private struct FocusingPopoverContent: View {
                     onDiscardStop()
                 }
             } label: {
-                Label("Discard Session", systemImage: "trash")
+                Label("Discard block", systemImage: "trash")
                     .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -1246,12 +1310,14 @@ private struct PausedPopoverContent: View {
 
             // Resume CTA — amber gradient
             GradientCTAButton(
-                title: "Resume Focus",
+                title: "Resume",
                 icon: "play.fill",
                 gradient: LiquidDesignTokens.Gradient.resume,
                 foregroundColor: .white,
                 action: onResume
             )
+            .keyboardShortcut(PopoverShortcut.pause)
+            .help("Resume (⌘P)")
 
             // End Session — plain text link
             Button {
@@ -1260,7 +1326,7 @@ private struct PausedPopoverContent: View {
                 HStack(spacing: 4) {
                     Image(systemName: "xmark.circle")
                     TrackedLabel(
-                        text: "End Session",
+                        text: "Finish",
                         font: LiquidDesignTokens.Typography.labelMedium,
                         color: LiquidDesignTokens.Surface.onSurfaceMuted,
                         tracking: 2.0
@@ -1268,6 +1334,8 @@ private struct PausedPopoverContent: View {
                 }
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(PopoverShortcut.finish)
+            .help("Finish (⌘.)")
             .accessibilityLabel("End paused session")
 
             if showStopConfirmation {
@@ -1283,8 +1351,8 @@ private struct PausedPopoverContent: View {
     private var pausedStopConfirmation: some View {
         VStack(spacing: 8) {
             GradientCTAButton(
-                title: cycleProgress >= 1.0 ? "Complete Focus Block 🎉" : "Save & End",
-                icon: cycleProgress >= 1.0 ? "checkmark.seal.fill" : "square.and.arrow.down",
+                title: "Finish & log",
+                icon: "checkmark.circle.fill",
                 gradient: LiquidDesignTokens.Gradient.cycleCompletion(progress: cycleProgress)
             ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -1305,7 +1373,7 @@ private struct PausedPopoverContent: View {
                     onDiscardStop()
                 }
             } label: {
-                Label("Discard Session", systemImage: "trash")
+                Label("Discard block", systemImage: "trash")
                     .foregroundStyle(LiquidDesignTokens.Spectral.salmon)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -1362,7 +1430,7 @@ private struct OvertimePopoverContent: View {
                     HStack(spacing: 6) {
                         secondaryButton("Break 5 min", label: "Take a 5 minute break", action: onTakeBreak)
                         secondaryButton("Keep going", label: "Start the next block", action: onKeepGoing)
-                        secondaryButton("End", label: "End without logging", action: onEnd)
+                        secondaryButton("Done for today", label: "End here without opening the log", action: onEnd)
                     }
                 }
 
@@ -1418,7 +1486,7 @@ private struct BreakOvertimePopoverContent: View {
             GlassEffectContainer {
                 VStack(spacing: 8) {
                     GradientCTAButton(
-                        title: "Start Next Block",
+                        title: "Start next block",
                         icon: "play.fill",
                         gradient: LiquidDesignTokens.Gradient.focus,
                         action: onStartFocusing
@@ -1481,13 +1549,15 @@ private struct BreakPopoverContent: View {
                             Image(systemName: "play.fill")
                                 .font(.system(size: 11, weight: .semibold))
                                 .accessibilityHidden(true)
-                            Text("Start Focusing")
+                            Text("Start")
                                 .font(.system(size: 13, weight: .medium))
                         }
                         .frame(maxWidth: .infinity, minHeight: 36)
                     }
                     .buttonStyle(.glassProminent)
                     .buttonBorderShape(.capsule)
+                    .keyboardShortcut(PopoverShortcut.start)
+                    .help("Start (⌘↩)")
                     .accessibilityLabel("Skip break and start next focus block")
 
                     // Secondary actions row
@@ -1529,7 +1599,7 @@ private struct BreakPopoverContent: View {
                                 Image(systemName: "xmark.circle")
                                     .font(.system(size: 11))
                                     .accessibilityHidden(true)
-                                Text("End Session")
+                                Text("Done for today")
                                     .font(.system(size: 12, weight: .medium))
                             }
                             .frame(maxWidth: .infinity, minHeight: 32)
@@ -1630,12 +1700,14 @@ extension MenuBarPopoverView {
         )
     }
 
-    /// What the next block is about: the picked task, else today's lever.
+    /// What the next block is about: the picked task, else the lever, both for this block's project.
     fileprivate var nextStepLine: String? {
-        if let id = timerVM.pendingTaskID, let task = timerVM.todayTasks().first(where: { $0.id == id && !$0.isDone }) {
+        let projectID = timerVM.taskScopeProjectID
+        if let id = timerVM.pendingTaskID,
+           let task = DailyTaskPlanner.forProject(timerVM.todayTasks(), projectID).first(where: { $0.id == id && !$0.isDone }) {
             return task.title
         }
-        return timerVM.todayLevers().first?.action
+        return PopoverProjectScope.lever(timerVM.todayLevers(), projectID: projectID)?.action
     }
 
     fileprivate var overtimeContent: some View {
@@ -1691,5 +1763,31 @@ private struct PrivacyStrip: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.05)))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// "25 min is now your usual block · Undo" after the Length row changed Settings (design audit).
+private struct UsualLengthReceipt: View {
+    @Environment(TimerViewModel.self) private var timerVM
+
+    var body: some View {
+        if let change = timerVM.usualLengthChange {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(FFPalette.goal)
+                    .accessibilityHidden(true)
+                Text("\(change.minutes) min is now your usual block")
+                    .font(.system(size: 11, weight: .medium))
+                Spacer(minLength: 4)
+                Button("Undo") { withAnimation(FFMotion.control) { timerVM.undoUsualLengthChange() } }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(FFPalette.accent)
+                    .frame(minHeight: 30)
+            }
+            .padding(.horizontal, 10)
+            .transition(.opacity)
+        }
     }
 }

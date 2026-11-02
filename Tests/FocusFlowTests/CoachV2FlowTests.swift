@@ -53,8 +53,8 @@ final class CoachV2FlowTests: XCTestCase {
         let ledger = CoachRewardLedger(store: store)
         let now = Date()
 
-        let stale = engine.recordDeliveredIntervention(kind: .strongPrompt, now: now.addingTimeInterval(-11 * 60), surface: .panel, style: .data, contextKey: "k")
-        XCTAssertFalse(ledger.creditStart(attemptID: stale.id, sessionID: UUID(), at: now), "Starts after 10 minutes are not credited")
+        let stale = engine.recordDeliveredIntervention(kind: .strongPrompt, now: now.addingTimeInterval(-21 * 60), surface: .panel, style: .data, contextKey: "k")
+        XCTAssertFalse(ledger.creditStart(attemptID: stale.id, sessionID: UUID(), at: now), "Starts after 20 minutes are not credited")
 
         let fresh = engine.recordDeliveredIntervention(kind: .strongPrompt, now: now.addingTimeInterval(-120), surface: .panel, style: .data, contextKey: "k")
         let sessionID = UUID()

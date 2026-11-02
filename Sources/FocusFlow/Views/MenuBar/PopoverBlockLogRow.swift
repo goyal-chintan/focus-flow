@@ -13,7 +13,8 @@ struct PopoverBlockLogRow: View {
     var body: some View {
         let now = Date()
         let todays = timerVM.todayTasks(now: now)
-        let stats = DailyTaskPlanner.stats(todays, on: now)
+        // This block's project only: "2/5 tasks" never counts another project's reminders.
+        let stats = DailyTaskPlanner.stats(DailyTaskPlanner.forProject(todays, timerVM.taskScopeProjectID), on: now)
         let blockTask = timerVM.currentBlockTaskID.flatMap { id in todays.first { $0.id == id } }
         let result = quickResult(now: now)
         if stats.planned > 0 || result != nil {
@@ -69,7 +70,7 @@ struct PopoverBlockLogRow: View {
 
     private func resultButton(_ result: (id: UUID, title: String, done: Double, target: Double)) -> some View {
         Button {
-            timerVM.logGoalProgress(resultID: result.id, amount: 1)
+            timerVM.logOneMore(resultID: result.id)
             withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { resultRevision += 1 }
         } label: {
             HStack(spacing: 6) {

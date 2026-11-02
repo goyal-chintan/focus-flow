@@ -7,8 +7,8 @@ struct GoalDraft: Equatable {
         var id = UUID()
         var existingID: UUID?
         var title = ""
-        var kind: GoalKeyResultKind = .count
-        var target: Double = 10
+        /// Empty until you type it: a default like 10 turned one-off steps into "0 / 10".
+        var target: Double?
         var unit = ""
     }
 
@@ -34,13 +34,15 @@ struct GoalDraft: Equatable {
         deadline = goal.deadline
         isBossFight = goal.isBossFight
         keyResults = goal.sortedKeyResults.map {
-            KeyResultDraft(existingID: $0.id, title: $0.title, kind: $0.kind, target: $0.target, unit: $0.unit ?? "")
+            KeyResultDraft(existingID: $0.id, title: $0.title, target: $0.target, unit: $0.unit ?? "")
         }
     }
 
     var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
     var validKeyResults: [KeyResultDraft] { keyResults.filter { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty } }
-    var isValid: Bool { !trimmedTitle.isEmpty && deadline > startDate }
+    /// Every key result you named needs a number: a goal is measured in counts.
+    var missingTargets: Bool { validKeyResults.contains { ($0.target ?? 0) < 1 } }
+    var isValid: Bool { !trimmedTitle.isEmpty && deadline > startDate && !missingTargets }
     /// Nothing entered: the project form treats an untouched draft as "no goal".
     var isEmpty: Bool { trimmedTitle.isEmpty && validKeyResults.isEmpty }
 
@@ -70,15 +72,15 @@ struct GoalDraft: Equatable {
             let unit = draft.unit.trimmingCharacters(in: .whitespaces)
             if let id = draft.existingID, let kr = goal.keyResults.first(where: { $0.id == id }) {
                 kr.title = draft.title.trimmingCharacters(in: .whitespaces)
-                kr.kindRaw = draft.kind.rawValue
-                kr.target = draft.kind == .checkbox ? 1 : max(1, draft.target)
-                kr.unit = draft.kind == .checkbox || unit.isEmpty ? nil : unit
+                kr.kindRaw = GoalKeyResultKind.count.rawValue
+                kr.target = max(1, draft.target ?? 1)
+                kr.unit = unit.isEmpty ? nil : unit
                 kr.order = index
                 results.append(kr)
             } else {
                 let kr = GoalKeyResult(
-                    title: draft.title.trimmingCharacters(in: .whitespaces), kind: draft.kind, target: draft.target,
-                    unit: draft.kind == .checkbox || unit.isEmpty ? nil : unit, order: index
+                    title: draft.title.trimmingCharacters(in: .whitespaces), kind: .count, target: max(1, draft.target ?? 1),
+                    unit: unit.isEmpty ? nil : unit, order: index
                 )
                 context.insert(kr)
                 results.append(kr)
@@ -97,8 +99,8 @@ struct GoalEditorFields: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: FFSpace.l) {
-            field("Goal") {
-                TextField("e.g. Apply for jobs by 28 Nov", text: $draft.title)
+            field("What do you want to get done?") {
+                TextField("e.g. Interview-ready for data roles", text: $draft.title)
                     .textFieldStyle(.roundedBorder)
             }
             HStack(alignment: .top, spacing: FFSpace.l) {
@@ -125,8 +127,8 @@ struct GoalEditorFields: View {
             quickDeadlines
             Toggle(isOn: $draft.isBossFight) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("This month's boss fight").ffText(.body)
-                    Text("Your one main goal. Today's levers and the coach lean on it first.").ffText(.caption)
+                    Text("Make this my main goal").ffText(.body)
+                    Text("Today's suggestions and the coach lean on it first.").ffText(.caption)
                 }
             }
             .toggleStyle(.switch)
@@ -141,7 +143,7 @@ struct GoalEditorFields: View {
 
     private var quickDeadlines: some View {
         HStack(spacing: FFSpace.s) {
-            Text("Quick:").ffText(.caption)
+            Text("Deadline in").ffText(.caption)
             ForEach([(7, "1 week"), (14, "2 weeks"), (30, "1 month"), (90, "3 months")], id: \.0) { days, label in
                 Button(label) {
                     draft.deadline = Calendar.current.date(byAdding: .day, value: days, to: draft.startDate) ?? draft.deadline
@@ -154,42 +156,45 @@ struct GoalEditorFields: View {
 
     private var keyResultsEditor: some View {
         VStack(alignment: .leading, spacing: FFSpace.s) {
-            HStack {
-                Text("Key results").ffText(.headline)
-                Text("How you'll know it's done").ffText(.caption)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("How will you measure it?").ffText(.headline)
+                    Text("A number you'll count up to. Each day the goal shows how many keep you on pace.").ffText(.caption)
+                }
                 Spacer()
                 Button {
                     draft.keyResults.append(.init())
                 } label: {
-                    Label("Add", systemImage: "plus")
+                    Label("Add a Number", systemImage: "plus")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
+            if !draft.keyResults.isEmpty {
+                // Column names, so three bare fields read as "60 · LeetCode · questions".
+                HStack(spacing: FFSpace.s) {
+                    Text("Target").frame(width: 56, alignment: .trailing)
+                    Text("What you count").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Unit (optional)").frame(width: 100, alignment: .leading)
+                    Color.clear.frame(width: 30, height: 1)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            }
             ForEach($draft.keyResults) { $kr in
                 HStack(spacing: FFSpace.s) {
-                    Picker("Kind", selection: $kr.kind) {
-                        Image(systemName: "number").tag(GoalKeyResultKind.count).help("A number to reach")
-                        Image(systemName: "checkmark.square").tag(GoalKeyResultKind.checkbox).help("Done or not")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 70)
-                    if kr.kind == .count {
-                        TextField("60", value: $kr.target, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 56)
-                            .multilineTextAlignment(.trailing)
-                            .accessibilityLabel("Target")
-                    }
-                    TextField(kr.kind == .count ? "LeetCode" : "Apply for 10 jobs", text: $kr.title)
+                    TextField("60", value: $kr.target, format: .number)
                         .textFieldStyle(.roundedBorder)
-                    if kr.kind == .count {
-                        TextField("questions", text: $kr.unit)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
-                            .accessibilityLabel("Unit")
-                    }
+                        .frame(width: 56)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityLabel("How many")
+                    TextField("LeetCode", text: $kr.title)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("questions", text: $kr.unit)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                        .accessibilityLabel("Unit")
                     Button {
                         draft.keyResults.removeAll { $0.id == kr.id }
                     } label: {
@@ -199,12 +204,20 @@ struct GoalEditorFields: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Remove key result")
+                    .accessibilityLabel("Remove this number")
                 }
             }
             if draft.keyResults.isEmpty {
-                Text("Add at least one: \"60 LeetCode questions\", \"Ask for 3 referrals\", \"Apply\".").ffText(.caption)
+                Text("Without a number the goal can't show a pace. Add one: “60 LeetCode questions”, “3 referral asks”.").ffText(.caption)
             }
+            if draft.missingTargets {
+                Label("Give each one a target number.", systemImage: "exclamationmark.triangle.fill")
+                    .ffText(.caption)
+                    .foregroundStyle(FFPalette.atRisk)
+            }
+            // Goals count; one-off steps ("Book the call with Rik") are tasks on Today.
+            Text("Single steps (“Book the call with Rik”) are tasks, not goals. A task linked to a number adds 1 when you tick it.")
+                .ffText(.caption)
         }
     }
 
@@ -233,7 +246,7 @@ struct GoalFormView: View {
                 VStack(alignment: .leading, spacing: FFSpace.l) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(goal == nil ? "New goal" : "Edit goal").ffText(.title3)
-                        Text("A deadline and the results that prove it. The app tracks whether you're on pace.").ffText(.callout)
+                        Text("Something you want done by a date, and the number that proves it.").ffText(.callout)
                     }
                     GoalEditorFields(draft: $draft, projects: projects)
                 }

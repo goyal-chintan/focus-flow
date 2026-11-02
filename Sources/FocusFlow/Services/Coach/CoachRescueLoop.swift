@@ -68,7 +68,10 @@ enum CoachStarterBlock {
 
     static func planTitle(minutes: Int) -> String { "\(minutes) minutes. Plan the next step." }
     static func pauseScreenTitle(minutes: Int) -> String { "Start \(minutes) minutes" }
-    static func hotkeyHint(minutes: Int) -> String { "⌃⌥Space starts \(minutes) min anytime" }
+    /// The global shortcut, worded the same in Settings, onboarding and coach footers.
+    static let hotkeyKeys = "⌃⌥Space"
+    static let hotkeyAction = "starts a short block on your next step, from anywhere"
+    static var hotkeyHint: String { "\(hotkeyKeys) \(hotkeyAction)" }
     static func startedNotice(minutes: Int) -> String { "Starter block started · \(minutes) min" }
 
     static func isStarter(customLabel: String?, hasProject: Bool) -> Bool {

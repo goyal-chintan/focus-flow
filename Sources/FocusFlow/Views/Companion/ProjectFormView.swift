@@ -72,20 +72,12 @@ struct ProjectDraft {
         project.targetWeekdaysOnly = dailyTargetMinutes > 0 ? weekdaysOnly : nil
         let why = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         project.purpose = why.isEmpty ? nil : why
-        let previousList = project.reminderListID
         if createsReminderList {
             let title = "FocusFlow · \(trimmedName)"
             project.reminderListID = RemindersService.shared.reminderLists().first { $0.title == title }?.id
                 ?? RemindersService.shared.createList(title: title)
         } else {
             project.reminderListID = (reminderListID ?? "").isEmpty ? nil : reminderListID
-        }
-        if project.reminderListID != previousList {
-            // Switched or stopped syncing: the tasks keep their titles but no longer mirror the old
-            // list, so ticks and deletes never reach it.
-            let projectID = project.id
-            let linked = (try? context.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.projectID == projectID && $0.reminderID != nil }))) ?? []
-            for task in linked { task.reminderID = nil }
         }
         if addsGoal && goal.isValid {
             var goalDraft = goal

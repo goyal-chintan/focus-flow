@@ -176,12 +176,15 @@ final class NotchController: NotchHosting {
             takeBreak: { vm.continueAfterCompletion(action: .takeBreak(duration: 300)) },
             end: { [weak self] in self?.collapse(); vm.continueAfterCompletion(action: .endSession) },
             skipBreak: { vm.skipBreak() },
+            startAfterBreak: { [weak self] in self?.collapse(); vm.continueAfterCompletion(action: .continueFocusing) },
             toggleBreak: { vm.isBreakPaused ? vm.resumeBreak() : vm.pauseBreak() },
             start: { [weak self] minutes in
-                let lever = vm.todayLevers().first
-                if vm.startNextBlock(minutes: minutes, projectID: lever?.projectID) { self?.collapse() }
+                // The picked project first; with none, the first lever's project.
+                let projectID = vm.selectedProject?.id
+                    ?? PopoverProjectScope.lever(vm.todayLevers(), projectID: nil)?.projectID
+                if vm.startNextBlock(minutes: minutes, projectID: projectID) { self?.collapse() }
             },
-            logResult: { id in vm.logGoalProgress(resultID: id, amount: 1) },
+            logResult: { id in vm.logOneMore(resultID: id) },
             openGoals: { [weak self] in
                 self?.collapse()
                 vm.openCompanionWindow?(.goals)
@@ -213,19 +216,19 @@ private struct NotchLiveView: View {
     }
 
     private func snapshot(now: Date) -> NotchSnapshot {
-        let mode: NotchSnapshot.Mode
-        switch vm.state {
-        case .idle: mode = vm.isOvertime ? .overtime : .idle
-        case .focusing: mode = vm.isOvertime ? .overtime : .focusing
-        case .paused: mode = .paused
-        case .onBreak: mode = .onBreak(paused: vm.isBreakPaused)
-        }
+        let mode = NotchSnapshot.Mode.from(
+            state: vm.state, isOvertime: vm.isOvertime,
+            isBreakOvertime: vm.isBreakOvertime, isBreakPaused: vm.isBreakPaused
+        )
         let goals = vm.historyReaderActiveGoals()
         let levers = vm.todayLevers(now: now)
         let projects = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived }))) ?? []
         let topProject = projects.filter { $0.priorityRank != nil }.min { ($0.priorityRank ?? .max) < ($1.priorityRank ?? .max) }
         let leverProject = levers.first?.projectID.flatMap { id in projects.first { $0.id == id } }
-        let shownProject: Project? = mode == .idle ? (leverProject ?? topProject) : vm.selectedProject
+        // Idle follows the project picked in the popover; a block or break follows that block.
+        let shownProject: Project? = mode == .idle ? (vm.selectedProject ?? leverProject ?? topProject) : vm.selectedProject
+        let scopeID = mode == .idle ? shownProject?.id : vm.taskScopeProjectID
+        let lever = PopoverProjectScope.lever(levers, projectID: scopeID)
 
         let idleOpen = mode == .idle && state.expanded
         let verdict = idleOpen ? TodayVerdict.text(modelContext: modelContext, now: now) : nil
@@ -244,16 +247,16 @@ private struct NotchLiveView: View {
 
         // Today's tasks: in a block, only the block's own task (no fallback to the next one).
         let todays = vm.todayTasks(now: now)
-        let taskStats = DailyTaskPlanner.stats(todays, on: now)
+        let taskStats = DailyTaskPlanner.stats(DailyTaskPlanner.forProject(todays, scopeID), on: now)
         let next: DailyTask?
         if mode == .focusing || mode == .paused {
             next = vm.currentBlockTaskID.flatMap { id in todays.first { $0.id == id && !$0.isDone } }
         } else {
-            next = DailyTaskPlanner.nextTask(todays, on: now, preferring: shownProject?.id)
+            next = DailyTaskPlanner.nextTask(todays, on: now, for: shownProject?.id)
         }
 
         let attention = mode == .idle && (vm.coachPanel != nil || vm.coachMenuBarPulse)
-        let scope = GoalDataBuilder.goalScope(projects)
+        let dailyGoal = GoalDataBuilder.dailyGoal(projects: projects, settings: vm.settings, on: now)
         return NotchSnapshot(
             mode: mode,
             time: vm.isOvertime ? vm.overtimeTimeString : vm.timeString,
@@ -262,9 +265,9 @@ private struct NotchLiveView: View {
             projectColor: shownProject?.color,
             intent: vm.currentIntentText,
             goalDone: vm.goalProgressSeconds(now: now),
-            goalTarget: vm.settings?.dailyFocusGoal ?? 7200,
-            goalLabel: scope.label,
-            lever: levers.first,
+            goalTarget: dailyGoal.seconds,
+            goalLabel: dailyGoal.label,
+            lever: lever,
             verdict: verdict,
             coachHook: attention ? (vm.coachPanel?.message.hook ?? "The coach has a start for you.") : nil,
             quickResult: quick,

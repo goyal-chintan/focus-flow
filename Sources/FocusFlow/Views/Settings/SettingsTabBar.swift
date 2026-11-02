@@ -71,7 +71,7 @@ struct SettingsTabContainer: View {
 
 // MARK: - Tab bar
 
-/// Five equal-width toolbar items (symbol above label). The selected item sits on a soft
+/// Five toolbar items (symbol above label), at least `itemWidth` wide. The selected item sits on a soft
 /// accent-tinted rounded highlight that slides between items with `matchedGeometryEffect`.
 struct SettingsTabBar: View {
     let selection: SettingsTab
@@ -116,7 +116,9 @@ struct SettingsTabBar: View {
                     .lineLimit(1)
             }
             .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
-            .frame(width: Self.itemWidth, height: Self.itemHeight)
+            // At least `itemWidth`; "Permissions & Sync" grows its item instead of truncating.
+            .padding(.horizontal, 8)
+            .frame(minWidth: Self.itemWidth, minHeight: Self.itemHeight, maxHeight: Self.itemHeight)
             .background {
                 if isSelected {
                     shape

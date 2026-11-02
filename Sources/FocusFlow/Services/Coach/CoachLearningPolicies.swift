@@ -6,10 +6,11 @@ import Foundation
 
 // MARK: - Reward (§3.1)
 
-/// Reward of a decision, read from the sessions table once 60 minutes have passed:
-/// 1 for a start within 10 minutes, plus up to 0.5 for focused minutes in the next hour.
+/// Reward of a decision, read from the recorded block starts once 60 minutes have passed:
+/// 1 for a start within 20 minutes, plus up to 0.5 for focused minutes in the next hour.
 enum CoachDecisionReward {
-    static let startWindow: TimeInterval = 10 * 60
+    /// 20 minutes: a start 10.6 minutes after a prompt was logged "on your own" (audit 2026-10-30).
+    static let startWindow: TimeInterval = 20 * 60
     static let momentumWindow: TimeInterval = 60 * 60
     static let momentumCapMinutes = 50.0
     static let momentumWeight = 0.5
@@ -19,6 +20,16 @@ enum CoachDecisionReward {
         let seconds: TimeInterval
         /// The length the block was started at (credits the size learner).
         var plannedMinutes: Int = 25
+        var sessionID: UUID?
+    }
+
+    /// The blocks a reward is read from: every recorded start (`BlockStartEvent`, short blocks
+    /// included), plus sessions without a start record: history from before the record existed,
+    /// manual entries, the second half of a project switch (coach audit 2026-10-30).
+    static func merge(starts: [Block], sessions: [Block]) -> [Block] {
+        let recorded = Set(starts.compactMap(\.sessionID))
+        let unrecorded = sessions.filter { $0.sessionID.map { !recorded.contains($0) } ?? true }
+        return (starts + unrecorded).sorted { $0.start < $1.start }
     }
 
     /// Nil while the hour is still running.
@@ -96,6 +107,8 @@ struct CoachPromptFeatures: Sendable, Equatable {
 enum CoachPromptPolicy {
     /// `InterventionAttempt.decisionRaw` for a Learner A decision point.
     static let decisionKey = "prompt"
+    /// A declared window's guaranteed prompt (coach audit 2026-10-30): certain, so never a learning row.
+    static let guaranteedDecisionKey = "prompt-guaranteed"
     static let minProbability = 0.05
     static let maxProbability = 0.80
     /// A prompt must raise the start chance by about 5 points to be worth the interruption.
@@ -149,8 +162,18 @@ enum CoachPromptPolicy {
         return min(maxProbability, max(minProbability, p))
     }
 
-    static func decide<G: RandomNumberGenerator>(x: [Double], model: BayesianLinearModel, using rng: inout G) -> (prompt: Bool, probability: Double) {
-        let p = probability(x: x, model: model)
+    /// Until this many decisions have resolved rewards, prompt with a fixed probability instead of
+    /// the model. One person yields 1–3 decision points a day: a 12-weight model barely moves off
+    /// its prior for months, and that prior holds back more than half the time (coach audit
+    /// 2026-10-30: 3 decisions in 3 days, 1 start from 51 shown prompts in 14). HeartSteps did the
+    /// same: a fixed-probability micro-randomised trial first (Klasnja et al., 2019), personalised
+    /// later (Liao et al., 2020). The 30% kept quiet is still the control group the lift needs.
+    static let warmUpDecisions = 40
+    static let warmUpProbability = 0.7
+
+    static func decide<G: RandomNumberGenerator>(x: [Double], model: BayesianLinearModel, resolvedDecisions: Int = .max,
+                                                 using rng: inout G) -> (prompt: Bool, probability: Double) {
+        let p = resolvedDecisions < warmUpDecisions ? warmUpProbability : probability(x: x, model: model)
         return (Double.random(in: 0..<1, using: &rng) < p, p)
     }
 
@@ -247,7 +270,7 @@ enum CoachSizePolicy {
 
 // MARK: - Measured lift (§3.5)
 
-/// Inverse-propensity estimate of how much a prompt changes the chance of starting within 10 min.
+/// Inverse-propensity estimate of how much a prompt changes the chance of starting within the start window (20 min).
 /// Unbiased because each decision was randomised with a known probability.
 enum CoachLiftEstimate {
     static let minimumDecisions = 20

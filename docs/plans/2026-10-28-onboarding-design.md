@@ -2,6 +2,8 @@
 
 Date: 2026-10-28. Branch: `feature/onboarding`.
 
+> Superseded by `2026-10-31-onboarding-v2-design.md` (what, when, first step, plan; no timer framing).
+
 ## 1. Goal
 
 A new person opens FocusFlow and, in about a minute, has:
