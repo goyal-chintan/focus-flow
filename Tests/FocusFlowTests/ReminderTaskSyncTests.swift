@@ -19,7 +19,7 @@ final class ReminderTaskSyncTests: XCTestCase {
 
     // MARK: Plan (pure)
 
-    func testImportsTodaysOverdueAndUndatedRemindersOfSyncedListsOnce() {
+    func testImportsEveryReminderOfSyncedListsOnceLaterOnesOnTheirDay() {
         let project = UUID()
         let plan = ReminderTaskSync.plan(
             open: [
@@ -34,8 +34,9 @@ final class ReminderTaskSyncTests: XCTestCase {
             tasks: [.init(id: UUID(), reminderID: "f", day: today, isDone: false, title: "Already a task")],
             today: today
         )
-        XCTAssertEqual(plan.imports.map(\.reminderID), ["a", "b", "c"])
+        XCTAssertEqual(plan.imports.map(\.reminderID), ["a", "b", "c", "d"])
         XCTAssertTrue(plan.imports.allSatisfy { $0.projectID == project })
+        XCTAssertEqual(plan.imports.map(\.day), [today, today, today, tomorrow].map(calendar.startOfDay(for:)))
     }
 
     func testAnUnfinishedEarlierTaskMakesTheImportItsCarryOver() {
@@ -289,6 +290,116 @@ final class ReminderTaskSyncTests: XCTestCase {
         await vm.reminderWrite?.value
         XCTAssertTrue(fake.created.isEmpty)
     }
+
+    // MARK: Project page (project tasks redesign 2026-11-02)
+
+    func testTheProjectPageSaysWhyNothingShows() throws {
+        let (vm, fake, project, _) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        XCTAssertEqual(vm.reminderLink(for: project), .linked(listTitle: "Work"))
+        fake.lists = []
+        XCTAssertEqual(vm.reminderLink(for: project), .listMissing)
+        project.reminderListID = nil
+        XCTAssertEqual(vm.reminderLink(for: project), .notLinked)
+        fake.isAuthorized = false
+        XCTAssertEqual(vm.reminderLink(for: project), .noAccess)
+        vm.settings?.remindersIntegrationEnabled = false
+        XCTAssertEqual(vm.reminderLink(for: project), .syncOff)
+    }
+
+    func testLaterRemindersAreTheProjectsTasksOnTheirDays() async throws {
+        let (vm, fake, project, _) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        let nextWeek = calendar.date(byAdding: .day, value: 7, to: today)!
+        fake.open = [item("a", "Today's", due: today), item("b", "Next week", due: nextWeek),
+                     item("c", "Tomorrow's", due: tomorrow), item("d", "Undated"), item("x", "Other list", list: "home", due: tomorrow)]
+        await vm.syncReminders(now: today)
+        XCTAssertEqual(Set(vm.todayTasks(now: today).map(\.title)), ["Today's", "Undated"])
+        XCTAssertEqual(vm.laterTasks(forProject: project.id, now: today).map(\.title), ["Tomorrow's", "Next week"])
+
+        // Imported once; rescheduled in Reminders, the task follows (here: to today).
+        fake.open = [item("a", "Today's", due: today), item("b", "Next week", due: today),
+                     item("c", "Tomorrow's", due: tomorrow), item("d", "Undated")]
+        await vm.syncReminders(now: today)
+        XCTAssertEqual(Set(vm.todayTasks(now: today).map(\.title)), ["Today's", "Undated", "Next week"])
+        XCTAssertEqual(vm.laterTasks(forProject: project.id, now: today).map(\.title), ["Tomorrow's"])
+    }
+
+    func testALaterReminderDoneOnThePhoneTicksItsTask() async throws {
+        let (vm, fake, project, _) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        fake.open = [item("c", "Tomorrow's", due: tomorrow)]
+        await vm.syncReminders(now: today)
+        let task = try XCTUnwrap(vm.laterTasks(forProject: project.id, now: today).first)
+        fake.open = []
+        fake.states = ["c": .completed]
+        await vm.syncReminders(now: today)
+        XCTAssertTrue(task.isDone)
+    }
+
+    func testDoTodayMovesALaterReminderAndItsDueDate() async throws {
+        let (vm, fake, project, _) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        fake.open = [item("b", "Write the transfer doc", due: tomorrow)]
+        await vm.syncReminders(now: today)
+        let task = try XCTUnwrap(vm.laterTasks(forProject: project.id, now: today).first)
+        vm.moveDailyTaskToToday(task, now: today)
+        await vm.reminderWrite?.value
+        XCTAssertTrue(calendar.isDate(task.day, inSameDayAs: today))
+        XCTAssertEqual(fake.dueDays["b"] ?? nil, calendar.startOfDay(for: today))
+
+        // Reminders now says today, so the next sync keeps it today and adds no copy.
+        fake.open = [item("b", "Write the transfer doc", due: today)]
+        await vm.syncReminders(now: today)
+        XCTAssertEqual(vm.todayTasks(now: today).map(\.title), ["Write the transfer doc"])
+        XCTAssertTrue(vm.laterTasks(forProject: project.id, now: today).isEmpty)
+    }
+
+    // MARK: Picking reminders into a goal (2026-11-02)
+
+    func testPickedRemindersMakeANewNumberAndEachDoneAddsOne() async throws {
+        let (vm, fake, project, container) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        let goal = ProjectGoal(title: "Create a transfer document", projectID: project.id, startDate: yesterday,
+                               deadline: calendar.date(byAdding: .day, value: 10, to: today)!)
+        container.mainContext.insert(goal)
+        fake.open = [item("a", "Outline", due: today), item("b", "Draft", due: tomorrow), item("c", "Review", due: tomorrow)]
+        await vm.syncReminders(now: today)
+        let picked = vm.todayTasks(now: today) + vm.laterTasks(forProject: project.id, now: today).prefix(1)
+
+        let number = try XCTUnwrap(vm.countTasks(picked, toward: goal, resultID: nil, newTitle: "Sections", now: today))
+        XCTAssertEqual(number.title, "Sections")
+        XCTAssertEqual(number.target, 2)
+        XCTAssertEqual(goal.keyResults.count, 1)
+        XCTAssertTrue(picked.allSatisfy { $0.keyResultID == number.id })
+
+        // Done here: +1. Done on the phone (a later one): +1 too.
+        let first = try XCTUnwrap(vm.todayTasks(now: today).first)
+        vm.setDailyTask(first, done: true, now: today, receipt: false)
+        fake.open = [item("c", "Review", due: tomorrow)]
+        fake.states = ["b": .completed]
+        await vm.syncReminders(now: today)
+        XCTAssertEqual(number.entries.reduce(0) { $0 + $1.amount }, 2)
+
+        // Picking one more into the same number raises its target.
+        let review = try XCTUnwrap(vm.laterTasks(forProject: project.id, now: today).first)
+        vm.countTasks([review], toward: goal, resultID: number.id, now: today)
+        XCTAssertEqual(number.target, 3)
+    }
+
+    func testACarriedOverReminderKeepsCountingTowardItsGoal() async throws {
+        let (vm, fake, project, container) = try makeVM()
+        defer { AppUsageTracker.shared.stop() }
+        let goal = ProjectGoal(title: "Handover", projectID: project.id, startDate: yesterday,
+                               deadline: calendar.date(byAdding: .day, value: 10, to: today)!)
+        container.mainContext.insert(goal)
+        fake.open = [item("a", "Outline")]
+        await vm.syncReminders(now: yesterday)
+        let number = try XCTUnwrap(vm.countTasks(vm.todayTasks(now: yesterday), toward: goal, resultID: nil, now: yesterday))
+        await vm.syncReminders(now: today)
+        XCTAssertEqual(vm.todayTasks(now: today).first?.keyResultID, number.id)
+    }
+
 }
 
 @MainActor
@@ -316,4 +427,6 @@ final class FakeReminders: ReminderBridge {
         return id
     }
     func deleteReminder(identifier: String) -> Bool { deleted.append(identifier); return true }
+    var lists: [(id: String, title: String, source: String)] = [("work", "Work", "iCloud")]
+    func reminderLists() -> [(id: String, title: String, source: String)] { lists }
 }

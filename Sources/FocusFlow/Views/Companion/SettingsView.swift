@@ -854,7 +854,7 @@ private struct IntegrationsSettingsTab: View {
                 access: RemindersService.shared.authStatus == .authorized ? .authorized
                     : RemindersService.shared.authStatus == .denied ? .denied : .notDetermined,
                 app: "Reminders",
-                enabledText: "Pick a list for each project in its Edit sheet. Reminders due today, overdue or undated become its tasks; ticks, new tasks, moves and deletes go back.",
+                enabledText: "Pick a list on each project's page (under its tasks) or in its Edit sheet. Reminders due today, overdue or undated become its tasks; ticks, new tasks, moves and deletes go back.",
                 offText: "Turns a project's Reminders list into its daily tasks."
             ))
         }

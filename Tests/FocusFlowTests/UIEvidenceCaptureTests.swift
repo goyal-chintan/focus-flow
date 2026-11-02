@@ -450,6 +450,64 @@ final class UIEvidenceCaptureTests: XCTestCase {
     /// Seeds three ranked projects with targets, a week of blocks (office-heavy, little learning) and a
     /// boss-fight goal, then renders Goals, Today, Insights, the project form and the session-complete
     /// goal block. Output: FOCUSFLOW_CAPTURE_OUTPUT_DIR/goals/<appearance>/.
+    /// A project page linked to a Reminders list (project tasks redesign 2026-11-02): today's
+    /// reminders as tasks, the list named under them, and "Later in Reminders" with Do Today.
+    func testCaptureProjectRemindersLinked() async throws {
+        guard let override = ProcessInfo.processInfo.environment["FOCUSFLOW_CAPTURE_OUTPUT_DIR"], !override.isEmpty else {
+            throw XCTSkip("Set FOCUSFLOW_CAPTURE_OUTPUT_DIR to capture")
+        }
+        let outputRoot = URL(fileURLWithPath: override, isDirectory: true).appendingPathComponent("goals", isDirectory: true)
+        let calendar = Calendar.current
+        let now = Date()
+        for appearance in ReviewArtifactAppearance.allCases {
+            let directory = outputRoot.appendingPathComponent(appearance.rawValue, isDirectory: true)
+            try makeDirectory(directory)
+            let fixture = try makeFixture { $0.remindersIntegrationEnabled = true }
+            let fake = FakeReminders()
+            fake.lists = [("office", "Office", "iCloud"), ("home", "Home", "iCloud")]
+            fake.open = [
+                .init(id: "a", title: "Set up time with Rick to list the consumers", list: "Office", listId: "office", dueDate: now),
+                .init(id: "b", title: "Plan the 227 sprint", list: "Office", listId: "office", dueDate: nil),
+                .init(id: "c", title: "Create a transfer document", list: "Office", listId: "office",
+                      dueDate: calendar.date(byAdding: .day, value: 1, to: now)),
+                .init(id: "d", title: "Share the backup Epic owner in the Slack list", list: "Office", listId: "office",
+                      dueDate: calendar.date(byAdding: .day, value: 4, to: now)),
+            ]
+            fixture.vm.reminderBridge = fake
+            let office = Project(name: "Office", color: "blue", icon: "briefcase.fill")
+            office.areaRaw = ProjectArea.work.rawValue
+            office.reminderListID = "office"
+            fixture.context.insert(office)
+            try fixture.context.save()
+            await fixture.vm.syncReminders(now: now)
+
+            let page = ProjectsListView(projectID: office.id)
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .frame(width: 900, height: 1300).background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try trimmedBottomPadding(try render(page, appearance: appearance, size: CGSize(width: 900, height: 1300))),
+                         to: directory.appendingPathComponent("project_reminders_linked.png"))
+
+            // The goal picker: a goal with no number yet, picking the list's reminders into it.
+            let goal = ProjectGoal(title: "Create a transfer document", projectID: office.id, startDate: now,
+                                   deadline: calendar.date(byAdding: .day, value: 14, to: now)!)
+            fixture.context.insert(goal)
+            try fixture.context.save()
+            let sheet = GoalTaskPickerSheet(projectID: office.id, goalID: goal.id, now: now)
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try render(sheet, appearance: appearance, size: CGSize(width: 600, height: 640)),
+                         to: directory.appendingPathComponent("goal_task_picker.png"))
+            let goalsPage = GoalsView()
+                .environment(fixture.vm).modelContainer(fixture.container).environment(\.modelContext, fixture.context)
+                .frame(width: 900, height: 900).background(FFPalette.windowBackground)
+                .preferredColorScheme(appearance == .dark ? .dark : .light)
+            try writePNG(try trimmedBottomPadding(try render(goalsPage, appearance: appearance, size: CGSize(width: 900, height: 900))),
+                         to: directory.appendingPathComponent("goals_reminders_goal.png"))
+        }
+    }
+
     func testCapturePrioritiesAndGoalsInBothAppearances() throws {
         guard let override = ProcessInfo.processInfo.environment["FOCUSFLOW_CAPTURE_OUTPUT_DIR"], !override.isEmpty else {
             throw XCTSkip("Set FOCUSFLOW_CAPTURE_OUTPUT_DIR to capture")

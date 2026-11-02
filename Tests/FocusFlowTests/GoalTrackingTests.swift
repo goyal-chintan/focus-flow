@@ -7,6 +7,35 @@ final class GoalTrackingTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
     private func day(_ n: Double) -> Date { start.addingTimeInterval(n * 86_400) }
 
+    // MARK: Plain language (Goals clarity 2026-11-02)
+
+    func testTheGoalCardLeadsWithASentence() {
+        let deadline = day(30)
+        let by = deadline.formatted(.dateTime.day().month(.abbreviated))
+        let behind = GoalPacing.pace(target: 60, done: 8, start: start, deadline: deadline, now: day(10))
+        XCTAssertEqual(
+            GoalPlainLanguage.verdict(status: .behind, measures: [("LeetCode", behind)], start: start, deadline: deadline),
+            "Behind by 12 on LeetCode. 3 a day from now still finishes by \(by)."
+        )
+        let onPace = GoalPacing.pace(target: 30, done: 10, start: start, deadline: deadline, now: day(10))
+        XCTAssertEqual(
+            GoalPlainLanguage.verdict(status: .onTrack, measures: [("SQL", onPace)], start: start, deadline: deadline),
+            "On pace. Keep to 1 a day on SQL to finish by \(by)."
+        )
+        XCTAssertEqual(
+            GoalPlainLanguage.verdict(status: .notStarted, measures: [], start: start, deadline: deadline),
+            "Nothing to count yet, so there's no pace to show."
+        )
+        XCTAssertEqual(GoalPlainLanguage.measureCaption(behind), "12 behind · 3 a day finishes on time")
+    }
+
+    func testRatesReadAsPeopleSayThem() {
+        XCTAssertEqual(GoalPlainLanguage.rate(1), "1 a day")
+        XCTAssertEqual(GoalPlainLanguage.rate(1.2), "1.5 a day")
+        XCTAssertEqual(GoalPlainLanguage.rate(0.4), "1 every 2 days")
+        XCTAssertEqual(GoalPlainLanguage.rate(0.1), "1 every 10 days")
+    }
+
     // MARK: Pacing
 
     func testThirtyDayGoalPacing() {

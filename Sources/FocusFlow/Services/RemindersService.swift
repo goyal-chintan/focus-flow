@@ -243,6 +243,7 @@ protocol ReminderBridge: AnyObject {
     @discardableResult func setReminderTitle(identifier: String, _ title: String) -> Bool
     func createReminder(title: String, dueDay: Date?, listId: String) -> String?
     @discardableResult func deleteReminder(identifier: String) -> Bool
+    func reminderLists() -> [(id: String, title: String, source: String)]
 }
 
 extension RemindersService: ReminderBridge {

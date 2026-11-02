@@ -49,6 +49,78 @@ enum PaceFormat {
     }
 }
 
+/// The sentences a goal card leads with (Goals clarity 2026-11-02): where you stand and what keeps
+/// you there, in words, so the bars and the "today" tick only confirm it.
+enum GoalPlainLanguage {
+    /// "1 a day", "2.5 a day", "1 every 3 days".
+    static func rate(_ perDay: Double) -> String {
+        guard perDay > 0 else { return "nothing more" }
+        if perDay >= 0.95 {
+            let rounded = (perDay * 2).rounded(.up) / 2
+            return rounded == rounded.rounded() ? "\(Int(rounded)) a day" : String(format: "%.1f a day", rounded)
+        }
+        return "1 every \(max(2, Int((1 / perDay).rounded(.down)))) days"
+    }
+
+    static func number(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    /// One sentence for the whole goal, about the measure furthest behind.
+    static func verdict(
+        status: GoalPaceStatus,
+        measures: [(name: String, pace: KeyResultPace)],
+        start: Date,
+        deadline: Date
+    ) -> String {
+        let by = deadline.formatted(.dateTime.day().month(.abbreviated))
+        guard !measures.isEmpty else { return "Nothing to count yet, so there's no pace to show." }
+        switch status {
+        case .done:
+            return "Done. Every number reached."
+        case .notStarted:
+            return "Starts \(start.formatted(.dateTime.day().month(.abbreviated)))."
+        default:
+            break
+        }
+        let open = measures.filter { $0.pace.remaining > 0 }
+        guard let focus = open.min(by: { $0.pace.delta < $1.pace.delta }) else { return "Done. Every number reached." }
+        let name = focus.name
+        if status == .overdue {
+            return "The deadline has passed with \(number(focus.pace.remaining)) \(name) to go. Finish it or move the date."
+        }
+        let pace = rate(focus.pace.neededPerDay ?? 0)
+        switch focus.pace.status {
+        case .behind:
+            let gap = max(1, Int((-focus.pace.delta).rounded()))
+            return "Behind by \(gap) on \(name). \(pace.prefix(1).uppercased() + pace.dropFirst()) from now still finishes by \(by)."
+        case .ahead:
+            return "Ahead of pace. \(pace.prefix(1).uppercased() + pace.dropFirst()) on \(name) is enough to finish by \(by)."
+        default:
+            return "On pace. Keep to \(pace) on \(name) to finish by \(by)."
+        }
+    }
+
+    /// The line under one measure: "2 behind · 1 a day finishes on time".
+    static func measureCaption(_ pace: KeyResultPace) -> String {
+        switch pace.status {
+        case .done: return "Reached."
+        case .overdue: return "Past the deadline · \(number(pace.remaining)) to go"
+        case .notStarted: return "Starts later"
+        default:
+            let delta = pace.delta
+            let position: String = if abs(delta) < 0.5 {
+                "On pace"
+            } else if delta < 0 {
+                -delta < 1 ? "Slightly behind" : "\(Int((-delta).rounded())) behind"
+            } else {
+                "\(Int(delta.rounded())) ahead"
+            }
+            return "\(position) · \(rate(pace.neededPerDay ?? 0)) finishes on time"
+        }
+    }
+}
+
 struct KeyResultPace: Sendable, Equatable {
     let target: Double
     let done: Double

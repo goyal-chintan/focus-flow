@@ -185,6 +185,8 @@ struct DailyTaskRow: View {
     var goalOptions: [(id: UUID, title: String)] = []
     var onLink: ((UUID?) -> Void)?
     var onRename: ((String) -> Void)?
+    /// Off on a project's own page, where every row is that project's.
+    var showsProject = true
 
     @State private var hovering = false
     @State private var confirmDelete = false
@@ -214,9 +216,9 @@ struct DailyTaskRow: View {
                             .accessibilityLabel("Synced with Reminders")
                     }
                 }
-                if project != nil || resultTitle != nil || task.carriedFromID != nil {
+                if (showsProject && project != nil) || resultTitle != nil || task.carriedFromID != nil {
                     HStack(spacing: FFSpace.s) {
-                        if let project {
+                        if showsProject, let project {
                             HStack(spacing: 4) {
                                 Circle().fill(FFPalette.project(project.color)).frame(width: 6, height: 6)
                                 Text(project.name)
@@ -321,8 +323,11 @@ struct DailyTaskRow: View {
 }
 
 /// Today tab: plan, tick, link to goals, carry over, and the week's planned against done.
+/// With `projectID` it is that project's page section (project tasks redesign 2026-11-02): only
+/// its tasks and goals, new tasks go to it, and its Reminders list sits underneath.
 struct DailyTasksSection: View {
     let now: Date
+    var projectID: UUID? = nil
 
     @Environment(TimerViewModel.self) private var timerVM
     private var remindersOn: Bool { timerVM.remindersSyncOn }
@@ -335,35 +340,54 @@ struct DailyTasksSection: View {
     @State private var draftResultID: UUID?
     @FocusState private var fieldFocused: Bool
 
-    init(now: Date) {
+    init(now: Date, projectID: UUID? = nil) {
         self.now = now
+        self.projectID = projectID
+        _draftProjectID = State(initialValue: projectID)
         let since = Calendar.current.date(byAdding: .day, value: -(DailyTaskPlanner.carryOverLookbackDays + 1), to: Calendar.current.startOfDay(for: now)) ?? now
         _tasks = Query(filter: #Predicate<DailyTask> { $0.day >= since })
     }
 
-    private var todays: [DailyTask] { DailyTaskPlanner.tasks(tasks, on: now) }
-    private var stats: DailyTaskStats { DailyTaskPlanner.stats(tasks, on: now) }
-    private var activeGoals: [ProjectGoal] { goals.filter { $0.status == .active } }
+    private var scoped: [DailyTask] { projectID == nil ? tasks : DailyTaskPlanner.forProject(tasks, projectID) }
+    private var todays: [DailyTask] { DailyTaskPlanner.tasks(scoped, on: now) }
+    private var stats: DailyTaskStats { DailyTaskPlanner.stats(scoped, on: now) }
+    private var activeGoals: [ProjectGoal] {
+        goals.filter { $0.status == .active && (projectID == nil || $0.projectID == projectID) }
+    }
+    private var scopedProject: Project? { projectID.flatMap { id in projects.first { $0.id == id } } }
     /// Count key results only: a goal is measured in numbers; one-off steps are tasks.
     private var keyResults: [(result: GoalKeyResult, goal: ProjectGoal)] {
         activeGoals.flatMap { goal in goal.sortedKeyResults.filter { $0.kind == .count }.map { ($0, goal) } }
     }
 
+    /// The numbers a task on `projectID` can count toward: its project's goals only (2026-11-02:
+    /// with Office picked, the menu offered Learning's goals). With no project, every goal.
+    private func keyResults(for projectID: UUID?) -> [(result: GoalKeyResult, goal: ProjectGoal)] {
+        guard let projectID else { return keyResults }
+        return keyResults.filter { $0.goal.projectID == projectID }
+    }
+
     var body: some View {
         let history = DailyTaskPlanner.history(tasks, endingOn: now)
-        FFSection("Today's tasks", subtitle: "Tick what you finish. A task linked to a goal has a counter: each + logs 1 to the goal.") {
+        FFSection("Today's tasks",
+                  subtitle: projectID == nil
+                    ? "Tick what you finish. A task linked to a goal has a counter: each + logs 1 to the goal."
+                    : "What you'll do for \(scopedProject?.name ?? "this project") today. Tick what you finish.") {
             if stats.planned > 0 {
                 DailyTaskProgressBadge(stats: stats)
             }
         } content: {
             VStack(alignment: .leading, spacing: FFSpace.m) {
-                carryOverBanner
+                if projectID == nil { carryOverBanner }
                 addRow
                 suggestions
                 DailyTaskReceiptBanner()
                 list
-                // Follow-through needs a little history before it says anything.
-                if history.filter({ $0.planned > 0 }).count >= 2 {
+                if let project = scopedProject {
+                    Divider().padding(.vertical, FFSpace.xs)
+                    ProjectRemindersPanel(project: project)
+                } else if history.filter({ $0.planned > 0 }).count >= 2 {
+                    // Follow-through needs a little history before it says anything.
                     Divider().padding(.vertical, FFSpace.xs)
                     DailyTaskWeekStrip(history: history)
                 }
@@ -408,12 +432,13 @@ struct DailyTasksSection: View {
             .disabled(!canAdd)
             .help(canAdd ? "Add this task (Return)" : "Type a task, then press Return")
             .accessibilityLabel("Add task")
-            TextField(todays.isEmpty ? "What would make today a good day?" : "Add a task", text: $draftTitle)
+            TextField(todays.isEmpty ? (projectID == nil ? "What would make today a good day?" : "Add a task for \(scopedProject?.name ?? "this project")") : "Add a task", text: $draftTitle)
                 .textFieldStyle(.plain)
                 .ffText(.body)
                 .focused($fieldFocused)
                 .onSubmit(add)
-                .onAppear { fieldFocused = true }
+                // Today is for planning, so the field is ready; a project page is for reading first.
+                .onAppear { if projectID == nil { fieldFocused = true } }
                 .background {
                     // ⌘N: jump to the field from anywhere on Today.
                     Button("") { fieldFocused = true }
@@ -421,7 +446,7 @@ struct DailyTasksSection: View {
                         .opacity(0)
                         .accessibilityHidden(true)
                 }
-            projectMenu
+            if projectID == nil { projectMenu }
             resultMenu
         }
         .padding(.horizontal, FFSpace.xs)
@@ -431,10 +456,10 @@ struct DailyTasksSection: View {
 
     private var projectMenu: some View {
         Menu {
-            Button("No project") { draftProjectID = nil }
+            Button("No project") { pickProject(nil) }
             Divider()
             ForEach(projects) { project in
-                Button(project.name) { draftProjectID = project.id }
+                Button(project.name) { pickProject(project.id) }
             }
         } label: {
             let project = projects.first { $0.id == draftProjectID }
@@ -449,20 +474,29 @@ struct DailyTasksSection: View {
         .help("Which project this task is for")
     }
 
+    /// A goal from another project is dropped when the project changes, so the two never disagree.
+    private func pickProject(_ id: UUID?) {
+        draftProjectID = id
+        if let resultID = draftResultID, !keyResults(for: id).contains(where: { $0.result.id == resultID }) {
+            draftResultID = nil
+        }
+    }
+
     @ViewBuilder
     private var resultMenu: some View {
-        if !keyResults.isEmpty {
+        let options = keyResults(for: draftProjectID)
+        if !options.isEmpty {
             Menu {
                 Button("Not linked to a goal") { draftResultID = nil }
                 Divider()
-                ForEach(keyResults, id: \.result.id) { item in
+                ForEach(options, id: \.result.id) { item in
                     Button("\(item.result.title) · \(item.goal.title)") {
                         draftResultID = item.result.id
                         if draftProjectID == nil { draftProjectID = item.goal.projectID }
                     }
                 }
             } label: {
-                Label(keyResults.first { $0.result.id == draftResultID }?.result.title ?? "Goal", systemImage: "target")
+                Label(options.first { $0.result.id == draftResultID }?.result.title ?? "Goal", systemImage: "target")
                     .ffText(.caption)
                     .lineLimit(1)
             }
@@ -475,6 +509,7 @@ struct DailyTasksSection: View {
     @ViewBuilder
     private var suggestions: some View {
         let levers = DailyTaskPlanner.leverSuggestions(GoalDataBuilder.levers(activeGoals, now: now), existing: tasks, on: now)
+            .filter { projectID == nil || $0.projectID == projectID }
         if !levers.isEmpty {
             HStack(spacing: FFSpace.s) {
                 Text("From your goals").ffText(.caption)
@@ -503,7 +538,7 @@ struct DailyTasksSection: View {
     @ViewBuilder
     private var list: some View {
         if todays.isEmpty {
-            Text("Small beats vague: “2 LeetCode questions”, not “prep”.")
+            Text(projectID == nil ? "Small beats vague: “2 LeetCode questions”, not “prep”." : "Nothing planned for today yet.")
                 .ffText(.caption)
                 .padding(.vertical, FFSpace.xs)
         } else {
@@ -521,9 +556,10 @@ struct DailyTasksSection: View {
                         onDelete: { withAnimation(.smooth(duration: 0.25)) { timerVM.deleteDailyTask(task) } },
                         syncsReminder: remindersOn && task.reminderID != nil
                             && !(projects.first { $0.id == task.projectID }?.reminderListID ?? "").isEmpty,
-                        goalOptions: keyResults.map { (id: $0.result.id, title: "\($0.result.title) · \($0.goal.title)") },
+                        goalOptions: keyResults(for: task.projectID).map { (id: $0.result.id, title: "\($0.result.title) · \($0.goal.title)") },
                         onLink: { resultID in withAnimation(.smooth(duration: 0.25)) { timerVM.linkDailyTask(task, toResult: resultID, now: Date()) } },
-                        onRename: { title in timerVM.renameDailyTask(task, to: title) }
+                        onRename: { title in timerVM.renameDailyTask(task, to: title) },
+                        showsProject: projectID == nil
                     )
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -539,6 +575,7 @@ struct DailyTasksSection: View {
         }
         draftTitle = ""
         draftResultID = nil
+        if projectID != nil { draftProjectID = projectID }
         fieldFocused = true
     }
 }
