@@ -11,6 +11,8 @@ struct DailyGoalCard: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Folded to its one line: it's a setting, changed rarely (Goals clarity 2026-11-02).
+    @State private var editing = false
 
     private var goal: DailyGoal {
         GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now)
@@ -27,13 +29,21 @@ struct DailyGoalCard: View {
 
     var body: some View {
         let goal = goal
-        FFSection("Daily goal", subtitle: goal.scope.countsSentence) {
+        FFSection("Daily goal", subtitle: "Focus time a day, the number on your rings. \(goal.scope.countsSentence)") {
+            Button(editing ? "Done" : "Change") {
+                withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { editing.toggle() }
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel(editing ? "Done changing the daily goal" : "Change the daily goal")
+        } content: {
             VStack(alignment: .leading, spacing: FFSpace.m) {
                 headline(goal)
-                Divider()
-                followsTargetsRow(goal)
-                fixedRow(goal)
-                stretchRow(goal)
+                if editing {
+                    Divider()
+                    followsTargetsRow(goal)
+                    fixedRow(goal)
+                    stretchRow(goal)
+                }
             }
             .animation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion), value: goal.source)
         }

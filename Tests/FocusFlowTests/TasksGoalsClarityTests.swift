@@ -131,7 +131,8 @@ final class TasksGoalsClarityTests: XCTestCase {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let tasks = try String(contentsOf: root.appendingPathComponent("Sources/FocusFlow/Views/Goals/DailyTasksSection.swift"), encoding: .utf8)
         XCTAssertTrue(tasks.contains("Button(action: add)"))
-        XCTAssertTrue(tasks.contains(".onAppear { fieldFocused = true }"))
+        // Today focuses the field on open; a project page (projectID set) does not.
+        XCTAssertTrue(tasks.contains(".onAppear { if projectID == nil { fieldFocused = true } }"))
         XCTAssertTrue(tasks.contains(#".keyboardShortcut("n", modifiers: .command)"#))
         XCTAssertTrue(tasks.contains(#"Menu("Link to goal")"#))
         let popover = try String(contentsOf: root.appendingPathComponent("Sources/FocusFlow/Views/MenuBar/MenuBarPopoverView.swift"), encoding: .utf8)

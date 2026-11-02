@@ -447,6 +447,7 @@ private struct CoachDeliveryCharts: View {
     }
 }
 
-private extension String {
+extension String {
+    /// "tonight at 22:00" → "Tonight at 22:00".
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

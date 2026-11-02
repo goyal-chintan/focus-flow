@@ -176,6 +176,7 @@ final class NotchController: NotchHosting {
             takeBreak: { vm.continueAfterCompletion(action: .takeBreak(duration: 300)) },
             end: { [weak self] in self?.collapse(); vm.continueAfterCompletion(action: .endSession) },
             skipBreak: { vm.skipBreak() },
+            startAfterBreak: { [weak self] in self?.collapse(); vm.continueAfterCompletion(action: .continueFocusing) },
             toggleBreak: { vm.isBreakPaused ? vm.resumeBreak() : vm.pauseBreak() },
             start: { [weak self] minutes in
                 // The picked project first; with none, the first lever's project.
@@ -215,13 +216,10 @@ private struct NotchLiveView: View {
     }
 
     private func snapshot(now: Date) -> NotchSnapshot {
-        let mode: NotchSnapshot.Mode
-        switch vm.state {
-        case .idle: mode = vm.isOvertime ? .overtime : .idle
-        case .focusing: mode = vm.isOvertime ? .overtime : .focusing
-        case .paused: mode = .paused
-        case .onBreak: mode = .onBreak(paused: vm.isBreakPaused)
-        }
+        let mode = NotchSnapshot.Mode.from(
+            state: vm.state, isOvertime: vm.isOvertime,
+            isBreakOvertime: vm.isBreakOvertime, isBreakPaused: vm.isBreakPaused
+        )
         let goals = vm.historyReaderActiveGoals()
         let levers = vm.todayLevers(now: now)
         let projects = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived }))) ?? []

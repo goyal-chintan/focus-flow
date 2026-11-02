@@ -323,9 +323,11 @@ final class TimerViewModel {
     }
 
     /// True when the completed session was a focus session (not a break).
-    var isFocusOvertime: Bool { isOvertime && lastCompletedSession?.type == .focus }
+    /// Both overtime kinds share `state == .idle` + `isOvertime`; only these two tell them apart,
+    /// so a break that runs over is never shown or counted as a block's overtime.
+    var isFocusOvertime: Bool { isOvertime && !lastCompletionWasBreak }
     /// True when the completed session was a break (break ran past its duration).
-    var isBreakOvertime: Bool { isOvertime && lastCompletedSession?.type != .focus }
+    var isBreakOvertime: Bool { isOvertime && lastCompletionWasBreak }
 
     /// True when the user has paused a running break (countdown frozen).
     var isBreakPaused: Bool = false
@@ -1269,11 +1271,7 @@ final class TimerViewModel {
             saveContext()
 
             // Set up contexts so normal reflection displays correct session stats
-            lastCompletedDuration = session.duration
-            lastCompletedLabel = session.label
-            lastCompletedSession = session
-            lastCompletedFocusSession = session
-            lastCompletionWasBreak = (session.type != .focus)
+            noteWakeRecoveredCompletion(session)
             if session.type == .focus {
                 completedBlockContext = CompletedBlockContext(
                     sessionId: session.id,
@@ -1298,11 +1296,7 @@ final class TimerViewModel {
             session.completed = true
             saveContext()
 
-            lastCompletedDuration = session.duration
-            lastCompletedLabel = session.label
-            lastCompletedSession = session
-            lastCompletedFocusSession = session
-            lastCompletionWasBreak = (session.type != .focus)
+            noteWakeRecoveredCompletion(session)
             if session.type == .focus {
                 completedBlockContext = CompletedBlockContext(
                     sessionId: session.id,
@@ -1326,6 +1320,21 @@ final class TimerViewModel {
             showSessionComplete = false
             clearWakeRecoveryState()
             loadTodayStats()
+        }
+    }
+
+    /// The session a wake recovery resolved becomes the last completion. A break is never the
+    /// last focus block (the block-end window, earned break and "Last earned block" read that),
+    /// and its episode ends where the recovery ended it, not at the live clock.
+    private func noteWakeRecoveredCompletion(_ session: FocusSession) {
+        lastCompletedSession = session
+        lastCompletionWasBreak = (session.type != .focus)
+        if session.type == .focus {
+            lastCompletedDuration = session.duration
+            lastCompletedLabel = session.label
+            lastCompletedFocusSession = session
+        } else {
+            breakEpisodeContext?.breakEnded = session.endedAt
         }
     }
 
@@ -1457,6 +1466,7 @@ final class TimerViewModel {
 
         totalSeconds = duration
         remainingSeconds = duration
+        isBreakPaused = false
         state = .onBreak(type)
         AppUsageTracker.shared.syncCadence(isFocusing: false)
 
@@ -1549,6 +1559,8 @@ final class TimerViewModel {
             pauseTimer = nil
             pauseStartTime = nil
             pauseElapsed = 0
+            // A break paused for sleep is over now; left set, the next break would start "paused".
+            isBreakPaused = false
 
             // Capture wake recovery state
             wakeRecoverySession = currentSession
@@ -1579,6 +1591,14 @@ final class TimerViewModel {
             DispatchQueue.main.async { [weak self] in
                 self?.showCompletionWindow()
             }
+            return
+        }
+
+        // A break that ran over kept running over while the Mac slept (you were away either way).
+        // Its counter restarts whatever the auto-resume setting, which is about focus blocks.
+        if isBreakOvertime {
+            overtimeSeconds += max(0, Int(sleepDuration))
+            startTimer()
             return
         }
 
@@ -1756,6 +1776,11 @@ final class TimerViewModel {
         log("stopForReflection called, currentSession=\(currentSession != nil)")
         guard let session = currentSession else {
             stop()   // nothing to save
+            return
+        }
+        // A break is not a block to log: finishing one just ends it (never a "block done" window).
+        guard session.type == .focus else {
+            stop()
             return
         }
         // Too short to be worth a reflection window — just discard
@@ -2118,8 +2143,8 @@ final class TimerViewModel {
         if isOvertime {
             overtimeSeconds += 1
             currentSession?.endedAt = Date()
-            // Increment live focus time counter (no DB query needed)
-            if state == .focusing || isOvertime {
+            // Live focus time grows with a block's overtime only: a break that ran over is break time.
+            if isFocusOvertime {
                 todayFocusTime += 1
             }
             if overtimeSeconds % 30 == 0 {
@@ -4090,14 +4115,20 @@ final class TimerViewModel {
         var changed = false
         let byID = Dictionary(tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         // One insert batch, one save: imports never run a fetch or save per task.
-        let day = Calendar.current.startOfDay(for: now)
-        var order = (DailyTaskPlanner.tasks(tasks, on: now).map(\.order).max() ?? -1) + 1
+        var nextOrder: [Date: Int] = [:]
         for item in plan.imports {
-            let task = DailyTask(title: item.title, day: day, order: order, projectID: item.projectID)
+            let order = nextOrder[item.day] ?? (DailyTaskPlanner.tasks(tasks, on: item.day).map(\.order).max() ?? -1) + 1
+            nextOrder[item.day] = order + 1
+            let task = DailyTask(title: item.title, day: item.day, order: order, projectID: item.projectID)
             task.carriedFromID = item.carriedFromID
             task.reminderID = item.reminderID
+            // A carried-over reminder keeps counting toward the goal it was picked into.
+            if let earlier = item.carriedFromID.flatMap({ byID[$0] }), earlier.keyResultID != nil {
+                task.keyResultID = earlier.keyResultID
+                task.amount = earlier.amount
+                task.loggedAmount = 0
+            }
             modelContext.insert(task)
-            order += 1
             changed = true
         }
         for link in plan.links {
@@ -4135,6 +4166,95 @@ final class TimerViewModel {
         saveContext()
         dailyTaskRevision += 1
         log("reminders: synced \(plan.imports.count) new, \(plan.renames.count) renamed, \(plan.deferrals.count) moved, \(plan.reopens.count) reopened")
+    }
+
+    /// Where a project stands with Reminders, for its page (project tasks redesign 2026-11-02): a
+    /// reminder that doesn't show up must say why (sync off, no access, no list, list gone).
+    enum ProjectReminderLink: Equatable {
+        case syncOff
+        case noAccess
+        case notLinked
+        case listMissing
+        case linked(listTitle: String)
+    }
+
+    func reminderLink(for project: Project) -> ProjectReminderLink {
+        guard settings?.remindersIntegrationEnabled == true else { return .syncOff }
+        guard reminderBridge.isAuthorized else { return .noAccess }
+        guard let listID = project.reminderListID, !listID.isEmpty else { return .notLinked }
+        guard let list = reminderBridge.reminderLists().first(where: { $0.id == listID }) else { return .listMissing }
+        return .linked(listTitle: list.title)
+    }
+
+    /// Links `project` to a Reminders list (nil stops syncing) from its page, as its Edit sheet does.
+    func setReminderList(_ listID: String?, for project: Project) {
+        guard project.reminderListID != listID else { return }
+        project.reminderListID = listID
+        saveContext()
+        reminderListChanged(forProject: project.id)
+        scheduleReminderSync(after: .zero)
+    }
+
+    /// The project's open tasks after today, soonest first: its reminders due later (every reminder
+    /// is imported on its due day) and tasks moved to a later day.
+    func laterTasks(forProject projectID: UUID, now: Date = Date()) -> [DailyTask] {
+        guard let modelContext,
+              let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) else { return [] }
+        let tasks = (try? modelContext.fetch(FetchDescriptor<DailyTask>(
+            predicate: #Predicate { $0.day >= tomorrow && $0.projectID == projectID && !$0.isDone }
+        ))) ?? []
+        return tasks.sorted { ($0.day, $0.order) < ($1.day, $1.order) }
+    }
+
+    /// "Do Today" on a later task: it moves to today, and a reminder's due date in Reminders moves
+    /// with it (otherwise the next sync sends the task back to its later day).
+    func moveDailyTaskToToday(_ task: DailyTask, now: Date = Date()) {
+        let today = Calendar.current.startOfDay(for: now)
+        guard !task.isDone, task.day != today else { return }
+        task.day = today
+        task.order = (DailyTaskPlanner.tasks(recentDailyTasks(days: 0, now: today), on: today).map(\.order).max() ?? -1) + 1
+        saveContext()
+        dailyTaskRevision += 1
+        if let reminderID = syncedReminderID(of: task) {
+            writeToReminders { $0.setReminderDueDay(identifier: reminderID, today) }
+        }
+    }
+
+    /// Picks tasks (a project's reminders, today's or later) into one of `goal`'s numbers
+    /// (2026-11-02). `resultID` nil makes a new number called `newTitle`, its target the number of
+    /// tasks picked; otherwise `raiseTarget` grows that number's target by the newly picked ones.
+    /// Every open copy of the same reminder (a carried-over one too) is linked, so it counts once,
+    /// whichever copy you tick. A goal never becomes a task: this only links tasks to its numbers.
+    @discardableResult
+    func countTasks(_ picked: [DailyTask], toward goal: ProjectGoal, resultID: UUID?, newTitle: String = "Steps",
+                    raiseTarget: Bool = true, now: Date = Date()) -> GoalKeyResult? {
+        guard let modelContext, !picked.isEmpty else { return nil }
+        let result: GoalKeyResult
+        if let resultID, let existing = goal.keyResults.first(where: { $0.id == resultID }) {
+            result = existing
+        } else {
+            let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            result = GoalKeyResult(title: title.isEmpty ? "Steps" : title, kind: .count, target: 0,
+                                   order: (goal.keyResults.map(\.order).max() ?? -1) + 1)
+            modelContext.insert(result)
+            goal.keyResults.append(result)
+        }
+        let added = picked.filter { $0.keyResultID != result.id }
+        let reminderIDs = Set(added.compactMap(\.reminderID))
+        let copies = reminderIDs.isEmpty ? [] : ((try? modelContext.fetch(FetchDescriptor<DailyTask>(
+            predicate: #Predicate { !$0.isDone && $0.reminderID != nil }
+        ))) ?? []).filter { reminderIDs.contains($0.reminderID ?? "") }
+        for task in added + copies where task.keyResultID != result.id {
+            linkDailyTask(task, toResult: result.id, now: now)
+        }
+        if resultID == nil {
+            result.target = Double(max(1, added.count))
+        } else if raiseTarget {
+            result.target += Double(added.count)
+        }
+        saveContext()
+        dailyTaskRevision += 1
+        return result
     }
 
     private func keyResult(for task: DailyTask) -> GoalKeyResult? {

@@ -1,8 +1,10 @@
 import SwiftUI
 import SwiftData
 
-/// Goals: the daily goal, every active goal with its pace, then the direction behind them (Dan Koe's protocol)
-/// (priorities-goals design §3.2, §3.5; screen audit: levers live in key-result captions here).
+/// Goals: every active goal with its pace first, then the daily focus time, then the direction behind
+/// them (Dan Koe's protocol) (priorities-goals design §3.2, §3.5; screen audit: levers live in
+/// key-result captions here). Goals clarity 2026-11-02: what you're working toward comes first;
+/// the daily focus time is a setting, so it sits below, folded to one line.
 struct GoalsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.companionNowOverride) private var nowOverride
@@ -12,12 +14,20 @@ struct GoalsView: View {
 
     @State private var goalSheet: GoalSheet?
     @State private var showFinished = false
+    @State private var pickerProject: PickerTarget?
+
+    private struct PickerTarget: Identifiable {
+        let id = UUID()
+        let projectID: UUID
+        let goalID: UUID
+    }
 
     var body: some View {
         TimelineView(.everyMinute) { context in
             content(now: nowOverride ?? context.date)
         }
         .sheet(item: $goalSheet) { sheet in GoalFormView(goal: sheet.goal, defaultProjectID: sheet.projectID) }
+        .sheet(item: $pickerProject) { target in GoalTaskPickerSheet(projectID: target.projectID, goalID: target.goalID) }
     }
 
     private var activeGoals: [ProjectGoal] {
@@ -35,30 +45,31 @@ struct GoalsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
                 FFPageHeader("Goals", subtitle: activeGoals.isEmpty
-                             ? "Decide what you're playing for"
-                             : "\(activeGoals.count) active · each key result shows what it needs a day") {
+                             ? "Something you want done by a date, and the numbers that prove it."
+                             : "\(activeGoals.count) active · each one says whether you're on pace and what keeps you there") {
                     Button {
                         goalSheet = GoalSheet(goal: nil, projectID: projects.first { $0.priorityRank == 1 }?.id)
                     } label: {
-                        Label("New goal", systemImage: "plus")
+                        Label("New Goal", systemImage: "plus")
                     }
                     .buttonStyle(.bordered)
                 }
 
-                // The one daily goal, set here only (it used to live in Settings and onboarding too).
-                if let settings = allSettings.first {
-                    DailyGoalCard(settings: settings, projects: projects, now: now)
-                }
-
-                // Goal cards next; their key-result captions carry today's pace ("need 2/day"),
+                // Goal cards first; their captions carry today's pace ("1 a day finishes on time"),
                 // so levers are not repeated here (screen audit: levers once per screen).
                 if activeGoals.isEmpty {
                     FFSection {
-                        FFEmptyState(
-                            systemImage: "scope",
-                            message: "One goal, one deadline, a few numbers",
-                            detail: "Example: \"Apply for jobs by 28 Nov\" with 60 LeetCode, 10 SQL, 3 referral asks and \"Apply\". The app shows every day whether you're on pace."
-                        )
+                        VStack(alignment: .leading, spacing: FFSpace.m) {
+                            FFEmptyState(
+                                systemImage: "scope",
+                                message: "No goals yet",
+                                detail: "A goal is a date and a number: “60 LeetCode questions by 28 Nov”. Each day the app tells you if you're on pace and how many to do."
+                            )
+                            Button("New Goal") {
+                                goalSheet = GoalSheet(goal: nil, projectID: projects.first { $0.priorityRank == 1 }?.id)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
                     }
                 } else {
                     ForEach(activeGoals) { goal in
@@ -66,17 +77,40 @@ struct GoalsView: View {
                             goal: goal,
                             project: projects.first { $0.id == goal.projectID },
                             now: now,
-                            onEdit: { goalSheet = GoalSheet(goal: goal, projectID: goal.projectID) }
+                            onEdit: { goalSheet = GoalSheet(goal: goal, projectID: goal.projectID) },
+                            // Only for a project that syncs a Reminders list: the button says "Reminders".
+                            onPickReminders: projects.first(where: { $0.id == goal.projectID && !($0.reminderListID ?? "").isEmpty })
+                                .map { project in { pickerProject = PickerTarget(projectID: project.id, goalID: goal.id) } }
                         )
                     }
                 }
 
+                // The one daily goal, set here only (it used to live in Settings and onboarding too).
                 if let settings = allSettings.first {
+                    DailyGoalCard(settings: settings, projects: projects, now: now)
                     DirectionCard(settings: settings)
                 }
 
                 if !finishedGoals.isEmpty {
-                    DisclosureGroup(isExpanded: $showFinished) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            withAnimation(FFAnimation.control) { showFinished.toggle() }
+                        } label: {
+                            HStack(spacing: FFSpace.s) {
+                                Text("Finished (\(finishedGoals.count))").ffText(.headline)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .rotationEffect(.degrees(showFinished ? 90 : 0))
+                                    .accessibilityHidden(true)
+                            }
+                            .frame(minHeight: 30)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(showFinished ? "Hide finished goals" : "Show finished goals")
+                        if showFinished {
                         VStack(spacing: FFSpace.s) {
                             ForEach(finishedGoals) { goal in
                                 HStack {
@@ -93,8 +127,7 @@ struct GoalsView: View {
                             }
                         }
                         .padding(.top, FFSpace.s)
-                    } label: {
-                        Text("Finished (\(finishedGoals.count))").ffText(.headline)
+                        }
                     }
                     .padding(FFSpace.l)
                     .ffSurface()

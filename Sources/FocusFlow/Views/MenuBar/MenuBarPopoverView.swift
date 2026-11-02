@@ -205,6 +205,8 @@ struct MenuBarPopoverView: View {
             evidenceMode: timerVM.isEvidenceMode,
             pauseDuration: timerVM.pauseElapsed,
             pauseTimeString: timerVM.pauseTimeString,
+            overrunSeconds: timerVM.isBreakOvertime ? TimeInterval(timerVM.overtimeSeconds) : 0,
+            isBreakOvertime: timerVM.isBreakOvertime,
             labelColorOverride: stateLabelColor
         )
         .padding(.top, (timerVM.state == .idle && !timerVM.isOvertime) ? 20 : 10)

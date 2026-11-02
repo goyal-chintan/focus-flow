@@ -111,6 +111,12 @@ struct SessionCompleteWindowView: View {
 
     // MARK: - Wake Recovery (Issue #32)
 
+    /// Sleep can interrupt a break as well as a block; the copy names which one it was.
+    private var wakeRecoveryIsBreak: Bool {
+        guard let type = timerVM.wakeRecoverySession?.type else { return false }
+        return type != .focus
+    }
+
     private var wakeRecoveryContent: some View {
         VStack(spacing: 24) {
             ZStack {
@@ -130,11 +136,13 @@ struct SessionCompleteWindowView: View {
             .animation(disableMotionForEvidence ? nil : FFMotion.reward, value: appeared)
 
             VStack(spacing: 8) {
-                Text("Resolve Interrupted Session")
+                Text(wakeRecoveryIsBreak ? "Resolve Interrupted Break" : "Resolve Interrupted Session")
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurface)
                 
-                Text("Your focus session was interrupted by system sleep. Choose how you would like to resolve the session's duration.")
+                Text(wakeRecoveryIsBreak
+                     ? "Your break was interrupted by system sleep. Choose how you would like to resolve the break's duration."
+                     : "Your focus session was interrupted by system sleep. Choose how you would like to resolve the session's duration.")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
                     .multilineTextAlignment(.center)
@@ -160,7 +168,7 @@ struct SessionCompleteWindowView: View {
                     }
 
                     LiquidActionButton(
-                        title: "Discard this block",
+                        title: wakeRecoveryIsBreak ? "Discard this break" : "Discard this block",
                         icon: "trash",
                         role: .destructive
                     ) {
@@ -841,7 +849,7 @@ private struct BreakOverrunTitle: View {
 
     /// Seconds past the planned break (live while the break runs over).
     private var overSeconds: Int {
-        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isOvertime ? timerVM.overtimeSeconds : 0)
+        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isBreakOvertime ? timerVM.overtimeSeconds : 0)
     }
 
     var body: some View {

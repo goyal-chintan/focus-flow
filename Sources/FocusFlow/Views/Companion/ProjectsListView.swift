@@ -149,7 +149,8 @@ struct ProjectEditorSheet: View {
     }
 }
 
-/// One project's page: header, stats, goals, this week and its blocks. Shows `projectID`, or the
+/// One project's page: header, stats, today's tasks (with its Reminders list), goals, this week
+/// and its blocks. Shows `projectID`, or the
 /// first project when none is chosen.
 struct ProjectsListView: View {
     var projectID: UUID?
@@ -349,6 +350,10 @@ private struct ProjectDetail: View {
 
             statsRow(analytics)
 
+            // Tasks before goals: what to do today is the first question on a project's page, and
+            // its Reminders list lives here, not only in the Edit sheet (2026-11-02).
+            DailyTasksSection(now: snapshot.now, projectID: project.id)
+
             goalsSection
 
             FFSection("This week", subtitle: target.map { "Daily focus on \(project.name) against its \(FFFormat.duration($0)) target" } ?? "Daily focus on \(project.name)") {
@@ -448,7 +453,7 @@ private struct ProjectDetail: View {
     private func goalRow(_ goal: ProjectGoal) -> some View {
         let summary = GoalDataBuilder.summary(goal, now: snapshot.now)
         return HStack(spacing: FFSpace.m) {
-            Image(systemName: goal.isBossFight ? "flag.checkered" : "scope")
+            Image(systemName: goal.isBossFight ? "star.fill" : "scope")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(color)
                 .frame(width: 20)
@@ -487,7 +492,20 @@ private struct ProjectDetail: View {
             }
             Spacer(minLength: FFSpace.s)
             Button("Edit", action: onEdit).buttonStyle(.bordered)
-            Button("Archive", action: onArchive).buttonStyle(.bordered)
+            // Archive is rare and hides the project: one step away, not beside Edit.
+            Menu {
+                Button("Archive…", role: .destructive, action: onArchive)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 15))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("More")
+            .accessibilityLabel("More project actions")
         }
     }
 
