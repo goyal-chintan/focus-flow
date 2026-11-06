@@ -125,3 +125,22 @@ final class DayTargetsStoreTests: XCTestCase {
         XCTAssertEqual(vm.dayLedger(days: 1, now: noon).last?.verdict, .rest)
     }
 }
+
+@MainActor
+final class DayTimelineStoreTests: XCTestCase {
+    func testABlockAcrossMidnightShowsOnBothDays() throws {
+        let schema = FocusFlowSchema.schema
+        let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        let settings = AppSettings(); container.mainContext.insert(settings)
+        let today = Calendar.current.startOfDay(for: Date())
+        let block = FocusSession(type: .focus, duration: 3600, project: nil)
+        block.startedAt = today.addingTimeInterval(-30 * 60); block.endedAt = today.addingTimeInterval(30 * 60); block.completed = true
+        container.mainContext.insert(block)
+        try container.mainContext.save()
+        let vm = TimerViewModel(defaults: UserDefaults(suiteName: "test.timeline.\(UUID().uuidString)")!)
+        vm.configureForEvidence(modelContext: container.mainContext, settings: settings)
+        defer { AppUsageTracker.shared.stop() }
+        XCTAssertEqual(vm.dayTimeline(today).hours[0].own, 30, accuracy: 0.01, "Its part after midnight")
+        XCTAssertEqual(vm.dayTimeline(today.addingTimeInterval(-3600)).hours[23].own, 30, accuracy: 0.01, "Its part before midnight")
+    }
+}

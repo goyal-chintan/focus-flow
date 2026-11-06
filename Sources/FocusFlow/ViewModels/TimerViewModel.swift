@@ -5996,10 +5996,12 @@ final class TimerViewModel {
         let start = calendar.startOfDay(for: day)
         let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
         guard let modelContext else { return DayTimeline.build(day: start, rows: [], blocks: [], isPull: { _, _, _ in false }) }
-        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= start && $0.startedAt < end }))) ?? []
+        // From 12 h before midnight, so a block that ran across it shows its part of this day.
+        let earlier = start.addingTimeInterval(-12 * 3600)
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= earlier && $0.startedAt < end }))) ?? []
         let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
         let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
-        let blocks = sessions.filter { $0.type == .focus }.map { session in
+        let blocks = sessions.filter { $0.type == .focus && ($0.endedAt ?? now) > start }.map { session in
             DayTimeline.Block(start: session.startedAt, end: session.endedAt ?? min(now, session.startedAt.addingTimeInterval(session.actualDuration)),
                               own: !ownConfigured || CoachHistoryReader.isOwnWork(session.project))
         }
@@ -6245,7 +6247,12 @@ final class TimerViewModel {
             return plannedBlocks(from: day, to: next).isEmpty
         }
 
-        var slot: Date? = dailyPlanSuggestions(now: now).first?.start
+        // Read-only: `dailyPlanSuggestions` refreshes the coach model and calendar labels, which
+        // must not happen while a page draws. The model the idle tick keeps fresh is used as is.
+        var slot: Date? = CoachDailyPlanner.suggestions(
+            now: now, model: availabilityModel, busy: currentCalendarAvailability(now: now).busyIntervals,
+            quietStartMinute: settings?.coachQuietStartMinute ?? 30, quietEndMinute: settings?.coachQuietEndMinute ?? 420
+        ).first?.start
         if slot == nil, calendar.component(.hour, from: now) < 21 {
             let base = now.addingTimeInterval(30 * 60)
             let minute = calendar.component(.minute, from: base)

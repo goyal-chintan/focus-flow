@@ -314,3 +314,58 @@ final class YourWeekStoreTests: XCTestCase {
         print("WEEK HELP prompt=\(String(describing: help.promptLift)) return=\(String(describing: help.returnLift))")
     }
 }
+
+@MainActor
+final class YourWeekReadPathTests: XCTestCase {
+    /// Crash 2026-10-28 rule: Your week, its questions and the review only read while drawing.
+    /// (Your week once reached `dailyPlanSuggestions`, which refreshes the coach model and saves
+    /// calendar day labels.)
+    func testYourWeekReadsNeverChangeObservedState() throws {
+        let schema = FocusFlowSchema.schema
+        let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        let settings = AppSettings(); container.mainContext.insert(settings)
+        let project = Project(name: "Learning"); project.area = .personal; container.mainContext.insert(project)
+        for i in 0..<12 {
+            let s = FocusSession(type: .focus, duration: 1500, project: project)
+            s.startedAt = Date().addingTimeInterval(-Double(i) * 50_000 - 3600); s.endedAt = s.startedAt.addingTimeInterval(2100); s.completed = true
+            container.mainContext.insert(s)
+        }
+        try container.mainContext.save()
+        let vm = TimerViewModel(defaults: UserDefaults(suiteName: "test.yourweek.reads.\(UUID().uuidString)")!)
+        vm.systemIdleSecondsProvider = { 0 }
+        vm.configureForEvidence(modelContext: container.mainContext, settings: settings)
+        // With an override, any model refresh swaps it in (checked at the end): observation alone
+        // can't see it, since the first write lands inside the tracked pass and later ones are equal.
+        vm.availabilityModelOverride = CoachAvailabilityModel(
+            sessions: (0..<6).map { CoachAvailabilityModel.Session(start: Date().addingTimeInterval(-Double($0 + 1) * 86_400), end: Date().addingTimeInterval(-Double($0 + 1) * 86_400 + 1800)) },
+            activeDays: [])
+        defer { AppUsageTracker.shared.stop() }
+        let now = Date()
+
+        final class Flag: @unchecked Sendable { var raised = false }
+        let invalidated = Flag()
+        withObservationTracking {
+            _ = (vm.state, vm.availabilityModel, vm.lifeRevision, vm.dayTargetsRevision, vm.weeklyReviewRequested)
+            _ = vm.yourWeek(now: now)
+            _ = vm.lifeRecommendations(now: now)
+            _ = vm.allLifeRecommendations(now: now)
+            _ = vm.coachHelping(now: now)
+            _ = vm.lifeRecOutcomes(now: now)
+            _ = vm.planTodayQuestion(now: now)
+            _ = vm.appRoleQuestion(now: now)
+            _ = vm.dayTypeQuestion(now: now)
+            _ = vm.weeklyPlanDays(now: now)
+            _ = vm.weeklyPlanHours(now: now)
+            _ = vm.dayTimeline(now, now: now)
+        } onChange: {
+            invalidated.raised = true
+        }
+        // Past every cache window, so the caches refresh: a refresh must not count as a change.
+        _ = vm.yourWeek(now: now.addingTimeInterval(120))
+        _ = vm.coachHelping(now: now.addingTimeInterval(120))
+        _ = vm.weeklyPlanHours(now: now.addingTimeInterval(4000))
+        XCTAssertFalse(invalidated.raised, "A read made while drawing changed observed state")
+        // A refresh would have swapped in the override; a page read must never refresh the model.
+        XCTAssertEqual(vm.availabilityModel, .empty, "Your week refreshed the coach model while drawing")
+    }
+}
