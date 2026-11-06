@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The goal ring (restored 6 Nov 2026 after phase 5 took it out): today's own work against the
-/// day's target, coloured by pace so one glance says ahead or behind. Green: met or on pace.
-/// Orange: behind. Red: at risk. While behind it breathes softly (still under Reduce Motion).
+/// The goal ring: today's own work against the day's target, drawn like the running timer's ring
+/// (a spectral blue sweep with a soft glow and a lit tip; green once the goal is met). Pace is not
+/// painted on the ring: `PaceDot` beside it says on pace / behind / at risk (6 Nov 2026: a ring
+/// filled orange or red with a halo looked cheap next to the timer).
 struct PaceRing: View {
     let done: TimeInterval
     let target: TimeInterval
@@ -12,11 +13,21 @@ struct PaceRing: View {
     /// Inside the ring: "50m / of 2h" (popover) or the percent (Today).
     var showsTime = true
 
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathe = false
+    @State private var reveal = 0.0
 
     private var fraction: Double { target > 0 ? min(1, done / target) : 0 }
     private var isMet: Bool { target > 0 && done >= target }
+
+    /// The timer's focusing sweep, and a green one once the goal is met.
+    private var sweep: [Color] {
+        isMet
+            ? [Color(hex: 0x1F7A4D), Color(hex: 0x3DA86A), Color(hex: 0x7FD6A0)]
+            : [Color(hex: 0x3A4F85), Color(hex: 0x5B96F8), Color(hex: 0x7DB4FF)]
+    }
+
+    private var glow: Color { isMet ? Color(hex: 0x3DA86A) : Color(hex: 0x5B96F8) }
 
     static func color(_ tier: CoachGoalPacing.Tier, met: Bool) -> Color {
         if met { return FFPalette.goal }
@@ -39,33 +50,45 @@ struct PaceRing: View {
         }
     }
 
-    private var isBehind: Bool { !isMet && (tier == .nudge || tier == .atRisk) }
-
     var body: some View {
-        let tint = Self.color(tier, met: isMet)
+        let shown = max(0.001, fraction * reveal)
         ZStack {
-            Circle().stroke(Color.primary.opacity(0.1), lineWidth: lineWidth)
+            // Track: a quiet groove, lighter in the dark.
             Circle()
-                .trim(from: 0, to: max(0.001, fraction))
-                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.09 : 0.07), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: shown)
+                .stroke(
+                    // A met ring is a whole circle: one even sweep, no seam at the top.
+                    isMet
+                        ? AngularGradient(colors: [sweep[1], sweep[2], sweep[1], sweep[0], sweep[1]], center: .center)
+                        : AngularGradient(colors: sweep, center: .center, startAngle: .degrees(0), endAngle: .degrees(360 * max(shown, 0.05))),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
                 .rotationEffect(.degrees(-90))
-            if isBehind {
+                .shadow(color: glow.opacity(0.45), radius: lineWidth * 0.9)
+            // The lit tip: where today has got to.
+            if fraction > 0.02, !isMet {
                 Circle()
-                    .stroke(tint.opacity(breathe ? 0.05 : 0.35), lineWidth: lineWidth * 2.2)
-                    .scaleEffect(breathe ? 1.06 : 1)
-                    .accessibilityHidden(true)
+                    .fill(.white)
+                    .frame(width: lineWidth * 0.62, height: lineWidth * 0.62)
+                    .shadow(color: glow.opacity(0.9), radius: lineWidth * 0.8)
+                    .offset(y: -(size - lineWidth) / 2)
+                    .rotationEffect(.degrees(360 * shown))
             }
-            center(tint)
+            center
         }
         .frame(width: size, height: size)
-        .onAppear { startBreathing() }
-        .onChange(of: isBehind) { _, _ in startBreathing() }
+        .onAppear {
+            guard reveal == 0 else { return }
+            if reduceMotion { reveal = 1 } else { withAnimation(.smooth(duration: 0.9)) { reveal = 1 } }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(Self.word(tier, met: isMet)): \(FFFormat.duration(done)) of \(FFFormat.duration(target))")
     }
 
     @ViewBuilder
-    private func center(_ tint: Color) -> some View {
+    private var center: some View {
         if isMet {
             Image(systemName: "checkmark")
                 .font(.system(size: size * 0.26, weight: .semibold))
@@ -89,9 +112,34 @@ struct PaceRing: View {
                 .monospacedDigit()
         }
     }
+}
 
-    private func startBreathing() {
-        guard isBehind, !reduceMotion else { breathe = false; return }
-        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { breathe = true }
+/// The pace, as a small lit dot: green on pace or met, orange behind, red at risk. It blinks
+/// slowly while you're behind (steady under Reduce Motion), like the notch's coach dot.
+struct PaceDot: View {
+    let tier: CoachGoalPacing.Tier
+    let met: Bool
+    var size: CGFloat = 8
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var on = false
+
+    private var behind: Bool { !met && (tier == .nudge || tier == .atRisk) }
+
+    var body: some View {
+        let color = PaceRing.color(tier, met: met)
+        Circle()
+            .fill(color)
+            .frame(width: size, height: size)
+            .shadow(color: color.opacity(behind && on ? 0.95 : 0.5), radius: behind && on ? size * 0.8 : size * 0.35)
+            .opacity(behind && !on ? 0.45 : 1)
+            .onAppear { blink() }
+            .onChange(of: behind) { _, _ in blink() }
+            .accessibilityLabel(PaceRing.word(tier, met: met))
+    }
+
+    private func blink() {
+        guard behind, !reduceMotion else { on = false; return }
+        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { on = true }
     }
 }

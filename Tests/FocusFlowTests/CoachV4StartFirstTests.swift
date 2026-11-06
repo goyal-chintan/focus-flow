@@ -312,7 +312,10 @@ final class CoachV4StartFirstTests: XCTestCase {
         vm.performCoachPanelSecondary(.reasonBusy, now: now)
         XCTAssertNil(vm.coachPanel)
         XCTAssertEqual(vm.coachQuietUntil, now.addingTimeInterval(3600))
-        XCTAssertFalse(vm.evaluateDailyPlanInvite(now: now.addingTimeInterval(3 * 3600)), "The card is done for today")
+        // Later the same day (after 21:00, "3 hours later" would be tomorrow, when the card may show again).
+        let endOfDay = Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: now) ?? now
+        let later = min(now.addingTimeInterval(3 * 3600), endOfDay)
+        XCTAssertFalse(vm.evaluateDailyPlanInvite(now: later), "The card is done for today")
         XCTAssertTrue(vm.coachJournal.entries(on: now).contains { $0.kind == .declined && $0.text.contains("busy with work") })
     }
 

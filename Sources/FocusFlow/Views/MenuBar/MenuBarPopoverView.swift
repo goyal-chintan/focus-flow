@@ -290,8 +290,18 @@ struct MenuBarPopoverView: View {
 
     private var footerSection: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                // Coach v8 §3.6: no stats here. Where the day stands is Today's one sentence.
+            HStack(spacing: 8) {
+                // The main way out of the popover: a labelled capsule, not a bare icon.
+                Button {
+                    openStatsWindow(requestedTab: .today)
+                } label: {
+                    Label("Open FocusFlow", systemImage: "macwindow")
+                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                }
+                .buttonStyle(PopoverFooterButtonStyle(shape: .capsule))
+                .help("Today, Goals, History, Insights, Projects")
+                .accessibilityLabel("Open FocusFlow")
+
                 Spacer(minLength: 0)
 
                 // Private now: hide FocusFlow from the menu bar, notch and pop-ups (SharePrivacy).
@@ -299,27 +309,11 @@ struct MenuBarPopoverView: View {
                     withAnimation(FFMotion.control) { timerVM.setPrivateManually(!timerVM.isPrivateManual) }
                 } label: {
                     Image(systemName: timerVM.isPrivateManual ? "eye.slash.fill" : "eye.slash")
-                        .font(.system(size: 12))
-                        .foregroundStyle(timerVM.isPrivateManual ? AnyShapeStyle(.tint) : AnyShapeStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7)))
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
+                        .font(.system(size: 12, weight: .semibold))
                 }
-                .buttonStyle(.plain)
-                .help(timerVM.isPrivateManual ? "Show FocusFlow again" : "Private now: hide FocusFlow from the menu bar, notch and pop-ups")
+                .buttonStyle(PopoverFooterButtonStyle(shape: .circle, isOn: timerVM.isPrivateManual))
+                .help(timerVM.isPrivateManual ? "Private now is on: show FocusFlow again" : "Private now: hide FocusFlow from the menu bar, notch and pop-ups")
                 .accessibilityLabel(timerVM.isPrivateManual ? "Turn off private mode" : "Turn on private mode")
-
-                Button {
-                    openStatsWindow(requestedTab: .today)
-                } label: {
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Open FocusFlow (Today, Goals, History, Insights, Projects)")
-                .accessibilityLabel("Open FocusFlow")
 
                 // Settings, the tour and Quit in one place (a menu-bar app had no Quit at all).
                 Menu {
@@ -335,12 +329,10 @@ struct MenuBarPopoverView: View {
                         .keyboardShortcut("q", modifiers: .command)
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .contentShape(Rectangle())
+                        .font(.system(size: 12, weight: .semibold))
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .buttonStyle(PopoverFooterButtonStyle(shape: .circle))
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Settings, welcome tour, Quit")
@@ -352,6 +344,10 @@ struct MenuBarPopoverView: View {
                 Rectangle()
                     .fill(.ultraThinMaterial)
                     .overlay(Color.black.opacity(0.26))
+                    .overlay(alignment: .top) {
+                        // A hairline of light along the top edge, so the footer reads as a surface.
+                        Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5)
+                    }
             )
         }
     }
@@ -1758,5 +1754,47 @@ private struct UsualLengthReceipt: View {
             .padding(.horizontal, 10)
             .transition(.opacity)
         }
+    }
+}
+
+// MARK: - Footer buttons
+
+/// Footer controls that answer the pointer (6 Nov 2026: three grey glyphs looked dead): a soft
+/// fill that lifts on hover, brighter content, a small press; "on" fills with the accent.
+struct PopoverFooterButtonStyle: ButtonStyle {
+    enum Shape { case circle, capsule }
+    let shape: Shape
+    var isOn = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        PopoverFooterButtonBody(configuration: configuration, shape: shape, isOn: isOn)
+    }
+}
+
+private struct PopoverFooterButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let shape: PopoverFooterButtonStyle.Shape
+    let isOn: Bool
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let fill: Color = isOn ? LiquidDesignTokens.Spectral.primaryContainer.opacity(hovering ? 0.42 : 0.32)
+            : Color.primary.opacity(configuration.isPressed ? 0.16 : (hovering ? 0.12 : 0.06))
+        configuration.label
+            .foregroundStyle(isOn ? Color.white : Color.primary.opacity(hovering ? 1 : 0.82))
+            .padding(.horizontal, shape == .capsule ? 12 : 0)
+            .frame(width: shape == .circle ? 30 : nil, height: 30)
+            .background {
+                switch shape {
+                case .circle: Circle().fill(fill).overlay(Circle().strokeBorder(Color.primary.opacity(hovering ? 0.16 : 0.08), lineWidth: 0.5))
+                case .capsule: Capsule().fill(fill).overlay(Capsule().strokeBorder(Color.primary.opacity(hovering ? 0.16 : 0.08), lineWidth: 0.5))
+                }
+            }
+            .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed ? 0.95 : (hovering && !reduceMotion ? 1.03 : 1))
+            .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: hovering)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: configuration.isPressed)
+            .onHover { hovering = $0 }
     }
 }

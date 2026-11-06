@@ -72,11 +72,14 @@ struct TodayView: View {
         let done = snapshot.analytics.dayTotal(snapshot.goalSamples, on: now).seconds
         return VStack(alignment: .leading, spacing: FFSpace.m) {
             HStack(alignment: .center, spacing: FFSpace.xl) {
-                // The pace ring (restored 6 Nov 2026): green on pace, orange behind, red at risk.
-                PaceRing(done: done, target: goal.seconds, tier: timerVM.goalPacing(now: now).tier,
-                         size: 88, lineWidth: 10, showsTime: false)
+                // The goal ring (the timer's sweep); the dot beside the sentence says the pace.
+                let tier = timerVM.goalPacing(now: now).tier
+                PaceRing(done: done, target: goal.seconds, tier: tier, size: 88, lineWidth: 8, showsTime: false)
                 VStack(alignment: .leading, spacing: FFSpace.s) {
-                    HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
+                    HStack(alignment: .center, spacing: FFSpace.s) {
+                        if tier != .unknown || done >= goal.seconds {
+                            PaceDot(tier: tier, met: goal.seconds > 0 && done >= goal.seconds)
+                        }
                         Text(sentence)
                             .ffText(.title3)
                             .monospacedDigit()
