@@ -81,7 +81,6 @@ struct NotchSnapshot {
     var goalTarget: TimeInterval
     var goalLabel: String
     var lever: DailyLever?
-    var verdict: String?
     /// The coach wants a start (prompt waiting).
     var coachHook: String?
     /// The running block's project has a key result to +1.
@@ -94,8 +93,6 @@ struct NotchSnapshot {
     var nextTaskCount: (logged: Double, target: Double)? = nil
     /// What the last tick or +1 logged, for a few seconds.
     var receipt: String? = nil
-    /// Today's reminder line (idle).
-    var reminder: DailyReminderLine? = nil
     /// The coach's learned block size (`startLadderRecommendation`), marked with a sparkle.
     var suggestedMinutes: Int = CoachBlockSizeLadder.defaultMinutes
     /// Your regular length (`TimerViewModel.regularMinutes`): the prominent start, as everywhere else.
@@ -104,6 +101,26 @@ struct NotchSnapshot {
     var growToMinutes: Int? = nil
 
     var goalFraction: Double { goalTarget > 0 ? min(1, goalDone / goalTarget) : 0 }
+
+    /// Coach v8 §3.6: one next action, the lever or the task, never both.
+    var next: CalmSurfaces.NotchNext {
+        CalmSurfaces.notchNext(
+            inBlock: mode == .focusing || mode == .paused,
+            hasTask: nextTask != nil || receipt != nil,
+            tasksPlanned: tasks?.planned ?? 0,
+            hasLever: lever != nil,
+            hasResult: quickResult != nil
+        )
+    }
+
+    /// The "Next: …" line on a break: the task, else the lever.
+    var nextLine: String? {
+        switch next {
+        case .task: nextTask?.title
+        case .lever: lever?.action
+        case .result, .none: nil
+        }
+    }
 }
 
 struct NotchView: View {
@@ -267,7 +284,7 @@ struct NotchView: View {
                     .monospacedDigit()
                     .foregroundStyle(.white)
                     .contentTransition(.numericText(countsDown: true))
-                if let intent = snapshot.intent, !intent.isEmpty {
+                if let intent = CalmSurfaces.notchIntent(snapshot.intent, taskTitle: snapshot.next == .task ? snapshot.nextTask?.title : nil) {
                     Text(intent)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.7))
@@ -276,7 +293,9 @@ struct NotchView: View {
                 Spacer(minLength: 0)
             }
             ProgressLine(progress: snapshot.progress, tint: tint)
-            taskLine(tint: tint)
+            if snapshot.next == .task {
+                taskLine(tint: tint)
+            }
             HStack(spacing: 8) {
                 if snapshot.mode == .paused {
                     NotchButton(title: "Resume", symbol: "play.fill", prominent: true, tint: tint, action: actions.resume)
@@ -289,7 +308,7 @@ struct NotchView: View {
                 }
                 NotchButton(title: "Finish", symbol: "checkmark", action: actions.finish)
                 Spacer(minLength: 0)
-                if let result = snapshot.quickResult {
+                if snapshot.next == .result, let result = snapshot.quickResult {
                     NotchButton(title: "\(result.title) +1", symbol: "arrow.up.circle.fill", prominent: true, tint: tint) {
                         actions.logResult(result.id)
                     }
@@ -331,8 +350,8 @@ struct NotchView: View {
                 .font(.system(size: 44, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.white)
-            if let lever = snapshot.lever {
-                Text("Next: \(lever.action)").font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.7))
+            if let next = snapshot.nextLine {
+                Text("Next: \(next)").font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
             }
             HStack(spacing: 8) {
                 NotchButton(title: "Start next block", symbol: "play.fill", prominent: true, tint: .green, action: actions.skipBreak)
@@ -351,8 +370,8 @@ struct NotchView: View {
                 .monospacedDigit()
                 .foregroundStyle(.orange)
                 .accessibilityLabel("Break ran \(snapshot.time.dropFirst()) over")
-            if let lever = snapshot.lever {
-                Text("Next: \(lever.action)").font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.7))
+            if let next = snapshot.nextLine {
+                Text("Next: \(next)").font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
             }
             HStack(spacing: 8) {
                 NotchButton(title: "Start next block", symbol: "play.fill", prominent: true, tint: .green, action: actions.startAfterBreak)
@@ -362,25 +381,11 @@ struct NotchView: View {
         }
     }
 
+    /// Idle (coach v8 §3.6): one ring, one next action (the lever or the task, never both) and
+    /// the start sizes. No quote and no totals line: Today holds those.
     private var idleExpanded: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let reminder = snapshot.reminder {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: reminder.isOwn ? "heart.fill" : (reminder.isQuestion ? "questionmark" : "quote.opening"))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.orange.opacity(0.85))
-                        .accessibilityHidden(true)
-                    Text(reminder.text)
-                        .font(.system(size: 13, weight: .medium, design: .serif))
-                        .italic()
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .help(reminder.attribution)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Reminder: \(reminder.text), \(reminder.attribution)")
-            }
+        let showsLever = snapshot.next == .lever
+        return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 18) {
                 GoalRing(fraction: snapshot.goalFraction, done: snapshot.goalDone, target: snapshot.goalTarget, label: snapshot.goalLabel)
                 VStack(alignment: .leading, spacing: 6) {
@@ -390,19 +395,15 @@ struct NotchView: View {
                             .foregroundStyle(.orange)
                             .lineLimit(1)
                     }
-                    Text(snapshot.lever == nil ? "NEXT BLOCK" : "TODAY'S LEVER")
+                    Text(showsLever ? "TODAY'S LEVER" : "NEXT BLOCK")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .tracking(1.4)
                         .foregroundStyle(.white.opacity(0.5))
-                    Text(snapshot.lever?.action ?? (snapshot.projectName.map { "Start on \($0)" } ?? "Start a small block"))
+                    Text(showsLever ? (snapshot.lever?.action ?? "") : (snapshot.projectName.map { "Start on \($0)" } ?? "Start a small block"))
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    Text(snapshot.lever.map { "\($0.goalTitle) · \($0.reason)" } ?? "Small starts count.")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
                     HStack(spacing: 6) {
                         ForEach(startSizes, id: \.self) { minutes in
                             let isCoachAsk = minutes == snapshot.suggestedMinutes && minutes != snapshot.regularMinutes
@@ -416,24 +417,8 @@ struct NotchView: View {
                 }
                 Spacer(minLength: 0)
             }
-            taskLine(tint: FFPalette.project(snapshot.projectColor))
-            if let verdict = snapshot.verdict {
-                HStack(spacing: 8) {
-                    Image(systemName: "chart.bar.fill").font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
-                    Text(verdict)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    Spacer(minLength: 0)
-                    Button(action: actions.openGoals) {
-                        Text("Goals").font(.system(size: 11.5, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(FFPalette.accent)
-                    .frame(minHeight: 30)
-                    .contentShape(Rectangle())
-                }
+            if snapshot.next == .task {
+                taskLine(tint: FFPalette.project(snapshot.projectColor))
             }
         }
     }
@@ -558,7 +543,6 @@ struct NotchActions {
     var toggleBreak: () -> Void = {}
     var start: (Int) -> Void = { _ in }
     var logResult: (UUID) -> Void = { _ in }
-    var openGoals: () -> Void = {}
     /// Ticks the task, or adds 1 to a counted one.
     var tickTask: (UUID) -> Void = { _ in }
     var undoTask: () -> Void = {}

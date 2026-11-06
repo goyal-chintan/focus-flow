@@ -76,21 +76,22 @@ struct PaceBar: View {
 
 // MARK: - Goal card
 
-/// A goal, read top to bottom (Goals clarity 2026-11-02): what it is and when it's due, one
-/// sentence on where you stand, then each number with +1. The overall bar shows only when there
-/// are several numbers (with one, it repeats the number's own bar). A goal with nothing to count
-/// says so and offers the two ways forward instead of a 0% bar.
+/// A goal, calm (coach v8 §3.6): what it is and when it's due, one sentence on where you stand
+/// (the pace, said once), one bar, and today's step ("Today: 3 LeetCode questions"). Each number
+/// with its +1 / −1, the chart and "Add from Reminders" sit behind one disclosure. A goal with
+/// nothing to count says so and offers the two ways forward instead of a 0% bar.
 struct GoalCard: View {
     let goal: ProjectGoal
     let project: Project?
     let now: Date
-    var compact: Bool = false
+    /// "Today: 3 LeetCode questions" (`CalmSurfaces.goalTodayLine`); nil when nothing is due today.
+    var todayLine: String?
     var onEdit: (() -> Void)?
     /// Pick reminders (the project's tasks) to count toward this goal; nil when its project has none.
     var onPickReminders: (() -> Void)?
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showNumbers = false
     @State private var showChart = false
 
     var body: some View {
@@ -98,7 +99,7 @@ struct GoalCard: View {
         let tint = FFPalette.project(project?.color)
         let results = goal.sortedKeyResults
         VStack(alignment: .leading, spacing: FFSpace.m) {
-            header(summary, tint: tint, hasMeasures: !results.isEmpty)
+            header(tint: tint, summary: summary)
             if results.isEmpty {
                 GoalFirstStep(onEdit: onEdit, onPickReminders: onPickReminders)
             } else {
@@ -109,43 +110,58 @@ struct GoalCard: View {
                     deadline: goal.deadline
                 ))
                 .ffText(.body)
+                .foregroundStyle(summary.status == .behind || summary.status == .overdue ? summary.status.color : .primary)
                 .fixedSize(horizontal: false, vertical: true)
-                if results.count > 1 {
-                    overallBar(summary)
+                PaceBar(fraction: summary.fraction, expected: summary.expectedFraction, color: summary.status.color, height: 8)
+                if let todayLine {
+                    Label(todayLine, systemImage: "arrow.turn.down.right")
+                        .ffText(.callout)
+                        .lineLimit(1)
                 }
-                VStack(spacing: 14) {
-                    ForEach(Array(zip(results, summary.keyResults)), id: \.0.id) { pair in
-                        KeyResultRow(keyResult: pair.0, pace: pair.1, compact: compact)
-                    }
-                }
-                if !compact {
-                    HStack(alignment: .top) {
-                        chartToggle(summary)
-                        if let onPickReminders {
-                            Button(action: onPickReminders) {
-                                Label("Add from Reminders…", systemImage: "checklist")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Pick reminders that count toward this goal")
-                        }
-                    }
-                }
+                numbers(summary, results: results)
             }
         }
         .padding(FFSpace.l)
         .ffSurface()
     }
 
-    private func overallBar(_ summary: GoalPacing.GoalSummary) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            PaceBar(fraction: summary.fraction, expected: summary.expectedFraction, color: summary.status.color, height: 8)
-            HStack {
-                Text("Overall \(Int((summary.fraction * 100).rounded()))% done").ffText(.caption).monospacedDigit()
-                Spacer()
-                Text("Today's mark │ \(Int((summary.expectedFraction * 100).rounded()))%")
-                    .ffText(.caption)
-                    .monospacedDigit()
-                    .help("The tick on the bar is where steady progress would put you today")
+    /// Each number with +1 / −1, the chart and Reminders, behind one row.
+    private func numbers(_ summary: GoalPacing.GoalSummary, results: [GoalKeyResult]) -> some View {
+        VStack(alignment: .leading, spacing: FFSpace.m) {
+            Button {
+                withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { showNumbers.toggle() }
+            } label: {
+                HStack(spacing: FFSpace.s) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(showNumbers ? 90 : 0))
+                        .accessibilityHidden(true)
+                    Text(results.count == 1 ? "The number and +1" : "The \(results.count) numbers and +1").ffText(.callout)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 30)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(showNumbers ? "Hide the numbers" : "Show each number with +1")
+            if showNumbers {
+                VStack(spacing: 14) {
+                    ForEach(Array(zip(results, summary.keyResults)), id: \.0.id) { pair in
+                        KeyResultRow(keyResult: pair.0, pace: pair.1)
+                    }
+                }
+                .transition(.opacity)
+                HStack(alignment: .top) {
+                    chartToggle(summary)
+                    if let onPickReminders {
+                        Button(action: onPickReminders) {
+                            Label("Add from Reminders…", systemImage: "checklist")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Pick reminders that count toward this goal")
+                    }
+                }
             }
         }
     }
@@ -178,7 +194,7 @@ struct GoalCard: View {
         }
     }
 
-    private func header(_ summary: GoalPacing.GoalSummary, tint: Color, hasMeasures: Bool) -> some View {
+    private func header(tint: Color, summary: GoalPacing.GoalSummary) -> some View {
         HStack(alignment: .top, spacing: FFSpace.m) {
             Image(systemName: goal.isBossFight ? "star.fill" : "scope")
                 .font(.system(size: 15, weight: .semibold))
@@ -202,9 +218,6 @@ struct GoalCard: View {
                 Text(subtitle(summary)).ffText(.caption).lineLimit(1)
             }
             Spacer(minLength: FFSpace.s)
-            if hasMeasures {
-                PaceStatusPill(status: summary.status)
-            }
             if let onEdit {
                 Button("Edit", action: onEdit)
                     .buttonStyle(.bordered)
@@ -215,6 +228,7 @@ struct GoalCard: View {
         }
     }
 
+    /// "Learning · Due 28 Nov · 18 days left". The pace itself is the sentence's, said once.
     private func subtitle(_ summary: GoalPacing.GoalSummary) -> String {
         var parts: [String] = []
         if let project { parts.append(project.name) }
@@ -387,6 +401,22 @@ struct GoalPaceChart: View {
         }
         if let last = points.last, last.date < now { points.append((min(now, goal.deadline), last.percent)) }
         return points
+    }
+}
+
+/// The goal's scope beside its number: "★ Learning", "Own work", "All focus".
+struct ScopeChip: View {
+    let label: String
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(FFPalette.accent)
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .background(Capsule().fill(FFPalette.accent.opacity(0.14)))
+            .lineLimit(1)
+            .accessibilityLabel("Counts \(label)")
     }
 }
 
