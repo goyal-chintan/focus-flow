@@ -82,6 +82,8 @@ struct CoachNoticedSection: View {
             }
         case .projectArea(let id, _, _):
             if let area = ProjectArea(rawValue: choice.id) { timerVM.setProjectArea(id, area: area) }
+        case .naturalLength:
+            timerVM.applyNaturalLengthAnswer(choice)
         }
     }
 
@@ -105,7 +107,16 @@ struct CoachNoticedSection: View {
         let breaks = breakEvents.filter { $0.createdAt >= since }.map {
             CoachPatterns.Break(suggestedMinutes: $0.suggestedMinutes, actualSeconds: $0.actualBreakSeconds, overrunSeconds: $0.overrunSeconds, returnedToFocus: $0.returnedToFocus)
         }
-        return CoachPatterns.compute(blocks: blocks, breaks: breaks, declared: allSettings.first?.coachOwnWorkWindows ?? [])
+        let cycleSessions = sessions.filter { $0.startedAt >= since }.compactMap { session -> CoachCycleStats.Session? in
+            guard let end = session.endedAt else { return nil }
+            return CoachCycleStats.Session(isFocus: session.type == .focus, start: session.startedAt, end: end,
+                                           plannedSeconds: session.duration, pausedSeconds: session.totalPausedSeconds)
+        }
+        let estimate = CoachCycleExperiment.estimate(
+            timerVM.cycleDecisions(), starts: sessions.filter { $0.type == .focus }.map(\.startedAt), now: now
+        )
+        return CoachPatterns.compute(blocks: blocks, breaks: breaks, declared: allSettings.first?.coachOwnWorkWindows ?? [],
+                                     cycle: CoachCycleStats.compute(cycleSessions), returnEstimate: estimate)
     }
 
     /// Questions answered here in place: the window fit (from the same 28 days the coach uses)
@@ -126,6 +137,15 @@ struct CoachNoticedSection: View {
             (id: $0.id, name: $0.name, hasArea: $0.areaRaw != nil, isWork: $0.areaRaw != nil && $0.area == .work, blocks: counts[$0.id] ?? 0)
         }) {
             questions.append(project)
+        }
+        let regular = timerVM.regularMinutes
+        let recentSessions = sessions.filter { $0.startedAt >= now.addingTimeInterval(-30 * 86_400) }.compactMap { session -> CoachCycleStats.Session? in
+            guard let end = session.endedAt else { return nil }
+            return CoachCycleStats.Session(isFocus: session.type == .focus, start: session.startedAt, end: end,
+                                           plannedSeconds: session.duration, pausedSeconds: session.totalPausedSeconds)
+        }
+        if let minutes = CoachNaturalLength.suggestion(recentSessions, regularMinutes: regular), !timerVM.isCoachQuestionSnoozed("natural_length", now: now) {
+            questions.append(.naturalLength(minutes: minutes, regular: regular))
         }
         return questions
     }

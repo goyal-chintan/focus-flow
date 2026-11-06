@@ -172,7 +172,8 @@ final class NotchController: NotchHosting {
             resume: { vm.resume() },
             setLength: { minutes in vm.setBlockLength(minutes: minutes) },
             finish: { [weak self] in self?.collapse(); vm.stopForReflection() },
-            keepGoing: { vm.continueAfterCompletion(action: .continueOvertime) },
+            // Coach v7 §3.1: a 10-minute lap, then the block-end window comes back.
+            keepGoing: { vm.keepGoingLap() },
             takeBreak: { vm.continueAfterCompletion(action: .takeBreak(duration: 300)) },
             end: { [weak self] in self?.collapse(); vm.continueAfterCompletion(action: .endSession) },
             skipBreak: { vm.skipBreak() },

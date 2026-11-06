@@ -2150,6 +2150,8 @@ final class TimerViewModel {
         if isOvertime {
             overtimeSeconds += 1
             currentSession?.endedAt = Date()
+            // Coach v7: land the block (stretch nudge, laps) or walk the return ladder.
+            if isFocusOvertime { handleFocusOvertimeStep() } else { handleBreakOvertimeStep() }
             // Live focus time grows with a block's overtime only: a break that ran over is break time.
             if isFocusOvertime {
                 todayFocusTime += 1
@@ -2185,15 +2187,18 @@ final class TimerViewModel {
             }
         }
 
-        // Break duration monitoring — send warnings for long breaks
-        if case .onBreak = state, let session = currentSession {
-            let breakElapsed = Date().timeIntervalSince(session.startedAt)
-            let breakElapsedInt = Int(breakElapsed)
-            if breakElapsedInt == 120 {
-                NotificationService.shared.sendBreakWarning(minutes: 2)
-            } else if breakElapsedInt == 300 {
-                NotificationService.shared.sendBreakCritical(minutes: 5)
-            }
+        // Coach v7 §3.1: two minutes before the planned end, the landing cue asks for the next step.
+        if state == .focusing, Int(remainingSeconds) == CoachLanding.cueSeconds {
+            presentLandingCue()
+        }
+        // Coach v7 §3.2: one minute before a break ends, the next step. (Replaces the alerts at 2
+        // and 5 minutes *into* a break, which fired while the break was still on plan.)
+        if case .onBreak = state, !isBreakPaused, Int(remainingSeconds) == CoachReturnLadder.preEndSeconds {
+            let next = latestNextStep()
+            NotificationService.shared.sendCoachLine(
+                id: "break-ending", title: "1 min left on your break",
+                body: next.map { "Next: \($0)" } ?? "Next: back to the block."
+            )
         }
 
         if remainingSeconds <= 0 {
@@ -2292,6 +2297,10 @@ final class TimerViewModel {
         }
         currentCoachQuickPromptDecision = nil
         hideCoachPanel()
+        overtimeLapEndsAt = nil
+        if wasType != nil, wasType != .focus {
+            beginReturnLadder(now: Date())
+        }
     }
 
     // MARK: - Reflection
@@ -2382,6 +2391,8 @@ final class TimerViewModel {
         }
         showSessionComplete = false
         isManualStop = false
+        overtimeLapEndsAt = nil
+        if coachPanel?.kind == .returnFromBreak || coachPanel?.kind == .landing { hideCoachPanel() }
 
         if case .continueOvertime = action {
             // Keep overtime state and timer running.
@@ -2431,6 +2442,7 @@ final class TimerViewModel {
             state = .idle
             loadTodayStats()
             currentSession = nil
+            offerBackAt(now: Date())
         }
     }
 
@@ -2747,9 +2759,12 @@ final class TimerViewModel {
         case .dailyPlan:
             // v4: the card's primary is "start now"; time chips plan for later.
             guard startCoachPlan(panel.plan, attemptID: panel.attemptID) else { return false }
-        case .planTomorrow, .question:
-            // No primary: each time chip plans a block; each answer is its own button.
+        case .planTomorrow, .question, .landing:
+            // No primary: each time chip plans a block; each answer is its own button; the
+            // landing field saves itself.
             hideCoachPanel()
+        case .returnFromBreak:
+            return startFromReturnPanel(minutes: panel.plan?.minutes ?? regularMinutes)
         }
         if panel.kind == .pseudoProductivity, panel.level != nil {
             rescueStartedSessionID = currentSession?.id
@@ -2783,6 +2798,12 @@ final class TimerViewModel {
             }
             interventionActionTaken = true
             hideCoachPanel()
+        case .doneForToday where panel.kind == .returnFromBreak:
+            coachJournal.record(.declined, "Back from break: done for today.", code: .returnLadder, at: now)
+            interventionActionTaken = true
+            hideCoachPanel()
+            suppressBackAtOffer = true
+            continueAfterCompletion(action: .endSession)
         case .doneForToday:
             coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
@@ -3192,6 +3213,7 @@ final class TimerViewModel {
                 facts.minutesSinceLastSession = max(0, Int(now.timeIntervalSince(end) / 60))
             }
             facts.lastIntent = reader.lastIntent(projectID: projectID)
+            facts.nextStep = latestNextStep(now: now)
             facts.daysWithoutBlock = reader.daysWithoutBlock(now: now)
             facts.derailer = reader.derailerFact(
                 bundleIdentifier: AppUsageTracker.shared.currentFrontmostBundleId,
@@ -4343,6 +4365,7 @@ final class TimerViewModel {
     @discardableResult
     func performCoachPanelStart(minutes: Int) -> Bool {
         guard let panel = coachPanel else { return false }
+        if panel.kind == .returnFromBreak { return startFromReturnPanel(minutes: minutes) }
         var target = panel.plan ?? CoachStartTarget(minutes: minutes, name: nil, projectID: nil, priorityID: nil)
         target.minutes = minutes
         target.findNextStep = false
@@ -5645,6 +5668,238 @@ final class TimerViewModel {
         )
     }
 
+    // MARK: Cycle: land the block, return from the break (coach v7)
+
+    /// A chosen "Keep going" lap ends at this overtime second (nil: none chosen).
+    @ObservationIgnored private var overtimeLapEndsAt: Int?
+    @ObservationIgnored private var landingCueShownFor: UUID?
+    @ObservationIgnored private var returnHazardCache: (day: Date, hazard: CoachReturnHazard)?
+    /// This break end drew the return panel (learner B's treated arm).
+    @ObservationIgnored private(set) var returnLadderTreated = false
+    @ObservationIgnored private var suppressBackAtOffer = false
+    /// Tests: force the return experiment's arm (nil: randomise).
+    @ObservationIgnored var cycleArmOverride: Bool?
+
+    /// Every finished session since `since`, focus and breaks, for the cycle learners.
+    func cycleSessions(since: Date) -> [CoachCycleStats.Session] {
+        guard let modelContext else { return [] }
+        let descriptor = FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }, sortBy: [SortDescriptor(\.startedAt)])
+        return ((try? modelContext.fetch(descriptor)) ?? []).compactMap { session in
+            guard let end = session.endedAt else { return nil }
+            return CoachCycleStats.Session(isFocus: session.type == .focus, start: session.startedAt, end: end,
+                                           plannedSeconds: session.duration, pausedSeconds: session.totalPausedSeconds)
+        }
+    }
+
+    func cycleStats(now: Date = Date()) -> CoachCycleStats {
+        CoachCycleStats.compute(cycleSessions(since: now.addingTimeInterval(-60 * 86_400)))
+    }
+
+    /// Learner A, refit once a day from the last 60 days of breaks.
+    func returnHazard(now: Date = Date()) -> CoachReturnHazard {
+        let day = Calendar.current.startOfDay(for: now)
+        if let cache = returnHazardCache, cache.day == day { return cache.hazard }
+        let sessions = cycleSessions(since: now.addingTimeInterval(-60 * 86_400))
+        var latencies: [Double?] = []
+        for (i, s) in sessions.enumerated() where !s.isFocus {
+            let plannedEnd = s.start.addingTimeInterval(s.plannedSeconds)
+            let next = sessions[(i + 1)...].first(where: \.isFocus)
+            if let next, next.start.timeIntervalSince(plannedEnd) <= TimeInterval(CoachReturnHazard.horizonMinutes * 60) {
+                latencies.append(next.start.timeIntervalSince(plannedEnd) / 60)
+            } else {
+                latencies.append(nil)
+            }
+        }
+        let hazard = CoachReturnHazard.fit(latencies: latencies)
+        returnHazardCache = (day, hazard)
+        return hazard
+    }
+
+    /// The most recent next step written in the last 12 hours.
+    func latestNextStep(now: Date = Date()) -> String? {
+        guard let modelContext else { return nil }
+        let since = now.addingTimeInterval(-12 * 3600)
+        var descriptor = FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }, sortBy: [SortDescriptor(\.startedAt, order: .reverse)])
+        descriptor.fetchLimit = 20
+        let sessions = (try? modelContext.fetch(descriptor)) ?? []
+        return sessions.lazy.compactMap { $0.nextStepText?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+    }
+
+    /// The return experiment's decisions (Insights reads its estimate).
+    func cycleDecisions() -> [CoachCycleExperiment.Decision] { CoachCycleLog(defaults: defaults).load() }
+
+    // Landing
+
+    /// T − 2 min: "2 min left. What's the next step?" (§3.1). Once per block, not on starters or
+    /// blocks under 10 min, never over another panel or while sharing.
+    func presentLandingCue(now: Date = Date()) {
+        guard state == .focusing, !isStarterBlock, let session = currentSession, session.type == .focus,
+              totalSeconds >= 10 * 60, landingCueShownFor != session.id,
+              coachPanel == nil, pauseScreen == nil, !isPrivate,
+              settings?.coachOnScreenPromptsEnabled == true else { return }
+        landingCueShownFor = session.id
+        let message = CoachComposedMessage(
+            style: settings?.coachStyle ?? .challenger, trigger: .startNudge,
+            hook: "2 min left. What's the next step?",
+            detail: .line("Write where you'll pick up. It's waiting when the break ends."),
+            primaryTitle: "", hookIsFact: false
+        )
+        coachJournal.record(.shown, "Landing cue.", code: .landing, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .landing, message: message, createdAt: now, step: session.nextStepText))
+    }
+
+    /// Stores the next step on the running block, or on the block that just ended.
+    func setNextStep(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = (currentSession?.type == .focus && !isOvertime) ? currentSession : (lastCompletedFocusSession ?? currentSession)
+        guard let session, session.type == .focus else { return }
+        session.nextStepText = trimmed.isEmpty ? nil : trimmed
+        saveContext()
+    }
+
+    func saveLandingNextStep(_ text: String, now: Date = Date()) {
+        setNextStep(text)
+        coachJournal.record(.logged, "Next step written.", code: .landing, at: now)
+        if coachPanel?.kind == .landing { hideCoachPanel() }
+    }
+
+    /// "Keep going" (§3.1): a 10-minute lap, then the block-end window comes back.
+    func keepGoingLap(now: Date = Date()) {
+        guard isFocusOvertime else { return }
+        overtimeLapEndsAt = overtimeSeconds + CoachLanding.lapMinutes * 60
+        showSessionComplete = false
+        coachJournal.record(.logged, "Kept going: a \(CoachLanding.lapMinutes)-min lap.", code: .stretch, at: now)
+    }
+
+    var isInOvertimeLap: Bool { isFocusOvertime && overtimeLapEndsAt != nil }
+
+    private func handleFocusOvertimeStep(now: Date = Date()) {
+        switch CoachLanding.overtimeStep(overtimeSeconds: overtimeSeconds, lapEndsAt: overtimeLapEndsAt) {
+        case .none:
+            return
+        case .stretchNudge:
+            let fact = cycleStats(now: now).stretchFact
+            NotificationService.shared.sendCoachLine(
+                id: "stretch", title: "5 min past your block",
+                body: fact ?? "Land it: finish, or take the break you earned."
+            )
+            coachJournal.record(.shown, "Stretch nudge at +5 min.", code: .stretch, hook: fact, at: now)
+        case .resurface, .lapEnded:
+            let lap = overtimeLapEndsAt != nil
+            overtimeLapEndsAt = nil
+            if lap {
+                NotificationService.shared.sendCoachLine(id: "lap-done", title: "Lap done", body: "Finish, or take your break.")
+            }
+            coachJournal.record(.shown, lap ? "Lap done: block-end window back." : "Block-end window back at +10 min.", code: .stretch, at: now)
+            showSessionComplete = true
+            showCompletionWindow()
+        }
+    }
+
+    // Return
+
+    /// Break end (§3.2, learner B): the return panel with probability 0.7, else only the
+    /// notification and the break-over window. Every decision is logged for the lift estimate.
+    private func beginReturnLadder(now: Date) {
+        guard let settings, settings.coachOnScreenPromptsEnabled, settings.coachIdleStarterEnabled else {
+            returnLadderTreated = false
+            return
+        }
+        let treated = cycleArmOverride ?? (Double.random(in: 0..<1) < CoachCycleExperiment.probability)
+        returnLadderTreated = treated
+        if !isEvidenceMode {
+            CoachCycleLog(defaults: defaults).append(.init(at: now, treated: treated, propensity: CoachCycleExperiment.probability))
+        }
+        coachJournal.record(treated ? .shown : .quiet, treated ? "Return panel at break end." : "Return panel held back (control).",
+                            code: .returnLadder, propensity: CoachCycleExperiment.probability, at: now)
+        if treated { presentReturnPanel(reentry: false, now: now) }
+    }
+
+    func presentReturnPanel(reentry: Bool, now: Date = Date()) {
+        let next = latestNextStep(now: now)
+        let sizes = CoachReturnLadder.sizes(regular: regularMinutes, reentry: reentry)
+        let hook: String
+        let detail: String?
+        if reentry {
+            hook = next.map { "Start 5m on “\(CoachMessageComposer.shortName($0))”?" } ?? "Start 5 minutes. Just get back in."
+            detail = "Breaks this long rarely end on their own. Five minutes is enough to be back."
+        } else {
+            hook = next.map { "Back to: \(CoachMessageComposer.shortName($0))" } ?? "Break's over. Back in?"
+            let hazard = returnHazard(now: now)
+            detail = hazard.episodes >= CoachReturnHazard.minEpisodes
+                ? "After a break you're back within 5 min \(Int((hazard.startedWithin(5) * 100).rounded()))% of the time. Make this one of them."
+                : nil
+        }
+        let projectID = completedBlockContext?.projectId ?? breakEpisodeContext?.earnedBlock.projectId ?? selectedProject?.id
+        var target = CoachStartTarget(minutes: sizes.first ?? regularMinutes, name: completedBlockContext?.projectName ?? selectedProject?.name,
+                                      projectID: projectID, priorityID: nil)
+        target.taskTitle = next
+        let message = CoachComposedMessage(
+            style: settings?.coachStyle ?? .challenger, trigger: .startNudge,
+            hook: hook, detail: detail.map { .line($0) }, primaryTitle: "Start \(target.minutes)m", hookIsFact: false
+        )
+        presentCoachPanel(CoachPanelPresentation(kind: .returnFromBreak, message: message, plan: target, createdAt: now,
+                                                 sizeOptions: sizes, recommendedMinutes: sizes.first))
+    }
+
+    private func handleBreakOvertimeStep(now: Date = Date()) {
+        let reentry = returnHazard(now: now).reentryMinute * 60
+        switch CoachReturnLadder.step(overrunSeconds: overtimeSeconds, reentrySeconds: reentry) {
+        case .none:
+            return
+        case .reentry:
+            guard returnLadderTreated, coachPanel == nil || coachPanel?.kind == .returnFromBreak else { return }
+            coachJournal.record(.shown, "Re-entry offer at +\(reentry / 60) min.", code: .returnLadder, at: now)
+            presentReturnPanel(reentry: true, now: now)
+        case .close:
+            coachJournal.record(.logged, "Break closed \(CoachReturnLadder.closeSeconds / 60) min over.", code: .returnLadder, at: now)
+            if coachPanel?.kind == .returnFromBreak { hideCoachPanel() }
+            suppressBackAtOffer = true
+            continueAfterCompletion(action: .endSession)
+        }
+    }
+
+    /// Starts the next block from the return panel (the break is still pending completion).
+    private func startFromReturnPanel(minutes: Int, now: Date = Date()) -> Bool {
+        let previous = selectedMinutes
+        selectedMinutes = minutes
+        if pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let next = latestNextStep(now: now) {
+            pendingIntentText = next
+        }
+        coachJournal.record(.started, "Back from break: \(minutes)m.", code: .returnLadder, at: now)
+        continueAfterCompletion(action: .continueFocusing)
+        selectedMinutes = previous
+        interventionActionTaken = true
+        if coachPanel?.kind == .returnFromBreak { hideCoachPanel() }
+        return state == .focusing
+    }
+
+    // Walk-away
+
+    /// "Done for today" before 19:00 with the goal not met (§3.3): "Back at…?" A chip plans a
+    /// block with its cue; "Really done" closes it. Never blocks the ending itself.
+    private func offerBackAt(now: Date) {
+        defer { suppressBackAtOffer = false }
+        guard !suppressBackAtOffer, let settings, settings.coachOnScreenPromptsEnabled, settings.coachIdleStarterEnabled,
+              !isPrivate, coachPanel == nil, pauseScreen == nil, canUsePlannedBlocks(),
+              Calendar.current.component(.hour, from: now) < 19,
+              currentPacing(now: now).tier != .goalMet else { return }
+        let next = latestNextStep(now: now)
+        let message = CoachComposedMessage(
+            style: settings.coachStyle, trigger: .startNudge,
+            hook: "Back at…?",
+            detail: .line(next.map { "Pick a time and I'll cue it. Your next step waits: \($0)." } ?? "Pick a time and I'll cue it."),
+            primaryTitle: "", hookIsFact: false
+        )
+        coachJournal.record(.shown, "Back at…? offered.", code: .backAt, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .question, message: message, createdAt: now, questionID: "back_at", choices: [
+            CoachQuestionChoice(id: "30", title: "In 30 min"),
+            CoachQuestionChoice(id: "60", title: "In 1 hour"),
+            CoachQuestionChoice(id: "120", title: "In 2 hours"),
+            CoachQuestionChoice(id: "done", title: "Really done"),
+        ]))
+    }
+
     // MARK: Quick questions (coach v6 §3.4)
 
     /// The questions the coach has right now, most useful first (snoozed ones included).
@@ -5656,6 +5911,10 @@ final class TimerViewModel {
             questions.append(.windowFit(fit, declared: declared))
         }
         if let project = unclassifiedProjectQuestion(now: now) { questions.append(project) }
+        let regular = regularMinutes
+        if let minutes = CoachNaturalLength.suggestion(cycleSessions(since: now.addingTimeInterval(-30 * 86_400)), regularMinutes: regular) {
+            questions.append(.naturalLength(minutes: minutes, regular: regular))
+        }
         return questions
     }
 
@@ -5722,6 +5981,17 @@ final class TimerViewModel {
             if let answer = CoachQuestion.WindowFitAnswer(rawValue: choice.id), let settings {
                 applyWindowFitAnswer(answer, settings: settings, now: now)
             }
+        case "back_at":
+            if let minutes = Int(choice.id) {
+                let at = now.addingTimeInterval(TimeInterval(minutes * 60))
+                if insertPlannedBlock(at: at, now: now) != nil {
+                    coachJournal.record(.logged, "Back at \(Self.clockLabel(at)): planned.", code: .backAt, at: now)
+                }
+            } else {
+                coachJournal.record(.declined, "Really done for today.", code: .backAt, at: now)
+            }
+        case "natural_length":
+            applyNaturalLengthAnswer(choice, now: now)
         case let id? where id.hasPrefix("project_area."):
             if let uuid = UUID(uuidString: String(id.dropFirst("project_area.".count))), let area = ProjectArea(rawValue: choice.id) {
                 setProjectArea(uuid, area: area)
@@ -5732,6 +6002,22 @@ final class TimerViewModel {
         coachJournal.record(.logged, "Quick question answered: \(choice.title).", code: .question, at: now)
         interventionActionTaken = true
         hideCoachPanel()
+    }
+
+    /// "Not now" or "Keep…" holds this question back (Insights hides it too).
+    func isCoachQuestionSnoozed(_ id: String, now: Date = Date()) -> Bool {
+        CoachQuestionStore(defaults: defaults).snoozedUntil(id).map { $0 > now } ?? false
+    }
+
+    /// "Make it 35 min" / "Keep 25 min" (coach v7 §3.1; also offered in Insights).
+    func applyNaturalLengthAnswer(_ choice: CoachQuestionChoice, now: Date = Date()) {
+        if let minutes = Int(choice.id) {
+            settings?.focusDuration = TimeInterval(minutes * 60)
+            selectedMinutes = minutes
+            saveContext()
+        } else {
+            CoachQuestionStore(defaults: defaults).snooze("natural_length", until: now.addingTimeInterval(30 * 86_400))
+        }
     }
 
     /// Sets a project's area from a quick question (also offered in Insights).

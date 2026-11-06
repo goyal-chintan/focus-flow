@@ -77,6 +77,10 @@ final class CoachJournal {
         case pseudoCheck = "pseudo_check"
         case planTomorrow = "plan_tomorrow"
         case question = "question"
+        case landing = "landing"
+        case stretch = "stretch"
+        case returnLadder = "return"
+        case backAt = "back_at"
         // Held back
         case control = "control"
         case dailyCap = "daily_cap"

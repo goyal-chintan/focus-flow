@@ -25,6 +25,10 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case planTomorrow
         /// Coach v6 §3.4: a quick question with one-tap answers (e.g. "Should I watch those hours?").
         case question
+        /// Coach v7 §3.1: "2 min left. Next step?" with a one-line field.
+        case landing
+        /// Coach v7 §3.2: the break is over: "Back to: <next step>" with start sizes. Stays.
+        case returnFromBreak
     }
 
     let id: UUID
@@ -111,7 +115,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .notice: 3.5
         case .keepGoing, .momentum, .inSessionDrift: 20
         case .startNudge, .rescue, .pseudoProductivity, .weeklyPriorities, .question: 180
-        case .plannedStart, .dailyPlan, .planTomorrow: nil
+        case .landing: 150
+        case .plannedStart, .dailyPlan, .planTomorrow, .returnFromBreak: nil
         }
     }
 
@@ -119,7 +124,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
     /// section reads "Not now, because…" (shared vocabulary, screen audit 2026-10-28).
     var menuTitle: String {
         switch kind {
-        case .startNudge, .pseudoProductivity, .inSessionDrift, .weeklyPriorities, .rescue, .notice, .question: "Not now"
+        case .startNudge, .pseudoProductivity, .inSessionDrift, .weeklyPriorities, .rescue, .notice, .question, .landing: "Not now"
+        case .returnFromBreak: "Done for today"
         case .keepGoing: "I'm done · it counts"
         case .momentum: "Keep it short"
         case .plannedStart: "Not yet"
@@ -141,6 +147,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .dailyPlan: [.planLater, .notToday]
         case .planTomorrow: [.notToday]
         case .question: [.notToday]
+        case .landing: []
+        case .returnFromBreak: [.doneForToday]
         }
     }
 
@@ -171,6 +179,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .plannedStart: .push15
         case .dailyPlan: .planLater
         case .planTomorrow, .question: .notToday
+        case .landing: nil
+        case .returnFromBreak: nil
         }
     }
 

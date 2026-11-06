@@ -33,6 +33,10 @@ struct SessionCompleteWindowView: View {
     /// The coach's ask (the learned 5 · 15 · 25 size), read once per appearance: it runs
     /// SwiftData fetches and a model fit, so never from `body`.
     @State private var coachAsk: CoachBlockSizeLadder.Recommendation?
+    /// Coach v7 §3.1: where you'll pick up. Shown when the break ends and on arrival.
+    @State private var nextStepDraft = ""
+    /// Coach v7: "Blocks you run 5+ min over are followed by…", read once per appearance (a fetch).
+    @State private var stretchFact: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(now: Date = Date()) {
@@ -88,6 +92,8 @@ struct SessionCompleteWindowView: View {
             blockTaskNotYet = false
             selectedOutcome = timerVM.lastCompletedFocusSession?.outcome
             coachAsk = timerVM.startLadderRecommendation()
+            nextStepDraft = timerVM.lastCompletedFocusSession?.nextStepText ?? ""
+            stretchFact = timerVM.isFocusOvertime ? timerVM.cycleStats().stretchFact : nil
             todaySummary = todayLine
             appeared = disableMotionForEvidence
             if !timerVM.isEvidenceMode {
@@ -103,6 +109,7 @@ struct SessionCompleteWindowView: View {
         .onDisappear {
             // Ticks, goal steps and the outcome are already saved; the achievement follows the ticks.
             if !hasHandledAction { syncAchievement() }
+            if !hasHandledAction, !isBreakCompletion { saveNextStep() }
             if !hasHandledAction && timerVM.isManualStop && timerVM.showSessionComplete {
                 timerVM.preserveManualStop()
             }
@@ -605,6 +612,15 @@ struct SessionCompleteWindowView: View {
             // above "Break 5m" started a focus block when a break was meant, six times
             // (30 Oct–6 Nov 2026). The task is a caption, so no button label truncates.
             nextTaskCaption
+            nextStepField
+            if let stretchFact {
+                Label(stretchFact, systemImage: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
             EvidenceSafeGlassGroup {
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
@@ -613,10 +629,20 @@ struct SessionCompleteWindowView: View {
                         }
                         breakButton
                     }
-                    LiquidActionButton(title: "Done for today", icon: "checkmark.circle", role: .secondary) {
-                        saveAndDismiss(action: .endSession)
+                    HStack(spacing: 8) {
+                        LiquidActionButton(title: "Done for today", icon: "checkmark.circle", role: .secondary) {
+                            saveAndDismiss(action: .endSession)
+                        }
+                        .accessibilityLabel("Done for today: end and keep this block")
+                        if timerVM.isFocusOvertime {
+                            // Coach v7 §3.1: a bounded lap, not an open-ended count-up.
+                            LiquidActionButton(title: "Keep going \(CoachLanding.lapMinutes)m", icon: "forward.fill", role: .secondary) {
+                                keepGoingLap()
+                            }
+                            .help("Ten more minutes, then this window comes back")
+                            .accessibilityLabel("Keep going for \(CoachLanding.lapMinutes) more minutes")
+                        }
                     }
-                    .accessibilityLabel("Done for today: end and keep this block")
                 }
             }
             if timerVM.isManualStop {
@@ -796,11 +822,41 @@ struct SessionCompleteWindowView: View {
 
     /// Saves the block's leftovers (achievement from the ticks, splits), then runs
     /// `action`. `prepare` runs just before `continueAfterCompletion` and returns its undo.
+    /// "Next step" (coach v7 §3.1): one line, saved on any action or when the window closes.
+    private var nextStepField: some View {
+        TextField("Next step: where you'll pick up", text: $nextStepDraft)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 30)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+            .onSubmit(saveNextStep)
+            .accessibilityLabel("Next step")
+            .accessibilityHint("Shown when your break ends")
+    }
+
+    private func saveNextStep() {
+        guard !isBreakCompletion else { return }
+        let trimmed = nextStepDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != (timerVM.lastCompletedFocusSession?.nextStepText ?? "") else { return }
+        timerVM.setNextStep(trimmed)
+    }
+
+    private func keepGoingLap() {
+        guard !hasHandledAction else { return }
+        hasHandledAction = true
+        syncAchievement()
+        saveNextStep()
+        timerVM.keepGoingLap()
+        dismissWindow(id: "session-complete")
+    }
+
     private func saveAndDismiss(action: PostCompletionAction, prepare: (() -> (() -> Void))? = nil) {
         // The save is async, so the window stays up for a moment; a second click must not
         // save the reflection (and its splits) twice.
         guard !hasHandledAction else { return }
         hasHandledAction = true
+        saveNextStep()
         let achievement = achievementText
         Task { @MainActor in
             await timerVM.saveReflection(

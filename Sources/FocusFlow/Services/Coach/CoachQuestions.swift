@@ -15,11 +15,14 @@ enum CoachQuestion: Equatable, Sendable {
     /// A busy project has no area, so the coach can't tell whether it is own work and leaves its
     /// blocks out of everything it learns (ProjectWork: 31 blocks on 6 Nov 2026).
     case projectArea(projectID: UUID, name: String, blocks: Int)
+    /// Coach v7 §3.1: blocks keep running past the usual length while you focus.
+    case naturalLength(minutes: Int, regular: Int)
 
     var id: String {
         switch self {
         case .windowFit: "window_fit"
         case .projectArea(let id, _, _): "project_area.\(id.uuidString)"
+        case .naturalLength: "natural_length"
         }
     }
 
@@ -29,6 +32,8 @@ enum CoachQuestion: Equatable, Sendable {
             "Your own work starts around \(fit.observedLabel). Should I watch those hours?"
         case .projectArea(_, let name, _):
             "Is \(name) your own work, or your day job?"
+        case .naturalLength(let minutes, _):
+            "Your blocks run about \(minutes) min. Make \(minutes) your usual?"
         }
     }
 
@@ -38,6 +43,8 @@ enum CoachQuestion: Equatable, Sendable {
             "Your set windows (\(declared.map(\.label).joined(separator: ", "))) caught \(fit.covered) of your last \(fit.starts) own-work starts, so I stayed quiet when you work."
         case .projectArea(_, let name, let blocks):
             "\(name) has \(blocks) blocks in 4 weeks but no area, so I leave them out of your goal and what I learn."
+        case .naturalLength(_, let regular):
+            "Most of your recent \(regular)m blocks ran 8+ min over while you focused. A block that ends where you planned beats a \(regular) you always stretch."
         }
     }
 
@@ -54,6 +61,11 @@ enum CoachQuestion: Equatable, Sendable {
                 CoachQuestionChoice(id: ProjectArea.personal.rawValue, title: "My own work"),
                 CoachQuestionChoice(id: ProjectArea.learning.rawValue, title: "Learning"),
                 CoachQuestionChoice(id: ProjectArea.work.rawValue, title: "Day job"),
+            ]
+        case .naturalLength(let minutes, let regular):
+            [
+                CoachQuestionChoice(id: "\(minutes)", title: "Make it \(minutes) min"),
+                CoachQuestionChoice(id: "keep", title: "Keep \(regular) min"),
             ]
         }
     }

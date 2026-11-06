@@ -39,6 +39,8 @@ struct CoachFacts: Sendable, Equatable {
     var pacing: CoachGoalPacing?
     /// Yesterday had no block, but the previous week had at least one.
     var missedYesterday: Bool = false
+    /// Coach v7: the next step written while landing the last block (12 h).
+    var nextStep: String?
     /// Minutes since the real end of the last focus session (not the tracker idle streak).
     var minutesSinceLastSession: Int?
     var derailer: CoachDerailerFact?
@@ -409,6 +411,10 @@ enum CoachMessageComposer {
     private static func startHook(_ input: CoachComposerInput) -> (String, Bool) {
         let facts = input.facts
         let minutes = input.target.minutes
+        // Coach v7 §3.3: resume from the cue you left yourself (memory for goals).
+        if let next = facts.nextStep, !next.isEmpty {
+            return ("Pick up where you left off: “\(trimmedIntent(next))”.", false)
+        }
         switch input.style {
         case .challenger:
             if let goal = facts.goal, goal.isBehind {

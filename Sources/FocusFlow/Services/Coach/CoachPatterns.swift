@@ -6,7 +6,7 @@ import Foundation
 
 struct CoachPattern: Equatable, Sendable, Identifiable {
     enum Kind: String, Sendable {
-        case hours, windowsFit, breaks, backToBack, lengths
+        case hours, windowsFit, breaks, backToBack, lengths, cycle, returnPanel
     }
 
     let kind: Kind
@@ -42,10 +42,14 @@ enum CoachPatterns {
     /// A block that starts within this of the last one's end had no break.
     static let backToBackGap: TimeInterval = 120
 
-    static func compute(blocks: [Block], breaks: [Break], declared: [CoachOwnWorkWindow], calendar: Calendar = .current) -> [CoachPattern] {
+    static func compute(blocks: [Block], breaks: [Break], declared: [CoachOwnWorkWindow],
+                        cycle: CoachCycleStats? = nil, returnEstimate: CoachCycleExperiment.Estimate? = nil,
+                        calendar: Calendar = .current) -> [CoachPattern] {
         let own = blocks.filter(\.ownWork).sorted { $0.start < $1.start }
         let fit = CoachWindowFit.compute(startDates: own.map(\.start), declared: declared, calendar: calendar)
         return [
+            cycle.flatMap(cyclePattern),
+            returnEstimate.map(returnPanelPattern),
             hours(fit, own: own, calendar: calendar),
             windowsFit(fit, declared: declared),
             breakPattern(breaks),
@@ -122,6 +126,19 @@ enum CoachPatterns {
             title: "Block length",
             sentence: parts.joined(separator: "; ") + "."
         )
+    }
+
+    /// Coach v7: the block → next block cycle, with the stretch fact when it holds.
+    static func cyclePattern(_ cycle: CoachCycleStats) -> CoachPattern? {
+        cycle.sentence.map { CoachPattern(kind: .cycle, symbol: "arrow.triangle.2.circlepath", title: "Your cycle", sentence: $0) }
+    }
+
+    /// Coach v7 learner B: does the return panel get you back? Measured, not assumed.
+    static func returnPanelPattern(_ estimate: CoachCycleExperiment.Estimate) -> CoachPattern {
+        let with = Int((estimate.treatedRate * 100).rounded()), without = Int((estimate.controlRate * 100).rounded())
+        let verdict = estimate.lift >= 0.1 ? "It helps." : estimate.lift <= -0.1 ? "It doesn't help yet; the coach will lean on it less." : "No clear difference yet."
+        return CoachPattern(kind: .returnPanel, symbol: "arrow.uturn.left", title: "The back-from-break panel",
+                            sentence: "With it you were back within 10 min \(with)% of the time, without it \(without)% (\(estimate.decisions) breaks). \(verdict)")
     }
 
     static func median(_ values: [Double]) -> Double {

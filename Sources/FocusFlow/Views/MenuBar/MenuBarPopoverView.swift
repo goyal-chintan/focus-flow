@@ -1429,7 +1429,7 @@ private struct OvertimePopoverContent: View {
                 GlassEffectContainer {
                     HStack(spacing: 6) {
                         secondaryButton("Break 5 min", label: "Take a 5 minute break", action: onTakeBreak)
-                        secondaryButton("Keep going", label: "Start the next block", action: onKeepGoing)
+                        secondaryButton("Keep going", label: "Ten more minutes, then decide", action: onKeepGoing)
                         secondaryButton("Done for today", label: "End here without opening the log", action: onEnd)
                     }
                 }
@@ -1723,7 +1723,8 @@ extension MenuBarPopoverView {
                 timerVM.continueAfterCompletion(action: .takeBreak(duration: 300))
             },
             onKeepGoing: {
-                timerVM.continueAfterCompletion(action: .continueFocusing)
+                // Coach v7 §3.1: "Keep going" means the same everywhere: a 10-minute lap.
+                timerVM.keepGoingLap()
             },
             onEnd: {
                 timerVM.continueAfterCompletion(action: .endSession)
