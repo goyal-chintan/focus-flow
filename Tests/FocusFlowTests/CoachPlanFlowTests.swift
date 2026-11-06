@@ -12,13 +12,13 @@ final class CoachPlanFlowTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        defaultsSuite = "FocusFlowTests-\(UUID())"
+        defaultsSuite = "FocusFlowTests.\(UUID())"
         defaults = UserDefaults(suiteName: defaultsSuite)!
     }
 
     override func tearDown() {
         AppUsageTracker.shared.stop()
-        defaults.removePersistentDomain(forName: defaultsSuite)
+        TestDefaults.remove(defaultsSuite)
         containers.removeAll()
         super.tearDown()
     }

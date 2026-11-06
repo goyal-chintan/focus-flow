@@ -80,7 +80,7 @@ final class StoreUpgradeTests: XCTestCase {
 
     /// Coach v8 phases 3–4 keep their records in defaults; a reset of those keys loses no store data.
     func testCoachRecordsLiveInDefaultsNotTheStore() {
-        let defaults = UserDefaults(suiteName: "test.upgrade.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("upgrade")
         DayTargetStore(defaults: defaults).set(180, for: .leave)
         WeeklyReviewStore(defaults: defaults).markOffered(Date())
         XCTAssertEqual(DayTargetStore(defaults: defaults).minutes(for: .leave), 180)

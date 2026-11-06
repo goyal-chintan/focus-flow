@@ -161,7 +161,7 @@ final class FocusCoachEngineTests: XCTestCase {
     func testOutsideSessionAvoidantClassificationBuildsRepeatedProjectPattern() {
         let store = InMemoryCoachStore()
         let engine = FocusCoachEngine(store: store)
-        let defaults = UserDefaults(suiteName: "test.drift.engine.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("drift.engine")
         let driftStore = DriftMemoryStore(defaults: defaults)
         engine.configureDriftMemory(driftStore)
 
@@ -185,7 +185,7 @@ final class FocusCoachEngineTests: XCTestCase {
     func testOutsideSessionPlannedClassificationFeedsProjectScopedAllowSignal() {
         let store = InMemoryCoachStore()
         let engine = FocusCoachEngine(store: store)
-        let defaults = UserDefaults(suiteName: "test.drift.engine.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("drift.engine")
         let driftStore = DriftMemoryStore(defaults: defaults)
         engine.configureDriftMemory(driftStore)
 

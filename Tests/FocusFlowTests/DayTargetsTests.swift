@@ -22,7 +22,7 @@ final class DayTargetsTests: XCTestCase {
     }
 
     func testStoreClampsAndAWorkdayAlwaysFollowsGoals() {
-        let defaults = UserDefaults(suiteName: "test.daytargets.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("daytargets")
         let store = DayTargetStore(defaults: defaults)
         store.set(900, for: .leave)
         store.set(120, for: .workday)
@@ -105,7 +105,7 @@ final class DayTargetsStoreTests: XCTestCase {
         let settings = AppSettings(); settings.dailyFocusGoal = 7200
         context.insert(settings)
         try context.save()
-        let defaults = UserDefaults(suiteName: "test.daytargets.vm.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("daytargets.vm")
         vm = TimerViewModel(defaults: defaults)
         vm.configureForEvidence(modelContext: context, settings: settings)
         // A weekday at 15:00.
@@ -137,7 +137,7 @@ final class DayTimelineStoreTests: XCTestCase {
         block.startedAt = today.addingTimeInterval(-30 * 60); block.endedAt = today.addingTimeInterval(30 * 60); block.completed = true
         container.mainContext.insert(block)
         try container.mainContext.save()
-        let vm = TimerViewModel(defaults: UserDefaults(suiteName: "test.timeline.\(UUID().uuidString)")!)
+        let vm = TimerViewModel(defaults: cleanDefaults("timeline"))
         vm.configureForEvidence(modelContext: container.mainContext, settings: settings)
         defer { AppUsageTracker.shared.stop() }
         XCTAssertEqual(vm.dayTimeline(today).hours[0].own, 30, accuracy: 0.01, "Its part after midnight")

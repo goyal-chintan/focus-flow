@@ -158,7 +158,7 @@ final class CoachBanditTests: XCTestCase {
     func testStoreRoundTripsThroughUserDefaults() throws {
         let suite = "CoachBanditTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        defer { TestDefaults.remove(suite) }
         var model = CoachBanditModel()
         model.record(context: context, arm: panelChallenger, reward: 1)
         let store = CoachBanditStore(defaults: defaults)

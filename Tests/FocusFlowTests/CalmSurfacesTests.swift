@@ -129,7 +129,7 @@ final class CalmSurfacesStoreTests: XCTestCase {
         let settings = AppSettings(); settings.dailyFocusGoal = 9000
         context.insert(settings)
         try context.save()
-        let vm = TimerViewModel(defaults: UserDefaults(suiteName: "test.calm.\(UUID().uuidString)")!)
+        let vm = TimerViewModel(defaults: cleanDefaults("calm"))
         vm.systemIdleSecondsProvider = { 0 }
         vm.coachExploreSizes = false
         vm.configureForEvidence(modelContext: context, settings: settings)

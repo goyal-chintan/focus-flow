@@ -18,13 +18,13 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        defaultsSuite = "FocusFlowTests-\(UUID())"
+        defaultsSuite = "FocusFlowTests.\(UUID())"
         defaults = UserDefaults(suiteName: defaultsSuite)!
     }
 
     override func tearDown() {
         containers.removeAll()
-        defaults.removePersistentDomain(forName: defaultsSuite)
+        TestDefaults.remove(defaultsSuite)
         super.tearDown()
     }
 

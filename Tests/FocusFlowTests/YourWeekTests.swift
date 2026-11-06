@@ -225,7 +225,7 @@ final class YourWeekTests: XCTestCase {
     }
 
     func testStoreRecordsShownAppliedAndNotNow() {
-        let defaults = UserDefaults(suiteName: "test.liferecs.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("liferecs")
         let store = LifeRecStore(defaults: defaults)
         let rec = LifeRecommendation(id: "weekendPlan", kind: .weekendPlan, title: "Plan your weekend", evidence: "", impact: "", actionTitle: "",
                                      action: .planBlocks([]), weight: 1, confidence: 1)
@@ -270,7 +270,7 @@ final class YourWeekStoreTests: XCTestCase {
 
     func testApplyPlansBlocksSetsTargetsAndRecordsTheBaseline() throws {
         container = try ModelContainer(for: Self.schema, configurations: ModelConfiguration(schema: Self.schema, isStoredInMemoryOnly: true))
-        let defaults = UserDefaults(suiteName: "test.yourweek.vm.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("yourweek.vm")
         vm = try makeVM(defaults: defaults)
         let now = Date()
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))!.addingTimeInterval(10 * 3600)
@@ -292,7 +292,7 @@ final class YourWeekStoreTests: XCTestCase {
 
     func testTheWeekBuildsOnAnEmptyStore() throws {
         container = try ModelContainer(for: Self.schema, configurations: ModelConfiguration(schema: Self.schema, isStoredInMemoryOnly: true))
-        vm = try makeVM(defaults: UserDefaults(suiteName: "test.yourweek.empty.\(UUID().uuidString)")!)
+        vm = try makeVM(defaults: cleanDefaults("yourweek.empty"))
         let week = vm.yourWeek()
         XCTAssertEqual(week.days.count, 7)
         XCTAssertEqual(week.verdict, .firstWeek)
@@ -304,7 +304,7 @@ final class YourWeekStoreTests: XCTestCase {
     func testYourWeekOnALiveStoreCopy() throws {
         guard let path = ProcessInfo.processInfo.environment["FOCUSFLOW_LIVE_STORE_COPY"] else { throw XCTSkip("Set FOCUSFLOW_LIVE_STORE_COPY") }
         container = try ModelContainer(for: Self.schema, configurations: ModelConfiguration(schema: Self.schema, url: URL(fileURLWithPath: path)))
-        vm = try makeVM(defaults: UserDefaults(suiteName: "test.yourweek.live.\(UUID().uuidString)")!)
+        vm = try makeVM(defaults: cleanDefaults("yourweek.live"))
         let week = vm.yourWeek()
         print("WEEK \(week.span) | \(week.headline) | \(week.line)")
         for t in week.trends { print("WEEK TREND \(t.title): \(t.value) \(t.delta ?? "") \(t.direction.rawValue) (\(t.baseline ?? "-"))") }
@@ -331,7 +331,7 @@ final class YourWeekReadPathTests: XCTestCase {
             container.mainContext.insert(s)
         }
         try container.mainContext.save()
-        let vm = TimerViewModel(defaults: UserDefaults(suiteName: "test.yourweek.reads.\(UUID().uuidString)")!)
+        let vm = TimerViewModel(defaults: cleanDefaults("yourweek.reads"))
         vm.systemIdleSecondsProvider = { 0 }
         vm.configureForEvidence(modelContext: container.mainContext, settings: settings)
         // With an override, any model refresh swaps it in (checked at the end): observation alone

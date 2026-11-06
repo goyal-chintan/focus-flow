@@ -58,7 +58,7 @@ final class WeeklyReviewTests: XCTestCase {
     }
 
     func testStoreKeepsOneReviewPerWeek() {
-        let defaults = UserDefaults(suiteName: "test.weeklyreview.\(UUID().uuidString)")!
+        let defaults = cleanDefaults("weeklyreview")
         let store = WeeklyReviewStore(defaults: defaults)
         store.append(WeeklyReviewRecord(weekStart: date(2), completedAt: date(8, 20), pickID: nil, pickTitle: nil, plannedBlocks: 3, obstacle: "Calls"))
         store.append(WeeklyReviewRecord(weekStart: date(2), completedAt: date(8, 21), pickID: "x", pickTitle: "X", plannedBlocks: 4, obstacle: "Calls late"))
@@ -85,7 +85,7 @@ final class WeeklyReviewStoreTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         container = try ModelContainer(for: Self.schema, configurations: ModelConfiguration(schema: Self.schema, isStoredInMemoryOnly: true))
-        defaults = UserDefaults(suiteName: "test.weeklyreview.vm.\(UUID().uuidString)")!
+        defaults = cleanDefaults("weeklyreview.vm")
         let settings = AppSettings()
         settings.coachQuietStartMinute = 0
         settings.coachQuietEndMinute = 0
@@ -179,7 +179,7 @@ final class WeeklyReviewRenderTests: XCTestCase {
             context.insert(s)
         }
         try context.save()
-        let vm = TimerViewModel(defaults: UserDefaults(suiteName: "test.review.render.\(UUID().uuidString)")!)
+        let vm = TimerViewModel(defaults: cleanDefaults("review.render"))
         vm.configureForEvidence(modelContext: context, settings: settings)
         defer { AppUsageTracker.shared.stop() }
 

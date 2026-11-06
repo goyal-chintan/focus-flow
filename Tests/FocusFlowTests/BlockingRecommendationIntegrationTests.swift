@@ -3,11 +3,17 @@ import Foundation
 @testable import FocusFlow
 
 @Suite("Blocking Recommendation — Evidence Thresholds")
-struct BlockingRecommendationIntegrationTests {
+final class BlockingRecommendationIntegrationTests {
+    /// Suites made by this test, removed with their files when it ends (Swift Testing makes one
+    /// instance per test, so `deinit` is the teardown).
+    private var suites: [String] = []
+
+    deinit { suites.forEach(TestDefaults.remove) }
 
     private func makeEngine() -> FocusCoachBlockingRecommendationEngine {
-        let suiteName = "test.blockingrec.\(UUID().uuidString)"
-        return FocusCoachBlockingRecommendationEngine(defaults: UserDefaults(suiteName: suiteName)!)
+        let made = TestDefaults.make("blockingrec")
+        suites.append(made.name)
+        return FocusCoachBlockingRecommendationEngine(defaults: made.defaults)
     }
 
     @Test("Block recommendation fires after 2 avoidant events in 7 days")

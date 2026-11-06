@@ -76,7 +76,7 @@ final class IdleDistractionLegacyCleanupTests: XCTestCase {
         let context = container.mainContext
         let suiteName = "IdleDistractionLegacyCleanupTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defer { TestDefaults.remove(suiteName) }
 
         context.insert(makeItem(key: "com.apple.dock", kind: .app, source: .manual, status: .active))
         context.insert(makeItem(key: "github.com", kind: .website, source: .suggested, status: .pending))
