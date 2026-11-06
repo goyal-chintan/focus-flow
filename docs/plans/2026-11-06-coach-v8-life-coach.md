@@ -249,3 +249,35 @@ Recommended order: 1 → 2 → 3 → 4 → 5. Phases 3 and 5 can swap if the clu
   no own work yet, and no planned day in the last week.
 - **Data safety.** `FocusFlowSchema` is the one model list. `StoreUpgradeTests` opens a pre-v8
   store with it. The real pre-v8 backup also opened with identical row counts in all 12 tables.
+
+## 11. Phase 5, as built (6 Nov 2026)
+- **Popover: start and control only.**
+  - Removed: the quote, the idle hero (goal ring, coach hook, "to go" line, lever line) and the
+    footer stats.
+  - `PopoverPlanStrip` shows only a due or upcoming planned block, because that is a start path.
+  - Kept: project, working on (the lever still prefills it), size, Start, the running controls,
+    and the block-end flows.
+  - The running timer ring stays, because it is the timer.
+- **Notch: one next action** (`CalmSurfaces.notchNext`).
+  - A planned task beats the lever. In a block, the block's own task beats the +1, and the lever
+    never shows.
+  - The ring uses `dailyGoal`, so day-type targets count.
+- **Today.**
+  - One sentence (`CalmSurfaces.todaySentence`: "1h 43m of 2h · on pace · leave day"), then the
+    next block or window, then the quote (now shown only here).
+  - Then tasks, then "Your day": an hourly chart from `dayTimeline` over the block list.
+  - Distractions and the goal hero left.
+- **Goals.**
+  - Each card is one sentence, one bar and "Today: …". Numbers sit behind a disclosure.
+  - The daily goal card became Settings → Focus → "Own-work target by day type". Workday keeps the
+    old rules; leave, weekend, holiday and sick day can each have their own number.
+- **Two caches read while drawing became `@ObservationIgnored`:** `driftRuleKeys` and
+  `plannedBlocksSupported`. `dailyGoal` now reaches the ledger from every ring.
+- **Found while merging:** Your week's "today slot" called `dailyPlanSuggestions`, which can
+  refresh the coach model and save calendar labels while drawing. It now reads the planner as
+  is (`YourWeekReadPathTests` fails on the old code). `dayTimeline` also includes a block that
+  started before midnight.
+- **Tests.**
+  - 831 XCTest and 40 Swift Testing tests, no failures. The time-of-day failure was a real bug:
+    "Starter instead" now fulfils its own plan.
+  - Test preference suites no longer leave files in ~/Library/Preferences (`TestDefaults`).
