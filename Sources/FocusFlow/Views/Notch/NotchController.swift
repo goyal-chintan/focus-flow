@@ -186,10 +186,6 @@ final class NotchController: NotchHosting {
                 if vm.startNextBlock(minutes: minutes, projectID: projectID) { self?.collapse() }
             },
             logResult: { id in vm.logOneMore(resultID: id) },
-            openGoals: { [weak self] in
-                self?.collapse()
-                vm.openCompanionWindow?(.goals)
-            },
             tickTask: { id in
                 if let task = vm.todayTasks().first(where: { $0.id == id }) { vm.advanceDailyTask(task) }
             },
@@ -232,7 +228,6 @@ private struct NotchLiveView: View {
         let lever = PopoverProjectScope.lever(levers, projectID: scopeID)
 
         let idleOpen = mode == .idle && state.expanded
-        let verdict = idleOpen ? TodayVerdict.text(modelContext: modelContext, now: now) : nil
         // The learned size is a store read: only while the idle island is open.
         let suggested = idleOpen ? vm.startLadderRecommendation(now: now).minutes : CoachBlockSizeLadder.defaultMinutes
 
@@ -257,7 +252,8 @@ private struct NotchLiveView: View {
         }
 
         let attention = mode == .idle && (vm.coachPanel != nil || vm.coachMenuBarPulse)
-        let dailyGoal = GoalDataBuilder.dailyGoal(projects: projects, settings: vm.settings, on: now)
+        // The day's goal, sized by today's day type (coach v8 §3.5) as on Today and in Goals.
+        let dailyGoal = vm.dailyGoal(now: now)
         return NotchSnapshot(
             mode: mode,
             time: vm.isOvertime ? vm.overtimeTimeString : vm.timeString,
@@ -269,14 +265,12 @@ private struct NotchLiveView: View {
             goalTarget: dailyGoal.seconds,
             goalLabel: dailyGoal.label,
             lever: lever,
-            verdict: verdict,
             coachHook: attention ? (vm.coachPanel?.message.hook ?? "The coach has a start for you.") : nil,
             quickResult: quick,
             tasks: taskStats,
             nextTask: next.map { ($0.id, $0.title) },
             nextTaskCount: next.flatMap { $0.isCounted ? ($0.loggedCount, $0.progressAmount) : nil },
             receipt: vm.dailyTaskReceipt?.text,
-            reminder: idleOpen ? vm.dailyReminder(now: now) : nil,
             suggestedMinutes: suggested,
             regularMinutes: vm.regularMinutes,
             growToMinutes: CoachBlockSizeLadder.sizes.first { $0 > vm.blockLengthMinutes && vm.canSetBlockLength($0) }

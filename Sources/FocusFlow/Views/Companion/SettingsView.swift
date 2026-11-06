@@ -413,7 +413,8 @@ struct SleepRuleRow: View {
 
 // MARK: - Focus
 
-/// Focus: the usual block and the sound at its end.
+/// Focus: the usual block, the own-work target per day type (coach v8: moved from Goals) and the
+/// sound at a block's end.
 private struct TimerSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allSettings: [AppSettings]
@@ -435,6 +436,9 @@ private struct TimerSettingsTab: View {
                 Text("What every Start offers first. Choosing 15 or 25 in a running block's Length row changes it too. The coach's smaller size is offered beside it.")
                     .foregroundStyle(.secondary)
             }
+
+            // Coach v8 §3.6: the daily goal lives here, as a target per day type.
+            DayTargetsSettingsSection(settings: settings) { saveWithFeedback(modelContext, errorBinding: $saveError) }
 
             Section {
                 LabeledContent("Completion sound") {

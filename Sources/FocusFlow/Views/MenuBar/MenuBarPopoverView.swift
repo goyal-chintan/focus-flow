@@ -40,13 +40,8 @@ struct MenuBarPopoverView: View {
                         .padding(.top, 12)
                 }
 
-                // Your line for today (own words first, else a verified quote), in every state.
-                if timerVM.recoveryState == nil {
-                    DailyReminderView(style: .strip)
-                        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                        .padding(.top, 10)
-                        .padding(.bottom, timerVM.state == .idle && !timerVM.isOvertime ? 0 : 12)
-                }
+                // Coach v8 §3.6: the popover starts and controls a block. The day's line lives on
+                // Today only; where the day stands is Today's one sentence.
 
                 activeContextSection
 
@@ -217,7 +212,7 @@ struct MenuBarPopoverView: View {
 
     @ViewBuilder
     private var coachStripSection: some View {
-        // Idle: the coach's hook lives in the hero (PopoverIdleHero), so nothing renders here.
+        // Idle: the coach speaks in its own panel, so nothing renders here.
         if timerVM.settings?.coachRealtimeEnabled == true, timerVM.state != .idle {
             // Only when there is something to say: never while paused, never when stable.
             let isActive = timerVM.state == .focusing && timerVM.coachEngine.riskLevel != .stable
@@ -296,17 +291,8 @@ struct MenuBarPopoverView: View {
     private var footerSection: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
-                // The honest total (screen audit): the verdict, not one "today" number.
-                Button {
-                    openStatsWindow(requestedTab: .goals)
-                } label: {
-                    PopoverVerdictText()
-                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Open Goals: own work against your priorities")
-                .accessibilityLabel("Today's verdict. Opens Goals")
+                // Coach v8 §3.6: no stats here. Where the day stands is Today's one sentence.
+                Spacer(minLength: 0)
 
                 // Private now: hide FocusFlow from the menu bar, notch and pop-ups (SharePrivacy).
                 Button {
@@ -472,10 +458,9 @@ private struct IdlePopoverContent: View {
                     .padding(.top, 16)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             } else {
-                // Hero (mirrors the notch): own-work ring, coach hook, the picked project's lever.
-                // No task list here (2026-10-30): today's tasks are one menu away in "Working on",
-                // scoped to the picked project; Today holds the full list.
-                PopoverIdleHero(lever: lever)
+                // Coach v8 §3.6: no ring, quote or lever row. A planned block is a start path, so
+                // its strip shows when one is due or coming; the lever is the "Working on" prefill.
+                PopoverPlanStrip()
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 16)
             }
@@ -973,25 +958,6 @@ private struct BlockSizeRow: View {
         } else {
             button.buttonStyle(.glass)
         }
-    }
-}
-
-/// The footer's honest total: "3h 50m tracked · 50m on your #1 · 22% own work".
-/// Re-reads the store only when today's focus time or the block count changes.
-private struct PopoverVerdictText: View {
-    @Environment(TimerViewModel.self) private var timerVM
-    @Environment(\.modelContext) private var modelContext
-
-    var body: some View {
-        let _ = (timerVM.todayFocusTime, timerVM.completedFocusSessions)
-        let verdict = TodayVerdict.text(modelContext: modelContext)
-        Text(verdict ?? "Nothing tracked yet today")
-            .font(.system(size: 11, weight: .medium, design: .rounded))
-            .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(verdict == nil ? 0.55 : 0.8))
-            .monospacedDigit()
-            .lineLimit(2)
-            .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

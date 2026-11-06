@@ -1,18 +1,20 @@
 import SwiftUI
 import SwiftData
+import Charts
 
-/// Today: am I on track for today's goal, and what's next? (redesign spec §4 Today)
+/// Today (coach v8 §3.6, calm surfaces): one sentence on where the day stands ("1h 43m of 2h 30m ·
+/// on pace · leave day"), the day's line, the next block, your tasks, and the day hour by hour with
+/// its blocks under it. The week, the priorities and the distractions live in Insights and Goals.
 struct TodayView: View {
+    @Environment(TimerViewModel.self) private var timerVM
     @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
-    @Query(sort: \AppUsageEntry.date) private var usageEntries: [AppUsageEntry]
-    @Query private var distractionRules: [IdleDistractionItem]
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
     @Query private var tasks: [DailyTask]
+    @Query(sort: \PlannedBlock.startAt) private var plans: [PlannedBlock]
 
     @State private var showManualEntry = false
     @State private var editingSession: FocusSession?
-    @AppStorage("companionRequestedTab") private var requestedTabRaw: String = ""
     @Environment(\.companionNowOverride) private var nowOverride
 
     var body: some View {
@@ -28,9 +30,8 @@ struct TodayView: View {
     }
 
     private func content(snapshot: CompanionSnapshot) -> some View {
-        // Own work only, once a project is marked Work: 3h of office must not read "goal met".
-        let progress = snapshot.analytics.goalProgress(snapshot.goalSamples, on: snapshot.now, goal: snapshot.goal, stretch: snapshot.stretch)
-        let windows = snapshot.bestWindows
+        // Read so a new block or a changed day-type target redraws the sentence.
+        let _ = (timerVM.todayFocusTime, timerVM.dayTargetsRevision)
         return ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
                 FFPageHeader("Today", subtitle: snapshot.now.formatted(.dateTime.weekday(.wide).day().month(.wide))) {
@@ -43,26 +44,11 @@ struct TodayView: View {
                     .help("Log a focus block you did away from the timer")
                 }
 
-                GoalHeroView(
-                    scopeLabel: snapshot.dailyGoal.label,
-                    progress: progress,
-                    next: snapshot.analytics.nextWindow(windows, after: snapshot.now),
-                    week: snapshot.analytics.weekOverWeek(snapshot.goalSamples, goal: snapshot.goal, now: snapshot.now),
-                    days: weekDots(snapshot),
-                    missedYesterday: missedYesterday(snapshot),
-                    now: snapshot.now
-                )
-
-                // Status first; the day's line is a strip under it, not the tallest card on top.
-                DailyReminderView(style: .strip, now: snapshot.now)
+                sentenceCard(snapshot)
 
                 DailyTasksSection(now: snapshot.now)
 
-                priorityBreakdown(snapshot)
-
-                timelineSection(snapshot, windows: windows)
-
-                distractionsSection(snapshot)
+                daySection(snapshot)
             }
             .padding(FFSpace.page)
             .frame(maxWidth: 920, alignment: .leading)
@@ -70,89 +56,80 @@ struct TodayView: View {
         }
     }
 
-    // MARK: - Week dots (never miss twice, own work)
+    // MARK: - The one sentence, the day's line and the next block
 
-    /// Monday–Sunday of this week, marked against the daily goal on own work.
-    private func weekDots(_ snapshot: CompanionSnapshot) -> [GoalHeroView.WeekDot] {
-        let calendar = snapshot.calendar
-        let today = snapshot.today.start
-        let dates = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: snapshot.thisWeek.start) }
-        return snapshot.goalDays(dates).map { total in
-            let mark: GoalHeroView.WeekDot.Mark
-            if total.day > today {
-                mark = .future
-            } else if total.seconds >= snapshot.goal(on: total.day) {
-                mark = .met
-            } else if total.seconds > 0 {
-                mark = .partial
-            } else {
-                mark = total.day == today ? .open : .missed
+    private func sentenceCard(_ snapshot: CompanionSnapshot) -> some View {
+        let now = snapshot.now
+        let goal = timerVM.dailyGoal(now: now)
+        // Done comes from the page's own samples (what the goal counts), as the old ring did.
+        let sentence = CalmSurfaces.todaySentence(
+            doneSeconds: snapshot.analytics.dayTotal(snapshot.goalSamples, on: now).seconds,
+            goal: goal,
+            pace: timerVM.goalPacing(now: now).tier,
+            dayType: timerVM.settledDayType(now: now),
+            format: FFFormat.duration
+        )
+        return VStack(alignment: .leading, spacing: FFSpace.m) {
+            HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
+                Text(sentence)
+                    .ffText(.title3)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("today.sentence")
+                Spacer(minLength: FFSpace.s)
+                ScopeChip(label: goal.label)
             }
-            let goal = snapshot.goal(on: total.day)
-            let fraction = goal > 0 ? min(1, total.seconds / goal) : 0
-            return GoalHeroView.WeekDot(day: total.day, seconds: total.seconds, mark: mark, fraction: fraction)
-        }
-    }
-
-    /// Nothing toward the goal yesterday and nothing yet today: today decides the habit.
-    private func missedYesterday(_ snapshot: CompanionSnapshot) -> Bool {
-        guard let yesterday = snapshot.calendar.date(byAdding: .day, value: -1, to: snapshot.today.start),
-              snapshot.goalSamples.contains(where: { $0.start < yesterday }) else { return false }
-        return snapshot.analytics.dayTotal(snapshot.goalSamples, on: yesterday).seconds == 0
-            && snapshot.analytics.dayTotal(snapshot.goalSamples, on: snapshot.now).seconds == 0
-    }
-
-    // MARK: - Where today went (priorities-goals design §3.3)
-
-    private func priorityBreakdown(_ snapshot: CompanionSnapshot) -> some View {
-        let allocation = GoalDataBuilder.allocation(samples: snapshot.samples, projects: projects, day: snapshot.today, calendar: snapshot.calendar)
-        let ranked = projects.contains { $0.priorityRank != nil }
-        return FFSection("Where today went", subtitle: "In priority order, against each project's daily target.") {
-            if !ranked {
-                Button("Set priorities") { requestedTabRaw = CompanionTab.projects.rawValue }
-                    .buttonStyle(.link)
+            if let next = nextLine(snapshot) {
+                Label(next, systemImage: "alarm")
+                    .ffText(.callout)
+                    .monospacedDigit()
             }
-        } content: {
-            PriorityBreakdownView(allocation: allocation)
+            // The day's line shows here only (coach v8 §3.6: the quote once a day, on one surface).
+            DailyReminderView(style: .strip, now: now)
         }
+        .padding(FFSpace.xl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .ffSurface(radius: FFRadius.hero)
     }
 
-    // MARK: - Timeline
+    /// "Next: planned 20:00 · 25m · Window functions", else the next good window.
+    private func nextLine(_ snapshot: CompanionSnapshot) -> String? {
+        let now = snapshot.now
+        if let plan = plans.first(where: { $0.status == .planned && $0.startAt > now.addingTimeInterval(-CoachPlannedCue.lateStart) }) {
+            let when = snapshot.calendar.isDate(plan.startAt, inSameDayAs: now)
+                ? FFFormat.clock(plan.startAt)
+                : "\(plan.startAt.formatted(.dateTime.weekday(.abbreviated))) \(FFFormat.clock(plan.startAt))"
+            return "Next: planned \(when) · \(plan.minutes)m\(plan.title.map { " · \($0)" } ?? "")"
+        }
+        guard let next = snapshot.analytics.nextWindow(snapshot.bestWindows, after: now) else { return nil }
+        if next.isNow { return "You're in a good window until \(FFFormat.hourLabel(next.window.startHour + next.window.hourCount))" }
+        let time = FFFormat.clock(next.start)
+        return snapshot.calendar.isDate(next.start, inSameDayAs: now)
+            ? "Next good window \(time)"
+            : "Next good window \(next.start.formatted(.dateTime.weekday(.abbreviated))) \(time)"
+    }
 
-    private func timelineSection(_ snapshot: CompanionSnapshot, windows allWindows: [FocusAnalytics.FocusWindow]) -> some View {
+    // MARK: - Your day: hour by hour, then its blocks
+
+    private func daySection(_ snapshot: CompanionSnapshot) -> some View {
         let day = snapshot.today
-        // Only the windows that apply to today's day type (weekday or weekend) are shaded.
-        let weekdayIndex = snapshot.analytics.mondayFirstWeekdayIndex(of: day.start)
-        let windows = allWindows.filter { $0.dayScope.includes(weekdayIndex: weekdayIndex) }
+        let timeline = timerVM.dayTimeline(day.start, now: snapshot.now)
         let todaySessions = sessions.filter { $0.type == .focus && $0.actualDuration >= 60 && $0.effectiveEnd > day.start && $0.startedAt < day.end }
-        let blocks = todaySessions.map { session in
-            TodayTimelineChart.Block(
-                id: session.id,
-                start: max(session.startedAt, day.start),
-                end: min(session.effectiveEnd, day.end),
-                project: AnalyticsProjectKey(project: session.project, customLabel: session.customLabel).name,
-                title: SessionRow.title(intent: session.intentText, taskTitle: taskTitle(session), achievement: nil, fallback: session.label),
-                seconds: FocusSample(session).overlap(with: day)
-            )
-        }
-        let colors = ProjectColorScale(todaySessions.map { AnalyticsProjectKey(project: $0.project, customLabel: $0.customLabel) })
-
-        let total = snapshot.analytics.dayTotal(snapshot.samples, on: snapshot.now)
-        var parts: [String] = []
-        if total.blocks > 0 {
-            parts.append("\(total.blocks) block\(total.blocks == 1 ? "" : "s") · avg \(FFFormat.duration(total.seconds / Double(total.blocks)))")
-        }
-        if !windows.isEmpty { parts.append(total.blocks > 0 ? "shaded: your usual focus hours" : "Shaded hours are your usual focus windows") }
-
-        return FFSection("Timeline", subtitle: parts.isEmpty ? nil : parts.joined(separator: " · ")) {
+        let kinds = DayTimelineChart.Kind.allCases.filter { kind in timeline.hours.contains { kind.minutes(in: $0) >= 1 } }
+        let subtitle = timeline.hasRollup
+            ? "Own work, work, calls, away and pulls, hour by hour."
+            : "Your blocks, hour by hour. Calls, away time and pulls show from the next hours on."
+        return FFSection("Your day", subtitle: subtitle) {
             HStack(spacing: FFSpace.m) {
-                ForEach(Array(zip(colors.domain, colors.range)), id: \.0) { name, color in
-                    FFLegendItem(color: color, label: name)
+                ForEach(kinds) { kind in
+                    FFLegendItem(color: kind.color, label: kind.title)
                 }
             }
         } content: {
             VStack(alignment: .leading, spacing: FFSpace.m) {
-                TodayTimelineChart(day: day, blocks: blocks, windows: windows, colors: colors, now: snapshot.now)
+                if timeline.activeRange != nil {
+                    DayTimelineChart(timeline: timeline, now: snapshot.now)
+                }
                 if todaySessions.isEmpty {
                     Text("No focus blocks yet today.").ffText(.callout)
                 } else {
@@ -170,208 +147,109 @@ struct TodayView: View {
     private func taskTitle(_ session: FocusSession) -> String? {
         session.taskID.flatMap { id in tasks.first { $0.id == id }?.title }
     }
-
-    // MARK: - Distractions
-
-    @ViewBuilder
-    private func distractionsSection(_ snapshot: CompanionSnapshot) -> some View {
-        let keys = DerailerRuleKeys.from(distractionRules)
-        let totals = snapshot.analytics.derailerTotals(
-            usageEntries.map(UsageSample.init),
-            in: snapshot.today,
-            confirmedKeys: keys.confirmed,
-            allowedKeys: keys.allowed,
-            minimumSeconds: 600
-        )
-        if !totals.isEmpty {
-            let top = Array(totals.prefix(3))
-            let peak = Double(top.first?.seconds ?? 1)
-            FFSection("Distractions today", subtitle: "Time outside focus blocks. Tell the coach which ones count.") {
-                Button("See patterns") { requestedTabRaw = CompanionTab.insights.rawValue }
-                    .buttonStyle(.link)
-                    .font(FFTextStyle.callout.font)
-            } content: {
-                VStack(spacing: FFSpace.s) {
-                    ForEach(top) { item in
-                        HStack(spacing: FFSpace.m) {
-                            HStack(spacing: FFSpace.m) {
-                                Text(item.name).ffText(.body).frame(width: 120, alignment: .leading).lineLimit(1)
-                                FFValueBar(fraction: Double(item.seconds) / peak, color: FFPalette.atRisk)
-                                Text(FFFormat.duration(TimeInterval(item.seconds)))
-                                    .ffNumber(.body)
-                                    .frame(width: 56, alignment: .trailing)
-                            }
-                            .accessibilityElement(children: .combine)
-                            DerailerActionButtons(name: item.name, target: item.target, isConfirmed: item.isConfirmed)
-                        }
-                        .transition(.opacity)
-                    }
-                }
-            }
-        }
-    }
 }
 
-// MARK: - Goal hero
+// MARK: - Day timeline chart
 
-private struct GoalHeroView: View {
-    /// What the goal counts ("★ Learning"), shown beside the number as on Goals and the popover.
-    let scopeLabel: String
-    let progress: FocusAnalytics.GoalProgress
-    let next: FocusAnalytics.NextWindow?
-    let week: FocusAnalytics.WeekComparison
-    /// This week, Monday first, against the goal (own work once a project is marked Work).
-    let days: [WeekDot]
-    let missedYesterday: Bool
+/// One bar per hour, stacked by what the hour held (`DayTimeline`): own work, work, calls, away,
+/// pulls and other laptop time. Only the hours with something in them are drawn.
+struct DayTimelineChart: View {
+    let timeline: DayTimeline
     let now: Date
 
-    struct WeekDot: Identifiable {
-        enum Mark { case met, partial, missed, open, future }
-        let day: Date
-        let seconds: TimeInterval
-        let mark: Mark
-        /// Share of the daily goal reached (own work); a partial day fills only this far.
-        var fraction: Double = 0
-        var id: Date { day }
+    @State private var reveal = 0.0
+
+    enum Kind: String, CaseIterable, Identifiable {
+        case own, work, call, away, pull, other
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .own: "Own work"
+            case .work: "Work blocks"
+            case .call: "Calls"
+            case .away: "Away"
+            case .pull: "Pulls"
+            case .other: "Other"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .own: FFPalette.accent
+            case .work: FFPalette.comparison
+            case .call: Color.purple.opacity(0.7)
+            case .away: FFPalette.track
+            case .pull: FFPalette.atRisk
+            case .other: Color.secondary.opacity(0.35)
+            }
+        }
+
+        func minutes(in hour: DayTimeline.Hour) -> Double {
+            switch self {
+            case .own: hour.own
+            case .work: hour.work
+            case .call: hour.call
+            case .away: hour.away
+            case .pull: hour.pull
+            case .other: hour.other
+            }
+        }
     }
 
-    @State private var reveal = 0.0
-    @Environment(\.calendar) private var calendar
+    private struct Bar: Identifiable {
+        let hour: Int
+        let kind: Kind
+        let minutes: Double
+        var id: String { "\(hour)-\(kind.rawValue)" }
+    }
 
-    private var tint: Color { progress.isMet ? FFPalette.goal : FFPalette.accent }
+    private var range: ClosedRange<Int> {
+        guard let active = timeline.activeRange else { return 8...20 }
+        return max(0, active.lowerBound - 1)...min(23, active.upperBound + 1)
+    }
+
+    private var bars: [Bar] {
+        range.flatMap { index in
+            Kind.allCases.compactMap { kind in
+                let minutes = kind.minutes(in: timeline.hours[index])
+                return minutes >= 0.5 ? Bar(hour: index, kind: kind, minutes: minutes) : nil
+            }
+        }
+    }
 
     var body: some View {
-        HStack(spacing: FFSpace.xl) {
-            ring
-            VStack(alignment: .leading, spacing: FFSpace.s) {
-                Text("Daily goal").ffText(.callout)
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(FFFormat.duration(progress.doneSeconds)).ffNumber(.largeTitle)
-                    Text("of \(FFFormat.duration(progress.goalSeconds))").ffText(.title3).foregroundStyle(.secondary)
-                    ScopeChip(label: scopeLabel)
-                }
-                statusLine
-                if progress.isMet {
-                    Text(progress.isStretchMet
-                         ? "Stretch goal \(FFFormat.duration(progress.stretchSeconds)) reached"
-                         : "Stretch goal \(FFFormat.duration(progress.stretchSeconds)) · \(FFFormat.duration(progress.stretchSeconds - progress.doneSeconds)) more")
-                        .ffText(.caption)
-                        .monospacedDigit()
-                }
+        Chart(bars) { bar in
+            BarMark(x: .value("Hour", Double(bar.hour) + 0.5), y: .value("Minutes", bar.minutes * reveal), width: .fixed(14))
+                .foregroundStyle(by: .value("Kind", bar.kind.title))
+        }
+        .chartForegroundStyleScale(domain: Kind.allCases.map(\.title), range: Kind.allCases.map(\.color))
+        .chartLegend(.hidden)
+        .chartXScale(domain: Double(range.lowerBound)...Double(range.upperBound + 1))
+        .chartYScale(domain: 0...60)
+        .chartXAxis {
+            AxisMarks(values: Array(range).filter { $0 % 2 == 0 }) { value in
+                AxisValueLabel { Text(FFFormat.hourLabel(value.as(Int.self) ?? 0)).font(.system(size: 10)) }
             }
-            Spacer(minLength: FFSpace.l)
-            Divider().frame(height: 72)
-            weekColumn
         }
-        .padding(FFSpace.xl)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .ffSurface(radius: FFRadius.hero)
-        .ffReveal($reveal, trigger: progress.doneSeconds)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var weekColumn: some View {
-        VStack(alignment: .leading, spacing: FFSpace.xs) {
-            Text("This week").ffText(.callout)
-            Text(FFFormat.duration(week.thisWeekSeconds)).ffNumber(.title3)
-            Text(week.lastWeekSameSpanSeconds > 0
-                 ? "\(FFFormat.signedDuration(week.deltaSeconds)) vs last week so far"
-                 : "No focus this point last week")
-                .ffText(.caption)
-                .monospacedDigit()
-            HStack(spacing: 5) {
-                ForEach(days) { dayDot($0) }
+        .chartYAxis {
+            AxisMarks(values: [0, 30, 60]) { value in
+                AxisGridLine().foregroundStyle(FFPalette.gridLine)
+                AxisValueLabel { Text("\(value.as(Int.self) ?? 0)m").font(.system(size: 10)) }
             }
-            .padding(.top, 2)
-            .help("Never miss twice. Green: goal met. Blue: showed up. Grey: missed.")
-            Text(missedYesterday
-                 ? "Missed yesterday · don't miss twice"
-                 : "Goal met \(week.thisWeekGoalDays) day\(week.thisWeekGoalDays == 1 ? "" : "s")")
-                .ffText(.caption)
-                .foregroundStyle(missedYesterday ? FFPalette.atRisk : .secondary)
-                .monospacedDigit()
         }
-        .frame(width: 170, alignment: .leading)
-    }
-
-    private func dayDot(_ day: WeekDot) -> some View {
-        let fill: Color = switch day.mark {
-        case .met: FFPalette.goal
-        case .partial: FFPalette.track
-        case .missed: FFPalette.track
-        case .open, .future: .clear
-        }
-        let isToday = calendar.isDate(day.day, inSameDayAs: now)
-        return VStack(spacing: 3) {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(fill)
-                // A partial day fills from the bottom by its share of the goal, so only a met day is solid.
-                .overlay(alignment: .bottom) {
-                    if day.mark == .partial {
-                        Rectangle()
-                            .fill(FFPalette.accent)
-                            .frame(height: max(2, 14 * day.fraction))
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(
-                            day.mark == .open ? FFPalette.accent : FFPalette.hairline,
-                            style: StrokeStyle(lineWidth: 1, dash: day.mark == .open ? [2, 2] : [])
-                        )
-                )
-                .frame(width: 14, height: 14)
-            Text(day.day.formatted(.dateTime.weekday(.narrow)))
-                .font(.system(size: 10, weight: isToday ? .semibold : .regular))
-                .foregroundStyle(isToday ? .primary : .secondary)
-        }
+        .frame(height: 140)
+        .ffReveal($reveal, trigger: timeline)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(day.day.formatted(.dateTime.weekday(.wide))): \(FFFormat.duration(day.seconds))")
+        .accessibilityLabel(accessibilitySummary)
     }
 
-    private var ring: some View {
-        ZStack {
-            Circle().stroke(FFPalette.track, lineWidth: 10)
-            Circle()
-                .trim(from: 0, to: progress.fraction * reveal)
-                .stroke(tint, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            if progress.isMet {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(FFPalette.goal)
-                    .accessibilityHidden(true)
-            } else {
-                Text(FFFormat.percent(progress.fraction)).ffNumber(.headline)
-            }
-        }
-        .frame(width: 88, height: 88)
-        .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var statusLine: some View {
-        if progress.isMet {
-            Label("Goal met · +\(FFFormat.duration(progress.surplusSeconds))", systemImage: "checkmark.circle.fill")
-                .ffText(.body)
-                .foregroundStyle(FFPalette.goal)
-                .monospacedDigit()
-        } else {
-            Text(pendingText).ffText(.body).foregroundStyle(.secondary).monospacedDigit()
-        }
-    }
-
-    private var pendingText: String {
-        let toGo = "\(FFFormat.duration(progress.remainingSeconds)) to go"
-        guard let next else { return toGo }
-        if next.isNow {
-            return "\(toGo) · you're in a good window until \(FFFormat.hourLabel(next.window.startHour + next.window.hourCount))"
-        }
-        let time = FFFormat.clock(next.start)
-        if calendar.isDate(next.start, inSameDayAs: now) {
-            return "\(toGo) · next good window \(time)"
-        }
-        return "\(toGo) · next good window \(next.start.formatted(.dateTime.weekday(.abbreviated))) \(time)"
+    private var accessibilitySummary: String {
+        var parts = ["\(FFFormat.duration(timeline.ownMinutes * 60)) own work"]
+        if timeline.workMinutes >= 1 { parts.append("\(FFFormat.duration(timeline.workMinutes * 60)) work blocks") }
+        if timeline.callMinutes >= 1 { parts.append("\(FFFormat.duration(timeline.callMinutes * 60)) in calls") }
+        if timeline.pullMinutes >= 1 { parts.append("\(FFFormat.duration(timeline.pullMinutes * 60)) on pulls") }
+        return "Your day: " + parts.joined(separator: ", ")
     }
 }

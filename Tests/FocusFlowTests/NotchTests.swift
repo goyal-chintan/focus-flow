@@ -49,16 +49,19 @@ final class NotchTests: XCTestCase {
         let base = NotchSnapshot(
             mode: .idle, time: "18:42", progress: 0.38, projectName: "Learning", projectColor: "purple",
             intent: "3 LeetCode questions", goalDone: 50 * 60, goalTarget: 2 * 3600, goalLabel: "Your own work",
-            lever: lever, verdict: "3h 50m tracked · 50m on your #1 · 22% own work",
+            lever: lever,
             coachHook: nil, quickResult: (UUID(), "LeetCode", 14, 60),
             tasks: DailyTaskStats(planned: 5, done: 2), nextTask: (UUID(), "Window functions practice set")
         )
         var attention = base
         attention.coachHook = "First block. Start small."
         attention.suggestedMinutes = 25
-        attention.reminder = DailyReminderLine(text: "A year from now you may wish you had started today.", attribution: "Karen Lamb", isOwn: false)
         attention.nextTask = (UUID(), "LeetCode questions")
         attention.nextTaskCount = (1, 3)
+        // Coach v8 §3.6: with no task planned, the lever is the one next action.
+        var leverOnly = base
+        leverOnly.nextTask = nil
+        leverOnly.tasks = nil
         var receipt = base
         receipt.receipt = "+1 LeetCode · today 2 of 3 · goal 15 of 60"
         var focusing = base
@@ -81,7 +84,7 @@ final class NotchTests: XCTestCase {
             ("compact_idle", base, false), ("compact_attention", attention, false), ("compact_focusing", focusing, false),
             ("compact_paused", paused, false), ("compact_overtime", overtime, false), ("compact_break", onBreak, false),
             ("compact_break_over", breakOver, false),
-            ("expanded_idle", attention, true), ("expanded_receipt", receipt, true), ("expanded_focusing", focusing, true),
+            ("expanded_idle", attention, true), ("expanded_idle_lever", leverOnly, true), ("expanded_receipt", receipt, true), ("expanded_focusing", focusing, true),
             ("expanded_focusing_no_task", focusingNoTask, true), ("expanded_overtime", overtime, true),
             ("expanded_break", onBreak, true), ("expanded_break_over", breakOver, true),
         ]

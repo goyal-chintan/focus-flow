@@ -450,7 +450,8 @@ final class TimerViewModel {
     private(set) var currentDrift: DriftAssessment?
     private(set) var currentFocusWindow: CoachFocusWindow?
     private var lastRescueDecision: CoachRescueCadence.Decision?
-    private var driftRuleKeys: (confirmed: Set<String>, allowed: Set<String>, loadedAt: Date)?
+    /// A cache read while drawing (the day ledger behind `dailyGoal`), so it is never observed.
+    @ObservationIgnored private var driftRuleKeys: (confirmed: Set<String>, allowed: Set<String>, loadedAt: Date)?
     /// Contexts the user called a side quest at least half the time (≥ 2 answers): their time is pseudo-work.
     private(set) var busyworkContexts: Set<String> = []
     /// The pause screen on screen; nil when hidden.
@@ -5408,7 +5409,7 @@ final class TimerViewModel {
     // MARK: - Coach v3: daily plan and planned-start cue
 
     /// Whether this store knows `PlannedBlock` (older test containers do not).
-    private var plannedBlocksSupported: Bool?
+    @ObservationIgnored private var plannedBlocksSupported: Bool?
     /// Whether this store knows `BlockStartEvent` (older test containers do not).
     @ObservationIgnored private var blockStartsSupported: Bool?
 
@@ -7148,5 +7149,13 @@ final class TimerViewModel {
             inReleaseWindow: isInReleaseWindow,
             secondsSinceLastFocusSession: secondsSinceLastFocusSessionEnd()
         )
+    }
+
+    // MARK: Calm surfaces (coach v8 phase 5)
+
+    /// Today's pace against the day's goal (`dailyGoal(now:)`, so day-type targets count), for
+    /// Today's one sentence. A store read: safe while drawing.
+    func goalPacing(now: Date = Date()) -> CoachGoalPacing {
+        currentPacing(now: now)
     }
 }
