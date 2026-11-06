@@ -19,6 +19,8 @@ enum CoachQuestion: Equatable, Sendable {
     case naturalLength(minutes: Int, regular: Int)
     /// Coach v8 §3.1: a quiet weekday. Leave, holiday, or a quiet workday?
     case dayType(day: Date, inferred: DayType, reason: String)
+    /// Coach v8 §3.3: an office tool or a default pull open in an own-work project's blocks.
+    case appRole(key: String, name: String, projectID: UUID, projectName: String, days: Int)
 
     var id: String {
         switch self {
@@ -26,6 +28,7 @@ enum CoachQuestion: Equatable, Sendable {
         case .projectArea(let id, _, _): "project_area.\(id.uuidString)"
         case .naturalLength: "natural_length"
         case .dayType(let day, _, _): "day_type.\(Int(day.timeIntervalSince1970))"
+        case .appRole(let key, _, let projectID, _, _): "app_role.\(key).\(projectID.uuidString)"
         }
     }
 
@@ -39,6 +42,8 @@ enum CoachQuestion: Equatable, Sendable {
             "Your blocks run about \(minutes) min. Make \(minutes) your usual?"
         case .dayType:
             "No Slack or calls today. On leave?"
+        case .appRole(_, let name, _, let projectName, _):
+            "Is \(CoachMessageComposer.shortName(name)) part of \(CoachMessageComposer.shortName(projectName)), or a pull?"
         }
     }
 
@@ -53,6 +58,8 @@ enum CoachQuestion: Equatable, Sendable {
             "Most of your recent \(regular)m blocks ran 8+ min over while you focused. A block that ends where you planned beats a \(regular) you always stretch."
         case .dayType:
             "It sets today's own-work target: 3h on leave, 1h 30m on a workday."
+        case .appRole(_, let name, _, let projectName, let days):
+            "\(name) was open in \(projectName) blocks on \(days) day\(days == 1 ? "" : "s") this week. Your answer holds for \(projectName) only."
         }
     }
 
@@ -81,6 +88,11 @@ enum CoachQuestion: Equatable, Sendable {
                 CoachQuestionChoice(id: DayType.holiday.rawValue, title: "A holiday"),
                 CoachQuestionChoice(id: DayType.workday.rawValue, title: "Working, just quiet"),
                 CoachQuestionChoice(id: DayType.sick.rawValue, title: "Sick day"),
+            ]
+        case .appRole(_, _, _, let projectName, _):
+            [
+                CoachQuestionChoice(id: AppRole.tool.rawValue, title: "Part of \(CoachMessageComposer.shortName(projectName))"),
+                CoachQuestionChoice(id: AppRole.pull.rawValue, title: "A pull"),
             ]
         }
     }

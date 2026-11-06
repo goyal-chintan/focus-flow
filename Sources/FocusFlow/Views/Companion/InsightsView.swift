@@ -67,7 +67,7 @@ struct InsightsView: View {
             allowedKeys: keys.allowed,
             limit: 6
         )
-        return FFSection("What derails me?", subtitle: "Time outside focus blocks. Work tools like Slack, Cursor and Claude never count. Answer each one: it teaches the coach.") {
+        return FFSection("What derails me?", subtitle: "Time outside focus blocks. Work tools like Slack, Cursor and Claude count only if you say so. Answer each one, for everywhere or one project: it teaches the coach.") {
             if !items.isEmpty {
                 HStack(spacing: FFSpace.m) {
                     FFLegendItem(color: FFPalette.atRisk, label: range.currentLabel)

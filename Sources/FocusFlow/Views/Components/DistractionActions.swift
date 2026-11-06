@@ -53,7 +53,9 @@ struct DerailerActionButtons: View {
     let isConfirmed: Bool
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.name) private var projects: [Project]
 
     var body: some View {
         if let target {
@@ -67,13 +69,37 @@ struct DerailerActionButtons: View {
                         .frame(minHeight: 30)
                         .help("You marked \(name) a distraction. The coach nudges you off it.")
                 } else {
-                    Button("Distraction") { mark(target, as: .minor) }
-                        .help("Treat \(name) as a distraction: the coach nudges you off it")
-                        .accessibilityLabel("Mark \(name) as a distraction")
+                    // Coach v8 §3.3: a click is "everywhere"; the menu scopes it (Slack is a pull
+                    // during own work, not at the office).
+                    Menu {
+                        Button("Everywhere") { mark(target, as: .minor) }
+                        Button("During own work") { scope(target, .area(.own), .pull) }
+                        Divider()
+                        ForEach(projects) { project in
+                            Button("In \(project.name) blocks") { scope(target, .project(project.id), .pull) }
+                        }
+                    } label: {
+                        Text("Distraction")
+                    } primaryAction: {
+                        mark(target, as: .minor)
+                    }
+                    .help("Treat \(name) as a distraction: the coach nudges you off it. Choose where from the menu.")
+                    .accessibilityLabel("Mark \(name) as a distraction")
                 }
-                Button("It's work") { mark(target, as: .allowed) }
-                    .help("\(name) is work: it stops counting here and the coach leaves it alone")
-                    .accessibilityLabel("Mark \(name) as work")
+                Menu {
+                    Button("Everywhere") { mark(target, as: .allowed) }
+                    Button("For work") { scope(target, .area(.work), .tool) }
+                    Divider()
+                    ForEach(projects) { project in
+                        Button("For \(project.name)") { scope(target, .project(project.id), .tool) }
+                    }
+                } label: {
+                    Text("It's work")
+                } primaryAction: {
+                    mark(target, as: .allowed)
+                }
+                .help("\(name) is work: it stops counting here and the coach leaves it alone. Choose for which work from the menu.")
+                .accessibilityLabel("Mark \(name) as work")
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -84,6 +110,13 @@ struct DerailerActionButtons: View {
     private func mark(_ target: DerailerTarget, as severity: IdleDistractionSeverity) {
         withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) {
             try? DistractionRuleWriter.mark(target, name: name, as: severity, in: modelContext)
+            timerVM.invalidateAppRoles()
+        }
+    }
+
+    private func scope(_ target: DerailerTarget, _ scope: AppRoleScope, _ role: AppRole) {
+        withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) {
+            timerVM.setAppRole(key: target.key, kind: target.kind, name: name, scope: scope, role: role)
         }
     }
 }

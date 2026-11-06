@@ -86,6 +86,10 @@ struct CoachNoticedSection: View {
             timerVM.applyNaturalLengthAnswer(choice)
         case .dayType(let day, _, _):
             if let type = DayType(rawValue: choice.id) { timerVM.setDayType(day, type: type) }
+        case .appRole(let key, let name, let projectID, _, _):
+            if let role = AppRole(rawValue: choice.id) {
+                timerVM.setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .project(projectID), role: role)
+            }
         }
     }
 
@@ -133,6 +137,7 @@ struct CoachNoticedSection: View {
     private func questionsToShow() -> [CoachQuestion] {
         var questions: [CoachQuestion] = []
         if let day = timerVM.dayTypeQuestion(now: now) { questions.append(day) }
+        if let role = timerVM.appRoleQuestion(now: now) { questions.append(role) }
         let declared = allSettings.first?.coachOwnWorkWindows ?? []
         let since = now.addingTimeInterval(-TimeInterval(CoachWindowFit.lookbackDays) * 86_400)
         let configured = ownWorkConfigured

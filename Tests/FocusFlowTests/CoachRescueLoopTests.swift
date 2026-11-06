@@ -149,12 +149,12 @@ final class CoachRescueLoopTests: XCTestCase {
             )
             XCTAssertEqual(onTrack, .other, "\(tool.name) on track is neither derailer nor pseudo-work")
         }
-        // Even a user rule cannot turn a work tool into a derailer.
+        // Coach v8: your own rule wins over the built-in list (Slack can be a distraction for you).
         let ruled = DriftMonitor.classify(
             bundleIdentifier: "com.tinyspeck.slackmacgap", appName: "Slack", browserHost: nil, displayName: "Slack",
             category: .distracting, confirmedKeys: ["com.tinyspeck.slackmacgap"], pacingPressure: 0
         )
-        XCTAssertEqual(ruled, .other)
+        XCTAssertEqual(ruled, .derailer(name: "Slack"))
     }
 
     func testStreamingSitesAreDerailers() {

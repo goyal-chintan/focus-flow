@@ -646,7 +646,13 @@ final class AppUsageTracker {
 
         lastFrontmostDomainLabel = contextPresentation.domainLabel
         lastFrontmostDisplayLabel = contextPresentation.displayLabel
-        lastFrontmostCategory = contextPresentation.category
+        // Coach v8: during a block, your role for this app in this project decides (Slack in a
+        // Learning block is a pull; scaler.com there is a tool).
+        let category = isFocusing
+            ? (timerVM?.contextualCategory(contextPresentation.category, key: browserHost ?? bundleId,
+                                           name: contextPresentation.displayLabel, now: now) ?? contextPresentation.category)
+            : contextPresentation.category
+        lastFrontmostCategory = category
 
         // Track app switches for coach signals
         if bundleId != lastFrontmostBundleId {
@@ -690,7 +696,7 @@ final class AppUsageTracker {
             )
             if isFocusing {
                 totalFocusSecondsToday += elapsedSeconds
-                if contextPresentation.category == .distracting {
+                if category == .distracting {
                     distractingFocusSecondsToday += elapsedSeconds
                     // Session-scoped tracking: record for post-session distraction review.
                     // Use domain key when browser domain is resolved, otherwise app bundle key.

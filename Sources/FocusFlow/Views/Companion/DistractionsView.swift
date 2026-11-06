@@ -53,6 +53,7 @@ struct DistractionsView: View {
     var body: some View {
         Form {
             summarySection
+            AppsByProjectSection()
             distractionRulesSection
             allowedSection
             BlockingProfilesSection()

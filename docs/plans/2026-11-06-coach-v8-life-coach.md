@@ -1,6 +1,6 @@
 # Coach v8: from focus timer to life coach
 
-Date: 2026-11-06 · Status: phase 1 built, phases 2–5 proposed · Builds on v6 (adapt and speak) and v7 (land and return)
+Date: 2026-11-06 · Status: phases 1–2 built, phases 3–5 proposed · Builds on v6 (adapt and speak) and v7 (land and return)
 
 > "The Insights section should have strong recommendations… what are the patterns, what are the
 > strongest recommendations, and whether the behaviour is improving or not… If I'm putting more time
@@ -195,3 +195,18 @@ Recommended order: 1 → 2 → 3 → 4 → 5. Phases 3 and 5 can swap if the clu
 - **Inferred leave stays at confidence 0.6 until you answer.** The coach asks "On leave?" once,
   first among its quick questions. Calendar out-of-office events skip the question.
 - **No new screen yet** beyond the "Your days" line in Insights. The Your week page is phase 3.
+
+## 8. Phase 2, as built (6 Nov 2026)
+- **Learning is a threshold, not the Beta posterior from §3.3.** An app is a learned tool for a
+  project at 60+ min inside that project's blocks over 3+ days, or 2+ "planned" marks from block
+  reviews. It is shown with its evidence ("12h 24m in its blocks on 9 days").
+- **Learning never overrides a default pull.** Time in a block is not proof: Slack in a Learning
+  block is asked about instead (the `.appRole` question). Browsers are never learned; their sites
+  are.
+- **History before the hourly rollup:** a day's in-block app time is lent to its project only
+  when all that day's blocks were one project.
+- **Outside a block, "work" means a workday from 09:00 to 19:00.** Learned office hours are left
+  for later.
+- **Live store:** your global "allowed" rules make scaler.com and Obsidian tools everywhere.
+  Nothing else had enough single-project evidence yet. Slack had too little block time for the
+  question to fire.

@@ -5039,7 +5039,8 @@ final class TimerViewModel {
             // Real derailers still count, so the menu bar counter still shows "YouTube 12m".
             pacingPressure: hasDeclaredOwnWorkWindows && currentOwnWorkWindow(now: now) == nil ? nil : currentPacing(now: now).pressure,
             busyworkContexts: busyworkContexts,
-            userAway: systemIdleSeconds() >= 5 * 60
+            userAway: systemIdleSeconds() >= 5 * 60,
+            role: appRole(key: frontmost.browserHost ?? frontmost.bundleIdentifier ?? "", name: frontmost.displayName ?? frontmost.appName ?? "", now: now).role
         )
         driftMonitor.record(at: now, seconds: seconds, kind: kind, switchesPerMinute: frontmost.switchesPerMinute)
     }
@@ -6016,6 +6017,164 @@ final class TimerViewModel {
         return entries
     }
 
+    // MARK: Apps in context (coach v8 §3.3)
+
+    @ObservationIgnored private var appRoleBookCache: (at: Date, book: AppRoleBook, names: [String: String])?
+    @ObservationIgnored private var todayTypeCache: (at: Date, type: DayType)?
+
+    private var storesAppRoles: Bool {
+        modelContext?.container.schema.entities.contains { $0.name == "AppRoleRuleRecord" } ?? false
+    }
+
+    /// Your rules (global distraction rules plus per-project and per-area roles) and what your
+    /// blocks show, refreshed every 5 minutes or after a change. Read-only on the store.
+    func appRoleBook(now: Date = Date()) -> AppRoleBook {
+        if let cached = appRoleBookCache, now.timeIntervalSince(cached.at) < 300, cached.at <= now { return cached.book }
+        let built = buildAppRoleBook(now: now)
+        appRoleBookCache = (now, built.book, built.names)
+        return built.book
+    }
+
+    /// Display names seen for each key (hourly labels and daily app names).
+    func appRoleNames(now: Date = Date()) -> [String: String] {
+        _ = appRoleBook(now: now)
+        return appRoleBookCache?.names ?? [:]
+    }
+
+    func invalidateAppRoles() {
+        appRoleBookCache = nil
+        driftRuleKeys = nil
+    }
+
+    private func buildAppRoleBook(now: Date) -> (book: AppRoleBook, names: [String: String]) {
+        var book = AppRoleBook()
+        var names: [String: String] = [:]
+        guard let modelContext else { return (book, names) }
+        let items = (try? modelContext.fetch(FetchDescriptor<IdleDistractionItem>())) ?? []
+        for item in items where item.status == .active {
+            book.rules.append(AppRoleRule(key: item.key.lowercased(), scope: .everywhere, role: item.severity == .allowed ? .tool : .pull))
+        }
+        if storesAppRoles {
+            let records = (try? modelContext.fetch(FetchDescriptor<AppRoleRuleRecord>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))) ?? []
+            // Newest first, so a later answer for the same scope wins.
+            book.rules = records.map(\.rule) + book.rules
+            for record in records { names[record.key] = record.displayName }
+        }
+
+        let calendar = Calendar.current
+        let since = calendar.startOfDay(for: now.addingTimeInterval(-28 * 86_400))
+        var hourDays = Set<Date>()
+        if storesDayLedger {
+            let hours = (try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= since && $0.inBlock }))) ?? []
+            for hour in hours {
+                guard let projectID = hour.projectID, hour.key != "away", hour.key != "call" else { continue }
+                let key = AppRoleBook.normalize(hour.key)
+                let day = calendar.startOfDay(for: hour.hourStart)
+                hourDays.insert(day)
+                book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].minutes += Double(hour.seconds) / 60
+                book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].days.insert(day)
+                names[key] = names[key] ?? hour.label
+            }
+        }
+        // Before the hourly rollup: days whose blocks were all one project lend it that day's
+        // in-block app time (the daily rows know "in a block", not which block).
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }))) ?? []
+        let projectByDay = Dictionary(grouping: sessions.filter { $0.type == .focus }, by: { calendar.startOfDay(for: $0.startedAt) })
+            .compactMapValues { day -> UUID? in
+                let ids = Set(day.compactMap { $0.project?.id })
+                return ids.count == 1 && day.allSatisfy { $0.project != nil } ? ids.first : nil
+            }
+        let usage = (try? modelContext.fetch(FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= since && $0.duringFocusSeconds > 0 }))) ?? []
+        for entry in usage {
+            let day = calendar.startOfDay(for: entry.date)
+            guard !hourDays.contains(day), let projectID = projectByDay[day] else { continue }
+            let key = AppRoleBook.normalize(entry.bundleIdentifier)
+            book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].minutes += Double(entry.duringFocusSeconds) / 60
+            book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].days.insert(day)
+            names[key] = names[key] ?? entry.appName
+        }
+        // Block reviews where you kept an app for a project ("planned").
+        if let memory = coachEngine.driftMemoryStore?.memory {
+            for (compound, count) in memory.plannedCounts(now: now) {
+                let parts = compound.split(separator: "|").map(String.init)
+                guard parts.count == 3, let projectID = UUID(uuidString: parts[0]) else { continue }
+                book.evidence[AppRoleBook.normalize(parts[2]), default: [:]][projectID, default: AppRoleEvidence()].plannedMarks += count
+            }
+        }
+        return (book, names)
+    }
+
+    /// Where you are now, for app roles.
+    func currentAppContext(now: Date = Date()) -> AppContext {
+        if state == .focusing || state == .paused {
+            if let project = selectedProject { return .project(project.id, AreaGroup.of(project.areaRaw == nil ? nil : project.area)) }
+            return .own
+        }
+        let type: DayType
+        if let cached = todayTypeCache, now.timeIntervalSince(cached.at) < 600, cached.at <= now {
+            type = cached.type
+        } else {
+            type = dayLedger(days: 1, now: now).last?.type ?? (DayType.isWeekend(now) ? .weekend : .workday)
+            todayTypeCache = (now, type)
+        }
+        return AppContext.outsideBlock(dayType: type, hour: Calendar.current.component(.hour, from: now), inOwnWindow: currentOwnWorkWindow(now: now) != nil)
+    }
+
+    func appRole(key: String, name: String, now: Date = Date()) -> AppRoleDecision {
+        appRoleBook(now: now).role(key: key, name: name, in: currentAppContext(now: now))
+    }
+
+    /// "Distraction / It's work" with a scope (coach v8): everywhere writes the old global rule;
+    /// an area or a project writes an `AppRoleRuleRecord`, replacing the same key and scope.
+    func setAppRole(key rawKey: String, kind: DerailerTarget.Kind, name: String, scope: AppRoleScope, role: AppRole) {
+        guard let modelContext else { return }
+        let key = AppRoleBook.normalize(rawKey)
+        if scope == .everywhere {
+            try? DistractionRuleWriter.mark(kind: kind == .website ? .website : .app, key: key, name: name,
+                                            as: role == .tool ? .allowed : .minor, source: .manual, in: modelContext)
+        } else if storesAppRoles {
+            let probe = AppRoleRuleRecord(key: key, displayName: name, scope: scope, role: role)
+            let kindRaw = probe.scopeKindRaw, value = probe.scopeValue
+            let existing = (try? modelContext.fetch(FetchDescriptor<AppRoleRuleRecord>(predicate: #Predicate { $0.key == key && $0.scopeKindRaw == kindRaw && $0.scopeValue == value }))) ?? []
+            existing.forEach(modelContext.delete)
+            if role != .neutral { modelContext.insert(probe) }
+            saveContext()
+        }
+        invalidateAppRoles()
+    }
+
+    /// The tracker's category for the frontmost app during a block: your roles first.
+    func contextualCategory(_ base: AppUsageEntry.AppCategory, key: String, name: String, now: Date = Date()) -> AppUsageEntry.AppCategory {
+        let decision = appRole(key: key, name: name, now: now)
+        guard decision.source != .standard else { return base }
+        switch decision.role {
+        case .pull: return .distracting
+        case .tool: return .productive
+        case .neutral: return base
+        }
+    }
+
+    /// An office tool or a default pull open in an own-work project's blocks: ask which it is.
+    func appRoleQuestion(now: Date = Date()) -> CoachQuestion? {
+        guard let modelContext else { return nil }
+        let book = appRoleBook(now: now)
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived }))) ?? []
+        let own = Set(projects.filter { $0.areaRaw == nil || $0.area.isOwnWork }.map(\.id))
+        // Only the last 7 days' evidence counts for asking.
+        let weekAgo = Calendar.current.startOfDay(for: now.addingTimeInterval(-7 * 86_400))
+        var recent = book.evidence
+        for (key, byProject) in recent {
+            for (id, found) in byProject {
+                var trimmed = found
+                trimmed.days = found.days.filter { $0 >= weekAgo }
+                if trimmed.days.isEmpty { recent[key]?[id] = nil } else { recent[key]?[id] = trimmed }
+            }
+        }
+        guard let candidate = AppRoleQuestionPicker.pick(evidence: recent, names: appRoleNames(now: now), ownProjects: own, book: book),
+              let project = projects.first(where: { $0.id == candidate.projectID }) else { return nil }
+        return .appRole(key: candidate.key, name: candidate.name, projectID: project.id, projectName: project.name, days: candidate.days)
+    }
+
     /// Today, when the coach should ask what kind of day it is (likely leave, not yet answered).
     func dayTypeQuestion(now: Date = Date()) -> CoachQuestion? {
         guard storesDayLedger, let today = dayLedger(days: 1, now: now).last else { return nil }
@@ -6033,6 +6192,7 @@ final class TimerViewModel {
         var questions: [CoachQuestion] = []
         // Coach v8: what kind of day it is decides every target, so it is asked first.
         if let day = dayTypeQuestion(now: now) { questions.append(day) }
+        if let role = appRoleQuestion(now: now) { questions.append(role) }
         if let fit = windowFit, fit.isMismatch(declared: declared), !keepsDeclaredWindows(now: now) {
             questions.append(.windowFit(fit, declared: declared))
         }
@@ -6118,6 +6278,12 @@ final class TimerViewModel {
             }
         case "natural_length":
             applyNaturalLengthAnswer(choice, now: now)
+        case let id? where id.hasPrefix("app_role."):
+            if case .appRole(let key, let name, let projectID, _, _)? = coachQuestionCandidates(now: now).first(where: { $0.id == id }),
+               let role = AppRole(rawValue: choice.id) {
+                setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .project(projectID), role: role)
+                coachJournal.record(.logged, "\(name): \(role.title.lowercased()) for this project.", code: .question, at: now)
+            }
         case let id? where id.hasPrefix("day_type."):
             if let type = DayType(rawValue: choice.id) {
                 setDayType(now, type: type)

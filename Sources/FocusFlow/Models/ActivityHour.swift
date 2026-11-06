@@ -49,3 +49,41 @@ final class DayLabel {
     var type: DayType { DayType(rawValue: typeRaw) ?? .workday }
     var source: DayTypeSource { DayTypeSource(rawValue: sourceRaw) ?? .user }
 }
+
+/// Coach v8 §3.3: your role for an app or site in one scope (a project or an area). Global
+/// ("everywhere") rules stay `IdleDistractionItem` rows (allowed = tool, confirmed = pull).
+@Model
+final class AppRoleRuleRecord {
+    /// Lowercased bundle id or host.
+    var key: String
+    var displayName: String
+    /// `area` or `project` (`AppRoleRuleRecord.scope`).
+    var scopeKindRaw: String
+    /// The project's id, or the area (`work` / `own`).
+    var scopeValue: String
+    var roleRaw: String
+    var createdAt: Date
+
+    init(key: String, displayName: String, scope: AppRoleScope, role: AppRole, createdAt: Date = Date()) {
+        self.key = key.lowercased()
+        self.displayName = displayName
+        switch scope {
+        case .project(let id): scopeKindRaw = "project"; scopeValue = id.uuidString
+        case .area(let area): scopeKindRaw = "area"; scopeValue = area.rawValue
+        case .everywhere: scopeKindRaw = "everywhere"; scopeValue = ""
+        }
+        self.roleRaw = role.rawValue
+        self.createdAt = createdAt
+    }
+
+    var scope: AppRoleScope {
+        switch scopeKindRaw {
+        case "project": UUID(uuidString: scopeValue).map(AppRoleScope.project) ?? .everywhere
+        case "area": AreaGroup(rawValue: scopeValue).map(AppRoleScope.area) ?? .everywhere
+        default: .everywhere
+        }
+    }
+
+    var role: AppRole { AppRole(rawValue: roleRaw) ?? .neutral }
+    var rule: AppRoleRule { AppRoleRule(key: key, scope: scope, role: role) }
+}
