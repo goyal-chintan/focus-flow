@@ -148,7 +148,8 @@ struct GoalCard: View {
                         .font(.system(size: 10, weight: .semibold))
                         .rotationEffect(.degrees(showNumbers ? 90 : 0))
                         .accessibilityHidden(true)
-                    Text(results.count == 1 ? "The number and +1" : "The \(results.count) numbers and +1").ffText(.callout)
+                    // Today's +1 is already in view: this opens the totals and the history.
+                    Text(Self.totalsLabel(results, summary: summary)).ffText(.callout).monospacedDigit()
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(.secondary)
@@ -156,7 +157,7 @@ struct GoalCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityHint(showNumbers ? "Hide the numbers" : "Show each number with +1")
+            .accessibilityHint(showNumbers ? "Hide the totals" : "Show each total and its history")
             if showNumbers {
                 VStack(spacing: 14) {
                     ForEach(Array(zip(results, summary.keyResults)), id: \.0.id) { pair in
@@ -176,6 +177,12 @@ struct GoalCard: View {
                 }
             }
         }
+    }
+
+    /// "Total 28 of 40 · history", or "Totals and history" for several numbers.
+    static func totalsLabel(_ results: [GoalKeyResult], summary: GoalPacing.GoalSummary) -> String {
+        guard results.count == 1, let pace = summary.keyResults.first else { return "Totals and history" }
+        return "Total \(KeyResultRow.number(pace.done)) of \(KeyResultRow.number(pace.target)) · history"
     }
 
     /// The whole row opens and closes the chart, not only its chevron.
