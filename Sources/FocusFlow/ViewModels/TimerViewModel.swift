@@ -5068,7 +5068,12 @@ final class TimerViewModel {
     /// safe while drawing. Every ring, line and the coach's pace use this, never `dailyFocusGoal`.
     func dailyGoal(now: Date = Date()) -> DailyGoal {
         let projects = modelContext.flatMap { try? $0.fetch(FetchDescriptor<Project>()) } ?? []
-        return GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now)
+        let base = GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now)
+        // Coach v8 §3.5: on a leave, weekend, holiday or sick day your target for that type wins.
+        guard storesDayLedger, let type = settledDayType(now: now), type != .workday else { return base }
+        let yours = DayTargetStore(defaults: defaults).minutes(for: type)
+        guard yours != nil || type == .sick else { return base }
+        return base.sized(minutes: DayTargets.minutes(type: type, yours: yours, goalMinutes: Int(base.seconds / 60)), for: type)
     }
 
     private func currentPacing(now: Date) -> CoachGoalPacing {
@@ -5948,6 +5953,60 @@ final class TimerViewModel {
         labels.forEach(modelContext.delete)
         modelContext.insert(DayLabel(day: start, type: type, source: .user))
         saveContext()
+        todayTypeCache = nil
+        goalProgressCache = nil
+    }
+
+    /// Today's day type when it is settled (`DayTargets.isSettled`), cached for 10 minutes.
+    /// An inferred leave stays a workday for the goal until you answer "On leave?".
+    func settledDayType(now: Date = Date()) -> DayType? {
+        if let cached = todayTypeCache, now.timeIntervalSince(cached.at) < 600, cached.at <= now,
+           Calendar.current.isDate(cached.at, inSameDayAs: now) {
+            return cached.settled
+        }
+        guard let today = dayLedger(days: 1, now: now).last else { return nil }
+        let settled = DayTargets.isSettled(today.classification) ? today.type : DayType.workday
+        todayTypeCache = (now, today.type, settled)
+        return settled
+    }
+
+    /// Your own-work targets per day type (nil: follows the daily goal).
+    func dayTargets() -> [DayType: Int] { DayTargetStore(defaults: defaults).all }
+
+    /// Sets (or with nil clears) your target for a day type; the goal and the ledger use it at once.
+    func setDayTarget(_ minutes: Int?, for type: DayType) {
+        DayTargetStore(defaults: defaults).set(minutes, for: type)
+        todayTypeCache = nil
+        goalProgressCache = nil
+        dayTargetsRevision += 1
+    }
+
+    /// One day, hour by hour (`DayTimeline`). Read-only (safe in `body`).
+    func dayTimeline(_ day: Date, now: Date = Date()) -> DayTimeline {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        guard let modelContext else { return DayTimeline.build(day: start, rows: [], blocks: [], isPull: { _, _, _ in false }) }
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= start && $0.startedAt < end }))) ?? []
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        let blocks = sessions.filter { $0.type == .focus }.map { session in
+            DayTimeline.Block(start: session.startedAt, end: session.endedAt ?? min(now, session.startedAt.addingTimeInterval(session.actualDuration)),
+                              own: !ownConfigured || CoachHistoryReader.isOwnWork(session.project))
+        }
+        let rows: [DayTimeline.Row] = storesDayLedger
+            ? ((try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end }))) ?? [])
+                .map { DayTimeline.Row(hourStart: $0.hourStart, key: $0.key, label: $0.label, inBlock: $0.inBlock, seconds: $0.seconds) }
+            : []
+        let book = appRoleBook(now: now)
+        let type = dayLedger(days: 1, now: start.addingTimeInterval(12 * 3600)).last?.type ?? .workday
+        let windows = effectiveOwnWorkWindows(now: now)
+        return DayTimeline.build(day: start, rows: rows, blocks: blocks, isPull: { key, label, hour in
+            let minute = hour * 60
+            let inWindow = windows.contains { minute >= $0.startMinute && minute < $0.endMinute }
+            let context = AppContext.outsideBlock(dayType: type, hour: hour, inOwnWindow: inWindow)
+            return book.role(key: key, name: label, in: context).role == .pull
+        }, calendar: calendar)
     }
 
     /// The ledger, oldest first, for the `days` days ending today. Read-only (safe in `body`).
@@ -5967,6 +6026,7 @@ final class TimerViewModel {
         let planned = canUsePlannedBlocks() ? plannedBlocks(from: start, to: end) : []
         let tasks = (try? modelContext.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.day >= start && $0.day < end }))) ?? []
         let keys = currentDriftRuleKeys(now: now)
+        let targets = DayTargetStore(defaults: defaults).all
 
         var entries: [DayEntry] = []
         var day = start
@@ -6005,7 +6065,8 @@ final class TimerViewModel {
             let hadPlan = planned.contains { calendar.isDate($0.day, inSameDayAs: day) && $0.createdAt < min(firstStart, $0.startAt) }
                 || tasks.contains { calendar.isDate($0.day, inSameDayAs: day) && $0.reminderID == nil && $0.carriedFromID == nil && $0.createdAt < firstStart }
 
-            let target = classification.type.defaultTargetMinutes
+            let goalMinutes = Int(GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: day, calendar: calendar).seconds / 60)
+            let target = DayTargets.minutes(type: classification.type, yours: targets[classification.type], goalMinutes: goalMinutes)
             entries.append(DayEntry(
                 day: day, classification: classification, planned: hadPlan,
                 ownMinutes: ownMinutes, officeMinutes: signals.officeMinutes, callMinutes: callMinutes, awayMinutes: awayMinutes,
@@ -6020,7 +6081,9 @@ final class TimerViewModel {
     // MARK: Apps in context (coach v8 §3.3)
 
     @ObservationIgnored private var appRoleBookCache: (at: Date, book: AppRoleBook, names: [String: String])?
-    @ObservationIgnored private var todayTypeCache: (at: Date, type: DayType)?
+    @ObservationIgnored private var todayTypeCache: (at: Date, type: DayType, settled: DayType)?
+    /// Bumped when a day-type target changes, so pages showing targets redraw.
+    private(set) var dayTargetsRevision = 0
 
     private var storesAppRoles: Bool {
         modelContext?.container.schema.entities.contains { $0.name == "AppRoleRuleRecord" } ?? false
@@ -6110,13 +6173,8 @@ final class TimerViewModel {
             if let project = selectedProject { return .project(project.id, AreaGroup.of(project.areaRaw == nil ? nil : project.area)) }
             return .own
         }
-        let type: DayType
-        if let cached = todayTypeCache, now.timeIntervalSince(cached.at) < 600, cached.at <= now {
-            type = cached.type
-        } else {
-            type = dayLedger(days: 1, now: now).last?.type ?? (DayType.isWeekend(now) ? .weekend : .workday)
-            todayTypeCache = (now, type)
-        }
+        _ = settledDayType(now: now)
+        let type = todayTypeCache?.type ?? (DayType.isWeekend(now) ? .weekend : .workday)
         return AppContext.outsideBlock(dayType: type, hour: Calendar.current.component(.hour, from: now), inOwnWindow: currentOwnWorkWindow(now: now) != nil)
     }
 

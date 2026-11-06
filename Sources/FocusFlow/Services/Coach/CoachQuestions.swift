@@ -57,7 +57,7 @@ enum CoachQuestion: Equatable, Sendable {
         case .naturalLength(_, let regular):
             "Most of your recent \(regular)m blocks ran 8+ min over while you focused. A block that ends where you planned beats a \(regular) you always stretch."
         case .dayType:
-            "It sets today's own-work target: 3h on leave, 1h 30m on a workday."
+            "Your answer sets today's own-work target and how I judge the day."
         case .appRole(_, let name, _, let projectName, let days):
             "\(name) was open in \(projectName) blocks on \(days) day\(days == 1 ? "" : "s") this week. Your answer holds for \(projectName) only."
         }

@@ -75,6 +75,8 @@ struct DailyGoalCard: View {
             return "No counted project has a target today, so the fixed goal applies."
         case .fixed:
             return "A fixed number, the same every day."
+        case .dayType(let type):
+            return "Your \(type.title.lowercased()) target, set in Settings → Focus."
         }
     }
 

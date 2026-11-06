@@ -223,6 +223,8 @@ struct DailyGoal: Equatable, Sendable {
         case projectTargets
         /// The fixed number set in Goals.
         case fixed
+        /// Coach v8 §3.5: your target for today's day type (leave, weekend, holiday, sick).
+        case dayType(DayType)
     }
 
     static let defaultSeconds: TimeInterval = 7200
