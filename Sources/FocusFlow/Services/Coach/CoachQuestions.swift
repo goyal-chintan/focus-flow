@@ -21,6 +21,8 @@ enum CoachQuestion: Equatable, Sendable {
     case dayType(day: Date, inferred: DayType, reason: String)
     /// Coach v8 §3.3: an office tool or a default pull open in an own-work project's blocks.
     case appRole(key: String, name: String, projectID: UUID, projectName: String, days: Int)
+    /// Coach v8 §3.5: a day off with no plan, after a week without plans. Pick a time.
+    case planToday(day: Date, times: [Date])
 
     var id: String {
         switch self {
@@ -29,6 +31,7 @@ enum CoachQuestion: Equatable, Sendable {
         case .naturalLength: "natural_length"
         case .dayType(let day, _, _): "day_type.\(Int(day.timeIntervalSince1970))"
         case .appRole(let key, _, let projectID, _, _): "app_role.\(key).\(projectID.uuidString)"
+        case .planToday(let day, _): "plan_today.\(Int(day.timeIntervalSince1970))"
         }
     }
 
@@ -44,6 +47,8 @@ enum CoachQuestion: Equatable, Sendable {
             "No Slack or calls today. On leave?"
         case .appRole(_, let name, _, let projectName, _):
             "Is \(CoachMessageComposer.shortName(name)) part of \(CoachMessageComposer.shortName(projectName)), or a pull?"
+        case .planToday:
+            "A free day, and no plan yet. When's your block?"
         }
     }
 
@@ -60,6 +65,8 @@ enum CoachQuestion: Equatable, Sendable {
             "Your answer sets today's own-work target and how I judge the day."
         case .appRole(_, let name, _, let projectName, let days):
             "\(name) was open in \(projectName) blocks on \(days) day\(days == 1 ? "" : "s") this week. Your answer holds for \(projectName) only."
+        case .planToday:
+            "Unplanned days off are the ones that slip. Pick a time and I'll cue it."
         }
     }
 
@@ -94,7 +101,15 @@ enum CoachQuestion: Equatable, Sendable {
                 CoachQuestionChoice(id: AppRole.tool.rawValue, title: "Part of \(CoachMessageComposer.shortName(projectName))"),
                 CoachQuestionChoice(id: AppRole.pull.rawValue, title: "A pull"),
             ]
+        case .planToday(_, let times):
+            times.map { CoachQuestionChoice(id: "\(Int($0.timeIntervalSince1970))", title: CoachQuestion.clock($0)) }
+                + [CoachQuestionChoice(id: "rest", title: "Resting today")]
         }
+    }
+
+    /// "10:00".
+    static func clock(_ date: Date, calendar: Calendar = .current) -> String {
+        String(format: "%02d:%02d", calendar.component(.hour, from: date), calendar.component(.minute, from: date))
     }
 
     enum WindowFitAnswer: String, Sendable {

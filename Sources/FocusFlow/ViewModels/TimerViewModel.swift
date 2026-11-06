@@ -4757,6 +4757,7 @@ final class TimerViewModel {
         guard coachIdleTickCount % 4 == 0 else { return }
         resolveExpiredCoachRewards(now: now)
         if evaluatePlanTomorrowCheckIn(now: now) { return }
+        if evaluateWeeklyReviewInvite(now: now) { return }
         if evaluateCoachQuestion(now: now) { return }
         if evaluateDailyPlanInvite(now: now) { return }
         if evaluateOwnWorkWindowPrompt(now: now) { return }
@@ -6326,6 +6327,98 @@ final class TimerViewModel {
         )
     }
 
+    // MARK: Weekly review and Plan today (coach v8 §3.5)
+
+    /// Puts one block on the calendar (the review's plan step, "Plan today?" and Your week).
+    @discardableResult
+    func planBlock(at start: Date, now: Date = Date()) -> Bool {
+        guard start > now else { return false }
+        return insertPlannedBlock(at: start, now: now) != nil
+    }
+
+    /// "Plan today?": a settled day off, the morning, no plan or own work yet, after a week without plans.
+    func planTodayQuestion(now: Date = Date()) -> CoachQuestion? {
+        // Cheap checks first: this runs with the other questions once a minute.
+        let hour = Calendar.current.component(.hour, from: now)
+        guard (PlanTodayPolicy.fromHour..<PlanTodayPolicy.untilHour).contains(hour), storesDayLedger, canUsePlannedBlocks(),
+              let type = settledDayType(now: now), type != .workday, type != .sick, !hasPlanForToday(now: now) else { return nil }
+        let week = dayLedger(days: 8, now: now)
+        guard let today = week.last else { return nil }
+        let plannedDays = week.dropLast().filter(\.planned).count
+        guard PlanTodayPolicy.shouldAsk(type: type, now: now, hasPlanToday: hasPlanForToday(now: now), ownMinutesToday: today.ownMinutes,
+                                        plannedDaysLastWeek: plannedDays) else { return nil }
+        let times = PlanTodayPolicy.times(now: now, usualHour: lifeSnapshot(now: now).input.freeDayHour)
+        guard !times.isEmpty else { return nil }
+        return .planToday(day: today.day, times: times)
+    }
+
+    /// Sunday 19:00 to Monday 12:00, at a breakpoint: "Your weekly review is ready."
+    @discardableResult
+    func evaluateWeeklyReviewInvite(now: Date = Date()) -> Bool {
+        guard let settings, settings.coachOnScreenPromptsEnabled else { return false }
+        let store = WeeklyReviewStore(defaults: defaults)
+        guard WeeklyReviewPolicy.isDue(now: now, lastDone: store.last?.completedAt, lastOffered: store.lastOffered),
+              state == .idle, !isOvertime, coachPanel == nil, pauseScreen == nil,
+              !CoachGuardrails.isQuietHours(now, start: settings.coachQuietStartMinute, end: settings.coachQuietEndMinute),
+              !shouldSuppressGuardianPopups(using: settings), systemIdleSeconds() <= CoachQuestionPolicy.maxIdleSeconds else { return false }
+        store.markOffered(now)
+        let message = CoachComposedMessage(
+            style: settings.coachStyle, trigger: .startNudge,
+            hook: "Your weekly review is ready.",
+            detail: .line("5 minutes: how the week went, one change, and next week's blocks."),
+            primaryTitle: "", hookIsFact: false
+        )
+        coachJournal.record(.shown, "Weekly review offered.", code: .question, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .question, message: message, createdAt: now, questionID: "weekly_review", choices: [
+            CoachQuestionChoice(id: "start", title: "Start review"),
+            CoachQuestionChoice(id: "later", title: "Later"),
+        ]))
+        return coachPanel?.kind == .question
+    }
+
+    /// The days a review plans, each with its day type (your labels and calendar marks, else
+    /// weekend or workday) and what is already planned.
+    func weeklyPlanDays(now: Date = Date()) -> [(day: Date, type: DayType, planned: [Date])] {
+        let calendar = Calendar.current
+        let days = WeeklyReviewPolicy.planDays(now, calendar: calendar)
+        guard let first = days.first, let end = days.last.flatMap({ calendar.date(byAdding: .day, value: 1, to: $0) }) else { return [] }
+        let labels = storesDayLedger
+            ? ((try? modelContext?.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day >= first && $0.day < end }))) ?? [])
+            : []
+        let plans = plannedBlocks(from: first, to: end).filter { $0.status == .planned }
+        return days.map { day in
+            let label = labels.filter { calendar.isDate($0.day, inSameDayAs: day) }.sorted { $0.source == .user && $1.source != .user }.first
+            let type = label?.type ?? (DayType.isWeekend(day, calendar: calendar) ? .weekend : .workday)
+            return (day, type, plans.filter { calendar.isDate($0.startAt, inSameDayAs: day) }.map(\.startAt))
+        }
+    }
+
+    /// Default start hours for the plan step: your usual hour on days off; for workdays, the
+    /// start of your first observed own-work window (else 21:00).
+    func weeklyPlanHours(now: Date = Date()) -> (free: Int, workday: Int) {
+        refreshWindowFit(now: now)
+        let windows = effectiveOwnWorkWindows(now: now).filter { $0.startMinute >= 17 * 60 }
+        return (lifeSnapshot(now: now).input.freeDayHour, windows.first.map { $0.startMinute / 60 } ?? 21)
+    }
+
+    var lastWeeklyReview: WeeklyReviewRecord? { WeeklyReviewStore(defaults: defaults).last }
+
+    /// Finishes a review: plans the chosen blocks, applies the pick, and records it.
+    @discardableResult
+    func completeWeeklyReview(pick: LifeRecommendation?, blocks: [Date], obstacle: String, now: Date = Date()) -> WeeklyReviewRecord {
+        let planned = blocks.filter { planBlock(at: $0, now: now) }.count
+        if let pick { applyLifeRecommendation(pick, picked: true, now: now) }
+        let record = WeeklyReviewRecord(
+            weekStart: WeeklyReviewPolicy.reviewedWeekStart(now), completedAt: now, pickID: pick?.id, pickTitle: pick?.title,
+            plannedBlocks: planned, obstacle: obstacle.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        WeeklyReviewStore(defaults: defaults).append(record)
+        coachJournal.record(.logged, "Weekly review done: \(planned) block\(planned == 1 ? "" : "s") planned\(pick.map { ", pick: \($0.title)" } ?? "").", code: .question, at: now)
+        weeklyReviewRequested = false
+        lifeRevision += 1
+        return record
+    }
+
     // MARK: Apps in context (coach v8 §3.3)
 
     @ObservationIgnored private var appRoleBookCache: (at: Date, book: AppRoleBook, names: [String: String])?
@@ -6504,6 +6597,7 @@ final class TimerViewModel {
         var questions: [CoachQuestion] = []
         // Coach v8: what kind of day it is decides every target, so it is asked first.
         if let day = dayTypeQuestion(now: now) { questions.append(day) }
+        if let plan = planTodayQuestion(now: now) { questions.append(plan) }
         if let role = appRoleQuestion(now: now) { questions.append(role) }
         if let fit = windowFit, fit.isMismatch(declared: declared), !keepsDeclaredWindows(now: now) {
             questions.append(.windowFit(fit, declared: declared))
@@ -6595,6 +6689,20 @@ final class TimerViewModel {
                let role = AppRole(rawValue: choice.id) {
                 setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .project(projectID), role: role)
                 coachJournal.record(.logged, "\(name): \(role.title.lowercased()) for this project.", code: .question, at: now)
+            }
+        case "weekly_review":
+            if choice.id == "start" {
+                requestWeeklyReview()
+                coachJournal.record(.logged, "Weekly review started.", code: .question, at: now)
+            }
+        case let id? where id.hasPrefix("plan_today."):
+            if let seconds = TimeInterval(choice.id) {
+                let at = Date(timeIntervalSince1970: seconds)
+                if planBlock(at: at, now: now) {
+                    coachJournal.record(.logged, "Planned today at \(Self.clockLabel(at)).", code: .question, at: now)
+                }
+            } else {
+                coachJournal.record(.declined, "Resting today.", code: .question, at: now)
             }
         case let id? where id.hasPrefix("day_type."):
             if let type = DayType(rawValue: choice.id) {
