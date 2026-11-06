@@ -108,6 +108,8 @@ struct CoachNoticedSection: View {
             timerVM.applyNaturalLengthAnswer(choice)
         case .dayType(let day, _, _):
             if let type = DayType(rawValue: choice.id) { timerVM.setDayType(day, type: type) }
+        case .gapReason(let start, _, _):
+            if let reason = GapReason(rawValue: choice.id) { timerVM.setGapReason(reason, for: start) }
         case .planToday:
             if let seconds = TimeInterval(choice.id) { timerVM.planBlock(at: Date(timeIntervalSince1970: seconds)) }
         case .appRole(let key, let name, let projectID, _, _):
@@ -155,6 +157,7 @@ struct CoachNoticedSection: View {
         var questions: [CoachQuestion] = []
         if let day = timerVM.dayTypeQuestion(now: now) { questions.append(day) }
         if let plan = timerVM.planTodayQuestion(now: now) { questions.append(plan) }
+        if let gap = timerVM.gapReasonQuestion(now: now) { questions.append(gap) }
         if let role = timerVM.appRoleQuestion(now: now) { questions.append(role) }
         let declared = allSettings.first?.coachOwnWorkWindows ?? []
         let since = now.addingTimeInterval(-TimeInterval(CoachWindowFit.lookbackDays) * 86_400)

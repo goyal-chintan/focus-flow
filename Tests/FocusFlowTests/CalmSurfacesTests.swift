@@ -182,7 +182,13 @@ final class CalmSurfacesStoreTests: XCTestCase {
         }
         let popover = try source("Views/MenuBar/MenuBarPopoverView.swift") + source("Views/MenuBar/PopoverPlanStrip.swift")
         XCTAssertFalse(popover.contains("DailyReminderView"), "No quote in the popover")
-        XCTAssertFalse(popover.contains("GoalRing"), "No ring in the idle popover")
+        // 6 Nov 2026, your call: the pace ring came back to the popover (and Today); its extra
+        // text (the coach's hook, the lever's reasoning) did not.
+        XCTAssertTrue(popover.contains("PopoverGoalHero()"), "The pace ring is back in the idle popover")
+        let hero = try source("Views/MenuBar/PopoverGoalHero.swift")
+        XCTAssertTrue(hero.contains("PaceRing("))
+        XCTAssertFalse(hero.contains("coachPanel") || hero.contains(".reason") || hero.contains("todayLevers"), "No coach hook or lever reasoning beside the ring")
+        XCTAssertTrue(try source("Views/Companion/TodayView.swift").contains("PaceRing("), "Today has the ring too")
         XCTAssertFalse(popover.contains("Verdict"), "No footer stats")
         let notch = try source("Views/Notch/NotchView.swift") + source("Views/Notch/NotchController.swift")
         XCTAssertFalse(notch.contains("dailyReminder"), "No quote in the notch")
@@ -193,5 +199,16 @@ final class CalmSurfacesStoreTests: XCTestCase {
         let goals = try source("Views/Goals/GoalsView.swift")
         XCTAssertFalse(goals.contains("DailyGoalCard("), "The daily goal moved to Settings → Focus")
         XCTAssertTrue(try source("Views/Companion/SettingsView.swift").contains("DayTargetsSettingsSection("))
+    }
+}
+
+final class PaceRingTests: XCTestCase {
+    func testColoursSayAheadOrBehind() {
+        XCTAssertEqual(PaceRing.color(.onTrack, met: false), FFPalette.goal)
+        XCTAssertEqual(PaceRing.color(.nudge, met: false), FFPalette.atRisk)
+        XCTAssertEqual(PaceRing.color(.atRisk, met: false), FFPalette.destructive)
+        XCTAssertEqual(PaceRing.color(.atRisk, met: true), FFPalette.goal, "Met beats the pace")
+        XCTAssertEqual(PaceRing.word(.nudge, met: false), "Behind")
+        XCTAssertEqual(PaceRing.word(.onTrack, met: true), "Goal met")
     }
 }

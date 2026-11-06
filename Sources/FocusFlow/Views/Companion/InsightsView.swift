@@ -43,6 +43,7 @@ struct InsightsView: View {
                         WeekTrendStrip(trends: week.trends)
                     }
                 }
+                rhythmSection(now: now)
                 daysSection(week, now: now)
                 doThisNext(recs, now: now)
                 CoachHelpingSection(helping: timerVM.coachHelping(now: now))
@@ -65,6 +66,24 @@ struct InsightsView: View {
 
     // MARK: - Your week
 
+    /// How you sit and where this week's hours went (6 Nov 2026).
+    private func rhythmSection(now: Date) -> some View {
+        let calendar = Calendar.current
+        var totals: [LeakCategory: Double] = [:]
+        var span = 0.0
+        var days = 0
+        for offset in 0..<7 {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: calendar.startOfDay(for: now)) else { continue }
+            let account = timerVM.dayAccount(day, now: now)
+            // Only days with the hourly record: before it, a day's span is a guess from its blocks.
+            guard account.hasRollup else { continue }
+            days += 1
+            span += account.spanMinutes
+            for (k, v) in account.minutes { totals[k, default: 0] += v }
+        }
+        return FocusRhythmSection(rhythm: timerVM.focusRhythm(now: now), week: totals, weekSpan: span, recordedDays: days)
+    }
+
     private func daysSection(_ week: YourWeek, now: Date) -> some View {
         FFSection("Days", subtitle: "Was the day planned, and did own work happen? Click a day for its hours.") {
             VStack(alignment: .leading, spacing: FFSpace.l) {
@@ -74,6 +93,10 @@ struct InsightsView: View {
                         timerVM.setDayType(day, type: type)
                     }
                     .transition(.opacity)
+                    // The day's gaps between sittings, each with "Why?" (label past days here).
+                    DayAccountSection(account: timerVM.dayAccount(day, now: now), now: now) { start, reason in
+                        timerVM.setGapReason(reason, for: start)
+                    }
                 }
             }
         }

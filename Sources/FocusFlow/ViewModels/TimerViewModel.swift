@@ -6210,6 +6210,10 @@ final class TimerViewModel {
             setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .everywhere, role: .pull)
         case .openGoals:
             openCompanionWindow?(.goals)
+        case .longBreak(let minutes, let after):
+            settings?.longBreakDuration = TimeInterval(minutes * 60)
+            settings?.sessionsBeforeLongBreak = after
+            saveContext()
         }
         LifeRecStore(defaults: defaults).markApplied(rec, baseline: baseline, picked: picked, now: now)
         coachJournal.record(.logged, "Recommendation applied: \(rec.title) (\(rec.actionTitle)).", code: .question, at: now)
@@ -6302,12 +6306,125 @@ final class TimerViewModel {
                 .map { minute < 30 ? $0 : $0.addingTimeInterval(3600) }
         }
 
-        return LifeRecInput(
+        let rhythm = focusRhythm(now: now)
+        let since14 = calendar.startOfDay(for: now.addingTimeInterval(-13 * 86_400))
+        let usage14 = (try? modelContext?.fetch(FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= since14 }))) ?? []
+        // Side work: from the hourly record where there is one (office hours on workdays excluded);
+        // before it, only days that were not workdays (on a workday the hour is unknown).
+        var sideMinutes = 0.0
+        for entry in entries.suffix(14) {
+            let account = dayAccount(entry.day, now: now)
+            if account.hasRollup {
+                sideMinutes += account.minutes[.side] ?? 0
+            } else if entry.type != .workday {
+                sideMinutes += usage14.filter { calendar.isDate($0.date, inSameDayAs: entry.day) && SideWorkTools.isSide(key: $0.bundleIdentifier, label: $0.appName) }
+                    .map { Double($0.outsideFocusSeconds) / 60 }.reduce(0, +)
+            }
+        }
+        let ownMinutes14 = entries.suffix(14).map(\.ownMinutes).reduce(0, +)
+        let workdayStarts = recent.filter { $0.isFocus && !DayType.isWeekend($0.start) }
+        let firstByDay = Dictionary(grouping: workdayStarts) { calendar.startOfDay(for: $0.start) }.compactMapValues { $0.map(\.start).min() }
+        let firstHour = firstByDay.count >= 3 ? Int(CoachPatterns.median(firstByDay.values.map { Double(calendar.component(.hour, from: $0)) })) : 10
+
+        var input = LifeRecInput(
             now: now, entries: entries, cycle: CoachCycleStats.compute(recent), regularMinutes: regular,
             naturalLength: CoachNaturalLength.suggestion(recent, regularMinutes: regular), breaks: breaks, windowFit: fit,
             appPull: pull, derailer: derailerBand(now: now), targets: dayTargets(), goalMinutes: goalMinutes,
             freeDayHour: freeHour, unplannedWeekend: weekend, todaySlot: slot, hasPlanToday: hasPlanForToday(now: now), calendar: calendar
         )
+        input.rhythm = rhythm
+        input.sideMinutes14 = sideMinutes
+        input.ownMinutes14 = ownMinutes14
+        input.firstHour = firstHour
+        return input
+    }
+
+    // MARK: Where the day went, and how you sit (6 Nov 2026)
+
+    @ObservationIgnored private var rhythmCache: (at: Date, revision: Int, rhythm: FocusRhythm)?
+
+    /// One day from first activity to last: own work, breaks, office, side work, pulls, away,
+    /// and the gaps between sittings with your answers. Read-only (safe in `body`).
+    func dayAccount(_ day: Date, now: Date = Date()) -> DayAccount {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        guard let modelContext else {
+            return DayAccount.build(day: start, now: now, rows: [], blocks: [], breaks: [], category: { _, _, _ in .other }, reasons: [:])
+        }
+        let earlier = start.addingTimeInterval(-12 * 3600)
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= earlier && $0.startedAt < end }))) ?? []
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        func interval(_ s: FocusSession) -> (Date, Date) {
+            (s.startedAt, s.endedAt ?? min(now, s.startedAt.addingTimeInterval(s.actualDuration)))
+        }
+        let blocks = sessions.filter { $0.type == .focus }.map { s -> DayAccount.Block in
+            let (a, b) = interval(s)
+            return DayAccount.Block(start: a, end: b, own: !ownConfigured || CoachHistoryReader.isOwnWork(s.project), pausedSeconds: s.totalPausedSeconds)
+        }
+        let breaks = sessions.filter { $0.type != .focus }.map { s -> DateInterval in
+            let (a, b) = interval(s)
+            return DateInterval(start: a, end: max(a, b))
+        }
+        let rows: [DayAccount.Row] = storesDayLedger
+            ? ((try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end }))) ?? [])
+                .map { DayAccount.Row(hourStart: $0.hourStart, key: $0.key, label: $0.label, inBlock: $0.inBlock, seconds: $0.seconds) }
+            : []
+        let book = appRoleBook(now: now)
+        let isWorkday = dayLedger(days: 1, now: start.addingTimeInterval(12 * 3600)).last.map { $0.type == .workday && DayTargets.isSettled($0.classification) } ?? false
+        return DayAccount.build(day: start, now: now, rows: rows, blocks: blocks, breaks: breaks, category: { key, label, hour in
+            if AppRoleBook.isOffice(key, name: label) { return .office }
+            let role = book.role(key: key, name: label, in: .own).role
+            if role == .pull { return .pull }
+            if SideWorkTools.isSide(key: key, label: label) {
+                // On a workday in office hours, dev and AI tools are most likely the office's.
+                return isWorkday && (9..<19).contains(hour) ? .office : .side
+            }
+            if role == .tool { return .unblockedOwn }
+            return .other
+        }, reasons: GapReasonStore(defaults: defaults).all(), calendar: calendar)
+    }
+
+    /// The longest unanswered gap of an hour or more that ended in the last 3 hours today (fresh
+    /// in memory), between sittings. Asked with the other questions (one a day).
+    func gapReasonQuestion(now: Date = Date()) -> CoachQuestion? {
+        let account = dayAccount(now, now: now)
+        guard let gap = account.gaps
+            .filter({ $0.reason == nil && $0.minutes >= 60 && now.timeIntervalSince($0.end) <= 3 * 3600 && now.timeIntervalSince($0.end) >= 60 })
+            .max(by: { $0.minutes < $1.minutes }) else { return nil }
+        return .gapReason(start: gap.start, end: gap.end, summary: gap.summary)
+    }
+
+    /// Your answer for a gap ("Tired", "Family / friends"); nil clears it.
+    func setGapReason(_ reason: GapReason?, for start: Date, now: Date = Date()) {
+        GapReasonStore(defaults: defaults).set(reason, for: start, now: now)
+        coachJournal.record(.logged, "Gap at \(Self.clockLabel(start)): \(reason?.title ?? "cleared").", code: .question, at: now)
+        rhythmCache = nil
+        lifeRevision += 1
+    }
+
+    /// How you sit over 4 weeks, with your gap answers; cached 5 minutes (safe in `body`).
+    func focusRhythm(now: Date = Date()) -> FocusRhythm {
+        if let cache = rhythmCache, cache.revision == lifeRevision, now.timeIntervalSince(cache.at) < 300, cache.at <= now {
+            return cache.rhythm
+        }
+        let calendar = Calendar.current
+        let since = calendar.startOfDay(for: now.addingTimeInterval(-27 * 86_400))
+        let sessions = (try? modelContext?.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }))) ?? []
+        let projects = (try? modelContext?.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        let blocks = sessions.filter { $0.type == .focus && $0.endedAt != nil && (!ownConfigured || CoachHistoryReader.isOwnWork($0.project)) }
+            .map { FocusRhythm.Block(start: $0.startedAt, end: $0.endedAt ?? $0.startedAt, focusedMinutes: $0.actualDuration / 60) }
+        var gaps: [DayAccount.Gap] = []
+        var day = since
+        while day <= now {
+            gaps += dayAccount(day, now: now).gaps
+            day = calendar.date(byAdding: .day, value: 1, to: day) ?? now.addingTimeInterval(1)
+        }
+        let rhythm = FocusRhythm.compute(blocks: blocks, ledger: dayLedger(days: 28, now: now), gaps: gaps, calendar: calendar)
+        rhythmCache = (now, lifeRevision, rhythm)
+        return rhythm
     }
 
     /// The first day with any history (blocks or app time).
@@ -6654,6 +6771,7 @@ final class TimerViewModel {
         // Coach v8: what kind of day it is decides every target, so it is asked first.
         if let day = dayTypeQuestion(now: now) { questions.append(day) }
         if let plan = planTodayQuestion(now: now) { questions.append(plan) }
+        if let gap = gapReasonQuestion(now: now) { questions.append(gap) }
         if let role = appRoleQuestion(now: now) { questions.append(role) }
         if let fit = windowFit, fit.isMismatch(declared: declared), !keepsDeclaredWindows(now: now) {
             questions.append(.windowFit(fit, declared: declared))
@@ -6750,6 +6868,10 @@ final class TimerViewModel {
             if choice.id == "start" {
                 requestWeeklyReview()
                 coachJournal.record(.logged, "Weekly review started.", code: .question, at: now)
+            }
+        case let id? where id.hasPrefix("gap_reason."):
+            if let seconds = TimeInterval(String(id.dropFirst("gap_reason.".count))), let reason = GapReason(rawValue: choice.id) {
+                setGapReason(reason, for: Date(timeIntervalSince1970: seconds), now: now)
             }
         case let id? where id.hasPrefix("plan_today."):
             if let seconds = TimeInterval(choice.id) {

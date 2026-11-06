@@ -362,6 +362,9 @@ final class YourWeekReadPathTests: XCTestCase {
             _ = vm.weeklyPlanDays(now: now)
             _ = vm.weeklyPlanHours(now: now)
             _ = vm.dayTimeline(now, now: now)
+            _ = vm.dayAccount(now, now: now)
+            _ = vm.focusRhythm(now: now)
+            _ = vm.gapReasonQuestion(now: now)
         } onChange: {
             invalidated.raised = true
         }

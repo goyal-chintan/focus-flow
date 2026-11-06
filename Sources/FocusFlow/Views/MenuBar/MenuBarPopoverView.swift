@@ -458,9 +458,9 @@ private struct IdlePopoverContent: View {
                     .padding(.top, 16)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             } else {
-                // Coach v8 §3.6: no ring, quote or lever row. A planned block is a start path, so
-                // its strip shows when one is due or coming; the lever is the "Working on" prefill.
-                PopoverPlanStrip()
+                // The pace ring and time to go (restored 6 Nov 2026), with a due or coming plan.
+                // No quote and no lever row: the lever is the "Working on" prefill.
+                PopoverGoalHero()
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 16)
             }

@@ -1,10 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Idle popover, top (coach v8 §3.6, calm surfaces): only a planned block, because it is a start
+/// Idle popover, under the pace ring (`PopoverGoalHero`): a planned block, because it is a start
 /// path. Due: "It's time" with Start now and Change. Coming: one line with Change. Nothing planned:
-/// nothing at all. The ring, the coach's hook and the lever's pace moved out (Today says where the
-/// day stands in one sentence; the coach speaks in its own panel).
+/// nothing at all.
 struct PopoverPlanStrip: View {
     @Environment(TimerViewModel.self) private var timerVM
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -27,12 +26,6 @@ struct PopoverPlanStrip: View {
                     upcomingRow(plan, now: now)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: LiquidDesignTokens.CornerRadius.md, style: .continuous)
-                    .fill(Color.primary.opacity(0.045))
-            )
         }
     }
 

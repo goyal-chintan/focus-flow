@@ -31,7 +31,7 @@ struct TodayView: View {
 
     private func content(snapshot: CompanionSnapshot) -> some View {
         // Read so a new block or a changed day-type target redraws the sentence.
-        let _ = (timerVM.todayFocusTime, timerVM.dayTargetsRevision)
+        let _ = (timerVM.todayFocusTime, timerVM.dayTargetsRevision, timerVM.lifeRevision)
         return ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
                 FFPageHeader("Today", subtitle: snapshot.now.formatted(.dateTime.weekday(.wide).day().month(.wide))) {
@@ -69,20 +69,29 @@ struct TodayView: View {
             dayType: timerVM.settledDayType(now: now),
             format: FFFormat.duration
         )
+        let done = snapshot.analytics.dayTotal(snapshot.goalSamples, on: now).seconds
         return VStack(alignment: .leading, spacing: FFSpace.m) {
-            HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
-                Text(sentence)
-                    .ffText(.title3)
-                    .monospacedDigit()
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("today.sentence")
-                Spacer(minLength: FFSpace.s)
-                ScopeChip(label: goal.label)
-            }
-            if let next = nextLine(snapshot) {
-                Label(next, systemImage: "alarm")
-                    .ffText(.callout)
-                    .monospacedDigit()
+            HStack(alignment: .center, spacing: FFSpace.xl) {
+                // The pace ring (restored 6 Nov 2026): green on pace, orange behind, red at risk.
+                PaceRing(done: done, target: goal.seconds, tier: timerVM.goalPacing(now: now).tier,
+                         size: 88, lineWidth: 10, showsTime: false)
+                VStack(alignment: .leading, spacing: FFSpace.s) {
+                    HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
+                        Text(sentence)
+                            .ffText(.title3)
+                            .monospacedDigit()
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("today.sentence")
+                        ScopeChip(label: goal.label)
+                    }
+                    if let next = nextLine(snapshot) {
+                        Label(next, systemImage: "alarm")
+                            .ffText(.callout)
+                            .monospacedDigit()
+                    }
+                }
+                Spacer(minLength: FFSpace.m)
+                weekDots(snapshot)
             }
             // The day's line shows here only (coach v8 §3.6: the quote once a day, on one surface).
             DailyReminderView(style: .strip, now: now)
@@ -90,6 +99,48 @@ struct TodayView: View {
         .padding(FFSpace.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .ffSurface(radius: FFRadius.hero)
+    }
+
+    /// This week, Monday first: green met, blue part of the way, red missed, dashed today
+    /// (never miss twice). Restored 6 Nov 2026.
+    private func weekDots(_ snapshot: CompanionSnapshot) -> some View {
+        let calendar = snapshot.calendar
+        let today = snapshot.today.start
+        let dates = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: snapshot.thisWeek.start) }
+        let days = snapshot.goalDays(dates)
+        let met = days.filter { $0.day <= today && $0.seconds >= snapshot.goal(on: $0.day) && snapshot.goal(on: $0.day) > 0 }.count
+        return VStack(alignment: .leading, spacing: FFSpace.xs) {
+            Text("This week").ffText(.callout)
+            HStack(spacing: 5) {
+                ForEach(days, id: \.day) { total in
+                    let goal = snapshot.goal(on: total.day)
+                    let fraction = goal > 0 ? min(1, total.seconds / goal) : 0
+                    let isToday = total.day == today
+                    let fill: Color = total.day > today ? .clear
+                        : fraction >= 1 ? FFPalette.goal
+                        : total.seconds > 0 ? FFPalette.accent.opacity(0.35 + 0.5 * fraction)
+                        : isToday ? .clear : FFPalette.destructive.opacity(0.55)
+                    VStack(spacing: 3) {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(fill)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(isToday ? FFPalette.accent : FFPalette.hairline,
+                                                  style: StrokeStyle(lineWidth: 1, dash: isToday && fraction < 1 ? [2, 2] : []))
+                            )
+                            .frame(width: 14, height: 14)
+                        Text(total.day.formatted(.dateTime.weekday(.narrow)))
+                            .font(.system(size: 10, weight: isToday ? .semibold : .regular))
+                            .foregroundStyle(isToday ? .primary : .secondary)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(total.day.formatted(.dateTime.weekday(.wide))): \(FFFormat.duration(total.seconds))")
+                }
+            }
+            .help("Never miss twice. Green: goal met. Blue: part of the way. Red: missed.")
+            Text("Goal met \(met) day\(met == 1 ? "" : "s")").ffText(.caption).monospacedDigit()
+        }
+        .fixedSize()
     }
 
     /// "Next: planned 20:00 · 25m · Window functions", else the next good window.
@@ -129,6 +180,10 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: FFSpace.m) {
                 if timeline.activeRange != nil {
                     DayTimelineChart(timeline: timeline, now: snapshot.now)
+                }
+                // Where the hours went and why (6 Nov 2026): the gaps between sittings, each with a reason.
+                DayAccountSection(account: timerVM.dayAccount(day.start, now: snapshot.now), now: snapshot.now) { start, reason in
+                    timerVM.setGapReason(reason, for: start)
                 }
                 if todaySessions.isEmpty {
                     Text("No focus blocks yet today.").ffText(.callout)

@@ -7,11 +7,13 @@ import Foundation
 
 enum LifeRecKind: String, Codable, CaseIterable, Sendable {
     case neverMissTwice, weekendPlan, leaveTarget, targetMiss, landOnTime, breakLanding, windowsFit, appPull, derailerHour
+    // 6 Nov 2026: how you sit and why the day leaks (`FocusRhythm`, `DayAccount`).
+    case sessionShape, fatigueBreak, sideWorkFirst, procrastination
 
     /// The follow-up measure: higher is better?
     var higherIsBetter: Bool {
         switch self {
-        case .weekendPlan, .leaveTarget, .targetMiss: true
+        case .weekendPlan, .leaveTarget, .targetMiss, .sessionShape: true
         default: false
         }
     }
@@ -19,7 +21,7 @@ enum LifeRecKind: String, Codable, CaseIterable, Sendable {
     /// Windows, app roles and derailer hours have no week-over-week measure: they show as applied.
     var isMeasured: Bool {
         switch self {
-        case .windowsFit, .appPull, .derailerHour: false
+        case .windowsFit, .appPull, .derailerHour, .sideWorkFirst, .procrastination: false
         default: true
         }
     }
@@ -45,6 +47,8 @@ enum LifeAction: Equatable, Sendable {
     case markPull(key: String, name: String)
     /// The workday target is the Goals tab's daily goal.
     case openGoals
+    /// A longer break after every `after` blocks (the long-break settings).
+    case longBreak(minutes: Int, after: Int)
 }
 
 struct LifeRecommendation: Equatable, Sendable, Identifiable {
@@ -87,6 +91,13 @@ struct LifeRecInput: Sendable {
     var todaySlot: Date?
     var hasPlanToday: Bool
     var calendar: Calendar = .current
+    /// How you sit (4 weeks) and your gap answers.
+    var rhythm: FocusRhythm? = nil
+    /// Dev and AI tools outside blocks, and own work, over 14 days (minutes).
+    var sideMinutes14: Double = 0
+    var ownMinutes14: Double = 0
+    /// Your usual first start on a workday (for "own work first").
+    var firstHour: Int = 10
 }
 
 enum LifeRecommendations {
@@ -94,7 +105,8 @@ enum LifeRecommendations {
 
     static func all(_ input: LifeRecInput) -> [LifeRecommendation] {
         [neverMissTwice(input), weekendPlan(input), leaveTarget(input), targetMiss(input), landOnTime(input),
-         breakLanding(input), windowsFit(input), appPull(input), derailerHour(input)].compactMap { $0 }
+         breakLanding(input), windowsFit(input), appPull(input), derailerHour(input),
+         sessionShape(input), fatigueBreak(input), sideWorkFirst(input), procrastination(input)].compactMap { $0 }
     }
 
     /// Ranked by weight × confidence, lowered when shown in the last week without an answer;
@@ -282,6 +294,87 @@ enum LifeRecommendations {
         )
     }
 
+    // MARK: How you sit (6 Nov 2026)
+
+    /// Most sittings are one short block, and the long sitting is what makes your good days (or
+    /// the restart is the hard part): sit for two longer blocks. Deliberate practice runs in
+    /// sessions of about an hour with rest between (Ericsson, Krampe & Tesch-Römer, 1993); planned
+    /// breaks keep fatigue lower than breaks taken at will (Biwer et al., 2023).
+    static func sessionShape(_ input: LifeRecInput) -> LifeRecommendation? {
+        guard let r = input.rhythm, r.sittings.count >= 8, let single = r.singleBlockShare, single >= 0.5,
+              let block = r.blockMedian, block <= 35, input.regularMinutes < 50 else { return nil }
+        let goodDaysSay = r.goodDayLongest.flatMap { good in r.otherDayLongest.map { (good, $0) } }.flatMap { $0.0 >= $0.1 * 1.3 ? $0 : nil }
+        let restartIsHard = (r.returnAfterShort ?? 0) >= 45
+        guard goodDaysSay != nil || restartIsHard else { return nil }
+        var evidence = "\(Int((single * 100).rounded()))% of your sittings are one \(FFFormatLite.duration(block)) block."
+        if let (good, other) = goodDaysSay {
+            evidence += " Days you met your target had a \(FFFormatLite.duration(good)) sitting; the rest, \(FFFormatLite.duration(other))."
+        } else if let short = r.returnAfterShort {
+            evidence += " After a short sitting you take \(FFFormatLite.duration(short)) to start again."
+        }
+        return LifeRecommendation(
+            id: LifeRecKind.sessionShape.rawValue, kind: .sessionShape, title: "Sit longer: two 50-min blocks",
+            evidence: evidence,
+            impact: "One 90-min sitting a day is your good-day pattern. Practice works in hour-long sessions with a planned rest (Ericsson 1993; Biwer 2023).",
+            actionTitle: "Make blocks 50 min", action: .blockLength(50),
+            weight: 0.85, confidence: min(1, Double(r.sittings.count) / 20)
+        )
+    }
+
+    /// You come back slowly after long sittings, or you call gaps "tired": a real break after
+    /// two blocks, away from the screen (Trougakos et al., 2014; Sianoja et al., 2018).
+    static func fatigueBreak(_ input: LifeRecInput) -> LifeRecommendation? {
+        guard let r = input.rhythm else { return nil }
+        let tired = r.reasons[.tired]
+        let slowAfterLong = r.returnAfterShort.flatMap { s in r.returnAfterLong.map { $0 >= s * 1.5 ? ($0, s) : nil } } ?? nil
+        guard (tired?.count ?? 0) >= 3 || slowAfterLong != nil else { return nil }
+        var evidence = ""
+        if let (long, short) = slowAfterLong {
+            evidence = "After a sitting of 45+ min you're back in \(FFFormatLite.duration(long)); after a short one, \(FFFormatLite.duration(short))."
+        }
+        if let tired, tired.count >= 3 {
+            evidence += (evidence.isEmpty ? "" : " ") + "You called \(tired.count) gaps \"tired\" (\(FFFormatLite.duration(tired.minutes)))."
+        }
+        return LifeRecommendation(
+            id: LifeRecKind.fatigueBreak.rawValue, kind: .fatigueBreak, title: "Come back rested, not later",
+            evidence: evidence,
+            impact: "A 20-min break off the screen after two blocks restores more than drifting for two hours (Trougakos 2014; Sianoja 2018).",
+            actionTitle: "20-min break after 2 blocks", action: .longBreak(minutes: 20, after: 2),
+            weight: 0.6, confidence: (tired?.count ?? 0) >= 3 ? 0.9 : 0.7
+        )
+    }
+
+    /// Dev and AI tools outside blocks rival your own work: put own work first in the day, side
+    /// work after it (goal shielding: Shah, Friedman & Kruglanski, 2002).
+    static func sideWorkFirst(_ input: LifeRecInput) -> LifeRecommendation? {
+        guard input.sideMinutes14 >= 300, input.sideMinutes14 >= input.ownMinutes14 * 0.5 else { return nil }
+        let tomorrow = input.calendar.date(byAdding: .day, value: 1, to: input.calendar.startOfDay(for: input.now))
+            .flatMap { input.calendar.date(bySettingHour: input.firstHour, minute: 0, second: 0, of: $0) }
+        guard let tomorrow else { return nil }
+        return LifeRecommendation(
+            id: LifeRecKind.sideWorkFirst.rawValue, kind: .sideWorkFirst, title: "Side work is eating own-work time",
+            evidence: "\(FFFormatLite.duration(input.sideMinutes14)) in Claude, Cursor, Copilot and similar outside blocks in 2 weeks, against \(FFFormatLite.duration(input.ownMinutes14)) of own work. Important, but not today's goal.",
+            impact: "Own work first, side work after it: a goal you start first is shielded from the rest.",
+            actionTitle: "Plan own work at \(String(format: "%02d:00", input.firstHour)) tomorrow", action: .planBlocks([tomorrow]),
+            weight: 0.6, confidence: min(1, input.sideMinutes14 / 600)
+        )
+    }
+
+    /// Gaps you called "putting it off": the cure is a smaller, scheduled start (Steel, 2007;
+    /// Gollwitzer & Sheeran, 2006).
+    static func procrastination(_ input: LifeRecInput) -> LifeRecommendation? {
+        guard let r = input.rhythm, let p = r.reasons[.procrastinating], p.count >= 2, let slot = input.todaySlot ?? input.calendar.date(
+            byAdding: .day, value: 1, to: input.calendar.startOfDay(for: input.now)).flatMap({ input.calendar.date(bySettingHour: input.firstHour, minute: 0, second: 0, of: $0) })
+        else { return nil }
+        return LifeRecommendation(
+            id: LifeRecKind.procrastination.rawValue, kind: .procrastination, title: "Putting it off: start smaller",
+            evidence: "You called \(p.count) gaps \"putting it off\": \(FFFormatLite.duration(p.minutes)) in 4 weeks.",
+            impact: "Putting off is about the start, not the work. A time and a 5-minute first step make the start small (Steel 2007).",
+            actionTitle: "Plan a start at \(clock(slot, input.calendar))", action: .planBlocks([slot]),
+            weight: 0.7, confidence: min(1, Double(p.count) / 4)
+        )
+    }
+
     // MARK: Helpers
 
     /// The next weekend's days: Saturday and Sunday, or just Sunday on a Sunday. Today counts until 18:00.
@@ -395,7 +488,15 @@ enum LifeRecMetric {
         case .breakLanding:
             guard let cycle, cycle.gaps.count >= 3 else { return nil }
             return cycle.medianGap
-        case .windowsFit, .appPull, .derailerHour:
+        case .sessionShape:
+            // Own work on the days you worked: longer sittings should raise it.
+            let active = past.filter { $0.ownMinutes >= WeekMeasures.activeMinutes }
+            guard active.count >= 2 else { return nil }
+            return active.map(\.ownMinutes).reduce(0, +) / Double(active.count)
+        case .fatigueBreak:
+            guard let cycle, cycle.gaps.count >= 3 else { return nil }
+            return cycle.medianGap
+        case .windowsFit, .appPull, .derailerHour, .sideWorkFirst, .procrastination:
             return nil
         }
     }

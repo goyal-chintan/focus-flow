@@ -711,7 +711,7 @@ private struct OnboardingPlanControls: View {
 // MARK: - Layout
 
 /// Wraps its children onto new lines, left-aligned.
-private struct FlowRow: Layout {
+struct FlowRow: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

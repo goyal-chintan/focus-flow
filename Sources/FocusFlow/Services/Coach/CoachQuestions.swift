@@ -23,6 +23,8 @@ enum CoachQuestion: Equatable, Sendable {
     case appRole(key: String, name: String, projectID: UUID, projectName: String, days: Int)
     /// Coach v8 §3.5: a day off with no plan, after a week without plans. Pick a time.
     case planToday(day: Date, times: [Date])
+    /// 6 Nov 2026: a long gap between sittings today. What was it? (`GapReason`)
+    case gapReason(start: Date, end: Date, summary: String)
 
     var id: String {
         switch self {
@@ -32,6 +34,7 @@ enum CoachQuestion: Equatable, Sendable {
         case .dayType(let day, _, _): "day_type.\(Int(day.timeIntervalSince1970))"
         case .appRole(let key, _, let projectID, _, _): "app_role.\(key).\(projectID.uuidString)"
         case .planToday(let day, _): "plan_today.\(Int(day.timeIntervalSince1970))"
+        case .gapReason(let start, _, _): "gap_reason.\(Int(start.timeIntervalSince1970))"
         }
     }
 
@@ -49,6 +52,8 @@ enum CoachQuestion: Equatable, Sendable {
             "Is \(CoachMessageComposer.shortName(name)) part of \(CoachMessageComposer.shortName(projectName)), or a pull?"
         case .planToday:
             "A free day, and no plan yet. When's your block?"
+        case .gapReason(let start, let end, _):
+            "\(CoachQuestion.clock(start))–\(CoachQuestion.clock(end)) between blocks. What was it?"
         }
     }
 
@@ -67,6 +72,8 @@ enum CoachQuestion: Equatable, Sendable {
             "\(name) was open in \(projectName) blocks on \(days) day\(days == 1 ? "" : "s") this week. Your answer holds for \(projectName) only."
         case .planToday:
             "Unplanned days off are the ones that slip. Pick a time and I'll cue it."
+        case .gapReason(_, _, let summary):
+            "\(summary.isEmpty ? "Nothing recorded" : summary). Family and rest are fine; the rest is what I can help with."
         }
     }
 
@@ -104,6 +111,10 @@ enum CoachQuestion: Equatable, Sendable {
         case .planToday(_, let times):
             times.map { CoachQuestionChoice(id: "\(Int($0.timeIntervalSince1970))", title: CoachQuestion.clock($0)) }
                 + [CoachQuestionChoice(id: "rest", title: "Resting today")]
+        case .gapReason:
+            [GapReason.family, .tired, .procrastinating, .sideProject].map {
+                CoachQuestionChoice(id: $0.rawValue, title: $0 == .family ? "Family / rest" : $0.title)
+            }
         }
     }
 
