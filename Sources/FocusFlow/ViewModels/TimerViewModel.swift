@@ -2838,7 +2838,13 @@ final class TimerViewModel {
             interventionActionTaken = true
             hideCoachPanel()
         case .starterInstead:
-            // Two-minute rule: the smallest real start still fulfils the plan.
+            // Two-minute rule: the smallest real start still fulfils the plan. Started from the
+            // plan's own cue, it is that plan however late the cue came (as "Start now" does).
+            if let id = panel.plannedBlockID,
+               let block = plannedBlocks(from: now.addingTimeInterval(-24 * 3600), to: now.addingTimeInterval(24 * 3600)).first(where: { $0.id == id }),
+               block.status == .planned, !CoachPlannedCue.fulfills(startAt: block.startAt, sessionStart: Date()) {
+                block.startAt = Date()
+            }
             guard startStarterBlock(attemptID: panel.attemptID) else {
                 coachPanelError = startError
                 return

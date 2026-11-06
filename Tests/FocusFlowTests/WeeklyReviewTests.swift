@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import SwiftData
 @testable import FocusFlow
 
@@ -160,5 +161,33 @@ final class WeeklyReviewStoreTests: XCTestCase {
         XCTAssertEqual(plan.count, 7)
         XCTAssertEqual(plan.first { $0.day == workday }?.type, .leave)
         XCTAssertTrue(plan.filter { DayType.isWeekend($0.day) }.allSatisfy { $0.type == .weekend })
+    }
+}
+
+@MainActor
+final class WeeklyReviewRenderTests: XCTestCase {
+    /// Draws the review sheet and Your week with real data paths (no crash, no layout loop).
+    func testTheReviewSheetAndYourWeekRender() throws {
+        let schema = FocusFlowSchema.schema
+        let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
+        let context = container.mainContext
+        let settings = AppSettings(); context.insert(settings)
+        let project = Project(name: "Learning"); project.area = .personal; context.insert(project)
+        for i in 0..<20 {
+            let s = FocusSession(type: .focus, duration: 1500, project: project)
+            s.startedAt = Date().addingTimeInterval(-Double(i) * 43_200 - 3600); s.endedAt = s.startedAt.addingTimeInterval(1800); s.completed = true
+            context.insert(s)
+        }
+        try context.save()
+        let vm = TimerViewModel(defaults: UserDefaults(suiteName: "test.review.render.\(UUID().uuidString)")!)
+        vm.configureForEvidence(modelContext: context, settings: settings)
+        defer { AppUsageTracker.shared.stop() }
+
+        for view in [AnyView(WeeklyReviewView(now: Date()) {}), AnyView(InsightsView().frame(width: 900, height: 1400))] {
+            let host = NSHostingView(rootView: view.environment(vm).modelContainer(container))
+            host.frame = NSRect(x: 0, y: 0, width: 900, height: 1400)
+            host.layoutSubtreeIfNeeded()
+            XCTAssertGreaterThan(host.fittingSize.height, 100)
+        }
     }
 }
