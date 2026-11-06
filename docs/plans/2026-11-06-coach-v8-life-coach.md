@@ -210,3 +210,42 @@ Recommended order: 1 → 2 → 3 → 4 → 5. Phases 3 and 5 can swap if the clu
 - **Live store:** your global "allowed" rules make scaler.com and Obsidian tools everywhere.
   Nothing else had enough single-project evidence yet. Slack had too little block time for the
   question to fire.
+
+## 9. Phase 3, as built (6 Nov 2026)
+- **The verdict compares like days.** Each finished day of the week is compared with the
+  baseline mean of its own day type (a type with fewer than 2 baseline days uses the overall
+  mean). Today counts only once it is no longer open. Under 7 days of history there is no
+  baseline, and the page says so.
+- **"Days on track" uses the verdict's rule**: at least half the day's target, and 25 min.
+  Otherwise "7/7 days with own work" would sit next to "3 unplanned & lost".
+- **Targets per day type came forward from phase 4**, because the ledger, the verdict and the
+  leave recommendation all need them. A type you have not set follows the daily goal, so
+  nothing changed on install. Only a settled day type changes today's goal: your answer, the
+  calendar or a weekend. An inferred leave waits for "On leave?".
+- **The library has 9 rules.** A rule fires only when it has an action. For example, "Land on
+  time" needs a natural length to offer, and "Plan your weekend" needs an unplanned weekend
+  ahead. A workday target miss opens Goals, because the workday target is the Goals tab's daily
+  goal.
+- **Follow-up.** Apply stores the measure over the previous 28 days. A week later, "Is the coach
+  helping?" shows the change ("25% → 67%"). Windows, app roles and derailer hours have no
+  measure, so they show as applied.
+- **Live store (6 Nov):** "Better than your last 4 weeks", with 11h own work against an average
+  of 2h 34m. The ranked recommendations:
+  1. Plan your weekend: 7 of 10 days off were lost.
+  2. Leave days: aim higher. The average was 1h 51m, so set the leave target to 3h.
+  3. Workdays: a target you can hit. You met 2h 30m on 0 of 15 workdays.
+  4. Use the hours you actually start in: your windows caught 17 of 47 starts.
+
+## 10. Phase 4, as built (6 Nov 2026)
+- **When the review is offered.** The review window runs from Sunday 19:00 to Monday 12:00, at a
+  breakpoint (no block, no panel, someone present, no share or quiet hours). "Later" asks again
+  after 3 h.
+- **How it runs.** The review is a sheet over the companion window. Nothing is written until
+  Finish. The plan step proposes days off at your usual hour, plus Tuesday and Thursday anchors
+  at your evening window.
+- **Records.** Reviews, recommendation records and targets live in defaults. Plans are
+  `PlannedBlock` rows, as before. No model changed in phases 3 or 4.
+- **"Plan today?"** asks on a settled day off, between 08:00 and 13:00, when there is no plan,
+  no own work yet, and no planned day in the last week.
+- **Data safety.** `FocusFlowSchema` is the one model list. `StoreUpgradeTests` opens a pre-v8
+  store with it. The real pre-v8 backup also opened with identical row counts in all 12 tables.
