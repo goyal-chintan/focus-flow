@@ -68,8 +68,8 @@ final class CoachV6AdaptTests: XCTestCase {
     func testWindowQuestionNamesBothSides() {
         let fit = CoachWindowFit.compute(startDates: liveStarts(), declared: declared, calendar: calendar)
         let question = CoachQuestion.windowFit(fit, declared: declared)
-        XCTAssertEqual(question.hook, "Your own work starts around 00:00–01:00, 11:00–14:00 and 22:00–24:00. Should I watch those hours?")
-        XCTAssertTrue(question.detail.contains("caught 4 of your last 46"))
+        XCTAssertEqual(question.hook, "Should I watch the hours you actually work?")
+        XCTAssertEqual(question.detail, "You start around 00–01, 11–14 and 22–24. Your set windows caught 4 of 46 starts.")
         XCTAssertEqual(question.choices.map(\.title), ["Use these hours", "Add them to mine", "Keep my windows"])
     }
 

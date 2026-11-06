@@ -156,6 +156,33 @@ final class CoachPanelEvidenceCaptureTests: XCTestCase {
 
     /// Rescue loop surfaces: ladder panels L1–L3, keep going, momentum, the shortcut notice,
     /// the pause screen, the menu bar counter and the popover during a starter block.
+    /// Coach v6/v7 panels: quick question, landing cue, back from break (layout check).
+    func testCaptureCoachV6V7Panels() throws {
+        let output = outputDirectory()
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let declared = [CoachOwnWorkWindow(startMinute: 420, endMinute: 540), CoachOwnWorkWindow(startMinute: 1200, endMinute: 1320)]
+        let fit = CoachWindowFit(starts: 46, covered: 4, observed: [
+            CoachOwnWorkWindow(startMinute: 0, endMinute: 60), CoachOwnWorkWindow(startMinute: 660, endMinute: 840), CoachOwnWorkWindow(startMinute: 1320, endMinute: 1440),
+        ])
+        let question = CoachQuestion.windowFit(fit, declared: declared)
+        func message(_ hook: String, _ detail: String?, primary: String = "") -> CoachComposedMessage {
+            CoachComposedMessage(style: .challenger, trigger: .startNudge, hook: hook, detail: detail.map { .line($0) }, primaryTitle: primary, hookIsFact: false)
+        }
+        let panels: [(String, CoachPanelPresentation, CGFloat)] = [
+            ("question", CoachPanelPresentation(kind: .question, message: message(question.hook, question.detail), questionID: question.id, choices: question.choices), 300),
+            ("landing", CoachPanelPresentation(kind: .landing, message: message("2 min left. What's the next step?", "Write where you'll pick up. It's waiting when the break ends."), step: "Write the join for Q4"), 220),
+            ("return", CoachPanelPresentation(kind: .returnFromBreak, message: message("Back to: Write the join for Q4", "After a break you're back within 5 min 28% of the time. Make this one of them.", primary: "Start 25m"),
+                                              plan: CoachStartTarget(minutes: 25, name: "Learning"), sizeOptions: [25, 10], recommendedMinutes: 25), 240),
+        ]
+        for appearance in ReviewArtifactAppearance.allCases {
+            for (name, presentation, height) in panels {
+                let image = try renderPanel(presentation, appearance: appearance, height: height)
+                try assertVisible(image, "\(name) \(appearance.rawValue)")
+                try writePNG(image, to: output.appendingPathComponent("coach_v7_\(name)_\(appearance.rawValue).png"))
+            }
+        }
+    }
+
     func testCaptureRescueLoopSurfaces() throws {
         let output = outputDirectory()
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)

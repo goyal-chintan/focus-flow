@@ -46,6 +46,18 @@ struct CoachWindowFit: Equatable, Sendable {
         }
     }
 
+    /// "00–01, 11–14 and 22–24" (hours only, for two-line copy).
+    var observedShortLabel: String {
+        let labels = observed.map { w in
+            "\(String(format: "%02d", w.startMinute / 60))–\(String(format: "%02d", w.endMinute / 60))"
+        }
+        switch labels.count {
+        case 0: return ""
+        case 1: return labels[0]
+        default: return labels.dropLast().joined(separator: ", ") + " and " + labels.last!
+        }
+    }
+
     static func compute(startDates: [Date], declared: [CoachOwnWorkWindow], calendar: Calendar = .current) -> CoachWindowFit {
         var perHour = Array(repeating: 0, count: 24)
         var covered = 0

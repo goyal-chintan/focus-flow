@@ -28,8 +28,8 @@ enum CoachQuestion: Equatable, Sendable {
 
     var hook: String {
         switch self {
-        case .windowFit(let fit, _):
-            "Your own work starts around \(fit.observedLabel). Should I watch those hours?"
+        case .windowFit:
+            "Should I watch the hours you actually work?"
         case .projectArea(_, let name, _):
             "Is \(name) your own work, or your day job?"
         case .naturalLength(let minutes, _):
@@ -39,8 +39,9 @@ enum CoachQuestion: Equatable, Sendable {
 
     var detail: String {
         switch self {
-        case .windowFit(let fit, let declared):
-            "Your set windows (\(declared.map(\.label).joined(separator: ", "))) caught \(fit.covered) of your last \(fit.starts) own-work starts, so I stayed quiet when you work."
+        case .windowFit(let fit, _):
+            // Two lines in the panel: compact hours, then the miss.
+            "You start around \(fit.observedShortLabel). Your set windows caught \(fit.covered) of \(fit.starts) starts."
         case .projectArea(_, let name, let blocks):
             "\(name) has \(blocks) blocks in 4 weeks but no area, so I leave them out of your goal and what I learn."
         case .naturalLength(_, let regular):
