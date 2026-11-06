@@ -122,6 +122,9 @@ final class AppUsageTracker {
 
     // Coach signal tracking
     private var appSwitchTimestamps: [Date] = []
+    /// Coach v8 §3.2: the hourly rollup (flushed into `ActivityHour` with the daily deltas).
+    private var activityRollup = ActivityRollup()
+    private var activityRowsByKey: [ActivityRollup.Key: ActivityHour] = [:]
     private var lastFrontmostBundleId: String = ""
     private var lastFrontmostWindowTitle: String = ""
     private var lastFrontmostBrowserHost: String?
@@ -356,6 +359,7 @@ final class AppUsageTracker {
         distractingFocusSecondsToday = 0
         currentTrackingDay = Calendar.current.startOfDay(for: Date())
         hydrateDailyCache()
+        purgeOldActivityHours()
         lastPersistAt = Date()
         currentCadence = TrackingCadence.forState(isFocusing: timerVM.state == .focusing)
         lastSampleAt = Date()
@@ -450,6 +454,8 @@ final class AppUsageTracker {
             ?? AppUsageEntry.recommendationDisplayLabel(for: "app:\(bundleId)")
 
         recordUsageDelta(bundleId: bundleId, appName: appName, isFocusing: isFocusing, seconds: elapsedSeconds)
+        recordHourly(bundleId: bundleId, appName: appName, domain: currentFrontmostBrowserHost,
+                     elapsedSeconds: elapsedSeconds, isFocusing: isFocusing, now: now)
 
         if let identity = appUsageCaptureWriter.browserDomainUsageIdentity(
             resolvedHost: currentFrontmostBrowserHost,
@@ -578,6 +584,8 @@ final class AppUsageTracker {
         if Self.isIgnoredSystemBundleIdentifier(bundleId) {
             lastFrontmostBundleId = ""
             lastFrontmostCategory = .neutral
+            recordHourly(bundleId: nil, appName: nil, domain: nil, elapsedSeconds: elapsedSeconds, isFocusing: isFocusing, now: now)
+            persistIfNeeded()
             return
         }
         let windowTitle: String
@@ -628,6 +636,8 @@ final class AppUsageTracker {
             settings: timerVM?.settings
         )
         let browserHost = contextPresentation.browserHost
+        recordHourly(bundleId: bundleId, appName: appName, domain: browserHost,
+                     elapsedSeconds: elapsedSeconds, isFocusing: isFocusing, now: now)
 
         // Skip FocusFlow itself — avoid mutating lastFrontmostCategory/labels so that
         // flushElapsedSample attributes seconds correctly when a cadence sync fires
@@ -767,6 +777,7 @@ final class AppUsageTracker {
         let today = Calendar.current.startOfDay(for: Date())
         guard today != currentTrackingDay else { return }
         persistIfNeeded(force: true)
+        purgeOldActivityHours()
         currentTrackingDay = today
         appEntriesByBundleID.removeAll()
         totalFocusSecondsToday = 0
@@ -819,6 +830,7 @@ final class AppUsageTracker {
         guard force || now.timeIntervalSince(lastPersistAt) >= persistInterval else { return }
 
         let appliedDeltas = hasPendingUsageDeltas ? applyPendingUsageDeltas(context: ctx) : []
+        applyActivityRollup(context: ctx)
 
         do {
             try persistContext(ctx)
@@ -830,6 +842,61 @@ final class AppUsageTracker {
             }
             log("Failed to persist app usage: \(error)")
         }
+    }
+
+    // MARK: - Hourly rollup (coach v8 §3.2)
+
+    private var storesActivityHours: Bool {
+        modelContext?.container.schema.entities.contains { $0.name == "ActivityHour" } ?? false
+    }
+
+    /// One tick of hourly activity: a call, away (idle 5+ min, lock, sleep), a domain, or the app.
+    private func recordHourly(bundleId: String?, appName: String?, domain: String?, elapsedSeconds: Int, isFocusing: Bool, now: Date) {
+        guard elapsedSeconds > 0, storesActivityHours, let vm = timerVM else { return }
+        let activity = ActivityRollup.activity(
+            frontmostBundleID: bundleId,
+            frontmostName: appName,
+            domain: domain,
+            idleSeconds: vm.systemIdleSeconds(),
+            inCall: CallDetector.shared.inCall(frontmostDomain: domain, now: now)
+        )
+        activityRollup.record(activity, seconds: elapsedSeconds, now: now,
+                              projectID: isFocusing ? vm.selectedProject?.id : nil, inBlock: isFocusing)
+    }
+
+    private func applyActivityRollup(context: ModelContext) {
+        guard storesActivityHours else { return }
+        let deltas = activityRollup.drain()
+        guard !deltas.isEmpty else { return }
+        // Only the current and previous hour stay cached.
+        if let newest = deltas.keys.map(\.hourStart).max() {
+            let keep = newest.addingTimeInterval(-3600)
+            activityRowsByKey = activityRowsByKey.filter { $0.key.hourStart >= keep }
+        }
+        for (key, delta) in deltas {
+            let row: ActivityHour
+            if let cached = activityRowsByKey[key] {
+                row = cached
+            } else {
+                let hour = key.hourStart, k = key.key
+                let candidates = (try? context.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart == hour && $0.key == k }))) ?? []
+                if let found = candidates.first(where: { $0.projectID == key.projectID && $0.inBlock == key.inBlock }) {
+                    row = found
+                } else {
+                    row = ActivityHour(hourStart: key.hourStart, key: key.key, label: delta.label, projectID: key.projectID, inBlock: key.inBlock)
+                    context.insert(row)
+                }
+                activityRowsByKey[key] = row
+            }
+            row.seconds += delta.seconds
+            row.switches += delta.switches
+        }
+    }
+
+    private func purgeOldActivityHours() {
+        guard storesActivityHours, let ctx = modelContext else { return }
+        let cutoff = Date().addingTimeInterval(-TimeInterval(ActivityRollup.retentionDays) * 86_400)
+        try? ctx.delete(model: ActivityHour.self, where: #Predicate { $0.hourStart < cutoff })
     }
 
     private var hasPendingUsageDeltas: Bool {

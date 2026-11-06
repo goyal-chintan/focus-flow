@@ -165,6 +165,33 @@ final class CalendarService {
 
     private var cachedAvailability: (computedAt: Date, value: CalendarAvailability)?
 
+    /// Coach v8 §3.1: leave and holiday marks per day from out-of-office and all-day events.
+    /// (`availability` drops these as "not busy"; the day ledger needs them.) Empty without access.
+    func dayMarks(from start: Date, to end: Date, calendar: Calendar = .current) -> [Date: CalendarDayMark] {
+        guard authStatus == .authorized, end > start else { return [:] }
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        var marks: [Date: CalendarDayMark] = [:]
+        for event in store.events(matching: predicate) where event.status != .canceled {
+            guard let eventStart = event.startDate, let eventEnd = event.endDate, eventEnd > eventStart else { continue }
+            if event.attendees?.first(where: { $0.isCurrentUser })?.participantStatus == .declined { continue }
+            let holidayCalendar = event.calendar?.type == .subscription
+                && (event.calendar?.title.lowercased().contains("holiday") ?? false)
+            var day = calendar.startOfDay(for: eventStart)
+            while day < eventEnd {
+                let next = calendar.date(byAdding: .day, value: 1, to: day) ?? eventEnd
+                let covered = min(eventEnd, next).timeIntervalSince(max(eventStart, day)) / 3600
+                if let mark = CalendarDayMark.mark(title: event.title, isAllDay: event.isAllDay,
+                                                   outOfOffice: event.availability == .unavailable,
+                                                   coversHours: covered, holidayCalendar: holidayCalendar) {
+                    // Leave beats holiday on the same day.
+                    if marks[day] != .leave { marks[day] = mark }
+                }
+                day = next
+            }
+        }
+        return marks
+    }
+
     /// Busy state and next event start from the user's calendars, for the coach idle path.
     /// Skips all-day, free, cancelled and declined events, and FocusFlow's own session log.
     /// Returns `.unknown` without calendar access. Cached for 60 s because the idle path runs often.

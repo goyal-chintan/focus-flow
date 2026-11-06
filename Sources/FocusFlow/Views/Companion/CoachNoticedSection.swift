@@ -15,7 +15,7 @@ struct CoachNoticedSection: View {
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
 
     var body: some View {
-        let patterns = computePatterns()
+        let patterns = daysPattern() + computePatterns()
         let questions = questionsToShow()
         FFSection("What the coach noticed", subtitle: "From your last \(days) days of blocks and breaks. These are what the coach acts on.") {
             VStack(alignment: .leading, spacing: FFSpace.l) {
@@ -84,10 +84,19 @@ struct CoachNoticedSection: View {
             if let area = ProjectArea(rawValue: choice.id) { timerVM.setProjectArea(id, area: area) }
         case .naturalLength:
             timerVM.applyNaturalLengthAnswer(choice)
+        case .dayType(let day, _, _):
+            if let type = DayType(rawValue: choice.id) { timerVM.setDayType(day, type: type) }
         }
     }
 
     // MARK: Data
+
+    /// Coach v8: the kind of days you had and whether days off were planned (phase 3 turns this
+    /// into the Your week page).
+    private func daysPattern() -> [CoachPattern] {
+        guard let sentence = DayLedgerSummary.sentence(timerVM.dayLedger(days: min(days, 28), now: now)) else { return [] }
+        return [CoachPattern(kind: .days, symbol: "calendar", title: "Your days", sentence: sentence)]
+    }
 
     private var ownWorkConfigured: Bool { GoalDataBuilder.ownWorkConfigured(projects) }
 
@@ -123,6 +132,7 @@ struct CoachNoticedSection: View {
     /// and a busy project with no area. Pure reads; nothing is written while drawing.
     private func questionsToShow() -> [CoachQuestion] {
         var questions: [CoachQuestion] = []
+        if let day = timerVM.dayTypeQuestion(now: now) { questions.append(day) }
         let declared = allSettings.first?.coachOwnWorkWindows ?? []
         let since = now.addingTimeInterval(-TimeInterval(CoachWindowFit.lookbackDays) * 86_400)
         let configured = ownWorkConfigured

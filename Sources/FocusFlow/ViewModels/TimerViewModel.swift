@@ -3066,6 +3066,7 @@ final class TimerViewModel {
             }
         }
         refreshWindowFit(now: now, force: force)
+        refreshCalendarDayLabels(now: now)
         if force {
             resolveExpiredCoachRewards(now: now, rebuild: false)
             rebuildBandit()
@@ -3578,7 +3579,7 @@ final class TimerViewModel {
             front: front,
             tiredRecently: tired,
             missedYesterday: snapshot.facts.missedYesterday,
-            weekend: Calendar.current.isDateInWeekend(now)
+            weekend: DayType.isWeekend(now)
         )
     }
 
@@ -5101,7 +5102,7 @@ final class TimerViewModel {
         busyworkContexts = Set(byContext.filter { $0.value.total >= 2 && Double($0.value.sideQuests) / Double($0.value.total) >= 0.5 }.keys)
     }
 
-    private func systemIdleSeconds() -> TimeInterval {
+    func systemIdleSeconds() -> TimeInterval {
         if let systemIdleSecondsProvider { return systemIdleSecondsProvider() }
         guard let anyEvent = CGEventType(rawValue: ~0) else { return 0 }
         return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyEvent)
@@ -5900,6 +5901,129 @@ final class TimerViewModel {
         ]))
     }
 
+    // MARK: Day ledger (coach v8 §3.1)
+
+    @ObservationIgnored private var calendarLabelsRefreshedDay: Date?
+
+    private var storesDayLedger: Bool {
+        modelContext?.container.schema.entities.contains { $0.name == "DayLabel" } ?? false
+    }
+
+    /// Once a day: leave and holiday marks from the calendar for the last 120 and next 14 days,
+    /// stored as `DayLabel(source: .calendar)`. A user's own label is never replaced.
+    func refreshCalendarDayLabels(now: Date = Date(), force: Bool = false) {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        guard !isEvidenceMode, storesDayLedger, let modelContext, force || calendarLabelsRefreshedDay != today,
+              CalendarService.shared.authStatus == .authorized,
+              let start = calendar.date(byAdding: .day, value: -120, to: today),
+              let end = calendar.date(byAdding: .day, value: 15, to: today) else { return }
+        calendarLabelsRefreshedDay = today
+        let marks = CalendarService.shared.dayMarks(from: start, to: end)
+        let existing = (try? modelContext.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day >= start }))) ?? []
+        var byDay = Dictionary(existing.map { ($0.day, $0) }, uniquingKeysWith: { a, _ in a })
+        for (day, mark) in marks {
+            let type: DayType = mark == .leave ? .leave : .holiday
+            if let label = byDay[day] {
+                if label.source == .calendar, label.type != type { label.typeRaw = type.rawValue }
+            } else {
+                let label = DayLabel(day: day, type: type, source: .calendar)
+                modelContext.insert(label)
+                byDay[day] = label
+            }
+        }
+        // A calendar mark that went away (event deleted) goes too.
+        for label in existing where label.source == .calendar && marks[label.day] == nil {
+            modelContext.delete(label)
+        }
+        saveContext()
+    }
+
+    /// The user's answer for a day ("On leave?" or a change in Insights).
+    func setDayType(_ day: Date, type: DayType) {
+        guard storesDayLedger, let modelContext else { return }
+        let start = Calendar.current.startOfDay(for: day)
+        let labels = (try? modelContext.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day == start }))) ?? []
+        labels.forEach(modelContext.delete)
+        modelContext.insert(DayLabel(day: start, type: type, source: .user))
+        saveContext()
+    }
+
+    /// The ledger, oldest first, for the `days` days ending today. Read-only (safe in `body`).
+    func dayLedger(days: Int, now: Date = Date()) -> [DayEntry] {
+        guard let modelContext, days > 0 else { return [] }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        guard let start = calendar.date(byAdding: .day, value: -(days - 1), to: today),
+              let end = calendar.date(byAdding: .day, value: 1, to: today) else { return [] }
+
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= start && $0.startedAt < end }))) ?? []
+        let usage = (try? modelContext.fetch(FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= start && $0.date < end }))) ?? []
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        let labels = storesDayLedger ? ((try? modelContext.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day >= start && $0.day < end }))) ?? []) : []
+        let hours = storesDayLedger ? ((try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end }))) ?? []) : []
+        let planned = canUsePlannedBlocks() ? plannedBlocks(from: start, to: end) : []
+        let tasks = (try? modelContext.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.day >= start && $0.day < end }))) ?? []
+        let keys = currentDriftRuleKeys(now: now)
+
+        var entries: [DayEntry] = []
+        var day = start
+        while day < end {
+            let next = calendar.date(byAdding: .day, value: 1, to: day) ?? end
+            let daySessions = sessions.filter { $0.type == .focus && $0.startedAt >= day && $0.startedAt < next && $0.endedAt != nil }
+            let minutes: (FocusSession) -> Double = { $0.actualDuration / 60 }
+            let ownMinutes = daySessions.filter { !ownConfigured || CoachHistoryReader.isOwnWork($0.project) }.map(minutes).reduce(0, +)
+            let workBlockMinutes = ownConfigured
+                ? daySessions.filter { $0.project?.areaRaw != nil && $0.project?.area == .work }.map(minutes).reduce(0, +)
+                : 0
+            let dayUsage = usage.filter { $0.date >= day && $0.date < next }
+            let appRows = dayUsage.filter { !$0.bundleIdentifier.hasPrefix("domain:") && !AppUsageTracker.isIgnoredSystemBundleIdentifier($0.bundleIdentifier) && $0.bundleIdentifier != "com.apple.loginwindow" }
+            let seconds: (AppUsageEntry) -> Double = { Double($0.duringFocusSeconds + $0.outsideFocusSeconds) }
+            let officeSeconds = dayUsage.filter { OfficeActivity.isOffice(key: $0.bundleIdentifier) || OfficeActivity.isOffice(key: $0.appName) }.map(seconds).reduce(0, +)
+            let activeMinutes = appRows.map(seconds).reduce(0, +) / 60
+            let derailSeconds = dayUsage.filter {
+                DerailerClassifier.isDerailer(UsageSample($0), confirmedKeys: keys.confirmed, allowedKeys: keys.allowed)
+            }.map { Double($0.outsideFocusSeconds) }.reduce(0, +)
+            let dayHours = hours.filter { $0.hourStart >= day && $0.hourStart < next }
+            let callMinutes = dayHours.isEmpty ? nil : Double(dayHours.filter { $0.key == "call" }.map(\.seconds).reduce(0, +)) / 60
+            let awayMinutes = dayHours.isEmpty ? nil : Double(dayHours.filter { $0.key == "away" }.map(\.seconds).reduce(0, +)) / 60
+
+            let label = labels.filter { $0.day == day }.sorted { $0.source == .user && $1.source != .user }.first
+            let signals = DaySignals(
+                day: day,
+                userLabel: label?.source == .user ? label?.type : nil,
+                calendarMark: label?.source == .calendar ? (label?.type == .leave ? .leave : .holiday) : nil,
+                officeMinutes: officeSeconds / 60 + workBlockMinutes + (callMinutes ?? 0),
+                activeMinutes: max(activeMinutes, daySessions.map(minutes).reduce(0, +))
+            )
+            let classification = DayClassifier.classify(signals, now: now, calendar: calendar)
+
+            // Planned: a block planned for the day, or a task you added for it, before you acted.
+            let firstStart = daySessions.map(\.startedAt).min() ?? next
+            let hadPlan = planned.contains { calendar.isDate($0.day, inSameDayAs: day) && $0.createdAt < min(firstStart, $0.startAt) }
+                || tasks.contains { calendar.isDate($0.day, inSameDayAs: day) && $0.reminderID == nil && $0.carriedFromID == nil && $0.createdAt < firstStart }
+
+            let target = classification.type.defaultTargetMinutes
+            entries.append(DayEntry(
+                day: day, classification: classification, planned: hadPlan,
+                ownMinutes: ownMinutes, officeMinutes: signals.officeMinutes, callMinutes: callMinutes, awayMinutes: awayMinutes,
+                derailMinutes: derailSeconds / 60, targetMinutes: target,
+                verdict: DayVerdict.of(planned: hadPlan, ownMinutes: ownMinutes, targetMinutes: target, isPast: next <= now)
+            ))
+            day = next
+        }
+        return entries
+    }
+
+    /// Today, when the coach should ask what kind of day it is (likely leave, not yet answered).
+    func dayTypeQuestion(now: Date = Date()) -> CoachQuestion? {
+        guard storesDayLedger, let today = dayLedger(days: 1, now: now).last else { return nil }
+        let c = today.classification
+        guard c.source == .inferred, c.type == .leave, c.confidence < DayClassification.askBelow else { return nil }
+        return .dayType(day: today.day, inferred: c.type, reason: c.reason)
+    }
+
     // MARK: Quick questions (coach v6 §3.4)
 
     /// The questions the coach has right now, most useful first (snoozed ones included).
@@ -5907,6 +6031,8 @@ final class TimerViewModel {
         let declared = settings?.coachOwnWorkWindows ?? []
         refreshWindowFit(now: now)
         var questions: [CoachQuestion] = []
+        // Coach v8: what kind of day it is decides every target, so it is asked first.
+        if let day = dayTypeQuestion(now: now) { questions.append(day) }
         if let fit = windowFit, fit.isMismatch(declared: declared), !keepsDeclaredWindows(now: now) {
             questions.append(.windowFit(fit, declared: declared))
         }
@@ -5992,6 +6118,11 @@ final class TimerViewModel {
             }
         case "natural_length":
             applyNaturalLengthAnswer(choice, now: now)
+        case let id? where id.hasPrefix("day_type."):
+            if let type = DayType(rawValue: choice.id) {
+                setDayType(now, type: type)
+                coachJournal.record(.logged, "Today is a \(type.title.lowercased()).", code: .question, at: now)
+            }
         case let id? where id.hasPrefix("project_area."):
             if let uuid = UUID(uuidString: String(id.dropFirst("project_area.".count))), let area = ProjectArea(rawValue: choice.id) {
                 setProjectArea(uuid, area: area)

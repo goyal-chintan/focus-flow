@@ -6,7 +6,7 @@ import Foundation
 
 struct CoachPattern: Equatable, Sendable, Identifiable {
     enum Kind: String, Sendable {
-        case hours, windowsFit, breaks, backToBack, lengths, cycle, returnPanel
+        case days, hours, windowsFit, breaks, backToBack, lengths, cycle, returnPanel
     }
 
     let kind: Kind

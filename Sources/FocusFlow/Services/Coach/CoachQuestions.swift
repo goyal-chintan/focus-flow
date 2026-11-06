@@ -17,12 +17,15 @@ enum CoachQuestion: Equatable, Sendable {
     case projectArea(projectID: UUID, name: String, blocks: Int)
     /// Coach v7 §3.1: blocks keep running past the usual length while you focus.
     case naturalLength(minutes: Int, regular: Int)
+    /// Coach v8 §3.1: a quiet weekday. Leave, holiday, or a quiet workday?
+    case dayType(day: Date, inferred: DayType, reason: String)
 
     var id: String {
         switch self {
         case .windowFit: "window_fit"
         case .projectArea(let id, _, _): "project_area.\(id.uuidString)"
         case .naturalLength: "natural_length"
+        case .dayType(let day, _, _): "day_type.\(Int(day.timeIntervalSince1970))"
         }
     }
 
@@ -34,6 +37,8 @@ enum CoachQuestion: Equatable, Sendable {
             "Is \(name) your own work, or your day job?"
         case .naturalLength(let minutes, _):
             "Your blocks run about \(minutes) min. Make \(minutes) your usual?"
+        case .dayType:
+            "No Slack or calls today. On leave?"
         }
     }
 
@@ -46,6 +51,8 @@ enum CoachQuestion: Equatable, Sendable {
             "\(name) has \(blocks) blocks in 4 weeks but no area, so I leave them out of your goal and what I learn."
         case .naturalLength(_, let regular):
             "Most of your recent \(regular)m blocks ran 8+ min over while you focused. A block that ends where you planned beats a \(regular) you always stretch."
+        case .dayType:
+            "It sets today's own-work target: 3h on leave, 1h 30m on a workday."
         }
     }
 
@@ -67,6 +74,13 @@ enum CoachQuestion: Equatable, Sendable {
             [
                 CoachQuestionChoice(id: "\(minutes)", title: "Make it \(minutes) min"),
                 CoachQuestionChoice(id: "keep", title: "Keep \(regular) min"),
+            ]
+        case .dayType:
+            [
+                CoachQuestionChoice(id: DayType.leave.rawValue, title: "Yes, on leave"),
+                CoachQuestionChoice(id: DayType.holiday.rawValue, title: "A holiday"),
+                CoachQuestionChoice(id: DayType.workday.rawValue, title: "Working, just quiet"),
+                CoachQuestionChoice(id: DayType.sick.rawValue, title: "Sick day"),
             ]
         }
     }

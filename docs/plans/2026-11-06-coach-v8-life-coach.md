@@ -1,6 +1,6 @@
 # Coach v8: from focus timer to life coach
 
-Date: 2026-11-06 · Status: proposed · Builds on v6 (adapt and speak) and v7 (land and return)
+Date: 2026-11-06 · Status: phase 1 built, phases 2–5 proposed · Builds on v6 (adapt and speak) and v7 (land and return)
 
 > "The Insights section should have strong recommendations… what are the patterns, what are the
 > strongest recommendations, and whether the behaviour is improving or not… If I'm putting more time
@@ -182,3 +182,16 @@ Recommended order: 1 → 2 → 3 → 4 → 5. Phases 3 and 5 can swap if the clu
 2. **Weekend days.** Saturday and Sunday? (en_IN treats only Sunday as the weekend.)
 3. **Weekly review time.** Sunday 19:00?
 4. **Recording.** An hourly per-app rollup and camera/mic in-use flags, kept locally, with no window titles. Is that OK?
+
+## 7. Phase 1, as built (6 Nov 2026)
+- **Ledger on the live store** (`DayLedgerStoreTests/testLedgerOnALiveStoreCopy`, 17 Oct – 6 Nov):
+  - Leave on 20 Oct, 4 Nov, 5 Nov and 6 Nov (no office apps).
+  - Weekends 18 Oct, 24 Oct and 25 Oct were *unplanned & lost*.
+  - Summary: "11 workdays, 3 leave days, 6 weekend days. Of 9 days off, 1 had a plan and 4 went
+    unplanned with little own work."
+- **Office minutes come from the daily rows**, so past days work from day one. The hourly rollup
+  only adds call and away minutes, from the install onward. Hourly office time by 13:00 is a
+  phase-2 refinement.
+- **Inferred leave stays at confidence 0.6 until you answer.** The coach asks "On leave?" once,
+  first among its quick questions. Calendar out-of-office events skip the question.
+- **No new screen yet** beyond the "Your days" line in Insights. The Your week page is phase 3.
