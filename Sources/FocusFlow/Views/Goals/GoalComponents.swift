@@ -77,15 +77,13 @@ struct PaceBar: View {
 // MARK: - Goal card
 
 /// A goal, calm (coach v8 §3.6): what it is and when it's due, one sentence on where you stand
-/// (the pace, said once), one bar, and today's step ("Today: 3 LeetCode questions"). Each number
+/// (the pace, said once), one bar, and today's count per number ("2 of 4 today", with +1). Each number
 /// with its +1 / −1, the chart and "Add from Reminders" sit behind one disclosure. A goal with
 /// nothing to count says so and offers the two ways forward instead of a 0% bar.
 struct GoalCard: View {
     let goal: ProjectGoal
     let project: Project?
     let now: Date
-    /// "Today: 3 LeetCode questions" (`CalmSurfaces.goalTodayLine`); nil when nothing is due today.
-    var todayLine: String?
     var onEdit: (() -> Void)?
     /// Pick reminders (the project's tasks) to count toward this goal; nil when its project has none.
     var onPickReminders: (() -> Void)?
@@ -113,16 +111,30 @@ struct GoalCard: View {
                 .foregroundStyle(summary.status == .behind || summary.status == .overdue ? summary.status.color : .primary)
                 .fixedSize(horizontal: false, vertical: true)
                 PaceBar(fraction: summary.fraction, expected: summary.expectedFraction, color: summary.status.color, height: 8)
-                if let todayLine {
-                    Label(todayLine, systemImage: "arrow.turn.down.right")
-                        .ffText(.callout)
-                        .lineLimit(1)
-                }
+                todayRows(results)
                 numbers(summary, results: results)
             }
         }
         .padding(FFSpace.l)
         .ffSurface()
+    }
+
+    /// Today, always in view (6 Nov 2026): each counted number's "2 of 4 today" with its +1, so
+    /// what you did today is never behind a disclosure or mixed up with what's still to do.
+    @ViewBuilder
+    private func todayRows(_ results: [GoalKeyResult]) -> some View {
+        let counts = GoalDataBuilder.todayCounts(goal, now: now)
+        let rows = results.compactMap { kr in counts[kr.id].flatMap { $0.label == nil ? nil : (kr, $0) } }
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: FFSpace.s) {
+                ForEach(rows, id: \.0.id) { kr, count in
+                    TodayCountRow(keyResult: kr, count: count)
+                }
+            }
+            .padding(FFSpace.m)
+            .background(RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous).fill(FFPalette.track.opacity(0.6)))
+            .accessibilityIdentifier("goals.today")
+        }
     }
 
     /// Each number with +1 / −1, the chart and Reminders, behind one row.
@@ -280,7 +292,7 @@ struct KeyResultRow: View {
     var compact: Bool = false
     var sessionID: UUID?
 
-    @Environment(\.modelContext) private var modelContext
+    @Environment(TimerViewModel.self) private var timerVM
     @State private var bump = 0
 
     var body: some View {
@@ -289,6 +301,12 @@ struct KeyResultRow: View {
                 HStack(spacing: FFSpace.s) {
                     Text(keyResult.title).ffText(.body).lineLimit(1)
                     Spacer(minLength: FFSpace.s)
+                    if let today = Self.doneToday(keyResult), today > 0 {
+                        Text("+\(Self.number(today)) today")
+                            .ffText(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(FFPalette.goal)
+                    }
                     Text("\(Self.number(pace.done)) of \(Self.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
                         .ffText(.headline)
                         .monospacedDigit()
@@ -329,17 +347,78 @@ struct KeyResultRow: View {
         .sensoryFeedback(.increase, trigger: bump)
     }
 
+    /// Through today's task for this number when there is one, so the task and the goal keep one count.
     private func log(_ amount: Double) {
-        guard amount != 0 else { return }
-        let entry = GoalProgressEntry(amount: amount, sessionID: sessionID)
-        modelContext.insert(entry)
-        keyResult.entries.append(entry)
-        try? modelContext.save()
-        if amount > 0 { bump += 1 }
+        if amount > 0 {
+            timerVM.logOneMore(resultID: keyResult.id)
+            bump += 1
+        } else if amount < 0 {
+            timerVM.takeBackOne(resultID: keyResult.id)
+        }
     }
 
     static func number(_ value: Double) -> String {
         value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    /// What was logged to this number today.
+    static func doneToday(_ keyResult: GoalKeyResult, now: Date = Date()) -> Double? {
+        let today = Calendar.current.startOfDay(for: now)
+        return keyResult.entries.filter { $0.at >= today }.reduce(0) { $0 + $1.amount }
+    }
+}
+
+/// One number's day on a goal card: "Problems Solved · 2 of 4 today", a dot per item, and +1.
+struct TodayCountRow: View {
+    let keyResult: GoalKeyResult
+    let count: TodayCount
+
+    @Environment(TimerViewModel.self) private var timerVM
+    @State private var bump = 0
+
+    var body: some View {
+        HStack(spacing: FFSpace.m) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
+                    Text("Today").ffText(.caption)
+                    Text(keyResult.title).ffText(.body).lineLimit(1)
+                }
+                if count.aim > 0, count.aim <= 12 {
+                    HStack(spacing: 4) {
+                        ForEach(0..<count.aim, id: \.self) { i in
+                            Circle()
+                                .fill(Double(i) < count.done ? FFPalette.goal : FFPalette.track)
+                                .frame(width: 9, height: 9)
+                        }
+                    }
+                    .accessibilityHidden(true)
+                }
+            }
+            Spacer(minLength: FFSpace.s)
+            Text(count.label ?? "")
+                .ffText(.headline)
+                .monospacedDigit()
+                .foregroundStyle(count.isMet ? FFPalette.goal : .primary)
+                .contentTransition(.numericText())
+            Button {
+                timerVM.logOneMore(resultID: keyResult.id)
+                bump += 1
+            } label: {
+                Text("+1")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 12)
+                    .frame(minWidth: 44, minHeight: 30)
+                    .background(Capsule().fill(FFPalette.accent.opacity(0.16)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(FFPalette.accent)
+            .help("Log 1 \(keyResult.unit ?? keyResult.title)")
+            .accessibilityLabel("Log 1: \(keyResult.title)")
+        }
+        .sensoryFeedback(.increase, trigger: bump)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(keyResult.title): \(count.label ?? "")")
     }
 }
 

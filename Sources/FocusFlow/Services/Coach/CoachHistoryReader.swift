@@ -163,7 +163,7 @@ struct CoachHistoryReader {
         return sessions.first { session in
             session.project?.id == projectID
                 && !(session.intentText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-        }?.intentText
+        }?.intentText.map(BlockTitle.clean)
     }
 
     // MARK: Streak

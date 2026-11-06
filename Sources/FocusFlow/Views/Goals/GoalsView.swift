@@ -71,13 +71,11 @@ struct GoalsView: View {
                         }
                     }
                 } else {
-                    let levers = GoalDataBuilder.levers(activeGoals, now: now)
                     ForEach(activeGoals) { goal in
                         GoalCard(
                             goal: goal,
                             project: projects.first { $0.id == goal.projectID },
                             now: now,
-                            todayLine: CalmSurfaces.goalTodayLine(levers: levers, keyResultIDs: Set(goal.sortedKeyResults.map(\.id))),
                             onEdit: { goalSheet = GoalSheet(goal: goal, projectID: goal.projectID) },
                             // Only for a project that syncs a Reminders list: the button says "Reminders".
                             onPickReminders: projects.first(where: { $0.id == goal.projectID && !($0.reminderListID ?? "").isEmpty })

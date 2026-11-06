@@ -310,6 +310,11 @@ final class YourWeekStoreTests: XCTestCase {
         for t in week.trends { print("WEEK TREND \(t.title): \(t.value) \(t.delta ?? "") \(t.direction.rawValue) (\(t.baseline ?? "-"))") }
         for d in week.days { print("WEEK DAY \(d.day) \(d.type.rawValue) \(d.verdict.rawValue) own=\(Int(d.ownMinutes)) target=\(d.targetMinutes)") }
         for r in vm.allLifeRecommendations() { print("WEEK REC [\(String(format: "%.2f", r.score))] \(r.title) | \(r.evidence) | \(r.actionTitle)") }
+        for goal in vm.historyReaderActiveGoals() {
+            let counts = GoalDataBuilder.todayCounts(goal, now: Date())
+            for kr in goal.sortedKeyResults { print("GOAL TODAY \(goal.title) / \(kr.title): \(counts[kr.id]?.label ?? "-") (total \(Int(kr.done)) of \(Int(kr.target)))") }
+        }
+        for lever in vm.todayLevers() { print("GOAL LEVER \(lever.action) | block title: \(lever.intentTitle)") }
         let help = vm.coachHelping()
         print("WEEK HELP prompt=\(String(describing: help.promptLift)) return=\(String(describing: help.returnLift))")
     }

@@ -709,6 +709,7 @@ final class TimerViewModel {
     func ensureConfigured(modelContext: ModelContext) {
         if !isConfigured {
             configure(modelContext: modelContext)
+            repairCountedTasks()
         }
     }
 
@@ -2988,8 +2989,9 @@ final class TimerViewModel {
             pendingIntentText = task.title
             pendingTaskID = task.id
         } else if intentIsFree, let lever = currentLever(projectID: plan?.projectID) {
-            // The block's intent is today's lever: a specific output, not "work on it".
-            pendingIntentText = lever.action
+            // The block's intent is today's lever: what you count ("Problems Solved"), not "work
+            // on it" and not today's numbers.
+            pendingIntentText = lever.intentTitle
         }
         let started = startFocus()
         selectedMinutes = preferredMinutes
@@ -3700,7 +3702,7 @@ final class TimerViewModel {
     }
 
     /// The running block's intent ("3 LeetCode questions"), for the notch.
-    var currentIntentText: String? { currentSession?.intentText }
+    var currentIntentText: String? { currentSession?.intentText.map(BlockTitle.clean) }
 
     /// Active goals from the store (empty before configure or without the goal entities).
     func historyReaderActiveGoals() -> [ProjectGoal] { historyReader?.activeGoals() ?? [] }
@@ -3799,12 +3801,52 @@ final class TimerViewModel {
         return task
     }
 
-    /// Adds today's lever ("3 LeetCode questions") as a task linked to its key result.
+    /// Adds today's lever as a task linked to its key result: the whole day's aim, already counting
+    /// what you logged on that number today, so it reads "2 of 4", the same as the goal (6 Nov 2026:
+    /// it read "0 of 2" while the goal said 2 of 4). Earlier entries are counted, never re-tagged:
+    /// unticking or deleting the task removes only what was logged through it.
     @discardableResult
     func addLeverTask(_ lever: DailyLever, now: Date = Date()) -> DailyTask? {
-        // A goal count ("3 LeetCode questions") stays in FocusFlow: it never adds a reminder.
-        addDailyTask(title: lever.taskTitle, projectID: lever.projectID, keyResultID: lever.id, amount: lever.amount,
-                     pushToReminders: false, now: now)
+        // A goal count stays in FocusFlow: it never adds a reminder.
+        let aim = max(lever.aim, lever.doneToday + Int(lever.amount))
+        guard let task = addDailyTask(title: lever.taskTitle, projectID: lever.projectID, keyResultID: lever.id,
+                                      amount: Double(aim), pushToReminders: false, now: now) else { return nil }
+        if task.isCounted, lever.doneToday > 0 {
+            task.loggedAmount = Double(lever.doneToday)
+            saveContext()
+        }
+        CountedTaskRepair(defaults: defaults).markDone(task.id)
+        return task
+    }
+
+    /// Once, for counted tasks made before 6 Nov 2026's fix with "N more" amounts: what was already
+    /// logged on the number that day before the task was made joins both its count and its amount
+    /// (2 done + "2 more" = 2 of 4). Entries are not changed; each task is fixed once.
+    func repairCountedTasks(now: Date = Date()) {
+        let repair = CountedTaskRepair(defaults: defaults)
+        let cutoff = repair.cutoff(now: now)
+        for task in todayTasks(now: now) where task.isCounted && task.createdAt < cutoff && !repair.isDone(task.id) {
+            repair.markDone(task.id)
+            guard let result = keyResult(for: task) else { continue }
+            let day = Calendar.current.startOfDay(for: task.day)
+            let before = result.entries
+                .filter { $0.taskID == nil && $0.at >= day && $0.at < task.createdAt && $0.amount > 0 }
+                .reduce(0) { $0 + $1.amount }
+            guard before > 0 else { continue }
+            task.amount = task.progressAmount + before
+            task.loggedAmount = task.loggedCount + before
+            dailyTaskRevision += 1
+        }
+        saveContext()
+    }
+
+    /// −1 on a number: back off today's task when it holds the count, else a plain −1 entry.
+    func takeBackOne(resultID: UUID, sessionID: UUID? = nil, now: Date = Date()) {
+        if let task = todayTasks(now: now).first(where: { $0.keyResultID == resultID && $0.isCounted && $0.loggedCount > 0 }) {
+            stepDailyTask(task, by: -1, sessionID: sessionID, now: now)
+        } else {
+            logGoalProgress(resultID: resultID, amount: -1, now: now)
+        }
     }
 
     /// Ticks or unticks a task. A linked task logs what is left of its amount on tick and removes

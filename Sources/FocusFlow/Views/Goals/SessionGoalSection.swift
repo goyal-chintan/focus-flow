@@ -96,6 +96,13 @@ private struct SessionKeyResultRow: View {
                         .lineLimit(1)
                     if addedThisBlock > 0 { thisBlockChip }
                     Spacer(minLength: 4)
+                    // Today's count beside the total (6 Nov 2026: "how many today?" had no answer here).
+                    if let today = KeyResultRow.doneToday(keyResult), today > 0 {
+                        Text("\(KeyResultRow.number(today)) today ·")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            .monospacedDigit()
+                    }
                     Text("\(KeyResultRow.number(pace.done)) / \(KeyResultRow.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
                         .font(.system(size: 12, weight: .semibold))
                         .monospacedDigit()

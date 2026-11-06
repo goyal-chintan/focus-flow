@@ -124,12 +124,4 @@ enum CalmSurfaces {
         return row.type == .sick ? 30 : row.effective
     }
 
-    // MARK: Goals: "today: …"
-
-    /// The goal's line for today: its first lever ("Today: 3 LeetCode questions"), or nil. A lever
-    /// that already says "today" ("Job applications: 1 today") is not prefixed again.
-    static func goalTodayLine(levers: [DailyLever], keyResultIDs: Set<UUID>) -> String? {
-        guard let action = levers.first(where: { keyResultIDs.contains($0.id) })?.action else { return nil }
-        return action.localizedCaseInsensitiveContains("today") ? action : "Today: \(action)"
-    }
 }

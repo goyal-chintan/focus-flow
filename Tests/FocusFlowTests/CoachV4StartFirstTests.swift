@@ -366,12 +366,12 @@ final class CoachV4StartFirstTests: XCTestCase {
         let snapshot = vm.coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: .neutral)
         XCTAssertEqual(snapshot.target.name, "Learning", "No weekly priority: the #1 project")
         XCTAssertEqual(snapshot.target.projectID, learning.id)
-        XCTAssertEqual(snapshot.facts.lever, "3 LeetCode questions", "60 left over 20 days")
+        XCTAssertEqual(snapshot.facts.lever, "LeetCode questions: 0 of 3 today", "60 left over 20 days: done of today's aim")
 
         XCTAssertTrue(vm.startNextBlock(minutes: 15))
         let session = try XCTUnwrap(context.fetch(FetchDescriptor<FocusSession>()).first)
         XCTAssertEqual(session.project?.id, learning.id)
-        XCTAssertEqual(session.intentText, "3 LeetCode questions")
+        XCTAssertEqual(session.intentText, "LeetCode questions", "The block's title is what you count, never today's numbers")
     }
 
     func testOfficeHoursDoNotFillTheOwnWorkGoal() throws {

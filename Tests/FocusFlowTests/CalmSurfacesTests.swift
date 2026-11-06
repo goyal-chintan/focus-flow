@@ -68,20 +68,6 @@ final class CalmSurfacesTests: XCTestCase {
         XCTAssertNil(CalmSurfaces.notchIntent("  ", taskTitle: nil))
     }
 
-    // MARK: Goals: "today: …"
-
-    func testGoalTodayLineIsItsOwnLeverOnly() {
-        let mine = UUID(), other = UUID()
-        let levers = [
-            DailyLever(id: other, goalTitle: "Other", projectID: nil, action: "Apply to 2 jobs", reason: "", status: .behind, urgency: 2),
-            DailyLever(id: mine, goalTitle: "Interview-ready", projectID: nil, action: "3 LeetCode questions", reason: "", status: .behind, urgency: 1),
-        ]
-        XCTAssertEqual(CalmSurfaces.goalTodayLine(levers: levers, keyResultIDs: [mine]), "Today: 3 LeetCode questions")
-        XCTAssertNil(CalmSurfaces.goalTodayLine(levers: levers, keyResultIDs: [UUID()]))
-        let said = DailyLever(id: other, goalTitle: "Jobs", projectID: nil, action: "Job applications: 1 today", reason: "", status: .behind, urgency: 1)
-        XCTAssertEqual(CalmSurfaces.goalTodayLine(levers: [said], keyResultIDs: [other]), "Job applications: 1 today", "Today is said once")
-    }
-
     // MARK: Settings → Focus: target per day type
 
     func testTargetRowsFollowTheGoalUntilYouSetANumber() {

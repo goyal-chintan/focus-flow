@@ -445,10 +445,49 @@ struct DailyLever: Sendable, Equatable, Identifiable {
     var amount: Double = 1
     /// The thing being counted, for a counted task: "LeetCode questions", "Problems solved".
     var countedName: String? = nil
+    /// Today's aim, fixed at the start of the day, and how many are done today (6 Nov 2026: the
+    /// old "Problems Solved: 4 today" was the number still to do, recomputed all day, and read as
+    /// a count of what was done).
+    var aim: Int = 0
+    var doneToday: Int = 0
 
-    /// The title for "add as a task". A counted task names what you count; its counter shows how
-    /// many ("Problems solved 0 of 3"). A one-off keeps the action.
-    var taskTitle: String { amount > 1 ? (countedName ?? action) : action }
+    /// A block's title when it is for this lever: what you count, never a number ("Problems Solved").
+    var intentTitle: String { countedName ?? goalTitle }
+
+    /// The title for "add as a task": what you count; its counter shows how many ("Problems
+    /// solved 2 of 4"). Never the lever's numbers.
+    var taskTitle: String { countedName ?? action }
+}
+
+/// A block's title as shown and reused. Until 6 Nov 2026 a block for a lever was titled with the
+/// lever's numbers ("Problems Solved: 4 today"), which read as a score; the stored text stays as
+/// it was, and only how it is shown and reused drops the count.
+enum BlockTitle {
+    private static let countSuffix = try! NSRegularExpression(pattern: #"^(.+?):\s*\d+(?:\.\d+)?(?:\s+of\s+\d+)?\s+today\s*$"#, options: [.caseInsensitive])
+
+    static func clean(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let range = NSRange(trimmed.startIndex..., in: trimmed)
+        guard let match = countSuffix.firstMatch(in: trimmed, range: range),
+              let name = Range(match.range(at: 1), in: trimmed) else { return trimmed }
+        return String(trimmed[name])
+    }
+}
+
+/// One number's day: done today against today's aim ("2 of 4 today"). Aim 0: nothing asked today.
+struct TodayCount: Equatable, Sendable {
+    let done: Double
+    let aim: Int
+
+    var isMet: Bool { aim > 0 && done >= Double(aim) }
+    var left: Int { max(0, aim - Int(done)) }
+
+    /// "2 of 4 today", "4 of 4 today ✓", "2 today" (no aim), nil with neither.
+    var label: String? {
+        let d = done.rounded() == done ? String(Int(done)) : String(format: "%.1f", done)
+        if aim > 0 { return "\(d) of \(aim) today\(isMet ? " ✓" : "")" }
+        return done > 0 ? "\(d) today" : nil
+    }
 }
 
 enum DailyLevers {
@@ -471,6 +510,18 @@ enum DailyLevers {
 
     static let maxLevers = 3
 
+    /// Today's aim: the steady pace as it stood when the day began (what was done before today,
+    /// the days left from this morning), so it holds still all day while you log. Rounded up, but
+    /// not for clock noise: 3.0000001 a day is 3. 0 when the result is done, not started or a one-off.
+    static func todayAim(_ input: KeyResultInput, now: Date, calendar: Calendar = .current) -> Int {
+        guard input.target > 1 else { return 0 }
+        let dayStart = max(calendar.startOfDay(for: now), input.start)
+        let pace = GoalPacing.pace(target: input.target, done: input.done - input.doneToday, start: input.start, deadline: input.deadline, now: dayStart)
+        guard pace.status != .done, now >= input.start else { return 0 }
+        let needed = pace.neededPerDay ?? pace.remaining
+        return max(1, Int((needed - 0.01).rounded(.up)))
+    }
+
     /// "questions" → "question" for one (English plural heuristic: a trailing "s").
     static func unit(_ unit: String, count: Int) -> String {
         guard count == 1, unit.count > 2, unit.hasSuffix("s"), !unit.hasSuffix("ss") else { return unit }
@@ -485,13 +536,12 @@ enum DailyLevers {
             guard input.target > 1 else { return nil }
             let daysLeft = Int(pace.daysLeft.rounded(.up))
             let needed = pace.neededPerDay ?? pace.remaining
-            // Round up, but not for clock noise: 3.0000001 a day is 3.
-            let quota = (needed - 0.01).rounded(.up)
+            let quota = Double(todayAim(input, now: now))
             let todayAsk = max(1, Int(quota) - Int(input.doneToday))
             guard input.doneToday < quota else { return nil }
-            // "3 LeetCode questions" with a unit; "Referral asks: 1 today" without one.
-            let action = input.unit.map { "\(todayAsk) \(input.title) \(DailyLevers.unit($0, count: todayAsk))" }
-                ?? "\(input.title): \(todayAsk) today"
+            let name = input.unit.map { "\(input.title) \($0)" } ?? input.title
+            // One wording on every surface: "Problems Solved: 1 of 4 today".
+            let action = "\(name): \(Int(input.doneToday)) of \(Int(quota)) today"
             return DailyLever(
                 id: input.id, goalTitle: input.goalTitle, projectID: input.projectID,
                 action: action,
@@ -502,7 +552,9 @@ enum DailyLevers {
                 urgency: (pace.status == .overdue ? 100 : 0) + (input.isBossFight ? 50 : 0) + input.priorityBoost
                     + max(0, -pace.delta) / max(1, input.target) * 10 + needed / max(1, input.target),
                 amount: Double(todayAsk),
-                countedName: input.unit.map { "\(input.title) \($0)" } ?? input.title
+                countedName: name,
+                aim: Int(quota),
+                doneToday: Int(input.doneToday)
             )
         }
         // Most urgent first: overdue and the boss fight carry large bonuses, then how far behind.

@@ -117,7 +117,7 @@ final class DailyTaskTests: XCTestCase {
         )
         let lever = try? XCTUnwrap(DailyLevers.levers([input], now: Date()).first)
         // 60 over 30–31 days left is 1.94–2.0 a day at any time of day: 2.
-        XCTAssertEqual(lever?.action, "2 LeetCode questions")
+        XCTAssertEqual(lever?.action, "LeetCode questions: 0 of 2 today")
         XCTAssertEqual(lever?.amount, 2)
     }
 

@@ -130,7 +130,9 @@ final class GoalTrackingTests: XCTestCase {
             input("Apply for jobs", unit: nil, target: 1, done: 0),
             input("Referral asks", unit: nil, target: 3, done: 3),
         ], now: day(10))
-        XCTAssertEqual(levers.first?.action, "3 LeetCode questions", "52 left over 20 days → 2.6 → 3 today")
+        XCTAssertEqual(levers.first?.action, "LeetCode questions: 0 of 3 today", "52 left over 20 days → 2.6 → 3 today")
+        XCTAssertEqual(levers.first?.aim, 3)
+        XCTAssertEqual(levers.first?.intentTitle, "LeetCode questions")
         XCTAssertEqual(levers.first?.status, .behind)
         XCTAssertTrue(levers.first?.reason.hasPrefix("need 2.6/day") == true)
         XCTAssertEqual(PaceFormat.rate(0.3), "1 every 3 days")
@@ -252,5 +254,48 @@ final class GoalAwareCopyTests: XCTestCase {
         let rescue = CoachRescueContext(level: .lost, signal: nil, spanLabel: "today", ask: CoachRescueAsk(kind: .normal, minutes: 15, title: "Start 15m", target: nil), priorityName: "Learning")
         let message = compose(.challenger, trigger: .rescue(rescue), goal: behind)
         XCTAssertEqual(message.detail, .fact("LeetCode is 11 behind with 18 days left."))
+    }
+}
+
+/// 6 Nov 2026: "Problems Solved: 4 today" was the number still to do, recomputed all day, and was
+/// saved as the block's title. Today is now "done of aim", the aim holds still, titles carry no count.
+final class TodayCountTests: XCTestCase {
+    private let cal = Calendar.current
+
+    private func input(done: Double, doneToday: Double, now: Date) -> DailyLevers.KeyResultInput {
+        let start = cal.date(byAdding: .day, value: -10, to: cal.startOfDay(for: now))!
+        let deadline = cal.date(byAdding: .day, value: 10, to: cal.startOfDay(for: now))!
+        return .init(id: UUID(), title: "Problems Solved", unit: nil, target: 40, done: done, doneToday: doneToday,
+                     goalTitle: "Programming", projectID: nil, start: start, deadline: deadline)
+    }
+
+    func testTheAimHoldsStillAllDayWhileYouLog() {
+        let morning = cal.date(bySettingHour: 9, minute: 0, second: 0, of: Date())!
+        let evening = cal.date(bySettingHour: 22, minute: 0, second: 0, of: Date())!
+        // 20 before today, 20 left over 10 days: 2 a day, morning or night, before or after logging.
+        XCTAssertEqual(DailyLevers.todayAim(input(done: 20, doneToday: 0, now: morning), now: morning), 2)
+        XCTAssertEqual(DailyLevers.todayAim(input(done: 21, doneToday: 1, now: evening), now: evening), 2)
+        let lever = DailyLevers.levers([input(done: 21, doneToday: 1, now: evening)], now: evening).first
+        XCTAssertEqual(lever?.action, "Problems Solved: 1 of 2 today")
+        XCTAssertEqual(lever?.amount, 1, "One left")
+        XCTAssertEqual(lever?.intentTitle, "Problems Solved")
+        XCTAssertNil(DailyLevers.levers([input(done: 22, doneToday: 2, now: evening)], now: evening).first, "Met: no ask")
+    }
+
+    func testTodayCountLabels() {
+        XCTAssertEqual(TodayCount(done: 2, aim: 4).label, "2 of 4 today")
+        XCTAssertEqual(TodayCount(done: 4, aim: 4).label, "4 of 4 today ✓")
+        XCTAssertTrue(TodayCount(done: 5, aim: 4).isMet)
+        XCTAssertEqual(TodayCount(done: 3, aim: 0).label, "3 today", "No aim (a one-off or done goal): what you did")
+        XCTAssertNil(TodayCount(done: 0, aim: 0).label)
+        XCTAssertEqual(TodayCount(done: 1, aim: 4).left, 3)
+    }
+
+    func testOldBlockTitlesLoseTheirCount() {
+        XCTAssertEqual(BlockTitle.clean("Problems Solved: 4 today"), "Problems Solved")
+        XCTAssertEqual(BlockTitle.clean("LeetCode questions: 1 of 3 today"), "LeetCode questions")
+        XCTAssertEqual(BlockTitle.clean("  DS Algo "), "DS Algo")
+        XCTAssertEqual(BlockTitle.clean("Plan what to do today"), "Plan what to do today", "Words alone are kept")
+        XCTAssertEqual(SessionRow.title(intent: "Problems Solved: 5 today", taskTitle: nil, achievement: nil, fallback: "x"), "Problems Solved")
     }
 }

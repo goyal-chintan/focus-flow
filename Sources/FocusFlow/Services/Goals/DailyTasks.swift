@@ -168,3 +168,27 @@ struct DailyTaskReceipt: Equatable, Identifiable, Sendable {
         value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
     }
 }
+
+/// Counted tasks already given the 6 Nov 2026 fix (`TimerViewModel.repairCountedTasks`), so it
+/// never applies twice. Small and per Mac, in defaults.
+struct CountedTaskRepair {
+    static let key = "focusflow.countedTaskRepair.done"
+    static let cutoffKey = "focusflow.countedTaskRepair.cutoff"
+    let defaults: UserDefaults
+
+    /// Only tasks made before the first run of this build are repaired; later ones are made right.
+    func cutoff(now: Date) -> Date {
+        if let date = defaults.object(forKey: Self.cutoffKey) as? Date { return date }
+        defaults.set(now, forKey: Self.cutoffKey)
+        return now
+    }
+
+    func isDone(_ id: UUID) -> Bool { (defaults.stringArray(forKey: Self.key) ?? []).contains(id.uuidString) }
+
+    func markDone(_ id: UUID) {
+        var ids = defaults.stringArray(forKey: Self.key) ?? []
+        guard !ids.contains(id.uuidString) else { return }
+        ids.append(id.uuidString)
+        defaults.set(Array(ids.suffix(500)), forKey: Self.key)
+    }
+}

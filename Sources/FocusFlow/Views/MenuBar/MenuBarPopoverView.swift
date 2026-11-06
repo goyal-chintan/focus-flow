@@ -570,8 +570,10 @@ private struct IdlePopoverContent: View {
             autoIntent = task.title
             return
         }
-        autoIntent = lever.action
-        timerVM.pendingIntentText = lever.action
+        // The block's title is what you count ("Problems Solved"), never today's numbers: those
+        // change all day and read as a score in History (6 Nov 2026).
+        autoIntent = lever.intentTitle
+        timerVM.pendingIntentText = lever.intentTitle
         // The lever belongs to a project: a block on it should count there.
         if projectID == nil, let leverProjectID = lever.projectID,
            let project = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == leverProjectID })))?.first {
@@ -591,8 +593,8 @@ private struct IdlePopoverContent: View {
 
     private func pickLever(_ lever: DailyLever) {
         timerVM.pendingTaskID = nil
-        timerVM.pendingIntentText = lever.action
-        autoIntent = lever.action
+        timerVM.pendingIntentText = lever.intentTitle
+        autoIntent = lever.intentTitle
         if let projectID = lever.projectID,
            let project = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })))?.first {
             timerVM.selectedProject = project
