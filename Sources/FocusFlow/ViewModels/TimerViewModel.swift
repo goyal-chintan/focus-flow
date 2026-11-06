@@ -5955,6 +5955,7 @@ final class TimerViewModel {
         saveContext()
         todayTypeCache = nil
         goalProgressCache = nil
+        lifeRevision += 1
     }
 
     /// Today's day type when it is settled (`DayTargets.isSettled`), cached for 10 minutes.
@@ -6076,6 +6077,253 @@ final class TimerViewModel {
             day = next
         }
         return entries
+    }
+
+    // MARK: Your week (coach v8 §3.4)
+
+    /// Bumped when an answer changes the week (a day type, a recommendation applied or dismissed).
+    private(set) var lifeRevision = 0
+    /// The companion window shows the weekly review while this is true (coach v8 §3.5).
+    var weeklyReviewRequested = false
+
+    /// Opens the weekly review in the companion window.
+    func requestWeeklyReview() {
+        weeklyReviewRequested = true
+        openCompanionWindow?(.insights)
+    }
+    @ObservationIgnored private var lifeCache: (at: Date, revision: Int, week: YourWeek, input: LifeRecInput, recs: [LifeRecommendation])?
+
+    /// The week, its inputs and the ranked recommendations, cached for a minute (safe in `body`).
+    private func lifeSnapshot(now: Date) -> (week: YourWeek, input: LifeRecInput, recs: [LifeRecommendation]) {
+        let revision = lifeRevision &+ dayTargetsRevision &* 31
+        if let cache = lifeCache, cache.revision == revision, now.timeIntervalSince(cache.at) < 60, cache.at <= now {
+            return (cache.week, cache.input, cache.recs)
+        }
+        let input = lifeRecInput(now: now)
+        let calendar = Calendar.current
+        let weekStart = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) ?? now
+        let baseStart = weekStart.addingTimeInterval(-Double(YourWeek.baselineDays) * 86_400)
+        let sessions = cycleSessions(since: baseStart)
+        let week = YourWeek.build(
+            entries: input.entries, firstDay: firstHistoryDay(),
+            thisCycle: CoachCycleStats.compute(sessions.filter { $0.start >= weekStart }),
+            baselineCycle: CoachCycleStats.compute(sessions.filter { $0.start < weekStart }),
+            thisSwitches: blockSwitches(from: weekStart, to: now), baselineSwitches: blockSwitches(from: baseStart, to: weekStart),
+            calendar: calendar
+        )
+        let recs = LifeRecommendations.ranked(LifeRecommendations.all(input), records: LifeRecStore(defaults: defaults).load(), now: now)
+        lifeCache = (now, revision, week, input, recs)
+        return (week, input, recs)
+    }
+
+    func yourWeek(now: Date = Date()) -> YourWeek { lifeSnapshot(now: now).week }
+
+    /// "Do this next": at most three, ranked.
+    func lifeRecommendations(now: Date = Date()) -> [LifeRecommendation] { lifeSnapshot(now: now).recs }
+
+    /// Every recommendation the library has now, unranked (the weekly review's "one pick").
+    func allLifeRecommendations(now: Date = Date()) -> [LifeRecommendation] {
+        let records = LifeRecStore(defaults: defaults).load()
+        let all = LifeRecommendations.all(lifeSnapshot(now: now).input)
+        return LifeRecommendations.ranked(all, records: records, now: now) + all.filter { rec in
+            !LifeRecommendations.ranked(all, records: records, now: now).contains(rec) && records[rec.id]?.appliedAt == nil
+        }
+    }
+
+    /// Called when recommendations appear on screen (not while drawing).
+    func noteLifeRecommendationsShown(_ recs: [LifeRecommendation], now: Date = Date()) {
+        LifeRecStore(defaults: defaults).markShown(recs, now: now)
+    }
+
+    /// Apply: the one action, recorded with its baseline so next week can say whether it worked.
+    func applyLifeRecommendation(_ rec: LifeRecommendation, picked: Bool = false, now: Date = Date()) {
+        let entries = dayLedger(days: 28, now: now)
+        let cycle = CoachCycleStats.compute(cycleSessions(since: now.addingTimeInterval(-28 * 86_400)))
+        let baseline = LifeRecMetric.value(kind: rec.kind, id: rec.id, entries: entries, cycle: cycle)
+        switch rec.action {
+        case .planBlocks(let times):
+            for time in times where time > now { _ = insertPlannedBlock(at: time, now: now) }
+        case .setTarget(let type, let minutes):
+            setDayTarget(minutes, for: type)
+        case .blockLength(let minutes):
+            applyNaturalLengthAnswer(CoachQuestionChoice(id: "\(minutes)", title: ""), now: now)
+        case .breakLength(let minutes):
+            settings?.shortBreakDuration = TimeInterval(minutes * 60)
+            saveContext()
+        case .useObservedWindows:
+            if let settings { applyWindowFitAnswer(.useObserved, settings: settings, now: now) }
+        case .appRole(let key, let name, let projectID, let role):
+            setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .project(projectID), role: role)
+        case .markPull(let key, let name):
+            setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .everywhere, role: .pull)
+        case .openGoals:
+            openCompanionWindow?(.goals)
+        }
+        LifeRecStore(defaults: defaults).markApplied(rec, baseline: baseline, picked: picked, now: now)
+        coachJournal.record(.logged, "Recommendation applied: \(rec.title) (\(rec.actionTitle)).", code: .question, at: now)
+        lifeRevision += 1
+    }
+
+    func dismissLifeRecommendation(_ rec: LifeRecommendation, now: Date = Date()) {
+        LifeRecStore(defaults: defaults).dismiss(rec, now: now)
+        coachJournal.record(.declined, "Recommendation not now: \(rec.title).", code: .question, at: now)
+        lifeRevision += 1
+    }
+
+    /// What became of recent recommendations: applied ones judged a week later, shown ones not tried.
+    func lifeRecOutcomes(now: Date = Date()) -> [(record: LifeRecRecord, outcome: LifeRecOutcome)] {
+        let records = LifeRecStore(defaults: defaults).load().values
+        let recent = records.filter { record in
+            if let applied = record.appliedAt { return now.timeIntervalSince(applied) < 35 * 86_400 }
+            guard record.dismissedAt == nil, let shown = record.firstShownAt else { return false }
+            return now.timeIntervalSince(shown) >= LifeRecMetric.followUpAfter && now.timeIntervalSince(shown) < 21 * 86_400
+        }
+        guard !recent.isEmpty else { return [] }
+        let entries = dayLedger(days: 35, now: now)
+        return recent.sorted { ($0.appliedAt ?? $0.firstShownAt ?? .distantPast) > ($1.appliedAt ?? $1.firstShownAt ?? .distantPast) }
+            .prefix(4)
+            .map { record in
+                var current: Double?
+                if let applied = record.appliedAt, let kind = record.kind {
+                    let since = Calendar.current.startOfDay(for: applied)
+                    current = LifeRecMetric.value(kind: kind, id: record.id, entries: entries.filter { $0.day >= since },
+                                                  cycle: CoachCycleStats.compute(cycleSessions(since: applied)))
+                }
+                return (record, LifeRecMetric.outcome(record, current: current, now: now))
+            }
+    }
+
+    private func lifeRecInput(now: Date) -> LifeRecInput {
+        let calendar = Calendar.current
+        let entries = dayLedger(days: 35, now: now)
+        let projects = (try? modelContext?.fetch(FetchDescriptor<Project>())) ?? []
+        let goalMinutes = Int(GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now).seconds / 60)
+        let regular = regularMinutes
+        let recent = cycleSessions(since: now.addingTimeInterval(-28 * 86_400))
+
+        var breaks: (actual: Double, suggested: Double, count: Int)?
+        if let modelContext {
+            let since = now.addingTimeInterval(-28 * 86_400)
+            let events = (try? modelContext.fetch(FetchDescriptor<BreakLearningEvent>(predicate: #Predicate { $0.createdAt >= since }))) ?? []
+            let real = events.filter { $0.actualBreakSeconds >= 60 }
+            if !real.isEmpty {
+                breaks = (CoachPatterns.median(real.map { Double($0.actualBreakSeconds) / 60 }),
+                          CoachPatterns.median(real.map { Double($0.suggestedMinutes) }), real.count)
+            }
+        }
+
+        refreshWindowFit(now: now)
+        let declared = settings?.coachOwnWorkWindows ?? []
+        let fit = windowFit.flatMap { fit in
+            fit.isMismatch(declared: declared) && !keepsDeclaredWindows(now: now) ? (fit.observedLabel, fit.covered, fit.starts) : nil
+        }
+        let pull = appRoleCandidate(now: now).map { candidate, projectName in
+            (key: candidate.key, name: candidate.name, projectID: candidate.projectID, projectName: projectName, minutes: candidate.minutes, days: candidate.days)
+        }
+
+        // Your usual first start on days off (weekends and holidays in the ledger), else 10:00.
+        let freeDays = Set(entries.filter { $0.type == .weekend || $0.type == .holiday }.map(\.day))
+        var firstStarts: [Double] = []
+        for day in freeDays {
+            if let first = recent.filter({ $0.isFocus && calendar.isDate($0.start, inSameDayAs: day) }).map(\.start).min() {
+                firstStarts.append(Double(calendar.component(.hour, from: first)))
+            }
+        }
+        let freeHour = firstStarts.count >= 2 ? Int(CoachPatterns.median(firstStarts)) : 10
+
+        // The coming Saturday and Sunday (today too, before 18:00) with no plan yet.
+        let weekend = LifeRecommendations.comingWeekend(now: now, calendar: calendar).filter { day in
+            let next = calendar.date(byAdding: .day, value: 1, to: day) ?? day
+            return plannedBlocks(from: day, to: next).isEmpty
+        }
+
+        var slot: Date? = dailyPlanSuggestions(now: now).first?.start
+        if slot == nil, calendar.component(.hour, from: now) < 21 {
+            let base = now.addingTimeInterval(30 * 60)
+            let minute = calendar.component(.minute, from: base)
+            slot = calendar.date(bySettingHour: calendar.component(.hour, from: base), minute: minute < 30 ? 30 : 0, second: 0, of: base)
+                .map { minute < 30 ? $0 : $0.addingTimeInterval(3600) }
+        }
+
+        return LifeRecInput(
+            now: now, entries: entries, cycle: CoachCycleStats.compute(recent), regularMinutes: regular,
+            naturalLength: CoachNaturalLength.suggestion(recent, regularMinutes: regular), breaks: breaks, windowFit: fit,
+            appPull: pull, derailer: derailerBand(now: now), targets: dayTargets(), goalMinutes: goalMinutes,
+            freeDayHour: freeHour, unplannedWeekend: weekend, todaySlot: slot, hasPlanToday: hasPlanForToday(now: now), calendar: calendar
+        )
+    }
+
+    /// The first day with any history (blocks or app time).
+    private func firstHistoryDay() -> Date? {
+        guard let modelContext else { return nil }
+        var sessions = FetchDescriptor<FocusSession>(sortBy: [SortDescriptor(\.startedAt)]); sessions.fetchLimit = 1
+        var usage = FetchDescriptor<AppUsageEntry>(sortBy: [SortDescriptor(\.date)]); usage.fetchLimit = 1
+        return [(try? modelContext.fetch(sessions))?.first?.startedAt, (try? modelContext.fetch(usage))?.first?.date].compactMap { $0 }.min()
+    }
+
+    /// App and site switches inside blocks, and the block hours they happened in (hourly rollup).
+    private func blockSwitches(from start: Date, to end: Date) -> (count: Int, blockHours: Double)? {
+        guard storesDayLedger, let modelContext else { return nil }
+        let rows = (try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end && $0.inBlock }))) ?? []
+        let active = rows.filter { $0.key != "away" && $0.key != "call" }
+        guard !active.isEmpty else { return nil }
+        return (active.map(\.switches).reduce(0, +), Double(active.map(\.seconds).reduce(0, +)) / 3600)
+    }
+
+    /// The pull you spend most time on outside blocks in 2 weeks, and the 3 hours it clusters in.
+    private func derailerBand(now: Date) -> (key: String, name: String, minutes: Double, fromHour: Int, toHour: Int, isYourRule: Bool)? {
+        guard storesDayLedger, let modelContext else { return nil }
+        let since = now.addingTimeInterval(-14 * 86_400)
+        let rows = (try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= since && !$0.inBlock }))) ?? []
+        let book = appRoleBook(now: now)
+        var byKey: [String: (name: String, hours: [Int: Double])] = [:]
+        for row in rows where row.key != "away" && row.key != "call" {
+            let decision = book.role(key: row.key, name: row.label, in: .free)
+            guard decision.role == .pull else { continue }
+            let key = AppRoleBook.normalize(row.key)
+            byKey[key, default: (row.label, [:])].hours[Calendar.current.component(.hour, from: row.hourStart), default: 0] += Double(row.seconds) / 60
+        }
+        guard let (key, value) = byKey.max(by: { $0.value.hours.values.reduce(0, +) < $1.value.hours.values.reduce(0, +) }) else { return nil }
+        let total = value.hours.values.reduce(0, +)
+        let hours = value.hours
+        func bandMinutes(_ start: Int) -> Double {
+            var sum = 0.0
+            for offset in 0..<3 { sum += hours[(start + offset) % 24] ?? 0 }
+            return sum
+        }
+        var band = 0
+        for start in 1..<24 where bandMinutes(start) > bandMinutes(band) { band = start }
+        let inBand = bandMinutes(band)
+        guard total > 0, inBand / total >= 0.5 else { return nil }
+        return (key, value.name, total, band, band + 3, book.role(key: key, name: value.name, in: .free).source == .user)
+    }
+
+    /// Is the coach helping? Prompt lift (v5), the back-from-break panel (v7), recommendations.
+    struct CoachHelping {
+        let promptLift: CoachLiftEstimate.Result?
+        let returnLift: CoachCycleExperiment.Estimate?
+        let outcomes: [(record: LifeRecRecord, outcome: LifeRecOutcome)]
+    }
+
+    @ObservationIgnored private var coachHelpingCache: (at: Date, revision: Int, value: CoachHelping)?
+
+    /// Cached for a minute (the prompt model refit is not cheap); safe in `body`.
+    func coachHelping(now: Date = Date()) -> CoachHelping {
+        if let cache = coachHelpingCache, cache.revision == lifeRevision, now.timeIntervalSince(cache.at) < 60, cache.at <= now {
+            return cache.value
+        }
+        let value = computeCoachHelping(now: now)
+        coachHelpingCache = (now, lifeRevision, value)
+        return value
+    }
+
+    private func computeCoachHelping(now: Date) -> CoachHelping {
+        let starts = (historyReader?.focusSessions(since: now.addingTimeInterval(-60 * 86_400)) ?? []).map(\.startedAt)
+        return CoachHelping(
+            promptLift: coachLearningSummary(now: now).lift,
+            returnLift: CoachCycleExperiment.estimate(cycleDecisions(), starts: starts, now: now),
+            outcomes: lifeRecOutcomes(now: now)
+        )
     }
 
     // MARK: Apps in context (coach v8 §3.3)
@@ -6212,8 +6460,8 @@ final class TimerViewModel {
         }
     }
 
-    /// An office tool or a default pull open in an own-work project's blocks: ask which it is.
-    func appRoleQuestion(now: Date = Date()) -> CoachQuestion? {
+    /// The pull open longest in an own-work project's blocks this week, with its project's name.
+    func appRoleCandidate(now: Date = Date()) -> (AppRoleQuestionPicker.Candidate, String)? {
         guard let modelContext else { return nil }
         let book = appRoleBook(now: now)
         let projects = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived }))) ?? []
@@ -6230,7 +6478,13 @@ final class TimerViewModel {
         }
         guard let candidate = AppRoleQuestionPicker.pick(evidence: recent, names: appRoleNames(now: now), ownProjects: own, book: book),
               let project = projects.first(where: { $0.id == candidate.projectID }) else { return nil }
-        return .appRole(key: candidate.key, name: candidate.name, projectID: project.id, projectName: project.name, days: candidate.days)
+        return (candidate, project.name)
+    }
+
+    /// An office tool or a default pull open in an own-work project's blocks: ask which it is.
+    func appRoleQuestion(now: Date = Date()) -> CoachQuestion? {
+        guard let (candidate, projectName) = appRoleCandidate(now: now) else { return nil }
+        return .appRole(key: candidate.key, name: candidate.name, projectID: candidate.projectID, projectName: projectName, days: candidate.days)
     }
 
     /// Today, when the coach should ask what kind of day it is (likely leave, not yet answered).

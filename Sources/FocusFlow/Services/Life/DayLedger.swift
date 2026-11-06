@@ -157,9 +157,12 @@ enum DayVerdict: String, Equatable, Sendable {
     }
 
     /// "Did" means at least half the day type's own-work target, and at least 25 min.
+    /// Own-work minutes that make a day count as "did".
+    static func didMinutes(targetMinutes: Int) -> Double { max(25, Double(targetMinutes) / 2) }
+
     static func of(planned: Bool, ownMinutes: Double, targetMinutes: Int, isPast: Bool) -> DayVerdict {
         guard targetMinutes > 0 else { return .rest }
-        let did = ownMinutes >= max(25, Double(targetMinutes) / 2)
+        let did = ownMinutes >= didMinutes(targetMinutes: targetMinutes)
         if !isPast && !did { return .open }
         switch (planned, did) {
         case (true, true): return .plannedDone

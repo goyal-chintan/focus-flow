@@ -2,29 +2,56 @@ import SwiftUI
 import SwiftData
 import Charts
 
-/// Insights (structural redesign 2026-10-30) answers four questions in order: when do I focus best,
-/// what derails me, real work or busywork, did I do what I said. One range control drives the page.
-/// How the coach is doing moved to Settings → Coach. Every number here is computed from the local
-/// store by FocusAnalytics; nothing is hardcoded.
+/// Insights is "Your week" (coach v8 §3.4). It answers, in order: how was my week against my own
+/// last 4 weeks, which days went how, what should I do next, and is the coach helping. The
+/// questions and pattern sentences sit in one inbox below; the older analysis (when you focus,
+/// what derails you, real work, drift) follows under "More detail" with its own range. Every number
+/// is computed from the local store; nothing is hardcoded.
 struct InsightsView: View {
+    @Environment(TimerViewModel.self) private var timerVM
     @Query(sort: \FocusSession.startedAt) private var sessions: [FocusSession]
     @Query private var allSettings: [AppSettings]
     @Environment(\.companionNowOverride) private var nowOverride
     @Query(sort: \AppUsageEntry.date) private var usageEntries: [AppUsageEntry]
     @Query private var distractionRules: [IdleDistractionItem]
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
-    /// The page's one range, remembered per Mac.
+    /// The detail sections' one range, remembered per Mac.
     @AppStorage("insightsRange") private var range: InsightsRange = .month
+    @State private var selectedDay: Date?
 
     var body: some View {
         let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
+        let now = snapshot.now
+        // Answers (a day type, an applied recommendation, a target) redraw the page.
+        let _ = (timerVM.lifeRevision, timerVM.dayTargetsRevision)
+        let week = timerVM.yourWeek(now: now)
+        let recs = timerVM.lifeRecommendations(now: now)
         ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
-                FFPageHeader("Insights", subtitle: "What the coach noticed, then four questions, answered from your blocks and app usage") {
+                FFPageHeader("Your week", subtitle: "\(week.span) · against your own last 4 weeks") {
+                    Button {
+                        timerVM.requestWeeklyReview()
+                    } label: {
+                        Label("Weekly review", systemImage: "calendar.badge.checkmark")
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityIdentifier("insights.weeklyReview")
+                }
+                FFSection {
+                    VStack(alignment: .leading, spacing: FFSpace.l) {
+                        WeekVerdictSection(week: week)
+                        WeekTrendStrip(trends: week.trends)
+                    }
+                }
+                daysSection(week, now: now)
+                doThisNext(recs, now: now)
+                CoachHelpingSection(helping: timerVM.coachHelping(now: now))
+                CoachNoticedSection(days: 28, now: now)
+                FFPageHeader("More detail", subtitle: "When you focus, what derails you, real work or busywork") {
                     FFSegmentedPicker(title: "Range", options: InsightsRange.allCases, selection: $range, label: \.label)
                         .accessibilityIdentifier("insights.range")
                 }
-                CoachNoticedSection(days: range.days, now: snapshot.now)
+                .padding(.top, FFSpace.l)
                 whenYouFocus(snapshot)
                 derailers(snapshot)
                 realWork(snapshot)
@@ -34,6 +61,41 @@ struct InsightsView: View {
             .frame(maxWidth: 920, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // MARK: - Your week
+
+    private func daysSection(_ week: YourWeek, now: Date) -> some View {
+        FFSection("Days", subtitle: "Was the day planned, and did own work happen? Click a day for its hours.") {
+            VStack(alignment: .leading, spacing: FFSpace.l) {
+                WeekDaysStrip(days: week.days, selected: $selectedDay)
+                if let day = selectedDay, let entry = week.days.first(where: { $0.day == day }) {
+                    DayTimelineView(entry: entry, timeline: timerVM.dayTimeline(day, now: now)) { type in
+                        timerVM.setDayType(day, type: type)
+                    }
+                    .transition(.opacity)
+                }
+            }
+        }
+    }
+
+    private func doThisNext(_ recs: [LifeRecommendation], now: Date) -> some View {
+        FFSection("Do this next", subtitle: "From your own days, strongest first. One action each; next week says whether it worked.") {
+            VStack(alignment: .leading, spacing: FFSpace.s) {
+                if recs.isEmpty {
+                    FFEmptyState(systemImage: "checkmark.seal", message: "Nothing to change right now",
+                                 detail: "Recommendations appear when your days show a pattern worth acting on: lost weekends, missed targets, long breaks.")
+                } else {
+                    ForEach(Array(recs.enumerated()), id: \.element.id) { index, rec in
+                        LifeRecommendationCard(index: index + 1, rec: rec,
+                                               apply: { timerVM.applyLifeRecommendation(rec) },
+                                               dismiss: { timerVM.dismissLifeRecommendation(rec) })
+                    }
+                }
+            }
+            .task(id: recs.map(\.id)) { timerVM.noteLifeRecommendationsShown(recs) }
+        }
+        .accessibilityIdentifier("insights.doThisNext")
     }
 
     // MARK: - When do I focus best?

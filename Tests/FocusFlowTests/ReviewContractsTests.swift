@@ -322,7 +322,10 @@ final class ReviewContractsTests: XCTestCase {
         let general = try String(contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/Views/Companion/SettingsView.swift"), encoding: .utf8)
         XCTAssertTrue(general.contains("Toggle(isOn: bind(\\.coachShowDriftInMenuBar))"))
         XCTAssertTrue(general.contains("Toggle(isOn: bind(\\.coachGlobalHotkeyEnabled))"))
-        XCTAssertTrue(source.contains("CoachPerformanceView()"), "How the coach is doing moved here from Insights")
+        // Coach v8 §3.4: how the coach is doing lives in Insights → "Is the coach helping?", not Settings.
+        XCTAssertFalse(source.contains("CoachPerformanceView()"))
+        let insights = try String(contentsOf: repoRoot.appendingPathComponent("Sources/FocusFlow/Views/Companion/YourWeekSections.swift"), encoding: .utf8)
+        XCTAssertTrue(insights.contains("CoachPerformanceView()"), "How the coach is doing sits behind Details in Is the coach helping?")
         // What v5 learns or what nothing reads has no knob.
         for removed in ["Picker(\"Starter block\"", "Picker(\"Escalation\"", "DisclosureGroup(\"Advanced\"",
                         "First reminder after", "WeeklyPrioritiesSection(", "coachBringAppToFrontOnStrongPrompt",

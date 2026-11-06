@@ -1,9 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Coach v6 §3.5: the first thing in Insights. What the coach noticed in your blocks and breaks,
-/// one sentence each, plus whatever it is unsure about with a one-tap answer in place.
-/// Read-only in `body`: patterns are computed from queries, answers run in button actions.
+/// Coach v6 §3.5, v8 §3.4: the inbox at the bottom of Your week. Questions the coach is unsure
+/// about (one-tap answers in place) and the pattern sentences, each in its own disclosure so they
+/// sit apart from the week's analysis. Read-only in `body`: answers run in button actions.
 struct CoachNoticedSection: View {
     let days: Int
     let now: Date
@@ -13,12 +13,14 @@ struct CoachNoticedSection: View {
     @Query(sort: \BreakLearningEvent.createdAt) private var breakEvents: [BreakLearningEvent]
     @Query private var allSettings: [AppSettings]
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
+    @State private var showQuestions = true
+    @State private var showPatterns = false
 
     var body: some View {
-        let patterns = daysPattern() + computePatterns()
+        let patterns = computePatterns()
         let questions = questionsToShow()
-        FFSection("What the coach noticed", subtitle: "From your last \(days) days of blocks and breaks. These are what the coach acts on.") {
-            VStack(alignment: .leading, spacing: FFSpace.l) {
+        FFSection("Questions and patterns", subtitle: "What the coach is unsure about, and what it noticed in your last \(days) days of blocks and breaks.") {
+            VStack(alignment: .leading, spacing: FFSpace.m) {
                 if patterns.isEmpty && questions.isEmpty {
                     FFEmptyState(
                         systemImage: "sparkles",
@@ -26,27 +28,47 @@ struct CoachNoticedSection: View {
                         detail: "After about 8 blocks the coach says when you start, how long your breaks run and which block length you finish."
                     )
                 }
-                ForEach(questions, id: \.id) { question in
-                    questionCard(question)
-                }
-                ForEach(patterns) { pattern in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: pattern.symbol)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 18)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(pattern.title).ffText(.headline)
-                            Text(pattern.sentence)
-                                .ffText(.body)
-                                .fixedSize(horizontal: false, vertical: true)
+                if !questions.isEmpty {
+                    DisclosureGroup(isExpanded: $showQuestions) {
+                        VStack(alignment: .leading, spacing: FFSpace.s) {
+                            ForEach(questions, id: \.id) { question in questionCard(question) }
                         }
+                        .padding(.top, FFSpace.s)
+                    } label: {
+                        Text("Questions (\(questions.count))").ffText(.headline)
                     }
-                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("insights.questions")
+                }
+                if !patterns.isEmpty {
+                    DisclosureGroup(isExpanded: $showPatterns) {
+                        VStack(alignment: .leading, spacing: FFSpace.m) {
+                            ForEach(patterns) { pattern in patternRow(pattern) }
+                        }
+                        .padding(.top, FFSpace.s)
+                    } label: {
+                        Text("Patterns (\(patterns.count))").ffText(.headline)
+                    }
+                    .accessibilityIdentifier("insights.patterns")
                 }
             }
         }
+    }
+
+    private func patternRow(_ pattern: CoachPattern) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: pattern.symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pattern.title).ffText(.headline)
+                Text(pattern.sentence)
+                    .ffText(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func questionCard(_ question: CoachQuestion) -> some View {
@@ -94,13 +116,6 @@ struct CoachNoticedSection: View {
     }
 
     // MARK: Data
-
-    /// Coach v8: the kind of days you had and whether days off were planned (phase 3 turns this
-    /// into the Your week page).
-    private func daysPattern() -> [CoachPattern] {
-        guard let sentence = DayLedgerSummary.sentence(timerVM.dayLedger(days: min(days, 28), now: now)) else { return [] }
-        return [CoachPattern(kind: .days, symbol: "calendar", title: "Your days", sentence: sentence)]
-    }
 
     private var ownWorkConfigured: Bool { GoalDataBuilder.ownWorkConfigured(projects) }
 
