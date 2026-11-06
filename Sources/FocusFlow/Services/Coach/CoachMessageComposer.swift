@@ -15,6 +15,9 @@ struct CoachStartTarget: Sendable, Equatable {
     var taskTitle: String?
     /// The project's priority rank ("#1"), for the panel eyebrow. Nil when unranked or unknown.
     var rank: Int?
+    /// The goal behind today's lever ("Problems Solved"), never the "N today" count line. The
+    /// pseudo-work check names this (coach v6: "Is this Problems Solved: 4 today…" read as noise).
+    var goalTitle: String?
 }
 
 /// A confirmed derailer that is frontmost now, with its real time this week.
@@ -428,6 +431,10 @@ enum CoachMessageComposer {
             }
             // Distance to today's goal beats a generic line once you're on the way.
             if let gradient = gradientHook(input) { return (gradient, true) }
+            // Coach v6 §3.5: your own pattern beats a generic quote.
+            if let hour = facts.usualStartHourNow {
+                return ("You usually start around \(String(format: "%02d", hour)):00. This is it.", true)
+            }
             return input.seed % 2 == 0
                 ? ("1% better daily = 37× in a year.", false)
                 : ("Show up. \(minutes) minutes.", false)

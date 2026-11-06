@@ -209,6 +209,8 @@ enum CoachPlannedCue {
 // MARK: - The daily plan card
 
 enum CoachDailyPlanInvite {
+    /// A closed card means "later", so it may come back once. Coach v6 §3.2 stops the one that came
+    /// right after midnight (`beforeDayStart`), which used a cap slot on 1, 2 and 5 Nov 2026.
     static let maxPerDay = 2
     static let retryAfter: TimeInterval = 2 * 60 * 60
     /// The user must have touched the keyboard or mouse within this (a breakpoint, not a void).
@@ -232,6 +234,9 @@ enum CoachDailyPlanInvite {
         var capReached: Bool = false
         /// Own-work windows are declared and none is open: not a moment to ask.
         var outsideOwnWindow: Bool = false
+        /// Before quiet hours end (00:00 up to 07:00 by default): the night before, not the day's
+        /// first breakpoint. The card fired at 00:00 and 00:15 on three days.
+        var beforeDayStart: Bool = false
     }
 
     /// Per-day state, stored in defaults.
@@ -255,7 +260,7 @@ enum CoachDailyPlanInvite {
         let log = input.log.current(for: input.now, calendar: calendar)
         guard !input.hasPlanToday, !input.goalMet, !input.sessionActive, !input.quietHours,
               !input.calendarBusy, !input.screenShare, !input.released, !input.panelShowing,
-              input.hasSuggestions, !input.capReached, !input.outsideOwnWindow, !log.declined, log.shown < maxPerDay,
+              input.hasSuggestions, !input.capReached, !input.outsideOwnWindow, !input.beforeDayStart, !log.declined, log.shown < maxPerDay,
               input.userIdleSeconds <= maxIdleSeconds else { return false }
         if let last = log.lastShownAt, input.now.timeIntervalSince(last) < retryAfter { return false }
         return true

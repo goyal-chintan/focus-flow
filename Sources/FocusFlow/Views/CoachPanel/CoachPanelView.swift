@@ -23,6 +23,8 @@ struct CoachPanelView: View {
     var onPlanSlot: (CoachPlanSlot) -> Void = { _ in }
     /// v4: a size pill (5 · 15 · 25) was clicked.
     var onStartSize: (Int) -> Void = { _ in }
+    /// v6: a quick question's answer was clicked.
+    var onChoice: (CoachQuestionChoice) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.focusFlowEvidenceRendering) private var isEvidenceRendering
@@ -53,6 +55,10 @@ struct CoachPanelView: View {
                 }
                 if !presentation.sizeOptions.isEmpty {
                     sizePills
+                        .padding(.top, 10)
+                }
+                if !presentation.choices.isEmpty {
+                    choiceButtons
                         .padding(.top, 10)
                 }
                 if presentation.kind == .dailyPlan || presentation.kind == .planTomorrow, !presentation.planSlots.isEmpty {
@@ -428,6 +434,30 @@ struct CoachPanelView: View {
         colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.08)
     }
 
+    /// Quick question answers: one full-width button each, the first prominent.
+    private var choiceButtons: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(presentation.choices.enumerated()), id: \.element.id) { index, choice in
+                Button { onChoice(choice) } label: {
+                    Text(choice.title)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(index == 0 ? Color.white : Color.primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(index == 0
+                              ? AnyShapeStyle(LinearGradient(colors: palette.gradient, startPoint: .leading, endPoint: .trailing))
+                              : AnyShapeStyle(Color.primary.opacity(0.07)))
+                )
+                .accessibilityLabel(choice.title)
+            }
+        }
+        .padding(.trailing, 8)
+    }
+
     // MARK: Copy helpers
 
     /// The plan the prompt serves ("#1 · SHIP SIDE APP V1", "INTERVIEW-READY · BEHIND"), never
@@ -445,6 +475,7 @@ struct CoachPanelView: View {
         case .plannedStart: "YOUR PLAN · NOW"
         case .dailyPlan: message.eyebrow ?? "FOCUS COACH · START"
         case .planTomorrow: "FOCUS COACH · TOMORROW"
+        case .question: "FOCUS COACH · QUICK QUESTION"
         }
     }
 
@@ -459,6 +490,7 @@ struct CoachPanelView: View {
         case .plannedStart: return "alarm.fill"
         case .dailyPlan: return "play.fill"
         case .planTomorrow: return "calendar"
+        case .question: return "questionmark"
         case .rescue:
             switch presentation.level ?? .drifting {
             case .ok, .drifting: return "arrow.uturn.backward"
@@ -476,7 +508,7 @@ struct CoachPanelView: View {
 
     private var primarySymbol: String {
         switch presentation.kind {
-        case .startNudge, .pseudoProductivity, .rescue, .notice, .plannedStart, .dailyPlan, .planTomorrow: "play.fill"
+        case .startNudge, .pseudoProductivity, .rescue, .notice, .plannedStart, .dailyPlan, .planTomorrow, .question: "play.fill"
         case .inSessionDrift: "arrow.uturn.backward"
         case .weeklyPriorities: "list.bullet"
         case .keepGoing: "forward.fill"
@@ -521,7 +553,8 @@ struct CoachPanelHostView: View {
                         timerVM.commitDailyPlan(slot)
                     }
                 },
-                onStartSize: { timerVM.performCoachPanelStart(minutes: $0) }
+                onStartSize: { timerVM.performCoachPanelStart(minutes: $0) },
+                onChoice: { timerVM.answerCoachQuestion($0) }
             )
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { onSizeChange($0) }

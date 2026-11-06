@@ -47,7 +47,8 @@ final class ScreenShareGuardTests: XCTestCase {
         XCTAssertTrue(ScreenShareGuard.shouldSuppressForFrontmostApplication(frontmost))
     }
 
-    func testDefaultHeuristicPathCanTriggerSuppressionWhenShareProviderReturnsFalse() {
+    /// Being in a meeting without sharing changes nothing (hide only while the screen is shared).
+    func testAMeetingAppWithoutSharingDoesNotSilenceTheCoach() {
         let guardService = ScreenShareGuard(
             isScreenSharingProvider: { false },
             frontmostApplicationProvider: {
@@ -58,7 +59,7 @@ final class ScreenShareGuardTests: XCTestCase {
             }
         )
 
-        XCTAssertTrue(guardService.shouldSuppressGuardianPopups(enabled: true))
+        XCTAssertFalse(guardService.shouldSuppressGuardianPopups(enabled: true))
     }
 
     /// Slack is where people read and write all day; it silenced the coach for 34 minutes on 2026-10-28.

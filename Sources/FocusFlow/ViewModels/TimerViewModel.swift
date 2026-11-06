@@ -2007,13 +2007,9 @@ final class TimerViewModel {
         let workMode = completedBlockContext?.workMode ?? selectedProject?.workMode ?? .deepWork
         let recent = breakLearningStore?.recentEvents(projectId: projectId, workMode: workMode, limit: 8) ?? []
 
-        var adaptationScore = 0
-        for event in recent {
-            if event.returnedToFocus { adaptationScore += 1 }
-            if event.endedEarly { adaptationScore -= 1 }
-            if event.overrunSeconds > 120 { adaptationScore -= 1 }
-        }
-        let adaptationMinutes = min(3, max(-3, adaptationScore / 2))
+        let adaptationMinutes = BreakAdaptation.minutes(recent.map {
+            BreakAdaptation.Event(returnedToFocus: $0.returnedToFocus, endedEarly: $0.endedEarly, overrunSeconds: $0.overrunSeconds, reason: $0.overrunReason)
+        })
 
         let suggestion = earnedBreakSuggestionEngine.suggest(
             EarnedBreakSuggestionInput(
@@ -2061,10 +2057,21 @@ final class TimerViewModel {
             actualBreakSeconds: actualSeconds,
             returnedToFocus: returnedToFocus,
             endedEarly: endedEarly,
-            overrunSeconds: overrunSeconds
+            overrunSeconds: overrunSeconds,
+            overrunReason: overrunSeconds >= BreakOverrunReason.askAfterSeconds ? breakOverrunReason : nil
         )
 
         choseSuggestedBreakCurrentEpisode = false
+        breakOverrunReason = nil
+    }
+
+    /// The answer to "What happened?" in the break-over window (coach v6 §3.4), stored on the
+    /// break when it ends.
+    var breakOverrunReason: BreakOverrunReason?
+
+    func answerBreakOverrun(_ reason: BreakOverrunReason, now: Date = Date()) {
+        breakOverrunReason = reason
+        coachJournal.record(.logged, "Break ran over: \(reason.title.lowercased()).", code: .question, at: now)
     }
 
     private func activateBlocking() {
@@ -2740,8 +2747,8 @@ final class TimerViewModel {
         case .dailyPlan:
             // v4: the card's primary is "start now"; time chips plan for later.
             guard startCoachPlan(panel.plan, attemptID: panel.attemptID) else { return false }
-        case .planTomorrow:
-            // No primary: each time chip plans a block.
+        case .planTomorrow, .question:
+            // No primary: each time chip plans a block; each answer is its own button.
             hideCoachPanel()
         }
         if panel.kind == .pseudoProductivity, panel.level != nil {
@@ -2834,6 +2841,13 @@ final class TimerViewModel {
             hideCoachPanel()
         case .reasonBusy, .reasonTired, .reasonTooBig, .reasonUnclear:
             if let reason = action.declineReason { performCoachPanelDecline(reason, now: now) }
+        case .notToday where panel.kind == .question:
+            if let id = panel.questionID {
+                CoachQuestionStore(defaults: defaults).snooze(id, until: now.addingTimeInterval(CoachQuestionPolicy.notNowCooldown))
+            }
+            coachJournal.record(.declined, "Quick question: not now.", code: .question, at: now)
+            interventionActionTaken = true
+            hideCoachPanel()
         case .notToday where panel.kind == .planTomorrow:
             // Asked once tonight; "Not tonight" just closes it.
             coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
@@ -2883,7 +2897,7 @@ final class TimerViewModel {
     /// Keep-going, momentum and notice panels are not logged prompts: no outcome to record.
     private static func panelKindLogsOutcome(_ kind: CoachPanelPresentation.Kind?) -> Bool {
         switch kind {
-        case .keepGoing, .momentum, .notice: false
+        case .keepGoing, .momentum, .notice, .question: false
         default: true
         }
     }
@@ -3030,6 +3044,7 @@ final class TimerViewModel {
                 availabilityComputedDay = today
             }
         }
+        refreshWindowFit(now: now, force: force)
         if force {
             resolveExpiredCoachRewards(now: now, rebuild: false)
             rebuildBandit()
@@ -3158,6 +3173,7 @@ final class TimerViewModel {
             target.taskTitle = task.title
         } else {
             target.taskTitle = lever?.action
+            target.goalTitle = lever?.goalTitle
         }
 
         var facts = CoachFacts()
@@ -3256,12 +3272,42 @@ final class TimerViewModel {
 
     // MARK: Own-work windows (coach audit 2026-10-30)
 
-    /// The declared own-work window around `now` (nil outside, or with none declared).
+    /// The own-work window around `now` (nil outside, or with none declared). Coach v6 §3.1:
+    /// the declared windows plus the hours you actually start, until you answer the window question.
     func currentOwnWorkWindow(now: Date = Date()) -> DateInterval? {
-        CoachOwnWorkWindows.current(settings?.coachOwnWorkWindows ?? [], now: now)
+        CoachOwnWorkWindows.current(effectiveOwnWorkWindows(now: now), now: now)
     }
 
     var hasDeclaredOwnWorkWindows: Bool { !(settings?.coachOwnWorkWindows ?? []).isEmpty }
+
+    /// Declared windows plus observed ones (`CoachWindowFit.effective`).
+    func effectiveOwnWorkWindows(now: Date = Date()) -> [CoachOwnWorkWindow] {
+        let declared = settings?.coachOwnWorkWindows ?? []
+        guard !declared.isEmpty else { return declared }
+        return CoachWindowFit.effective(declared: declared, fit: windowFit, keepMine: keepsDeclaredWindows(now: now))
+    }
+
+    /// How well the declared windows match when own-work blocks start (refreshed once a day and
+    /// after a block ends). Nil until computed or with no history.
+    @ObservationIgnored private(set) var windowFit: CoachWindowFit?
+    @ObservationIgnored private var windowFitComputedAt: Date?
+
+    static let keepDeclaredWindowsUntilKey = "coachKeepDeclaredWindowsUntil"
+
+    /// "Keep mine" was answered in the last 14 days: observed windows stay off.
+    func keepsDeclaredWindows(now: Date = Date()) -> Bool {
+        guard let until = defaults.object(forKey: Self.keepDeclaredWindowsUntilKey) as? Date else { return false }
+        return until > now
+    }
+
+    func refreshWindowFit(now: Date = Date(), force: Bool = false) {
+        if !force, let at = windowFitComputedAt, now.timeIntervalSince(at) < 3600 { return }
+        guard let reader = historyReader else { return }
+        let since = now.addingTimeInterval(-TimeInterval(CoachWindowFit.lookbackDays) * 86_400)
+        let starts = reader.ownWorkSessions(since: since).map(\.startedAt)
+        windowFit = CoachWindowFit.compute(startDates: starts, declared: settings?.coachOwnWorkWindows ?? [])
+        windowFitComputedAt = now
+    }
 
     /// Inside a declared own-work window; with none declared, inside a learned good window.
     func isInOwnWorkWindow(_ now: Date) -> Bool {
@@ -4380,12 +4426,14 @@ final class TimerViewModel {
             return
         }
         // A planned cue or the plan card is on screen: never replace it with a nudge.
-        if isStickyCoachPanelShowing {
+        if isStickyCoachPanelBlocking(now: now) {
             coachJournal.record(.quiet, "Quiet: your plan is on screen.", code: .stickyPanel, at: now)
             return
         }
-        // Drifting in a focus window: the rescue loop's ladder replaces the plain start nudge.
-        if let drift = currentDrift, drift.isActive, drift.level > .ok {
+        // Drifting in a focus window: the rescue loop's ladder replaces the plain start nudge, but
+        // only while it is actually speaking (coach v6 §3.2). On 3 Nov 2026 the ladder held this
+        // turn for 6.5 h while its own rescues were held by the cap and calendar.
+        if let drift = currentDrift, drift.isActive, drift.level > .ok, rescueSpokeRecently(now: now) {
             lastIdleStarterSuppressionReason = nil
             coachJournal.record(.quiet, "Quiet: the rescue ladder has this drift (level \(drift.level.rawValue)).", code: .driftActive, at: now)
             return
@@ -4685,6 +4733,7 @@ final class TimerViewModel {
         guard coachIdleTickCount % 4 == 0 else { return }
         resolveExpiredCoachRewards(now: now)
         if evaluatePlanTomorrowCheckIn(now: now) { return }
+        if evaluateCoachQuestion(now: now) { return }
         if evaluateDailyPlanInvite(now: now) { return }
         if evaluateOwnWorkWindowPrompt(now: now) { return }
         // While the rescue loop owns a drift episode it asks the pseudo-work question itself.
@@ -4776,7 +4825,9 @@ final class TimerViewModel {
 
     /// The name the pseudo-productivity question holds up: the next task, today's lever, or the #1 project.
     private func pseudoProductivityFocusName(_ snapshot: CoachSnapshot) -> String? {
-        snapshot.topPriority?.title ?? snapshot.target.taskTitle ?? (snapshot.target.rank == 1 ? snapshot.target.name : nil)
+        // A real task's title, else the goal, else the #1 project: never the lever's count line.
+        let task = snapshot.target.goalTitle == nil ? snapshot.target.taskTitle : nil
+        return snapshot.topPriority?.title ?? task ?? snapshot.target.goalTitle ?? (snapshot.target.rank == 1 ? snapshot.target.name : nil)
     }
 
     private func logPseudoAnswer(_ answer: CoachPseudoAnswer, panel: CoachPanelPresentation, now: Date = Date()) {
@@ -4959,7 +5010,10 @@ final class TimerViewModel {
             category: frontmost.category,
             confirmedKeys: keys.confirmed,
             allowedKeys: keys.allowed,
-            pacingPressure: currentPacing(now: now).pressure,
+            // Coach v6 §3.2: outside declared windows the day job's apps are not pseudo-work, however
+            // far behind the goal is (a work-app morning held the ladder at L2 until night, 3 Nov 2026).
+            // Real derailers still count, so the menu bar counter still shows "YouTube 12m".
+            pacingPressure: hasDeclaredOwnWorkWindows && currentOwnWorkWindow(now: now) == nil ? nil : currentPacing(now: now).pressure,
             busyworkContexts: busyworkContexts,
             userAway: systemIdleSeconds() >= 5 * 60
         )
@@ -5036,6 +5090,11 @@ final class TimerViewModel {
     func rescueRecords(now: Date = Date()) -> [CoachRescueRecord] {
         coachEngine.store.attempts(deliveredSince: now.addingTimeInterval(-CoachPauseScreenPolicy.escapeLookback))
             .compactMap(CoachRescueRecord.init(attempt:))
+    }
+
+    /// A rescue panel or pause screen went out in the last 30 minutes.
+    func rescueSpokeRecently(now: Date = Date()) -> Bool {
+        rescueRecords(now: now).contains { $0.surface != .ambient && now.timeIntervalSince($0.deliveredAt) < 30 * 60 }
     }
 
     /// The ambient menu bar counter: "YouTube 23m" / "Drift 23m" while drifting in a focus window.
@@ -5372,6 +5431,15 @@ final class TimerViewModel {
         coachPanel?.kind == .plannedStart || coachPanel?.kind == .dailyPlan || coachPanel?.kind == .planTomorrow
     }
 
+    /// A planned cue, start card or plan check-in stays on screen until answered, but it holds
+    /// other prompts back for 15 minutes only (coach v6 §3.2: on 5 Nov 2026 an unanswered 20:00
+    /// cue silenced the whole 20–22 window).
+    func isStickyCoachPanelBlocking(now: Date) -> Bool {
+        guard let panel = coachPanel,
+              panel.kind == .plannedStart || panel.kind == .dailyPlan || panel.kind == .planTomorrow else { return false }
+        return now.timeIntervalSince(panel.createdAt) < 15 * 60
+    }
+
     /// Runs every coach tick (15 s). Shows the cue when a planned start time has come; marks
     /// plans missed once their start window passes. Returns true while a cue is on screen.
     @discardableResult
@@ -5466,7 +5534,8 @@ final class TimerViewModel {
             capReached: coachGuardrails.verdict(
                 for: .badge, input: coachGuardrailInput(now: now, calendarBusy: availability.isBusyNow, isIdlePrompt: true)
             ) == .dailyCapReached,
-            outsideOwnWindow: hasDeclaredOwnWorkWindows && currentOwnWorkWindow(now: now) == nil
+            outsideOwnWindow: hasDeclaredOwnWorkWindows && currentOwnWorkWindow(now: now) == nil,
+            beforeDayStart: Calendar.current.component(.hour, from: now) * 60 + Calendar.current.component(.minute, from: now) < settings.coachQuietEndMinute
         )
         guard CoachDailyPlanInvite.shouldInvite(input) else { return false }
         // v4: the card's job is "start now"; time chips are the fallback, so none is fine.
@@ -5568,12 +5637,126 @@ final class TimerViewModel {
         refreshCoachModelsIfNeeded(now: now)
         return CoachPlanTomorrow.slots(
             now: now,
-            windows: settings?.coachOwnWorkWindows ?? [],
+            windows: effectiveOwnWorkWindows(now: now),
             model: availabilityModel,
             quietStartMinute: settings?.coachQuietStartMinute ?? 30,
             quietEndMinute: settings?.coachQuietEndMinute ?? 420,
             planned: tomorrowPlans(now: now).map(\.startAt)
         )
+    }
+
+    // MARK: Quick questions (coach v6 §3.4)
+
+    /// The questions the coach has right now, most useful first (snoozed ones included).
+    func coachQuestionCandidates(now: Date = Date()) -> [CoachQuestion] {
+        let declared = settings?.coachOwnWorkWindows ?? []
+        refreshWindowFit(now: now)
+        var questions: [CoachQuestion] = []
+        if let fit = windowFit, fit.isMismatch(declared: declared), !keepsDeclaredWindows(now: now) {
+            questions.append(.windowFit(fit, declared: declared))
+        }
+        if let project = unclassifiedProjectQuestion(now: now) { questions.append(project) }
+        return questions
+    }
+
+    /// The question the coach would ask now: the first one not snoozed by "Not now".
+    func pendingCoachQuestion(now: Date = Date()) -> CoachQuestion? {
+        let store = CoachQuestionStore(defaults: defaults)
+        return coachQuestionCandidates(now: now).first { question in
+            store.snoozedUntil(question.id).map { $0 <= now } ?? true
+        }
+    }
+
+    /// "Is ProjectWork your own work, or your day job?" (`CoachQuestion.unclassifiedProject`).
+    func unclassifiedProjectQuestion(now: Date = Date()) -> CoachQuestion? {
+        guard let context = modelContext,
+              let projects = try? context.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived })) else { return nil }
+        let since = now.addingTimeInterval(-TimeInterval(CoachWindowFit.lookbackDays) * 86_400)
+        let sessions = historyReader?.focusSessions(since: since) ?? []
+        let counts = Dictionary(grouping: sessions.compactMap { $0.project?.id }, by: { $0 }).mapValues(\.count)
+        return CoachQuestion.unclassifiedProject(projects.map {
+            (id: $0.id, name: $0.name, hasArea: $0.areaRaw != nil, isWork: $0.areaRaw != nil && $0.area == .work, blocks: counts[$0.id] ?? 0)
+        })
+    }
+
+    /// Runs once a minute. At most one question a day, at a breakpoint with someone at the desk.
+    @discardableResult
+    func evaluateCoachQuestion(now: Date = Date()) -> Bool {
+        guard let settings, settings.coachOnScreenPromptsEnabled, settings.coachIdleStarterEnabled,
+              let question = pendingCoachQuestion(now: now) else { return false }
+        let store = CoachQuestionStore(defaults: defaults)
+        let input = CoachQuestionPolicy.Input(
+            now: now,
+            askedToday: store.askedToday(now: now),
+            sessionActive: state != .idle || isOvertime,
+            panelShowing: coachPanel != nil || pauseScreen != nil,
+            quietHours: CoachGuardrails.isQuietHours(now, start: settings.coachQuietStartMinute, end: settings.coachQuietEndMinute),
+            screenShare: shouldSuppressGuardianPopups(using: settings),
+            userIdleSeconds: systemIdleSeconds(),
+            questionSnoozedUntil: nil
+        )
+        guard CoachQuestionPolicy.mayAsk(input) else { return false }
+        store.markAsked(now: now)
+        presentCoachQuestion(question, now: now)
+        return coachPanel?.kind == .question
+    }
+
+    func presentCoachQuestion(_ question: CoachQuestion, now: Date = Date()) {
+        let message = CoachComposedMessage(
+            style: settings?.coachStyle ?? .challenger,
+            trigger: .startNudge,
+            hook: question.hook,
+            detail: .line(question.detail),
+            primaryTitle: "",
+            hookIsFact: true
+        )
+        coachJournal.record(.shown, "Quick question: \(question.hook)", code: .question, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .question, message: message, createdAt: now, questionID: question.id, choices: question.choices))
+    }
+
+    /// A quick question was answered: act on it now.
+    func answerCoachQuestion(_ choice: CoachQuestionChoice, now: Date = Date()) {
+        guard let panel = coachPanel, panel.kind == .question else { return }
+        switch panel.questionID {
+        case "window_fit":
+            if let answer = CoachQuestion.WindowFitAnswer(rawValue: choice.id), let settings {
+                applyWindowFitAnswer(answer, settings: settings, now: now)
+            }
+        case let id? where id.hasPrefix("project_area."):
+            if let uuid = UUID(uuidString: String(id.dropFirst("project_area.".count))), let area = ProjectArea(rawValue: choice.id) {
+                setProjectArea(uuid, area: area)
+            }
+        default:
+            break
+        }
+        coachJournal.record(.logged, "Quick question answered: \(choice.title).", code: .question, at: now)
+        interventionActionTaken = true
+        hideCoachPanel()
+    }
+
+    /// Sets a project's area from a quick question (also offered in Insights).
+    func setProjectArea(_ projectID: UUID, area: ProjectArea) {
+        guard let context = modelContext,
+              let project = try? context.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })).first else { return }
+        project.area = area
+        saveContext()
+        refreshWindowFit(now: Date(), force: true)
+    }
+
+    /// Applies the window question's answer (also offered in Insights).
+    func applyWindowFitAnswer(_ answer: CoachQuestion.WindowFitAnswer, settings: AppSettings, now: Date = Date()) {
+        refreshWindowFit(now: now)
+        let declared = settings.coachOwnWorkWindows
+        if let fit = windowFit, let windows = CoachQuestion.windows(after: answer, declared: declared, fit: fit) {
+            settings.coachOwnWorkWindows = windows
+            saveContext()
+            refreshWindowFit(now: now, force: true)
+        }
+        if answer == .keepMine {
+            defaults.set(now.addingTimeInterval(CoachQuestionPolicy.keepMineCooldown), forKey: Self.keepDeclaredWindowsUntilKey)
+        } else {
+            defaults.removeObject(forKey: Self.keepDeclaredWindowsUntilKey)
+        }
     }
 
     /// Runs once a minute. In the evening, once, at a breakpoint: "When are tomorrow's 2 blocks?"

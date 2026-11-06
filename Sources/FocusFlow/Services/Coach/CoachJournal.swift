@@ -76,6 +76,7 @@ final class CoachJournal {
         case rescue = "rescue"
         case pseudoCheck = "pseudo_check"
         case planTomorrow = "plan_tomorrow"
+        case question = "question"
         // Held back
         case control = "control"
         case dailyCap = "daily_cap"
@@ -123,6 +124,7 @@ final class CoachJournal {
             case .noSurface: "nowhere to show"
             case .busyNow: "busy with something else"
             case .rescueAmbient: "menu-bar counter only"
+            case .question: "quick question"
             default: rawValue.replacingOccurrences(of: "_", with: " ")
             }
         }

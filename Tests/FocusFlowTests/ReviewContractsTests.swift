@@ -33,7 +33,7 @@ final class ReviewContractsTests: XCTestCase {
             "The break pill's context menu still offers the plain 5 minute break."
         )
         XCTAssertTrue(
-            source.contains("startButtons(role: .secondary)"),
+            source.contains("startButtons(role: .secondary, after: .block)"),
             "Starting the next block stays a secondary action."
         )
         XCTAssertTrue(source.contains("saveAndDismiss(action: .continueFocusing, prepare: { prepareNextStart(minutes: minutes) })"))

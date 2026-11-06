@@ -20,10 +20,11 @@ struct InsightsView: View {
         let snapshot = CompanionSnapshot(sessions: sessions, settings: allSettings.first, projects: projects, now: nowOverride ?? Date())
         ScrollView {
             VStack(alignment: .leading, spacing: FFSpace.sectionGap) {
-                FFPageHeader("Insights", subtitle: "Four questions, answered from your blocks and app usage") {
+                FFPageHeader("Insights", subtitle: "What the coach noticed, then four questions, answered from your blocks and app usage") {
                     FFSegmentedPicker(title: "Range", options: InsightsRange.allCases, selection: $range, label: \.label)
                         .accessibilityIdentifier("insights.range")
                 }
+                CoachNoticedSection(days: range.days, now: snapshot.now)
                 whenYouFocus(snapshot)
                 derailers(snapshot)
                 realWork(snapshot)
