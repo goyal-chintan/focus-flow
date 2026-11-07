@@ -360,16 +360,16 @@ enum LifeRecommendations {
         )
     }
 
-    /// Gaps you called "putting it off": the cure is a smaller, scheduled start (Steel, 2007;
+    /// Gaps you called "wasted time": the cure is a smaller, scheduled start (Steel, 2007;
     /// Gollwitzer & Sheeran, 2006).
     static func procrastination(_ input: LifeRecInput) -> LifeRecommendation? {
         guard let r = input.rhythm, let p = r.reasons[.procrastinating], p.count >= 2, let slot = input.todaySlot ?? input.calendar.date(
             byAdding: .day, value: 1, to: input.calendar.startOfDay(for: input.now)).flatMap({ input.calendar.date(bySettingHour: input.firstHour, minute: 0, second: 0, of: $0) })
         else { return nil }
         return LifeRecommendation(
-            id: LifeRecKind.procrastination.rawValue, kind: .procrastination, title: "Putting it off: start smaller",
-            evidence: "You called \(p.count) gaps \"putting it off\": \(FFFormatLite.duration(p.minutes)) in 4 weeks.",
-            impact: "Putting off is about the start, not the work. A time and a 5-minute first step make the start small (Steel 2007).",
+            id: LifeRecKind.procrastination.rawValue, kind: .procrastination, title: "Wasted time: start smaller",
+            evidence: "You called \(p.count) gaps \"wasted time\": \(FFFormatLite.duration(p.minutes)) in 4 weeks.",
+            impact: "Wasted time is mostly a missed start, not the work. A time and a 5-minute first step make the start small (Steel 2007).",
             actionTitle: "Plan a start at \(clock(slot, input.calendar))", action: .planBlocks([slot]),
             weight: 0.7, confidence: min(1, Double(p.count) / 4)
         )

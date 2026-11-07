@@ -185,9 +185,10 @@ struct TodayView: View {
                     DayTimelineChart(timeline: timeline, now: snapshot.now)
                 }
                 // Where the hours went and why (6 Nov 2026): the gaps between sittings, each with a reason.
-                DayAccountSection(account: timerVM.dayAccount(day.start, now: snapshot.now), now: snapshot.now) { start, reason in
-                    timerVM.setGapReason(reason, for: start)
-                }
+                DayAccountSection(account: timerVM.dayAccount(day.start, now: snapshot.now), now: snapshot.now,
+                    setReason: { start, reason in
+                    timerVM.setGapReason(reason, for: start) },
+                    split: { timerVM.splitGap(at: $0) }, join: { timerVM.joinGap(at: $0) }, isSplitPoint: { timerVM.isSplitPoint($0) })
                 if todaySessions.isEmpty {
                     Text("No focus blocks yet today.").ffText(.callout)
                 } else {

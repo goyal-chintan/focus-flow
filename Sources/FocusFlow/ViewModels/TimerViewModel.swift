@@ -6383,7 +6383,27 @@ final class TimerViewModel {
             }
             if role == .tool { return .unblockedOwn }
             return .other
-        }, reasons: GapReasonStore(defaults: defaults).all(), calendar: calendar)
+        }, reasons: GapReasonStore(defaults: defaults).all(), splits: GapSplitStore(defaults: defaults).all(), calendar: calendar)
+    }
+
+    /// Splits a gap at `date` ("11–1 was real work, 1–3 I wasted"); each part gets its own reason.
+    func splitGap(at date: Date, now: Date = Date()) {
+        GapSplitStore(defaults: defaults).add(date, now: now)
+        rhythmCache = nil
+        lifeRevision += 1
+    }
+
+    /// Joins a part back with the one before it (removes the split at its start and its reason).
+    func joinGap(at start: Date) {
+        GapSplitStore(defaults: defaults).remove(start)
+        GapReasonStore(defaults: defaults).set(nil, for: start)
+        rhythmCache = nil
+        lifeRevision += 1
+    }
+
+    /// Whether a part starts at one of your splits (so it can be joined back).
+    func isSplitPoint(_ date: Date) -> Bool {
+        GapSplitStore(defaults: defaults).all().contains(DayAccount.reasonKey(date))
     }
 
     /// The longest unanswered gap of an hour or more that ended in the last 3 hours today (fresh

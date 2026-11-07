@@ -3,7 +3,7 @@ import Foundation
 // Where the day went, and why (6 Nov 2026, after "I'm at the laptop from 10 to 7 and get 2 hours").
 // From the first activity to the last, each minute is own work, work, a break, office, side work,
 // a pull, away, or other. Gaps of 30+ min between own-work sittings carry what filled them and,
-// once you say, why: family and rest are fine; tired, putting it off and side projects are what
+// once you say, why: family and rest are fine; tired, wasted time and side projects are what
 // the coach learns from. Experience sampling at the moment beats recall (Csikszentmihalyi &
 // Larson, 1987), so the coach asks about one big gap a day and Today lets you label in place. Pure.
 
@@ -37,7 +37,7 @@ enum LeakCategory: String, CaseIterable, Codable, Sendable {
 
 /// Why a gap happened, from you.
 enum GapReason: String, CaseIterable, Codable, Sendable {
-    case family, rest, meal, office, tired, procrastinating, sideProject, other
+    case family, rest, meal, office, sleep, tired, procrastinating, sideProject, other
 
     var title: String {
         switch self {
@@ -45,15 +45,16 @@ enum GapReason: String, CaseIterable, Codable, Sendable {
         case .rest: "Rest / outside"
         case .meal: "Meal / chores"
         case .office: "Office work"
+        case .sleep: "Sleep"
         case .tired: "Tired"
-        case .procrastinating: "Putting it off"
+        case .procrastinating: "Wasted time"
         case .sideProject: "Side project"
         case .other: "Something else"
         }
     }
 
     /// Time well spent elsewhere: the coach does not count it against you.
-    var isFine: Bool { [.family, .rest, .meal, .office].contains(self) }
+    var isFine: Bool { [.family, .rest, .meal, .office, .sleep].contains(self) }
 }
 
 /// Which apps are side work outside a block: tools for building, not the goal itself
@@ -98,6 +99,53 @@ struct DayAccount: Equatable, Sendable {
     let hasRollup: Bool
 
     static let minGapMinutes = 30.0
+    /// A split part shorter than this joins its neighbour.
+    static let minPieceMinutes = 15.0
+    /// Off the laptop this long, starting before 06:00: the night's sleep.
+    static let sleepMinutes = 180.0
+    static let maxSleepMinutes = 480.0
+
+    /// What a stretch mostly was, for splitting: off the laptop, a pull, side work, office,
+    /// a break, or other laptop time.
+    static func group(_ filled: [LeakCategory: Double]) -> LeakCategory {
+        let dominant = filled.max { $0.value < $1.value }?.key ?? .away
+        switch dominant {
+        case .away, .pull, .side, .office, .rest: return dominant
+        default: return .other
+        }
+    }
+
+    /// Splits [s, e) at hour boundaries where the kind of activity changes; parts under 15 min join
+    /// the one before.
+    static func split(_ s: Date, _ e: Date, filled: (Date, Date) -> [LeakCategory: Double],
+                      calendar: Calendar) -> [(Date, Date, [LeakCategory: Double])] {
+        // Hour slices.
+        var bounds = [s]
+        var hour = calendar.dateInterval(of: .hour, for: s).map { $0.end } ?? e
+        while hour < e { bounds.append(hour); hour = hour.addingTimeInterval(3600) }
+        bounds.append(e)
+        var parts: [(Date, Date, LeakCategory)] = []
+        for (a, b) in zip(bounds, bounds.dropFirst()) where b > a {
+            let kind = group(filled(a, b))
+            if let last = parts.last, last.2 == kind {
+                parts[parts.count - 1].1 = b
+            } else {
+                parts.append((a, b, kind))
+            }
+        }
+        // Short parts join their neighbour (the one before, else the one after).
+        var merged: [(Date, Date)] = []
+        for part in parts {
+            if let last = merged.last, part.1.timeIntervalSince(part.0) / 60 < minPieceMinutes {
+                merged[merged.count - 1].1 = part.1
+            } else if let last = merged.last, last.1.timeIntervalSince(last.0) / 60 < minPieceMinutes {
+                merged[merged.count - 1].1 = part.1
+            } else {
+                merged.append((part.0, part.1))
+            }
+        }
+        return merged.map { ($0.0, $0.1, filled($0.0, $0.1)) }
+    }
 
     var spanMinutes: Double { span.map { $0.duration / 60 } ?? 0 }
 
@@ -127,7 +175,7 @@ struct DayAccount: Equatable, Sendable {
     /// or other (calls and away are known from the key). `reasons` by gap start (minute).
     static func build(day: Date, now: Date, rows: [Row], blocks: [Block], breaks: [DateInterval],
                       category: (String, String, Int) -> LeakCategory, reasons: [Date: GapReason],
-                      calendar: Calendar = .current) -> DayAccount {
+                      splits: [Date] = [], calendar: Calendar = .current) -> DayAccount {
         let dayStart = calendar.startOfDay(for: day)
         let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
         let dayRows = rows.filter { $0.hourStart >= dayStart && $0.hourStart < dayEnd }
@@ -174,53 +222,89 @@ struct DayAccount: Equatable, Sendable {
             let end = calendar.isDate(now, inSameDayAs: dayStart) ? max(min(now, dayEnd), s) : max(e, s)
             span = DateInterval(start: s, end: max(end, s))
         }
-        if let span {
-            // Outside-block time inside the span, prorated by hour.
-            for (hour, cats) in byHour {
-                let overlap = max(0, min(span.end, hour.addingTimeInterval(3600)).timeIntervalSince(max(span.start, hour)))
-                guard overlap > 0 else { continue }
-                for (cat, m) in cats { minutes[cat, default: 0] += m * overlap / 3600 }
+        let hasRollup = !dayRows.isEmpty
+        /// What filled [s, e): other blocks, breaks, outside-block rows (prorated by hour), and
+        /// "away" for anything unrecorded.
+        func filled(_ s: Date, _ e: Date) -> [LeakCategory: Double] {
+            var out: [LeakCategory: Double] = [:]
+            for b in dayBlocks where !b.own {
+                let o = min(e, b.end).timeIntervalSince(max(s, b.start))
+                if o > 0 { out[.work, default: 0] += o / 60 }
             }
+            for b in dayBreaks {
+                let o = min(e, b.end).timeIntervalSince(max(s, b.start))
+                if o > 0 { out[.rest, default: 0] += o / 60 }
+            }
+            for (hour, cats) in byHour {
+                let o = min(e, hour.addingTimeInterval(3600)).timeIntervalSince(max(s, hour))
+                guard o > 0 else { continue }
+                for (cat, m) in cats { out[cat, default: 0] += m * o / 3600 }
+            }
+            let total = e.timeIntervalSince(s) / 60
+            let known = out.values.reduce(0, +)
+            if known < total {
+                out[.away, default: 0] += total - known
+            } else if known > total, known > 0 {
+                for k in out.keys { out[k]! *= total / known }
+            }
+            return out
         }
 
-        // Gaps: between own-work sittings (and before the first), 30+ min, breaks taken out.
-        var gaps: [Gap] = []
-        if let span {
+        // Gaps between own-work sittings (and before the first, and after the last), each split
+        // where what you were doing changes (7 Nov 2026: "11–1 was real work, 1–3 I wasted").
+        var pieces: [(Date, Date, [LeakCategory: Double])] = []
+        if let s0 = span {
             let own = dayBlocks.filter(\.own)
-            var cursor = span.start
+            var cursor = s0.start
             var edges: [(Date, Date)] = []
             for b in own {
                 if b.start.timeIntervalSince(cursor) / 60 >= minGapMinutes { edges.append((cursor, b.start)) }
                 cursor = max(cursor, b.end)
             }
-            // After the last sitting (today: until now, still open).
-            if span.end.timeIntervalSince(cursor) / 60 >= minGapMinutes { edges.append((cursor, span.end)) }
+            if s0.end.timeIntervalSince(cursor) / 60 >= minGapMinutes { edges.append((cursor, s0.end)) }
             for (s, e) in edges {
-                var filled: [LeakCategory: Double] = [:]
-                for b in dayBlocks where !b.own {
-                    let o = min(e, b.end).timeIntervalSince(max(s, b.start))
-                    if o > 0 { filled[.work, default: 0] += o / 60 }
-                }
-                for b in dayBreaks {
-                    let o = min(e, b.end).timeIntervalSince(max(s, b.start))
-                    if o > 0 { filled[.rest, default: 0] += o / 60 }
-                }
-                for (hour, cats) in byHour {
-                    let o = min(e, hour.addingTimeInterval(3600)).timeIntervalSince(max(s, hour))
-                    guard o > 0 else { continue }
-                    let share = o / 3600
-                    for (cat, m) in cats { filled[cat, default: 0] += m * share }
-                }
-                let total = (e.timeIntervalSince(s)) / 60
-                let known = filled.values.reduce(0, +)
-                if known < total {
-                    // Nothing recorded: the laptop was asleep or you were off it.
-                    filled[.away, default: 0] += total - known
-                } else if known > total {
-                    let scale = total / known
-                    for k in filled.keys { filled[k]! *= scale }
-                }
-                gaps.append(Gap(start: s, end: e, filled: filled, reason: reasons[reasonKey(s, calendar: calendar)]))
+                pieces += hasRollup ? split(s, e, filled: filled, calendar: calendar) : [(s, e, filled(s, e))]
+            }
+        }
+
+        // Sleep: 3+ h off the laptop that starts before 06:00, at most 8 h of it (the laptop can't
+        // see you wake; the rest of that stretch is asked about like any gap). Never asked about;
+        // the day starts after it.
+        var sleepEnd: Date?
+        var rest: [(Date, Date, [LeakCategory: Double])] = []
+        for piece in pieces {
+            let length = piece.1.timeIntervalSince(piece.0)
+            if group(piece.2) == .away, length >= sleepMinutes * 60, calendar.component(.hour, from: piece.0) < 6 {
+                let end = min(piece.1, piece.0.addingTimeInterval(maxSleepMinutes * 60))
+                sleepEnd = max(sleepEnd ?? end, end)
+                if piece.1.timeIntervalSince(end) / 60 >= minPieceMinutes { rest.append((end, piece.1, filled(end, piece.1))) }
+            } else {
+                rest.append(piece)
+            }
+        }
+        if let sleepEnd, let s0 = span, sleepEnd < s0.end {
+            span = DateInterval(start: max(s0.start, sleepEnd), end: s0.end)
+        }
+        // Your own splits ("11–1 was real, 1–3 I wasted"), where the laptop alone can't tell.
+        var parts: [(Date, Date, [LeakCategory: Double])] = []
+        for piece in rest where piece.0 >= (span?.start ?? piece.0) {
+            let cuts = splits.filter { $0 > piece.0 && $0 < piece.1 }.sorted()
+            var from = piece.0
+            for cut in cuts + [piece.1] {
+                parts.append((from, cut, cuts.isEmpty ? piece.2 : filled(from, cut)))
+                from = cut
+            }
+        }
+        let gaps = parts
+            .filter { $0.1.timeIntervalSince($0.0) / 60 >= minPieceMinutes || splits.contains($0.0) || splits.contains($0.1) }
+            .map { Gap(start: $0.0, end: $0.1, filled: $0.2, reason: reasons[reasonKey($0.0, calendar: calendar)]) }
+
+        if let span {
+            // Outside-block time inside the (final) span, prorated by hour.
+            for (hour, cats) in byHour {
+                let overlap = max(0, min(span.end, hour.addingTimeInterval(3600)).timeIntervalSince(max(span.start, hour)))
+                guard overlap > 0 else { continue }
+                for (cat, m) in cats { minutes[cat, default: 0] += m * overlap / 3600 }
             }
         }
         return DayAccount(day: dayStart, span: span, minutes: minutes, gaps: gaps, hasRollup: !dayRows.isEmpty)
@@ -254,5 +338,42 @@ struct GapReasonStore {
         let cutoff = now.addingTimeInterval(-120 * 86_400).timeIntervalSince1970
         raw = raw.filter { (TimeInterval($0.key) ?? 0) >= cutoff }
         defaults.set(raw, forKey: Self.key)
+    }
+}
+
+/// Where you split a gap (minute times), in defaults; kept 120 days.
+struct GapSplitStore {
+    static let key = "focusflow.gapSplits"
+    let defaults: UserDefaults
+
+    func all() -> [Date] {
+        (defaults.array(forKey: Self.key) as? [Double] ?? []).map { Date(timeIntervalSince1970: $0) }
+    }
+
+    func add(_ date: Date, now: Date = Date()) {
+        let t = DayAccount.reasonKey(date).timeIntervalSince1970
+        let cutoff = now.addingTimeInterval(-120 * 86_400).timeIntervalSince1970
+        var list = (defaults.array(forKey: Self.key) as? [Double] ?? []).filter { $0 >= cutoff && $0 != t }
+        list.append(t)
+        defaults.set(list, forKey: Self.key)
+    }
+
+    func remove(_ date: Date) {
+        let t = DayAccount.reasonKey(date).timeIntervalSince1970
+        defaults.set((defaults.array(forKey: Self.key) as? [Double] ?? []).filter { $0 != t }, forKey: Self.key)
+    }
+}
+
+extension DayAccount.Gap {
+    /// Where you can split it: each whole hour inside, or its middle when there is none.
+    func splitPoints(calendar: Calendar = .current) -> [Date] {
+        var points: [Date] = []
+        var hour = calendar.dateInterval(of: .hour, for: start).map { $0.end } ?? end
+        while hour < end.addingTimeInterval(-10 * 60) {
+            if hour.timeIntervalSince(start) >= 10 * 60 { points.append(hour) }
+            hour = hour.addingTimeInterval(3600)
+        }
+        if points.isEmpty, minutes >= 30 { points = [DayAccount.reasonKey(start.addingTimeInterval(end.timeIntervalSince(start) / 2), calendar: calendar)] }
+        return Array(points.prefix(12))
     }
 }

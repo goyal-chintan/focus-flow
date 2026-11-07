@@ -314,6 +314,13 @@ final class YourWeekStoreTests: XCTestCase {
             let counts = GoalDataBuilder.todayCounts(goal, now: Date())
             for kr in goal.sortedKeyResults { print("GOAL TODAY \(goal.title) / \(kr.title): \(counts[kr.id]?.label ?? "-") (total \(Int(kr.done)) of \(Int(kr.target)))") }
         }
+        for offset in [0, 1] {
+            let day = Calendar.current.date(byAdding: .day, value: -offset, to: Date())!
+            let account = vm.dayAccount(day)
+            print("DAY \(account.day) span \(account.span.map { "\($0.start)–\($0.end)" } ?? "-")")
+            for gap in account.gaps { print("DAY GAP \(gap.start)–\(gap.end) \(Int(gap.minutes))m \(gap.dominant.rawValue) | \(gap.summary)") }
+        }
+        if let q = vm.gapReasonQuestion() { print("DAY QUESTION \(q.hook) | \(q.detail)") }
         for lever in vm.todayLevers() { print("GOAL LEVER \(lever.action) | block title: \(lever.intentTitle)") }
         let help = vm.coachHelping()
         print("WEEK HELP prompt=\(String(describing: help.promptLift)) return=\(String(describing: help.returnLift))")

@@ -84,7 +84,9 @@ struct FocusFlowApp: App {
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
         }
-        .windowResizability(.contentSize)
+        // Resizable from 480 × 520; BlockEndWindowPresenter opens it at 560 × 760 (or your size).
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 560, height: 760)
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
 

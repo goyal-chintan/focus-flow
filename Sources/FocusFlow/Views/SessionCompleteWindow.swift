@@ -200,11 +200,12 @@ struct SessionCompleteWindowView: View {
                     .padding(.bottom, 20)
             }
             .scrollBounceBehavior(.basedOnSize)
-            // The window fits its content up to this height, then scrolls above the sticky footer.
-            .frame(maxHeight: 620)
+            // Fills the window (BlockEndWindowPresenter sizes it to fit the screen); scrolls above
+            // the sticky footer when the content is taller.
+            .frame(maxHeight: .infinity)
             footerBar
         }
-        .frame(width: 480)
+        .frame(minWidth: 480, maxWidth: .infinity, minHeight: 520, maxHeight: .infinity)
     }
 
     private var earnedStage: some View {
@@ -872,24 +873,14 @@ struct SessionCompleteWindowView: View {
 
     // MARK: - Helpers
 
+    /// To the screen you're on, in front, at a usable size (`BlockEndWindowPresenter`).
     private func bringWindowToFront() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        let compact = isBreakCompletion || timerVM.isWakeRecoveryActive
         DispatchQueue.main.async {
-            let allWindows = NSApplication.shared.windows
-            for window in allWindows where window.identifier?.rawValue.contains("session-complete") == true {
-                window.level = .floating
-                window.makeKeyAndOrderFront(nil)
-                window.center()
-                return
-            }
-            // Fallback: newest non-panel, non-stats window
-            if let window = allWindows.last(where: {
-                !$0.title.isEmpty && $0.title != "FocusFlow" && !($0 is NSPanel) && $0.isVisible
-            }) {
-                window.level = .floating
-                window.makeKeyAndOrderFront(nil)
-                window.center()
-            }
+            let windows = NSApplication.shared.windows
+            let window = windows.first { $0.identifier?.rawValue.contains("session-complete") == true }
+                ?? windows.last { $0.title == "Block complete" && $0.isVisible }
+            if let window { BlockEndWindowPresenter.present(window, compact: compact) }
         }
     }
 }

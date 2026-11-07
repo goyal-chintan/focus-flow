@@ -57,12 +57,16 @@ struct GapRow: View {
     let gap: DayAccount.Gap
     let isOpen: Bool
     let setReason: (GapReason?) -> Void
+    /// Split this part at a time inside it; nil hides the option.
+    var split: ((Date) -> Void)? = nil
+    /// Join this part back with the one before; nil when it isn't one of your splits.
+    var join: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: FFSpace.m) {
             RoundedRectangle(cornerRadius: 2).fill(gap.dominant.color).frame(width: 4, height: 30)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(FFFormat.clock(gap.start))–\(isOpen ? "now" : FFFormat.clock(gap.end)) · \(FFFormatLite.duration(gap.minutes)) between sittings")
+                Text("\(FFFormat.clock(gap.start))–\(isOpen ? "now" : FFFormat.clock(gap.end)) · \(FFFormatLite.duration(gap.minutes))")
                     .ffText(.body).monospacedDigit()
                 Text(gap.summary.isEmpty ? "Nothing recorded" : gap.summary).ffText(.caption).monospacedDigit()
             }
@@ -70,6 +74,17 @@ struct GapRow: View {
             Menu {
                 ForEach(GapReason.allCases, id: \.self) { reason in
                     Button(reason.title) { setReason(reason) }
+                }
+                if let split, !gap.splitPoints().isEmpty {
+                    Divider()
+                    Menu("Split at…") {
+                        ForEach(gap.splitPoints(), id: \.self) { point in
+                            Button(FFFormat.clock(point)) { split(point) }
+                        }
+                    }
+                }
+                if let join {
+                    Button("Join with the part before", action: join)
                 }
                 if gap.reason != nil {
                     Divider()
@@ -93,6 +108,9 @@ struct DayAccountSection: View {
     let account: DayAccount
     let now: Date
     let setReason: (Date, GapReason?) -> Void
+    var split: ((Date) -> Void)? = nil
+    var join: ((Date) -> Void)? = nil
+    var isSplitPoint: (Date) -> Bool = { _ in false }
 
     var body: some View {
         if let span = account.span, account.spanMinutes >= 30 {
@@ -102,10 +120,13 @@ struct DayAccountSection: View {
                 if !account.gaps.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Gaps between sittings").ffText(.headline)
-                        Text("Say what each was: family and rest are fine; tired, putting it off and side projects are what the coach helps with.")
+                        Text("Say what each was: family and rest are fine; tired, wasted time and side projects are what the coach helps with.")
                             .ffText(.caption).fixedSize(horizontal: false, vertical: true)
                         ForEach(account.gaps.reversed()) { gap in
-                            GapRow(gap: gap, isOpen: abs(gap.end.timeIntervalSince(now)) < 90) { setReason(gap.start, $0) }
+                            GapRow(gap: gap, isOpen: abs(gap.end.timeIntervalSince(now)) < 90,
+                                   setReason: { setReason(gap.start, $0) },
+                                   split: split,
+                                   join: join.flatMap { j in isSplitPoint(gap.start) ? { j(gap.start) } : nil })
                         }
                     }
                 }

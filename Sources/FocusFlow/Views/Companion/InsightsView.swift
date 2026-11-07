@@ -94,9 +94,10 @@ struct InsightsView: View {
                     }
                     .transition(.opacity)
                     // The day's gaps between sittings, each with "Why?" (label past days here).
-                    DayAccountSection(account: timerVM.dayAccount(day, now: now), now: now) { start, reason in
-                        timerVM.setGapReason(reason, for: start)
-                    }
+                    DayAccountSection(account: timerVM.dayAccount(day, now: now), now: now,
+                    setReason: { start, reason in
+                        timerVM.setGapReason(reason, for: start) },
+                    split: { timerVM.splitGap(at: $0) }, join: { timerVM.joinGap(at: $0) }, isSplitPoint: { timerVM.isSplitPoint($0) })
                 }
             }
         }

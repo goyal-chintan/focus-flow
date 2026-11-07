@@ -57,6 +57,58 @@ final class DayLeakTests: XCTestCase {
         XCTAssertEqual(total, 179, accuracy: 0.5, "A gap's parts add up to its length")
     }
 
+    /// 7 Nov 2026: up past midnight, asleep until 11, then real work 11–13, then YouTube 13–15,
+    /// then a block. The night is not a gap; the morning splits in two, each with its own reason.
+    func testTheNightIsSleepAndAMorningSplitsWhereTheActivityChanges() {
+        let rows = [
+            row(0, "app:com.anthropic.claudefordesktop", "Claude", 20),
+            row(11, "app:com.anthropic.claudefordesktop", "Claude", 40), row(11, "app:com.todesktop.230313mzl4w4u92", "Cursor", 15),
+            row(12, "app:com.anthropic.claudefordesktop", "Claude", 45),
+            row(13, "domain:youtube.com", "youtube.com", 50),
+            row(14, "domain:youtube.com", "youtube.com", 40), row(14, "away", "Away", 10),
+        ]
+        let blocks = [DayAccount.Block(start: at(6, 15), end: at(6, 15, 50), own: true)]
+        let day = DayAccount.build(day: at(6, 12), now: at(6, 16), rows: rows, blocks: blocks, breaks: [],
+                                   category: { key, label, _ in key.contains("youtube") ? .pull : (SideWorkTools.isSide(key: key, label: label) ? .side : .other) },
+                                   reasons: [:], calendar: calendar)
+        XCTAssertEqual(day.span?.start, at(6, 8), "Asleep from midnight: at most 8 h is sleep, so the day starts at 08:00")
+        XCTAssertNil(day.gaps.first { $0.start < at(6, 8) }, "Never asked about the night")
+        var morning = day.gaps.filter { $0.end <= at(6, 15) }
+        XCTAssertEqual(morning.map(\.start), [at(6, 8), at(6, 11), at(6, 13)],
+                       "08–11 off the laptop (asked: you may have slept on), 11–13 side work, 13–15 YouTube")
+        XCTAssertEqual(morning.first?.dominant, .away)
+        morning.removeFirst()
+        XCTAssertEqual(morning.first?.dominant, .side)
+        XCTAssertEqual(morning.last?.dominant, .pull)
+        XCTAssertEqual(GapReason.procrastinating.title, "Wasted time")
+    }
+
+    /// Off the laptop 11–15 can't split itself: you split it at 13 and give each part a reason.
+    func testYourSplitMakesTwoPartsWithTheirOwnReasons() {
+        let blocks = [DayAccount.Block(start: at(6, 10), end: at(6, 11), own: true), DayAccount.Block(start: at(6, 15), end: at(6, 15, 30), own: true)]
+        func build(_ splits: [Date], _ reasons: [Date: GapReason]) -> DayAccount {
+            DayAccount.build(day: at(6, 12), now: at(6, 20), rows: [row(11, "away", "Away", 60)], blocks: blocks, breaks: [],
+                             category: { _, _, _ in .other }, reasons: reasons, splits: splits, calendar: calendar)
+        }
+        XCTAssertEqual(build([], [:]).gaps.filter { $0.end <= at(6, 15) }.count, 1)
+        let split = build([at(6, 13)], [DayAccount.reasonKey(at(6, 11), calendar: calendar): .family,
+                                        DayAccount.reasonKey(at(6, 13), calendar: calendar): .procrastinating])
+        let parts = split.gaps.filter { $0.end <= at(6, 15) }
+        XCTAssertEqual(parts.map(\.start), [at(6, 11), at(6, 13)])
+        XCTAssertEqual(parts.map(\.reason), [.family, .procrastinating])
+        XCTAssertEqual(DayAccount.Gap(start: at(6, 11), end: at(6, 15), filled: [:]).splitPoints(calendar: calendar), [at(6, 12), at(6, 13), at(6, 14)])
+        XCTAssertTrue(GapReason.sleep.isFine)
+    }
+
+    func testShortChangesDoNotSplitAGap() {
+        let rows = [row(11, "app:com.anthropic.claudefordesktop", "Claude", 50), row(12, "domain:youtube.com", "youtube.com", 10),
+                    row(12, "app:com.anthropic.claudefordesktop", "Claude", 45)]
+        let blocks = [DayAccount.Block(start: at(6, 10), end: at(6, 11), own: true), DayAccount.Block(start: at(6, 13), end: at(6, 13, 30), own: true)]
+        let day = DayAccount.build(day: at(6, 12), now: at(6, 20), rows: rows, blocks: blocks, breaks: [],
+                                   category: { key, label, _ in key.contains("youtube") ? .pull : .side }, reasons: [:], calendar: calendar)
+        XCTAssertEqual(day.gaps.filter { $0.end <= at(6, 13) }.count, 1, "10 min of YouTube inside an hour of Claude is not its own part")
+    }
+
     func testFineTimeIsNotALeak() {
         let day = liveDay()
         let withoutReason = DayAccount(day: day.day, span: day.span, minutes: day.minutes,

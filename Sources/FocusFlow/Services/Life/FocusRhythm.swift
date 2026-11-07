@@ -143,7 +143,7 @@ struct FocusRhythm: Equatable, Sendable {
         if unlabeledGaps >= 2 {
             out.append(Finding(id: "unlabeled", symbol: "tag",
                                title: "\(unlabeledGaps) long gaps have no reason yet",
-                               sentence: "Say what they were on Today, or click a day in Insights: family and rest are fine; tired, putting it off and side projects are what the coach can help with."))
+                               sentence: "Say what they were on Today, or click a day in Insights: family and rest are fine; tired, wasted time and side projects are what the coach can help with."))
         }
         return out
     }
