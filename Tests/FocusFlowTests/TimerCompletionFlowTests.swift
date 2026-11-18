@@ -25,6 +25,34 @@ final class TimerCompletionFlowTests: XCTestCase {
         XCTAssertFalse(vm.showSessionComplete)
     }
 
+    /// 17 Nov 2026: overtime wrote the block's endedAt every second, so every open page that reads
+    /// blocks (Insights: ~0.65 s a draw on real data) redrew every second and the app stuck at 100%
+    /// CPU. Overtime now moves endedAt with the 30 s save, and leaving overtime stamps the real end.
+    func testOvertimeDoesNotRewriteTheBlockEverySecondButEndsItExactly() throws {
+        let container = try makeInMemoryContainer()
+        let vm = TimerViewModel()
+        vm.systemIdleSecondsProvider = { 0 }
+        vm.coachExploreSizes = false
+        vm.configure(modelContext: container.mainContext)
+        defer { AppUsageTracker.shared.stop() }
+
+        vm.startFocus()
+        let session = try XCTUnwrap(try container.mainContext.fetch(FetchDescriptor<FocusSession>()).first)
+        let landed = Date().addingTimeInterval(-600)
+        session.endedAt = landed
+        vm.state = .idle // a finished block runs over as idle + overtime
+        vm.isOvertime = true
+        vm.overtimeSeconds = 1
+
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 2.3))
+        XCTAssertGreaterThanOrEqual(vm.overtimeSeconds, 3, "The overtime clock still ticks")
+        XCTAssertEqual(session.endedAt, landed, "No per-second write to the block")
+
+        vm.continueAfterCompletion(action: .endSession)
+        let ended = try XCTUnwrap(session.endedAt)
+        XCTAssertLessThan(abs(ended.timeIntervalSinceNow), 2, "Leaving overtime ends the block now")
+    }
+
     func testContinueFocusingRetainsCurrentSessionForStopLifecycle() throws {
         let container = try makeInMemoryContainer()
         let vm = TimerViewModel()

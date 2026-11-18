@@ -291,7 +291,8 @@ final class FocusAnalyticsTests: XCTestCase {
             UsageSample(day: thisWeek, appName: "X", bundleIdentifier: "domain:x.com", outsideFocusSeconds: 1800),
             UsageSample(day: thisWeek, appName: "Netflix", bundleIdentifier: "com.netflix.Netflix", outsideFocusSeconds: 2400),
             UsageSample(day: lastWeek, appName: "ZEE5", bundleIdentifier: "com.zee5.app", outsideFocusSeconds: 1200),
-            // Work tools and system processes never count, even with big numbers or a confirmed rule.
+            // Work tools and system processes never count, even with big numbers, unless you
+            // confirmed one yourself (coach v8: your rule wins, so Slack counts below).
             UsageSample(day: thisWeek, appName: "Slack", bundleIdentifier: "com.tinyspeck.slackmacgap", outsideFocusSeconds: 20_000),
             UsageSample(day: thisWeek, appName: "Cursor", bundleIdentifier: "com.todesktop.230313mzl4w4u92", outsideFocusSeconds: 20_000),
             UsageSample(day: thisWeek, appName: "Claude", bundleIdentifier: "com.anthropic.claudefordesktop", outsideFocusSeconds: 20_000),
@@ -305,9 +306,9 @@ final class FocusAnalyticsTests: XCTestCase {
             now: date(14, 15),
             confirmedKeys: ["news.ycombinator.com", "com.tinyspeck.slackmacgap"]
         )
-        XCTAssertEqual(derailers.map(\.name), ["YouTube", "Netflix", "X", "Hacker News", "ZEE5"])
-        XCTAssertEqual(derailers[0].thisWeekSeconds, 5400)
-        XCTAssertEqual(derailers[0].lastWeekSeconds, 3600)
+        XCTAssertEqual(derailers.map(\.name), ["Slack", "YouTube", "Netflix", "X", "Hacker News", "ZEE5"])
+        XCTAssertEqual(derailers[1].thisWeekSeconds, 5400)
+        XCTAssertEqual(derailers[1].lastWeekSeconds, 3600)
         XCTAssertEqual(derailers.last?.thisWeekSeconds, 0)
         XCTAssertEqual(derailers.last?.lastWeekSeconds, 1200)
 

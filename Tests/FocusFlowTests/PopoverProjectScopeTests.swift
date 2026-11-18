@@ -50,6 +50,7 @@ final class PopoverProjectScopeTests: XCTestCase {
         XCTAssertFalse(window.contains(#"Start \(nextMinutes)m · \(task.title)"#))
         XCTAssertTrue(window.contains(#"Text("Next: \(task.title)")"#))
         XCTAssertTrue(window.contains(#"LiquidActionButton(title: "Start \(small)m""#), "Both start pills say Start and share the row")
+        XCTAssertTrue(window.contains("startButtons(role: .secondary, after: .block)"), "The block-end footer offers no smaller start")
         XCTAssertFalse(window.contains("primaryAction:"), "No native split menu in the footer")
     }
 }

@@ -10,7 +10,7 @@ struct NotchGeometry: Equatable, Sendable {
 
     /// Width of each "wing" beside the notch in the compact state.
     static let wingWidth: CGFloat = 74
-    static let expandedSize = CGSize(width: 500, height: 232)
+    static let expandedSize = CGSize(width: 500, height: 330)
     /// A screen without a notch gets a virtual one this wide, on the top edge.
     static let virtualNotchWidth: CGFloat = 180
 

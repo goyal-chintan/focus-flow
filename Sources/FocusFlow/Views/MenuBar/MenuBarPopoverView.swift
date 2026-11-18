@@ -8,16 +8,24 @@ struct MenuBarPopoverView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showStopConfirmation = false
+    /// The popover window is on screen. While it is closed nothing here animates.
+    @State private var isShown = true
 
     private var disableMotionForEvidence: Bool { reduceMotion || timerVM.isEvidenceMode }
 
     var body: some View {
         popoverShell
+            .environment(\.motionPaused, !isShown)
+            .transaction { t in
+                // Closed: per-second changes (ring progress, numbers) apply without animating.
+                if !isShown { t.animation = nil; t.disablesAnimations = true }
+            }
             .background(
                 PopoverWindowAccessor { window in
                     timerVM.popoverWindow = window
                 }
             )
+            .background(WindowVisibilityReader { isShown = $0 })
             .task {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.checkDayRolloverIfNeeded()
@@ -40,13 +48,8 @@ struct MenuBarPopoverView: View {
                         .padding(.top, 12)
                 }
 
-                // Your line for today (own words first, else a verified quote), in every state.
-                if timerVM.recoveryState == nil {
-                    DailyReminderView(style: .strip)
-                        .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
-                        .padding(.top, 10)
-                        .padding(.bottom, timerVM.state == .idle && !timerVM.isOvertime ? 0 : 12)
-                }
+                // Coach v8 §3.6: the popover starts and controls a block. The day's line lives on
+                // Today only; where the day stands is Today's one sentence.
 
                 activeContextSection
 
@@ -217,7 +220,7 @@ struct MenuBarPopoverView: View {
 
     @ViewBuilder
     private var coachStripSection: some View {
-        // Idle: the coach's hook lives in the hero (PopoverIdleHero), so nothing renders here.
+        // Idle: the coach speaks in its own panel, so nothing renders here.
         if timerVM.settings?.coachRealtimeEnabled == true, timerVM.state != .idle {
             // Only when there is something to say: never while paused, never when stable.
             let isActive = timerVM.state == .focusing && timerVM.coachEngine.riskLevel != .stable
@@ -295,45 +298,30 @@ struct MenuBarPopoverView: View {
 
     private var footerSection: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                // The honest total (screen audit): the verdict, not one "today" number.
+            HStack(spacing: 8) {
+                // The main way out of the popover: a labelled capsule, not a bare icon.
                 Button {
-                    openStatsWindow(requestedTab: .goals)
+                    openStatsWindow(requestedTab: .today)
                 } label: {
-                    PopoverVerdictText()
-                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-                        .contentShape(Rectangle())
+                    Label("Open FocusFlow", systemImage: "macwindow")
+                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                 }
-                .buttonStyle(.plain)
-                .help("Open Goals: own work against your priorities")
-                .accessibilityLabel("Today's verdict. Opens Goals")
+                .buttonStyle(PopoverFooterButtonStyle(shape: .capsule))
+                .help("Today, Goals, History, Insights, Projects")
+                .accessibilityLabel("Open FocusFlow")
+
+                Spacer(minLength: 0)
 
                 // Private now: hide FocusFlow from the menu bar, notch and pop-ups (SharePrivacy).
                 Button {
                     withAnimation(FFMotion.control) { timerVM.setPrivateManually(!timerVM.isPrivateManual) }
                 } label: {
                     Image(systemName: timerVM.isPrivateManual ? "eye.slash.fill" : "eye.slash")
-                        .font(.system(size: 12))
-                        .foregroundStyle(timerVM.isPrivateManual ? AnyShapeStyle(.tint) : AnyShapeStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7)))
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
+                        .font(.system(size: 12, weight: .semibold))
                 }
-                .buttonStyle(.plain)
-                .help(timerVM.isPrivateManual ? "Show FocusFlow again" : "Private now: hide FocusFlow from the menu bar, notch and pop-ups")
+                .buttonStyle(PopoverFooterButtonStyle(shape: .circle, isOn: timerVM.isPrivateManual))
+                .help(timerVM.isPrivateManual ? "Private now is on: show FocusFlow again" : "Private now: hide FocusFlow from the menu bar, notch and pop-ups")
                 .accessibilityLabel(timerVM.isPrivateManual ? "Turn off private mode" : "Turn on private mode")
-
-                Button {
-                    openStatsWindow(requestedTab: .today)
-                } label: {
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Open FocusFlow (Today, Goals, History, Insights, Projects)")
-                .accessibilityLabel("Open FocusFlow")
 
                 // Settings, the tour and Quit in one place (a menu-bar app had no Quit at all).
                 Menu {
@@ -349,12 +337,10 @@ struct MenuBarPopoverView: View {
                         .keyboardShortcut("q", modifiers: .command)
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .contentShape(Rectangle())
+                        .font(.system(size: 12, weight: .semibold))
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .buttonStyle(PopoverFooterButtonStyle(shape: .circle))
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Settings, welcome tour, Quit")
@@ -366,6 +352,10 @@ struct MenuBarPopoverView: View {
                 Rectangle()
                     .fill(.ultraThinMaterial)
                     .overlay(Color.black.opacity(0.26))
+                    .overlay(alignment: .top) {
+                        // A hairline of light along the top edge, so the footer reads as a surface.
+                        Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5)
+                    }
             )
         }
     }
@@ -472,10 +462,9 @@ private struct IdlePopoverContent: View {
                     .padding(.top, 16)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             } else {
-                // Hero (mirrors the notch): own-work ring, coach hook, the picked project's lever.
-                // No task list here (2026-10-30): today's tasks are one menu away in "Working on",
-                // scoped to the picked project; Today holds the full list.
-                PopoverIdleHero(lever: lever)
+                // The pace ring and time to go (restored 6 Nov 2026), with a due or coming plan.
+                // No quote and no lever row: the lever is the "Working on" prefill.
+                PopoverGoalHero()
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.top, 16)
             }
@@ -585,8 +574,10 @@ private struct IdlePopoverContent: View {
             autoIntent = task.title
             return
         }
-        autoIntent = lever.action
-        timerVM.pendingIntentText = lever.action
+        // The block's title is what you count ("Problems Solved"), never today's numbers: those
+        // change all day and read as a score in History (6 Nov 2026).
+        autoIntent = lever.intentTitle
+        timerVM.pendingIntentText = lever.intentTitle
         // The lever belongs to a project: a block on it should count there.
         if projectID == nil, let leverProjectID = lever.projectID,
            let project = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == leverProjectID })))?.first {
@@ -606,8 +597,8 @@ private struct IdlePopoverContent: View {
 
     private func pickLever(_ lever: DailyLever) {
         timerVM.pendingTaskID = nil
-        timerVM.pendingIntentText = lever.action
-        autoIntent = lever.action
+        timerVM.pendingIntentText = lever.intentTitle
+        autoIntent = lever.intentTitle
         if let projectID = lever.projectID,
            let project = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })))?.first {
             timerVM.selectedProject = project
@@ -704,14 +695,9 @@ private struct IdlePopoverContent: View {
     }
 
     private func recoveryBanner(_ recovery: CrashRecoveryState) -> some View {
-        let remaining = Int(recovery.remainingSeconds)
-        let mins = remaining / 60
-        let secs = remaining % 60
-        let timeString = String(format: "%d:%02d", mins, secs)
-        let minutesAgo = Int(Date().timeIntervalSince(recovery.checkpointDate) / 60)
-        let agoText = minutesAgo < 1 ? "just now" : "\(minutesAgo)m ago"
-        let projectName = timerVM.recoveryProject?.name ?? recovery.customLabel ?? "Focus"
-        let totalMins = Int(recovery.totalSeconds / 60)
+        // Worded once, for here and the notch.
+        let shown = NotchRecovery.make(recovery, projectName: timerVM.recoveryProject?.name,
+                                       projectColor: timerVM.recoveryProject?.color, now: Date())
 
         return VStack(spacing: 10) {
             // Header
@@ -724,7 +710,7 @@ private struct IdlePopoverContent: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(agoText)
+                Text(shown.ago)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -732,11 +718,11 @@ private struct IdlePopoverContent: View {
             // Details
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(projectName)
+                    Text(shown.title)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text("\(totalMins)-min session · \(timeString) remaining\(recovery.isPaused ? " · paused" : "")")
+                    Text(shown.detail)
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
@@ -973,25 +959,6 @@ private struct BlockSizeRow: View {
         } else {
             button.buttonStyle(.glass)
         }
-    }
-}
-
-/// The footer's honest total: "3h 50m tracked · 50m on your #1 · 22% own work".
-/// Re-reads the store only when today's focus time or the block count changes.
-private struct PopoverVerdictText: View {
-    @Environment(TimerViewModel.self) private var timerVM
-    @Environment(\.modelContext) private var modelContext
-
-    var body: some View {
-        let _ = (timerVM.todayFocusTime, timerVM.completedFocusSessions)
-        let verdict = TodayVerdict.text(modelContext: modelContext)
-        Text(verdict ?? "Nothing tracked yet today")
-            .font(.system(size: 11, weight: .medium, design: .rounded))
-            .foregroundStyle(LiquidDesignTokens.Surface.onSurface.opacity(verdict == nil ? 0.55 : 0.8))
-            .monospacedDigit()
-            .lineLimit(2)
-            .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -1429,7 +1396,7 @@ private struct OvertimePopoverContent: View {
                 GlassEffectContainer {
                     HStack(spacing: 6) {
                         secondaryButton("Break 5 min", label: "Take a 5 minute break", action: onTakeBreak)
-                        secondaryButton("Keep going", label: "Start the next block", action: onKeepGoing)
+                        secondaryButton("Keep going", label: "Ten more minutes, then decide", action: onKeepGoing)
                         secondaryButton("Done for today", label: "End here without opening the log", action: onEnd)
                     }
                 }
@@ -1723,7 +1690,8 @@ extension MenuBarPopoverView {
                 timerVM.continueAfterCompletion(action: .takeBreak(duration: 300))
             },
             onKeepGoing: {
-                timerVM.continueAfterCompletion(action: .continueFocusing)
+                // Coach v7 §3.1: "Keep going" means the same everywhere: a 10-minute lap.
+                timerVM.keepGoingLap()
             },
             onEnd: {
                 timerVM.continueAfterCompletion(action: .endSession)
@@ -1789,5 +1757,47 @@ private struct UsualLengthReceipt: View {
             .padding(.horizontal, 10)
             .transition(.opacity)
         }
+    }
+}
+
+// MARK: - Footer buttons
+
+/// Footer controls that answer the pointer (6 Nov 2026: three grey glyphs looked dead): a soft
+/// fill that lifts on hover, brighter content, a small press; "on" fills with the accent.
+struct PopoverFooterButtonStyle: ButtonStyle {
+    enum Shape { case circle, capsule }
+    let shape: Shape
+    var isOn = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        PopoverFooterButtonBody(configuration: configuration, shape: shape, isOn: isOn)
+    }
+}
+
+private struct PopoverFooterButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let shape: PopoverFooterButtonStyle.Shape
+    let isOn: Bool
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let fill: Color = isOn ? LiquidDesignTokens.Spectral.primaryContainer.opacity(hovering ? 0.42 : 0.32)
+            : Color.primary.opacity(configuration.isPressed ? 0.16 : (hovering ? 0.12 : 0.06))
+        configuration.label
+            .foregroundStyle(isOn ? Color.white : Color.primary.opacity(hovering ? 1 : 0.82))
+            .padding(.horizontal, shape == .capsule ? 12 : 0)
+            .frame(width: shape == .circle ? 30 : nil, height: 30)
+            .background {
+                switch shape {
+                case .circle: Circle().fill(fill).overlay(Circle().strokeBorder(Color.primary.opacity(hovering ? 0.16 : 0.08), lineWidth: 0.5))
+                case .capsule: Capsule().fill(fill).overlay(Capsule().strokeBorder(Color.primary.opacity(hovering ? 0.16 : 0.08), lineWidth: 0.5))
+                }
+            }
+            .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed ? 0.95 : (hovering && !reduceMotion ? 1.03 : 1))
+            .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: hovering)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: configuration.isPressed)
+            .onHover { hovering = $0 }
     }
 }

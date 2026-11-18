@@ -69,8 +69,11 @@ enum DerailerClassifier {
     }
 
     static func isDerailer(_ sample: UsageSample, confirmedKeys: Set<String> = [], allowedKeys: Set<String> = []) -> Bool {
-        guard !isSystemProcess(sample), !isWorkTool(sample), !matches(sample, keys: allowedKeys) else { return false }
+        // Your rules come first (coach v8): a confirmed "Ghostty · Strong" used to lose to the
+        // built-in work-tool list.
+        guard !isSystemProcess(sample), !matches(sample, keys: allowedKeys) else { return false }
         if matches(sample, keys: confirmedKeys) { return true }
+        guard !isWorkTool(sample) else { return false }
         let category = AppUsageEntry.classify(
             bundleIdentifier: sample.bundleIdentifier,
             appName: sample.appName,

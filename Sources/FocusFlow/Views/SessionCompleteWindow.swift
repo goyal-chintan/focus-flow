@@ -33,6 +33,10 @@ struct SessionCompleteWindowView: View {
     /// The coach's ask (the learned 5 · 15 · 25 size), read once per appearance: it runs
     /// SwiftData fetches and a model fit, so never from `body`.
     @State private var coachAsk: CoachBlockSizeLadder.Recommendation?
+    /// Coach v7 §3.1: where you'll pick up. Shown when the break ends and on arrival.
+    @State private var nextStepDraft = ""
+    /// Coach v7: "Blocks you run 5+ min over are followed by…", read once per appearance (a fetch).
+    @State private var stretchFact: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(now: Date = Date()) {
@@ -88,6 +92,8 @@ struct SessionCompleteWindowView: View {
             blockTaskNotYet = false
             selectedOutcome = timerVM.lastCompletedFocusSession?.outcome
             coachAsk = timerVM.startLadderRecommendation()
+            nextStepDraft = timerVM.lastCompletedFocusSession?.nextStepText ?? ""
+            stretchFact = timerVM.isFocusOvertime ? timerVM.cycleStats().stretchFact : nil
             todaySummary = todayLine
             appeared = disableMotionForEvidence
             if !timerVM.isEvidenceMode {
@@ -103,6 +109,7 @@ struct SessionCompleteWindowView: View {
         .onDisappear {
             // Ticks, goal steps and the outcome are already saved; the achievement follows the ticks.
             if !hasHandledAction { syncAchievement() }
+            if !hasHandledAction, !isBreakCompletion { saveNextStep() }
             if !hasHandledAction && timerVM.isManualStop && timerVM.showSessionComplete {
                 timerVM.preserveManualStop()
             }
@@ -193,11 +200,12 @@ struct SessionCompleteWindowView: View {
                     .padding(.bottom, 20)
             }
             .scrollBounceBehavior(.basedOnSize)
-            // The window fits its content up to this height, then scrolls above the sticky footer.
-            .frame(maxHeight: 620)
+            // Fills the window (BlockEndWindowPresenter sizes it to fit the screen); scrolls above
+            // the sticky footer when the content is taller.
+            .frame(maxHeight: .infinity)
             footerBar
         }
-        .frame(width: 480)
+        .frame(minWidth: 480, maxWidth: .infinity, minHeight: 520, maxHeight: .infinity)
     }
 
     private var earnedStage: some View {
@@ -600,21 +608,41 @@ struct SessionCompleteWindowView: View {
 
     private var footerBar: some View {
         VStack(spacing: 8) {
-            // Two rows of equal pills (review 2026-10-30): the next block above, ending below, the
-            // earned break as the one prominent action on the trailing edge. The task is a caption,
-            // so no button label truncates.
+            // One row: the next block and the earned break side by side, the break prominent;
+            // ending below. After a block there is no smaller start: a 5-minute focus pill right
+            // above "Break 5m" started a focus block when a break was meant, six times
+            // (30 Oct–6 Nov 2026). The task is a caption, so no button label truncates.
             nextTaskCaption
+            nextStepField
+            if let stretchFact {
+                Label(stretchFact, systemImage: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(LiquidDesignTokens.Spectral.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
             EvidenceSafeGlassGroup {
                 VStack(spacing: 8) {
-                    startButtons(role: .secondary) { minutes in
-                        saveAndDismiss(action: .continueFocusing, prepare: { prepareNextStart(minutes: minutes) })
+                    HStack(spacing: 8) {
+                        startButtons(role: .secondary, after: .block) { minutes in
+                            saveAndDismiss(action: .continueFocusing, prepare: { prepareNextStart(minutes: minutes) })
+                        }
+                        breakButton
                     }
                     HStack(spacing: 8) {
                         LiquidActionButton(title: "Done for today", icon: "checkmark.circle", role: .secondary) {
                             saveAndDismiss(action: .endSession)
                         }
                         .accessibilityLabel("Done for today: end and keep this block")
-                        breakButton
+                        if timerVM.isFocusOvertime {
+                            // Coach v7 §3.1: a bounded lap, not an open-ended count-up.
+                            LiquidActionButton(title: "Keep going \(CoachLanding.lapMinutes)m", icon: "forward.fill", role: .secondary) {
+                                keepGoingLap()
+                            }
+                            .help("Ten more minutes, then this window comes back")
+                            .accessibilityLabel("Keep going for \(CoachLanding.lapMinutes) more minutes")
+                        }
                     }
                 }
             }
@@ -691,17 +719,11 @@ struct SessionCompleteWindowView: View {
         }
     }
 
-    /// The smaller start beside the usual one: the coach's ask when it differs, else 5 minutes.
-    /// Nil when the usual block is already the smallest.
-    private var smallerMinutes: Int? {
-        if let ask = coachAsk?.minutes, ask < nextMinutes { return ask }
-        let smallest = CoachBlockSizeLadder.sizes[0]
-        return nextMinutes > smallest ? smallest : nil
-    }
-
-    /// "Start 25m" and, beside it at the same width, "Start 15m". `onStart` gets the chosen size.
-    private func startButtons(role: LiquidActionRole, tint: Color? = nil, onStart: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 8) {
+    /// "Start 25m" and, after a break only, the coach's smaller ask beside it at the same width.
+    /// `onStart` gets the chosen size.
+    private func startButtons(role: LiquidActionRole, tint: Color? = nil, after: NextStartOffer.Moment, onStart: @escaping (Int) -> Void) -> some View {
+        let smallerMinutes = NextStartOffer.smallerMinutes(after: after, regular: nextMinutes, coachAsk: coachAsk?.minutes)
+        return HStack(spacing: 8) {
             LiquidActionButton(title: startTitle, icon: "play.fill", role: role, tint: tint) {
                 onStart(nextMinutes)
             }
@@ -749,6 +771,7 @@ struct SessionCompleteWindowView: View {
         VStack(spacing: 10) {
             // The only part that ticks: kept in its own view so the window doesn't re-render each second.
             BreakOverrunTitle()
+            BreakOverrunQuestion()
 
             // Spec invariant: always show last earned block
             if let ctx = timerVM.completedBlockContext ?? timerVM.breakEpisodeContext?.earnedBlock {
@@ -774,7 +797,7 @@ struct SessionCompleteWindowView: View {
         EvidenceSafeGlassGroup {
             VStack(spacing: 8) {
                 nextTaskCaption
-                startButtons(role: .primary, tint: .blue) { minutes in
+                startButtons(role: .primary, tint: .blue, after: .breakEnded) { minutes in
                     hasHandledAction = true
                     let restore = prepareNextStart(minutes: minutes)
                     timerVM.continueAfterCompletion(action: .continueFocusing)
@@ -800,11 +823,41 @@ struct SessionCompleteWindowView: View {
 
     /// Saves the block's leftovers (achievement from the ticks, splits), then runs
     /// `action`. `prepare` runs just before `continueAfterCompletion` and returns its undo.
+    /// "Next step" (coach v7 §3.1): one line, saved on any action or when the window closes.
+    private var nextStepField: some View {
+        TextField("Next step: where you'll pick up", text: $nextStepDraft)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 30)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 8))
+            .onSubmit(saveNextStep)
+            .accessibilityLabel("Next step")
+            .accessibilityHint("Shown when your break ends")
+    }
+
+    private func saveNextStep() {
+        guard !isBreakCompletion else { return }
+        let trimmed = nextStepDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != (timerVM.lastCompletedFocusSession?.nextStepText ?? "") else { return }
+        timerVM.setNextStep(trimmed)
+    }
+
+    private func keepGoingLap() {
+        guard !hasHandledAction else { return }
+        hasHandledAction = true
+        syncAchievement()
+        saveNextStep()
+        timerVM.keepGoingLap()
+        dismissWindow(id: "session-complete")
+    }
+
     private func saveAndDismiss(action: PostCompletionAction, prepare: (() -> (() -> Void))? = nil) {
         // The save is async, so the window stays up for a moment; a second click must not
         // save the reflection (and its splits) twice.
         guard !hasHandledAction else { return }
         hasHandledAction = true
+        saveNextStep()
         let achievement = achievementText
         Task { @MainActor in
             await timerVM.saveReflection(
@@ -820,30 +873,59 @@ struct SessionCompleteWindowView: View {
 
     // MARK: - Helpers
 
+    /// To the screen you're on, in front, at a usable size (`BlockEndWindowPresenter`).
     private func bringWindowToFront() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        let compact = isBreakCompletion || timerVM.isWakeRecoveryActive
         DispatchQueue.main.async {
-            let allWindows = NSApplication.shared.windows
-            for window in allWindows where window.identifier?.rawValue.contains("session-complete") == true {
-                window.level = .floating
-                window.makeKeyAndOrderFront(nil)
-                window.center()
-                return
-            }
-            // Fallback: newest non-panel, non-stats window
-            if let window = allWindows.last(where: {
-                !$0.title.isEmpty && $0.title != "FocusFlow" && !($0 is NSPanel) && $0.isVisible
-            }) {
-                window.level = .floating
-                window.makeKeyAndOrderFront(nil)
-                window.center()
-            }
+            let windows = NSApplication.shared.windows
+            let window = windows.first { $0.identifier?.rawValue.contains("session-complete") == true }
+                ?? windows.last { $0.title == "Block complete" && $0.isVisible }
+            if let window { BlockEndWindowPresenter.present(window, compact: compact) }
         }
     }
 }
 
 /// Cup and "Break ran 3m over" (amber) or "Reset complete". The only part of the break window
 /// that reads the per-second overtime tick, so only this view re-renders while a break runs over.
+/// Coach v6 §3.4: once a break is 5+ min over, one tap says why. The answer is stored on the
+/// break and moves the next break's length (`BreakAdaptation`). Its own view: it ticks.
+private struct BreakOverrunQuestion: View {
+    @Environment(TimerViewModel.self) private var timerVM
+
+    private var overSeconds: Int {
+        max(timerVM.breakEpisodeContext?.overrunSeconds ?? 0, timerVM.isBreakOvertime ? timerVM.overtimeSeconds : 0)
+    }
+
+    var body: some View {
+        if overSeconds >= BreakOverrunReason.askAfterSeconds {
+            VStack(spacing: 6) {
+                Text("What happened?")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    ForEach(BreakOverrunReason.allCases) { reason in
+                        let picked = timerVM.breakOverrunReason == reason
+                        Button { timerVM.answerBreakOverrun(reason) } label: {
+                            Text(reason.title)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                                .padding(.horizontal, 10)
+                                .frame(minHeight: 30)
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(picked ? Color.white : LiquidDesignTokens.Surface.onSurface)
+                        .background(Capsule().fill(picked ? AnyShapeStyle(LiquidDesignTokens.Spectral.amber) : AnyShapeStyle(Color.primary.opacity(0.07))))
+                        .accessibilityLabel("Break ran over: \(reason.title)")
+                        .accessibilityAddTraits(picked ? .isSelected : [])
+                    }
+                }
+            }
+            .transition(.opacity)
+        }
+    }
+}
+
 private struct BreakOverrunTitle: View {
     @Environment(TimerViewModel.self) private var timerVM
 
@@ -867,5 +949,18 @@ private struct BreakOverrunTitle: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
+    }
+}
+
+/// Which sizes the window offers for the next block (pure, so it is unit-tested).
+enum NextStartOffer {
+    enum Moment { case block, breakEnded }
+
+    /// After a finished block: none. You just worked a full block, so the next one is your usual
+    /// length, and a 5-minute focus pill reads like the break. After a break: the coach's smaller
+    /// ask, only when it learned one below your usual length (no fixed 5-minute fallback).
+    static func smallerMinutes(after moment: Moment, regular: Int, coachAsk: Int?) -> Int? {
+        guard moment == .breakEnded, let ask = coachAsk, ask < regular else { return nil }
+        return ask
     }
 }

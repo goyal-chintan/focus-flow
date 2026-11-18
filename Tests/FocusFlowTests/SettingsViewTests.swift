@@ -95,7 +95,7 @@ final class SettingsViewTests: XCTestCase {
     func testRequestedTabIsConsumedOnce() throws {
         let suite = "SettingsViewTests.requestedTab.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        defer { TestDefaults.remove(suite) }
 
         XCTAssertNil(SettingsTab.consumeRequestedTab(from: defaults))
         defaults.set("coach", forKey: SettingsTab.requestedTabKey)

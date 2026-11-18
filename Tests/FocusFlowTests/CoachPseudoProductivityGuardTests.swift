@@ -50,7 +50,7 @@ final class CoachPseudoProductivityGuardTests: XCTestCase {
     func testAnswerLogKeepsSideQuestRate() throws {
         let suite = "CoachPseudoLog.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        defer { TestDefaults.remove(suite) }
         let log = CoachPseudoWorkLog(defaults: defaults)
         for answer in [CoachPseudoAnswer.sideQuest, .sideQuest, .isPriority, .planned] {
             log.append(CoachPseudoWorkEntry(answeredAt: now, answer: answer, contextName: "Claude", hourOfDay: 22, priorityTitle: "Ship v1"))

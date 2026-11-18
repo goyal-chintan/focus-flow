@@ -64,6 +64,7 @@ struct CompanionWindowView: View {
     @State private var showNewProject = false
     @AppStorage("companionRequestedTab") private var requestedTabRaw: String = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(TimerViewModel.self) private var timerVM
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]
 
     private var current: CompanionDestination { selection ?? .tab(.today) }
@@ -82,6 +83,11 @@ struct CompanionWindowView: View {
         .background { CompanionTabShortcuts { open($0) } }
         .sheet(isPresented: $showNewProject) {
             ProjectEditorSheet(project: nil) { selection = .project($0.id) }
+        }
+        // Coach v8 §3.5: the weekly review (Insights button, or the Sunday invite).
+        .sheet(isPresented: Binding(get: { timerVM.weeklyReviewRequested }, set: { timerVM.weeklyReviewRequested = $0 })) {
+            WeeklyReviewView(now: Date()) { timerVM.weeklyReviewRequested = false }
+                .environment(timerVM)
         }
         .onAppear {
             if let tab = CompanionTab.resolve(requestedTabRaw) {

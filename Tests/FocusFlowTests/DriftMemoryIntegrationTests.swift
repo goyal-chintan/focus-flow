@@ -3,15 +3,21 @@ import Foundation
 @testable import FocusFlow
 
 @Suite("DriftMemory Integration — Spec Learning Rules")
-struct DriftMemoryIntegrationTests {
+final class DriftMemoryIntegrationTests {
+    /// Suites made by this test, removed with their files when it ends (Swift Testing makes one
+    /// instance per test, so `deinit` is the teardown).
+    private var suites: [String] = []
+
+    deinit { suites.forEach(TestDefaults.remove) }
 
     // MARK: - Helpers
 
     /// Returns a fresh DriftMemoryStore with an isolated UserDefaults suite so tests don't
     /// pollute each other or the real app storage.
     private func makeStore() -> DriftMemoryStore {
-        let suiteName = "test.driftmemory.\(UUID().uuidString)"
-        return DriftMemoryStore(defaults: UserDefaults(suiteName: suiteName)!)
+        let made = TestDefaults.make("driftmemory")
+        suites.append(made.name)
+        return DriftMemoryStore(defaults: made.defaults)
     }
 
     // MARK: - No global allowlist rule

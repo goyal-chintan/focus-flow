@@ -27,6 +27,9 @@ final class FocusSession {
     // Coach v2.1 intent/outcome capture (optional: no migration needed).
     /// "What will exist at the end of this block?"
     var intentText: String?
+    /// Coach v7: the next step, written while landing the block (T − 2 min or the block-end
+    /// window). Shown when the break ends and on arrival, so resuming starts from a cue.
+    var nextStepText: String? = nil
     /// `SessionOutcome` raw value, set from the post-session check.
     var outcomeRawValue: String?
     /// `WeeklyPriority.id` this block served, if any.

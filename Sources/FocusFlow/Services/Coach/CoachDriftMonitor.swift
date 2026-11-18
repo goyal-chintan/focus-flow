@@ -320,9 +320,17 @@ struct DriftMonitor: Sendable {
         allowedKeys: Set<String> = [],
         pacingPressure: Double?,
         busyworkContexts: Set<String> = [],
-        userAway: Bool = false
+        userAway: Bool = false,
+        role: AppRole? = nil
     ) -> DriftSampleKind {
         guard let bundleIdentifier, !bundleIdentifier.isEmpty else { return .other }
+        // Coach v8: the app's role in this context, when known, decides first. A pull (Slack in
+        // an own-work window) is a derailer; a tool (scaler.com for Learning) is not drift at all.
+        if role == .tool { return .other }
+        if role == .pull {
+            let name = (displayName?.isEmpty == false ? displayName : nil) ?? browserHost ?? appName ?? bundleIdentifier
+            return .derailer(name: name)
+        }
         let usage: UsageSample
         if let browserHost, !browserHost.isEmpty {
             usage = UsageSample(day: .distantPast, appName: displayName ?? browserHost, bundleIdentifier: "domain:\(browserHost)", outsideFocusSeconds: 1)

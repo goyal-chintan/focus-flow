@@ -1,10 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Goals: every active goal with its pace first, then the daily focus time, then the direction behind
-/// them (Dan Koe's protocol) (priorities-goals design §3.2, §3.5; screen audit: levers live in
-/// key-result captions here). Goals clarity 2026-11-02: what you're working toward comes first;
-/// the daily focus time is a setting, so it sits below, folded to one line.
+/// Goals: every active goal first, each one sentence, one bar and today's step (coach v8 §3.6),
+/// then one line on the daily target (set per day type in Settings → Focus), then the direction
+/// behind them (Dan Koe's protocol; priorities-goals design §3.2, §3.5).
 struct GoalsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.companionNowOverride) private var nowOverride
@@ -85,9 +84,10 @@ struct GoalsView: View {
                     }
                 }
 
-                // The one daily goal, set here only (it used to live in Settings and onboarding too).
+                // Coach v8 §3.6: the daily time target is a setting per day type (Settings → Focus);
+                // Goals says where it lives in one line.
+                DailyTargetLine(now: now)
                 if let settings = allSettings.first {
-                    DailyGoalCard(settings: settings, projects: projects, now: now)
                     DirectionCard(settings: settings)
                 }
 
@@ -137,6 +137,37 @@ struct GoalsView: View {
             .frame(maxWidth: 920, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// "Daily target today: 2h 30m on ★ Learning · set per day type in Settings → Focus" (coach v8
+/// §3.6). The target's controls moved to Settings → Focus with the leave, weekend, holiday and
+/// sick-day targets, so Goals shows the number once and where to change it.
+struct DailyTargetLine: View {
+    let now: Date
+    @Environment(TimerViewModel.self) private var timerVM
+
+    var body: some View {
+        let _ = timerVM.dayTargetsRevision
+        let goal = timerVM.dailyGoal(now: now)
+        HStack(spacing: FFSpace.s) {
+            Image(systemName: "target")
+                .foregroundStyle(FFPalette.accent)
+                .accessibilityHidden(true)
+            Text("Daily target today: \(FFFormat.duration(goal.seconds))").ffText(.headline).monospacedDigit()
+            ScopeChip(label: goal.label)
+            Spacer(minLength: FFSpace.s)
+            Button("Set per day type…") {
+                UserDefaults.standard.set(SettingsTab.timer.rawValue, forKey: SettingsTab.requestedTabKey)
+                timerVM.openSettingsScene?()
+            }
+            .buttonStyle(.link)
+            .accessibilityLabel("Set the daily target per day type in Settings, Focus")
+        }
+        .frame(minHeight: 30)
+        .padding(.horizontal, FFSpace.l)
+        .padding(.vertical, FFSpace.m)
+        .ffSurface()
     }
 }
 

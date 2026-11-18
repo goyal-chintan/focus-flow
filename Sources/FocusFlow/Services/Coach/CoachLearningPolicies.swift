@@ -168,7 +168,8 @@ enum CoachPromptPolicy {
     /// 2026-10-30: 3 decisions in 3 days, 1 start from 51 shown prompts in 14). HeartSteps did the
     /// same: a fixed-probability micro-randomised trial first (Klasnja et al., 2019), personalised
     /// later (Liao et al., 2020). The 30% kept quiet is still the control group the lift needs.
-    static let warmUpDecisions = 40
+    /// Coach v6: 40 was never reached (4 resolved decisions in 10 days, 28 Oct–6 Nov 2026).
+    static let warmUpDecisions = 15
     static let warmUpProbability = 0.7
 
     static func decide<G: RandomNumberGenerator>(x: [Double], model: BayesianLinearModel, resolvedDecisions: Int = .max,
@@ -248,12 +249,16 @@ enum CoachSizePolicy {
         return models
     }
 
-    /// Thompson sampling: the arm with the highest sampled value.
+    /// Thompson sampling: one posterior draw per arm, then the arm with the highest draw. (Before
+    /// coach v6 every comparison drew again, which is a noisy tournament, not Thompson sampling.)
     static func choose<G: RandomNumberGenerator>(context: Context, models: [Int: BayesianLinearModel], using rng: inout G) -> Int {
         let x = context.vector
-        return arms.max { lhs, rhs in
-            sampledValue(models[lhs], x, &rng) < sampledValue(models[rhs], x, &rng)
-        } ?? context.ruleMinutes
+        var best: (arm: Int, value: Double)?
+        for arm in arms {
+            let value = sampledValue(models[arm], x, &rng)
+            if best == nil || value > best!.value { best = (arm, value) }
+        }
+        return best?.arm ?? context.ruleMinutes
     }
 
     /// Greedy pick by posterior mean (for display, so the suggestion doesn't flicker).

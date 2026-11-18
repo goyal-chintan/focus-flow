@@ -139,6 +139,13 @@ struct DriftClassificationMemory: Codable {
         avoidantDates[key] = dates
     }
 
+    /// Coach v8: "projectId|workMode|app" keys you kept during block reviews, with how often
+    /// (within the allowance window). Seeds per-project app roles.
+    func plannedCounts(now: Date = Date()) -> [String: Int] {
+        let cutoff = now.addingTimeInterval(-Self.projectScopedAllowanceWindow)
+        return plannedDates.mapValues { $0.filter { $0 >= cutoff }.count }.filter { $0.value > 0 }
+    }
+
     mutating func removePlanned(key: String) {
         plannedDates.removeValue(forKey: key)
     }

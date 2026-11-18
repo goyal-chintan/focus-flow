@@ -133,7 +133,7 @@ struct SessionRow: View {
 
     static func title(intent: String?, taskTitle: String?, achievement: String?, fallback: String) -> String {
         for candidate in [intent, taskTitle, achievement] {
-            if let text = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+            if let text = candidate.map(BlockTitle.clean), !text.isEmpty { return text }
         }
         return fallback
     }

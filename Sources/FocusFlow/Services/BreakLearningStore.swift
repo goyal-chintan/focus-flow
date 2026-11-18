@@ -13,7 +13,8 @@ struct BreakLearningStore {
         actualBreakSeconds: Int,
         returnedToFocus: Bool,
         endedEarly: Bool,
-        overrunSeconds: Int
+        overrunSeconds: Int,
+        overrunReason: BreakOverrunReason? = nil
     ) {
         let event = BreakLearningEvent(
             projectId: projectId,
@@ -25,6 +26,7 @@ struct BreakLearningStore {
             endedEarly: endedEarly,
             overrunSeconds: overrunSeconds
         )
+        event.overrunReasonRaw = overrunReason?.rawValue
         modelContext.insert(event)
         do {
             try modelContext.save()

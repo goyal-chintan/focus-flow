@@ -78,10 +78,10 @@ private struct SessionKeyResultRow: View {
         keyResult.entries.filter { $0.sessionID == sessionID }.reduce(0) { $0 + $1.amount }
     }
 
-    /// The newest stepper entry from this block (task entries carry the task title as their note).
+    /// The newest stepper entry from this block (not one logged through a task; any may carry a label).
     private var lastStepperEntry: GoalProgressEntry? {
         keyResult.entries
-            .filter { $0.sessionID == sessionID && $0.note == nil && $0.amount > 0 }
+            .filter { $0.sessionID == sessionID && $0.taskID == nil && $0.amount > 0 }
             .max { $0.at < $1.at }
     }
 
@@ -96,6 +96,13 @@ private struct SessionKeyResultRow: View {
                         .lineLimit(1)
                     if addedThisBlock > 0 { thisBlockChip }
                     Spacer(minLength: 4)
+                    // Today's count beside the total (6 Nov 2026: "how many today?" had no answer here).
+                    if let today = KeyResultRow.doneToday(keyResult), today > 0 {
+                        Text("\(KeyResultRow.number(today)) today ·")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(LiquidDesignTokens.Surface.onSurfaceMuted)
+                            .monospacedDigit()
+                    }
                     Text("\(KeyResultRow.number(pace.done)) / \(KeyResultRow.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
                         .font(.system(size: 12, weight: .semibold))
                         .monospacedDigit()

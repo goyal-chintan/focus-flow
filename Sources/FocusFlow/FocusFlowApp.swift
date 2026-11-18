@@ -6,7 +6,7 @@ struct FocusFlowApp: App {
     @State private var timerVM = TimerViewModel()
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
-        let schema = Schema([Project.self, FocusSession.self, AppSettings.self, TimeSplit.self, BlockProfile.self, AppUsageRecord.self, AppUsageEntry.self, TaskIntent.self, CoachInterruption.self, InterventionAttempt.self, BreakLearningEvent.self, IdleDistractionItem.self, WeeklyPriority.self, PlannedBlock.self, ProjectGoal.self, GoalKeyResult.self, GoalProgressEntry.self, DailyTask.self, BlockStartEvent.self])
+        let schema = FocusFlowSchema.schema
         let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("FocusFlow", isDirectory: true)
@@ -84,7 +84,9 @@ struct FocusFlowApp: App {
                 .environment(timerVM)
                 .environment(\.modelContext, container.mainContext)
         }
-        .windowResizability(.contentSize)
+        // Resizable from 480 × 520; BlockEndWindowPresenter opens it at 560 × 760 (or your size).
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 560, height: 760)
         .windowStyle(.hiddenTitleBar)
         .modelContainer(container)
 

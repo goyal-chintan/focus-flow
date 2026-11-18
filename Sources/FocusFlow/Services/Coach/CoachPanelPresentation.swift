@@ -23,6 +23,12 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         /// Coach audit 2026-10-30: the evening "When are tomorrow's 2 blocks?" check-in.
         /// Each time chip plans one block. Stays until answered.
         case planTomorrow
+        /// Coach v6 §3.4: a quick question with one-tap answers (e.g. "Should I watch those hours?").
+        case question
+        /// Coach v7 §3.1: "2 min left. Next step?" with a one-line field.
+        case landing
+        /// Coach v7 §3.2: the break is over: "Back to: <next step>" with start sizes. Stays.
+        case returnFromBreak
     }
 
     let id: UUID
@@ -53,6 +59,9 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
     let recommendedMinutes: Int?
     /// Why that size, e.g. "5m: you said it felt too big."
     let sizeCaption: String?
+    /// Quick question: which question, and its one-tap answers.
+    let questionID: String?
+    let choices: [CoachQuestionChoice]
 
     init(
         id: UUID = UUID(),
@@ -70,7 +79,9 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         planSlots: [CoachPlanSlot] = [],
         sizeOptions: [Int] = [],
         recommendedMinutes: Int? = nil,
-        sizeCaption: String? = nil
+        sizeCaption: String? = nil,
+        questionID: String? = nil,
+        choices: [CoachQuestionChoice] = []
     ) {
         self.id = id
         self.kind = kind
@@ -87,6 +98,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         self.planSlots = planSlots
         self.sizeOptions = sizeOptions
         self.recommendedMinutes = recommendedMinutes
+        self.questionID = questionID
+        self.choices = choices
         // The default size has no reason worth a line; the hook already says "start small".
         self.sizeCaption = sizeCaption == CoachBlockSizeLadder.Recommendation.startingCaption ? nil : sizeCaption
     }
@@ -101,8 +114,9 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         switch kind {
         case .notice: 3.5
         case .keepGoing, .momentum, .inSessionDrift: 20
-        case .startNudge, .rescue, .pseudoProductivity, .weeklyPriorities: 180
-        case .plannedStart, .dailyPlan, .planTomorrow: nil
+        case .startNudge, .rescue, .pseudoProductivity, .weeklyPriorities, .question: 180
+        case .landing: 150
+        case .plannedStart, .dailyPlan, .planTomorrow, .returnFromBreak: nil
         }
     }
 
@@ -110,7 +124,8 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
     /// section reads "Not now, because…" (shared vocabulary, screen audit 2026-10-28).
     var menuTitle: String {
         switch kind {
-        case .startNudge, .pseudoProductivity, .inSessionDrift, .weeklyPriorities, .rescue, .notice: "Not now"
+        case .startNudge, .pseudoProductivity, .inSessionDrift, .weeklyPriorities, .rescue, .notice, .question, .landing: "Not now"
+        case .returnFromBreak: "Done for today"
         case .keepGoing: "I'm done · it counts"
         case .momentum: "Keep it short"
         case .plannedStart: "Not yet"
@@ -131,6 +146,9 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .plannedStart: [.starterInstead, .push15, .push60, .skipToday]
         case .dailyPlan: [.planLater, .notToday]
         case .planTomorrow: [.notToday]
+        case .question: [.notToday]
+        case .landing: []
+        case .returnFromBreak: [.doneForToday]
         }
     }
 
@@ -160,7 +178,9 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .notice: nil
         case .plannedStart: .push15
         case .dailyPlan: .planLater
-        case .planTomorrow: .notToday
+        case .planTomorrow, .question: .notToday
+        case .landing: nil
+        case .returnFromBreak: nil
         }
     }
 
@@ -181,7 +201,7 @@ struct CoachPanelPresentation: Identifiable, Equatable, Sendable {
         case .push60: "Push 1 hour"
         case .skipToday: "Skip today"
         case .planLater: "Ask me in 2 hours"
-        case .notToday: kind == .planTomorrow ? "Not tonight" : "Not today"
+        case .notToday: kind == .planTomorrow ? "Not tonight" : kind == .question ? "Not now" : "Not today"
         case .reasonBusy, .reasonTired, .reasonTooBig, .reasonUnclear:
             action.declineReason.map(CoachDeclineResponse.label) ?? ""
         }

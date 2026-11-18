@@ -146,7 +146,9 @@ final class WindowPolicyManager {
     /// and other system overlays above that level.
     private var hasCompanionWindows: Bool {
         NSApp.windows.contains {
-            ($0.isVisible || $0.isMiniaturized) && $0.level == .normal
+            ($0.isVisible || $0.isMiniaturized)
+                // The block-end window floats in front (BlockEndWindowPresenter) and still counts.
+                && ($0.level == .normal || $0.identifier?.rawValue.contains("session-complete") == true)
         }
     }
 }

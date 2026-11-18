@@ -8,10 +8,12 @@ protocol NotchHosting: AnyObject {
     func setEnabled(_ enabled: Bool)
 }
 
-/// A borderless panel above the menu bar that never takes focus. Buttons work without
-/// activating FocusFlow, so the app you're in keeps the keyboard.
+/// A borderless panel above the menu bar that takes no focus. Buttons work without
+/// activating FocusFlow, so the app you're in keeps the keyboard; only while you type a label
+/// for something you logged does it take the keyboard (`allowsKey`), then hands it back.
 final class NotchPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    var allowsKey = false
+    override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
 }
 
@@ -27,6 +29,8 @@ final class NotchController: NotchHosting {
     private var geometry: NotchGeometry?
     private var hoverTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
+    private var resignKeyObserver: NSObjectProtocol?
+    private var isHovering = false
     private(set) var isEnabled = false
 
     /// Hover in → open after this (a pass-through on the way to the menu bar doesn't open it).
@@ -40,6 +44,8 @@ final class NotchController: NotchHosting {
         state.onHover = { [weak self] hovering in self?.hoverChanged(hovering) }
         state.onTapCompact = { [weak self] in self?.expand() }
         state.onExpandedHeight = { [weak self] _ in self?.fitExpandedWindow() }
+        state.onBeginLabeling = { [weak self] in self?.beginLabeling() }
+        state.onEndLabeling = { [weak self] save in self?.endLabeling(save: save) }
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -57,6 +63,7 @@ final class NotchController: NotchHosting {
             if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
             screenObserver = nil
             hoverTask?.cancel()
+            endLabeling(save: true)
             state.expanded = false
             panel?.orderOut(nil)
         }
@@ -115,6 +122,12 @@ final class NotchController: NotchHosting {
         hosting.sizingOptions = []
         hosting.autoresizingMask = [.width, .height]
         panel.contentView = hosting
+        // Clicking into another app while typing a label keeps what was typed.
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.endLabeling(save: true) }
+        }
         self.panel = panel
         return panel
     }
@@ -122,7 +135,10 @@ final class NotchController: NotchHosting {
     // MARK: Hover
 
     private func hoverChanged(_ hovering: Bool) {
+        isHovering = hovering
         hoverTask?.cancel()
+        // Typing a label: stay open until Return, Esc or a click elsewhere.
+        guard hovering || state.labelingEntryID == nil else { return }
         hoverTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: hovering ? Self.openDelay : Self.closeDelay)
             guard !Task.isCancelled, let self else { return }
@@ -152,8 +168,34 @@ final class NotchController: NotchHosting {
         }
     }
 
+    // MARK: Labels
+
+    private func beginLabeling() {
+        guard let panel, state.labelingEntryID != nil else { return }
+        hoverTask?.cancel()
+        panel.allowsKey = true
+        panel.makeKey()
+    }
+
+    private func endLabeling(save: Bool) {
+        guard let id = state.labelingEntryID else { return }
+        state.labelingEntryID = nil
+        if save { timerVM.setGoalProgressNote(entryID: id, note: state.labelDraft) }
+        state.labelDraft = ""
+        if let panel {
+            panel.allowsKey = false
+            if panel.isKeyWindow {
+                // Hand the keyboard back to the app you were in (FocusFlow never activated).
+                panel.orderOut(nil)
+                panel.orderFrontRegardless()
+            }
+        }
+        if !isHovering { hoverChanged(false) }
+    }
+
     private func collapse() {
         guard state.expanded else { return }
+        endLabeling(save: true)
         state.expanded = false
         Task { @MainActor [weak self] in
             // After the close animation, shrink the window back so it never blocks the menu bar.
@@ -172,7 +214,8 @@ final class NotchController: NotchHosting {
             resume: { vm.resume() },
             setLength: { minutes in vm.setBlockLength(minutes: minutes) },
             finish: { [weak self] in self?.collapse(); vm.stopForReflection() },
-            keepGoing: { vm.continueAfterCompletion(action: .continueOvertime) },
+            // Coach v7 §3.1: a 10-minute lap, then the block-end window comes back.
+            keepGoing: { vm.keepGoingLap() },
             takeBreak: { vm.continueAfterCompletion(action: .takeBreak(duration: 300)) },
             end: { [weak self] in self?.collapse(); vm.continueAfterCompletion(action: .endSession) },
             skipBreak: { vm.skipBreak() },
@@ -185,10 +228,7 @@ final class NotchController: NotchHosting {
                 if vm.startNextBlock(minutes: minutes, projectID: projectID) { self?.collapse() }
             },
             logResult: { id in vm.logOneMore(resultID: id) },
-            openGoals: { [weak self] in
-                self?.collapse()
-                vm.openCompanionWindow?(.goals)
-            },
+            deleteEntry: { id in vm.deleteGoalProgressEntry(id: id) },
             tickTask: { id in
                 if let task = vm.todayTasks().first(where: { $0.id == id }) { vm.advanceDailyTask(task) }
             },
@@ -198,7 +238,10 @@ final class NotchController: NotchHosting {
                 self?.collapse()
                 vm.openCompletionWindow?()
                 vm.requestAppActivation?()
-            }
+            },
+            // Same as the popover's "Block interrupted" banner.
+            resumeRecovery: { [weak self] in self?.collapse(); vm.resumeFromRecovery() },
+            discardRecovery: { vm.discardRecovery() }
         )
     }
 }
@@ -216,6 +259,8 @@ private struct NotchLiveView: View {
     }
 
     private func snapshot(now: Date) -> NotchSnapshot {
+        // A +1, label or delete redraws the island even while the clock is paused.
+        _ = vm.dailyTaskRevision
         let mode = NotchSnapshot.Mode.from(
             state: vm.state, isOvertime: vm.isOvertime,
             isBreakOvertime: vm.isBreakOvertime, isBreakPaused: vm.isBreakPaused
@@ -231,32 +276,64 @@ private struct NotchLiveView: View {
         let lever = PopoverProjectScope.lever(levers, projectID: scopeID)
 
         let idleOpen = mode == .idle && state.expanded
-        let verdict = idleOpen ? TodayVerdict.text(modelContext: modelContext, now: now) : nil
         // The learned size is a store read: only while the idle island is open.
         let suggested = idleOpen ? vm.startLadderRecommendation(now: now).minutes : CoachBlockSizeLadder.defaultMinutes
 
-        var quick: (id: UUID, title: String, done: Double, target: Double)?
-        if mode == .focusing || mode == .paused, let projectID = vm.selectedProject?.id {
-            let lever = levers.first { $0.projectID == projectID }
-            let result = goals.filter { $0.projectID == projectID }
-                .flatMap(\.sortedKeyResults)
-                .first { $0.id == lever?.id && $0.kind == .count }
-                ?? goals.filter { $0.projectID == projectID }.flatMap(\.sortedKeyResults).first { $0.kind == .count && $0.done < $0.target }
-            if let result { quick = (result.id, result.title, result.done, result.target) }
+        let inBlock = mode == .focusing || mode == .paused
+        var quickResult: GoalKeyResult?
+        if inBlock, let projectID = vm.selectedProject?.id {
+            let leverID = levers.first { $0.projectID == projectID }?.id
+            let results = goals.filter { $0.projectID == projectID }.flatMap(\.sortedKeyResults)
+            quickResult = results.first { $0.id == leverID && $0.kind == .count }
+                ?? results.first { $0.kind == .count && $0.done < $0.target }
         }
+        let quick = quickResult.map { (id: $0.id, title: $0.title, done: $0.done, target: $0.target) }
 
         // Today's tasks: in a block, only the block's own task (no fallback to the next one).
         let todays = vm.todayTasks(now: now)
         let taskStats = DailyTaskPlanner.stats(DailyTaskPlanner.forProject(todays, scopeID), on: now)
+        // Everything this block logged, newest first. A label is the note, unless the note is only
+        // the task's or the number's own title (what a tick writes).
+        var blockLog: [NotchLogItem] = []
+        var quickToday: Double?
+        var receiptText = vm.dailyTaskReceipt?.text
+        if inBlock {
+            if let sessionID = vm.currentSessionID {
+                // Only this block's entries, fetched by session (not every key result's history).
+                let blockSession: UUID? = sessionID
+                let entries = (try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(
+                    predicate: #Predicate { $0.sessionID == blockSession && $0.amount > 0 },
+                    sortBy: [SortDescriptor(\.at, order: .reverse)]
+                ))) ?? []
+                let taskTitles = Dictionary(todays.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
+                blockLog = entries.compactMap { entry in
+                    guard let result = entry.keyResult else { return nil }
+                    let taskTitle = entry.taskID.flatMap { taskTitles[$0] } ?? ""
+                    let note = entry.note?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let isLabel = note.map { !$0.isEmpty && $0.caseInsensitiveCompare(result.title) != .orderedSame
+                        && $0.caseInsensitiveCompare(taskTitle) != .orderedSame } ?? false
+                    return NotchLogItem(id: entry.id, resultTitle: result.title, label: isLabel ? note : nil, at: entry.at)
+                }
+            }
+            if let quickResult { quickToday = KeyResultRow.doneToday(quickResult, now: now) }
+            // The +1 list is its own receipt: no second line for a +1 made through a task.
+            if let receipt = vm.dailyTaskReceipt, let quick,
+               todays.first(where: { $0.id == receipt.taskID })?.keyResultID == quick.id {
+                receiptText = nil
+            }
+        }
         let next: DailyTask?
-        if mode == .focusing || mode == .paused {
+        if inBlock {
             next = vm.currentBlockTaskID.flatMap { id in todays.first { $0.id == id && !$0.isDone } }
+                // A block task that only counts the +1 number is already the list's +1.
+                .flatMap { task in quick != nil && task.keyResultID == quick?.id ? nil : task }
         } else {
             next = DailyTaskPlanner.nextTask(todays, on: now, for: shownProject?.id)
         }
 
         let attention = mode == .idle && (vm.coachPanel != nil || vm.coachMenuBarPulse)
-        let dailyGoal = GoalDataBuilder.dailyGoal(projects: projects, settings: vm.settings, on: now)
+        // The day's goal, sized by today's day type (coach v8 §3.5) as on Today and in Goals.
+        let dailyGoal = vm.dailyGoal(now: now)
         return NotchSnapshot(
             mode: mode,
             time: vm.isOvertime ? vm.overtimeTimeString : vm.timeString,
@@ -268,17 +345,20 @@ private struct NotchLiveView: View {
             goalTarget: dailyGoal.seconds,
             goalLabel: dailyGoal.label,
             lever: lever,
-            verdict: verdict,
             coachHook: attention ? (vm.coachPanel?.message.hook ?? "The coach has a start for you.") : nil,
             quickResult: quick,
             tasks: taskStats,
             nextTask: next.map { ($0.id, $0.title) },
             nextTaskCount: next.flatMap { $0.isCounted ? ($0.loggedCount, $0.progressAmount) : nil },
-            receipt: vm.dailyTaskReceipt?.text,
-            reminder: idleOpen ? vm.dailyReminder(now: now) : nil,
+            receipt: receiptText,
             suggestedMinutes: suggested,
             regularMinutes: vm.regularMinutes,
-            growToMinutes: CoachBlockSizeLadder.sizes.first { $0 > vm.blockLengthMinutes && vm.canSetBlockLength($0) }
+            growToMinutes: CoachBlockSizeLadder.sizes.first { $0 > vm.blockLengthMinutes && vm.canSetBlockLength($0) },
+            blockLog: blockLog,
+            quickResultToday: quickToday,
+            recovery: mode == .idle ? vm.recoveryState.map {
+                NotchRecovery.make($0, projectName: vm.recoveryProject?.name, projectColor: vm.recoveryProject?.color, now: now)
+            } : nil
         )
     }
 }

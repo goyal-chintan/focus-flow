@@ -142,7 +142,8 @@ final class ClarityFixesTests: XCTestCase {
         lever.countedName = "Problems solved"
         XCTAssertEqual(lever.taskTitle, "Problems solved")
         lever.amount = 1
-        XCTAssertEqual(lever.taskTitle, "Problems solved: 3 today", "A one-off keeps the action")
+        // 6 Nov 2026: one left is still the same count; a title never carries today's numbers.
+        XCTAssertEqual(lever.taskTitle, "Problems solved")
     }
 
     // MARK: One truth (2026-10-28 evening)

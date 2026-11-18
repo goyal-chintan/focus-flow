@@ -140,6 +140,13 @@ enum GoalDataBuilder {
         }
     }
 
+    /// Each counted number's day (6 Nov 2026): how many you did today and today's aim, by key result.
+    static func todayCounts(_ goal: ProjectGoal, now: Date, calendar: Calendar = .current) -> [UUID: TodayCount] {
+        Dictionary(uniqueKeysWithValues: leverInputs([goal], now: now, calendar: calendar).map { input in
+            (input.id, TodayCount(done: input.doneToday, aim: DailyLevers.todayAim(input, now: now, calendar: calendar)))
+        })
+    }
+
     /// Levers favour what you are building for yourself: ★ #1 first, then own work (personal,
     /// learning), so an office goal never takes all three slots from them.
     static func priorityBoost(_ project: Project?) -> Double {
@@ -223,6 +230,8 @@ struct DailyGoal: Equatable, Sendable {
         case projectTargets
         /// The fixed number set in Goals.
         case fixed
+        /// Coach v8 §3.5: your target for today's day type (leave, weekend, holiday, sick).
+        case dayType(DayType)
     }
 
     static let defaultSeconds: TimeInterval = 7200

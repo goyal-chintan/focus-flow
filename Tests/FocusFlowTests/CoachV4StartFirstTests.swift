@@ -11,13 +11,13 @@ final class CoachV4StartFirstTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        defaultsSuite = "FocusFlowTests-\(UUID())"
+        defaultsSuite = "FocusFlowTests.\(UUID())"
         defaults = UserDefaults(suiteName: defaultsSuite)!
     }
 
     override func tearDown() {
         AppUsageTracker.shared.stop()
-        defaults.removePersistentDomain(forName: defaultsSuite)
+        TestDefaults.remove(defaultsSuite)
         containers.removeAll()
         super.tearDown()
     }
@@ -312,7 +312,10 @@ final class CoachV4StartFirstTests: XCTestCase {
         vm.performCoachPanelSecondary(.reasonBusy, now: now)
         XCTAssertNil(vm.coachPanel)
         XCTAssertEqual(vm.coachQuietUntil, now.addingTimeInterval(3600))
-        XCTAssertFalse(vm.evaluateDailyPlanInvite(now: now.addingTimeInterval(3 * 3600)), "The card is done for today")
+        // Later the same day (after 21:00, "3 hours later" would be tomorrow, when the card may show again).
+        let endOfDay = Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: now) ?? now
+        let later = min(now.addingTimeInterval(3 * 3600), endOfDay)
+        XCTAssertFalse(vm.evaluateDailyPlanInvite(now: later), "The card is done for today")
         XCTAssertTrue(vm.coachJournal.entries(on: now).contains { $0.kind == .declined && $0.text.contains("busy with work") })
     }
 
@@ -366,12 +369,12 @@ final class CoachV4StartFirstTests: XCTestCase {
         let snapshot = vm.coachSnapshot(now: now, idleSeconds: 0, frontmostCategory: .neutral)
         XCTAssertEqual(snapshot.target.name, "Learning", "No weekly priority: the #1 project")
         XCTAssertEqual(snapshot.target.projectID, learning.id)
-        XCTAssertEqual(snapshot.facts.lever, "3 LeetCode questions", "60 left over 20 days")
+        XCTAssertEqual(snapshot.facts.lever, "LeetCode questions: 0 of 3 today", "60 left over 20 days: done of today's aim")
 
         XCTAssertTrue(vm.startNextBlock(minutes: 15))
         let session = try XCTUnwrap(context.fetch(FetchDescriptor<FocusSession>()).first)
         XCTAssertEqual(session.project?.id, learning.id)
-        XCTAssertEqual(session.intentText, "3 LeetCode questions")
+        XCTAssertEqual(session.intentText, "LeetCode questions", "The block's title is what you count, never today's numbers")
     }
 
     func testOfficeHoursDoNotFillTheOwnWorkGoal() throws {

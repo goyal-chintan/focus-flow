@@ -2,8 +2,8 @@ import SwiftUI
 import SwiftData
 
 /// Settings → Coach (screen audit 2026-10-28). Four groups: the style, starting, the limits the
-/// learner never crosses, and during a block; then "My why" and how the coach is doing (moved from
-/// Insights 2026-10-30). What v5 learns (when to ask, which size) has no knob; weekly priorities are
+/// learner never crosses, and during a block; then "My why". How the coach is doing moved back to
+/// Insights → "Is the coach helping?" (coach v8 §3.4). What v5 learns (when to ask, which size) has no knob; weekly priorities are
 /// retired in favour of goals and daily tasks.
 struct CoachSettingsTab: View {
     @Environment(\.modelContext) private var modelContext
@@ -16,7 +16,6 @@ struct CoachSettingsTab: View {
     @State private var isRequestingNotifications = false
     /// Shown after a switch to Gentle or Data while the pause screen is still on.
     @State private var showPauseScreenOffer = false
-    @State private var showPerformance = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var settings: AppSettings { allSettings.first ?? AppSettings() }
@@ -32,7 +31,6 @@ struct CoachSettingsTab: View {
             limitsSection
             duringSessionSection
             myWhySection
-            performanceSection
             debugSection
         }
         .formStyle(.grouped)
@@ -368,25 +366,6 @@ struct CoachSettingsTab: View {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.count > maxWhyLines else { return text }
         return lines.prefix(maxWhyLines).joined(separator: "\n")
-    }
-
-    // MARK: How the coach is doing
-
-    /// Prompt → start, what stops you, the research cards and today's log (moved from Insights).
-    private var performanceSection: some View {
-        Section {
-            DisclosureGroup(isExpanded: $showPerformance) {
-                CoachPerformanceView()
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("How the coach is doing")
-                    Text("Is it getting you started? Prompt → start rate, what stops you, today's log.")
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-                }
-            }
-            .accessibilityIdentifier("settings.coach.performance")
-        }
     }
 
     // MARK: Debug

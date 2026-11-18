@@ -1,0 +1,198 @@
+import Foundation
+
+// Coach v6 §3.4: when the coach is unsure, it asks one short question with one-tap answers, and
+// the answer changes what it does now. At most one question a day, never during a block, a share
+// or quiet hours, and only with someone at the desk.
+
+struct CoachQuestionChoice: Equatable, Sendable, Identifiable {
+    let id: String
+    let title: String
+}
+
+enum CoachQuestion: Equatable, Sendable {
+    /// The declared own-work windows miss when blocks actually start (`CoachWindowFit`).
+    case windowFit(CoachWindowFit, declared: [CoachOwnWorkWindow])
+    /// A busy project has no area, so the coach can't tell whether it is own work and leaves its
+    /// blocks out of everything it learns (ProjectWork: 31 blocks on 6 Nov 2026).
+    case projectArea(projectID: UUID, name: String, blocks: Int)
+    /// Coach v7 §3.1: blocks keep running past the usual length while you focus.
+    case naturalLength(minutes: Int, regular: Int)
+    /// Coach v8 §3.1: a quiet weekday. Leave, holiday, or a quiet workday?
+    case dayType(day: Date, inferred: DayType, reason: String)
+    /// Coach v8 §3.3: an office tool or a default pull open in an own-work project's blocks.
+    case appRole(key: String, name: String, projectID: UUID, projectName: String, days: Int)
+    /// Coach v8 §3.5: a day off with no plan, after a week without plans. Pick a time.
+    case planToday(day: Date, times: [Date])
+    /// 6 Nov 2026: a long gap between sittings today. What was it? (`GapReason`)
+    case gapReason(start: Date, end: Date, summary: String)
+
+    var id: String {
+        switch self {
+        case .windowFit: "window_fit"
+        case .projectArea(let id, _, _): "project_area.\(id.uuidString)"
+        case .naturalLength: "natural_length"
+        case .dayType(let day, _, _): "day_type.\(Int(day.timeIntervalSince1970))"
+        case .appRole(let key, _, let projectID, _, _): "app_role.\(key).\(projectID.uuidString)"
+        case .planToday(let day, _): "plan_today.\(Int(day.timeIntervalSince1970))"
+        case .gapReason(let start, _, _): "gap_reason.\(Int(start.timeIntervalSince1970))"
+        }
+    }
+
+    var hook: String {
+        switch self {
+        case .windowFit:
+            "Should I watch the hours you actually work?"
+        case .projectArea(_, let name, _):
+            "Is \(name) your own work, or your day job?"
+        case .naturalLength(let minutes, _):
+            "Your blocks run about \(minutes) min. Make \(minutes) your usual?"
+        case .dayType:
+            "No Slack or calls today. On leave?"
+        case .appRole(_, let name, _, let projectName, _):
+            "Is \(CoachMessageComposer.shortName(name)) part of \(CoachMessageComposer.shortName(projectName)), or a pull?"
+        case .planToday:
+            "A free day, and no plan yet. When's your block?"
+        case .gapReason(let start, let end, _):
+            "\(CoachQuestion.clock(start))–\(CoachQuestion.clock(end)) between blocks. What was it?"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .windowFit(let fit, _):
+            // Two lines in the panel: compact hours, then the miss.
+            "You start around \(fit.observedShortLabel). Your set windows caught \(fit.covered) of \(fit.starts) starts."
+        case .projectArea(_, let name, let blocks):
+            "\(name) has \(blocks) blocks in 4 weeks but no area, so I leave them out of your goal and what I learn."
+        case .naturalLength(_, let regular):
+            "Most of your recent \(regular)m blocks ran 8+ min over while you focused. A block that ends where you planned beats a \(regular) you always stretch."
+        case .dayType:
+            "Your answer sets today's own-work target and how I judge the day."
+        case .appRole(_, let name, _, let projectName, let days):
+            "\(name) was open in \(projectName) blocks on \(days) day\(days == 1 ? "" : "s") this week. Your answer holds for \(projectName) only."
+        case .planToday:
+            "Unplanned days off are the ones that slip. Pick a time and I'll cue it."
+        case .gapReason(_, _, let summary):
+            "\(summary.isEmpty ? "Nothing recorded" : summary). Family and rest are fine; the rest is what I can help with."
+        }
+    }
+
+    var choices: [CoachQuestionChoice] {
+        switch self {
+        case .windowFit:
+            [
+                CoachQuestionChoice(id: WindowFitAnswer.useObserved.rawValue, title: "Use these hours"),
+                CoachQuestionChoice(id: WindowFitAnswer.addObserved.rawValue, title: "Add them to mine"),
+                CoachQuestionChoice(id: WindowFitAnswer.keepMine.rawValue, title: "Keep my windows"),
+            ]
+        case .projectArea:
+            [
+                CoachQuestionChoice(id: ProjectArea.personal.rawValue, title: "My own work"),
+                CoachQuestionChoice(id: ProjectArea.learning.rawValue, title: "Learning"),
+                CoachQuestionChoice(id: ProjectArea.work.rawValue, title: "Day job"),
+            ]
+        case .naturalLength(let minutes, let regular):
+            [
+                CoachQuestionChoice(id: "\(minutes)", title: "Make it \(minutes) min"),
+                CoachQuestionChoice(id: "keep", title: "Keep \(regular) min"),
+            ]
+        case .dayType:
+            [
+                CoachQuestionChoice(id: DayType.leave.rawValue, title: "Yes, on leave"),
+                CoachQuestionChoice(id: DayType.holiday.rawValue, title: "A holiday"),
+                CoachQuestionChoice(id: DayType.workday.rawValue, title: "Working, just quiet"),
+                CoachQuestionChoice(id: DayType.sick.rawValue, title: "Sick day"),
+            ]
+        case .appRole(_, _, _, let projectName, _):
+            [
+                CoachQuestionChoice(id: AppRole.tool.rawValue, title: "Part of \(CoachMessageComposer.shortName(projectName))"),
+                CoachQuestionChoice(id: AppRole.pull.rawValue, title: "A pull"),
+            ]
+        case .planToday(_, let times):
+            times.map { CoachQuestionChoice(id: "\(Int($0.timeIntervalSince1970))", title: CoachQuestion.clock($0)) }
+                + [CoachQuestionChoice(id: "rest", title: "Resting today")]
+        case .gapReason:
+            [GapReason.family, .tired, .procrastinating, .sideProject].map {
+                CoachQuestionChoice(id: $0.rawValue, title: $0 == .family ? "Family / rest" : $0.title)
+            }
+        }
+    }
+
+    /// "10:00".
+    static func clock(_ date: Date, calendar: Calendar = .current) -> String {
+        String(format: "%02d:%02d", calendar.component(.hour, from: date), calendar.component(.minute, from: date))
+    }
+
+    enum WindowFitAnswer: String, Sendable {
+        case useObserved = "use"
+        case addObserved = "add"
+        case keepMine = "keep"
+    }
+
+    /// The windows to save for an answer; nil keeps the declared ones as they are.
+    static func windows(after answer: WindowFitAnswer, declared: [CoachOwnWorkWindow], fit: CoachWindowFit) -> [CoachOwnWorkWindow]? {
+        switch answer {
+        case .useObserved: CoachOwnWorkWindows.normalized(fit.observed)
+        case .addObserved: CoachOwnWorkWindows.normalized(declared + fit.additions(to: declared))
+        case .keepMine: nil
+        }
+    }
+}
+
+/// When a question may be asked. Pure, so the limits are unit-tested.
+enum CoachQuestionPolicy {
+    /// After "Not now" the same question waits this long.
+    static let notNowCooldown: TimeInterval = 3 * 86_400
+    /// After "Keep my windows" the window question waits this long.
+    static let keepMineCooldown: TimeInterval = 14 * 86_400
+    static let maxIdleSeconds: TimeInterval = 60
+
+    struct Input: Sendable {
+        var now: Date
+        var askedToday: Bool
+        var sessionActive: Bool
+        var panelShowing: Bool
+        var quietHours: Bool
+        var screenShare: Bool
+        var userIdleSeconds: TimeInterval
+        var questionSnoozedUntil: Date?
+    }
+
+    static func mayAsk(_ input: Input) -> Bool {
+        guard !input.askedToday, !input.sessionActive, !input.panelShowing, !input.quietHours,
+              !input.screenShare, input.userIdleSeconds <= maxIdleSeconds else { return false }
+        if let until = input.questionSnoozedUntil, until > input.now { return false }
+        return true
+    }
+}
+
+/// Per-question state in defaults: the day of the last question, and each question's snooze.
+struct CoachQuestionStore {
+    static let askedDayKey = "focusflow.coachQuestion.askedDay"
+    static func snoozeKey(_ id: String) -> String { "focusflow.coachQuestion.snoozedUntil.\(id)" }
+
+    let defaults: UserDefaults
+
+    func askedToday(now: Date, calendar: Calendar = .current) -> Bool {
+        guard let day = defaults.object(forKey: Self.askedDayKey) as? Date else { return false }
+        return calendar.isDate(day, inSameDayAs: now)
+    }
+
+    func markAsked(now: Date) { defaults.set(now, forKey: Self.askedDayKey) }
+
+    func snoozedUntil(_ id: String) -> Date? { defaults.object(forKey: Self.snoozeKey(id)) as? Date }
+
+    func snooze(_ id: String, until: Date) { defaults.set(until, forKey: Self.snoozeKey(id)) }
+}
+
+extension CoachQuestion {
+    /// The busiest active project with no area, once any project is marked Work (only then does
+    /// "own work" filter anything). Needs `minBlocks` blocks in the lookback.
+    static let minProjectBlocks = 5
+
+    static func unclassifiedProject(_ projects: [(id: UUID, name: String, hasArea: Bool, isWork: Bool, blocks: Int)]) -> CoachQuestion? {
+        guard projects.contains(where: \.isWork) else { return nil }
+        guard let busiest = projects.filter({ !$0.hasArea && $0.blocks >= minProjectBlocks }).max(by: { $0.blocks < $1.blocks }) else { return nil }
+        return .projectArea(projectID: busiest.id, name: busiest.name, blocks: busiest.blocks)
+    }
+}

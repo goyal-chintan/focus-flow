@@ -13,6 +13,10 @@ final class BreakLearningEvent {
     var returnedToFocus: Bool
     var endedEarly: Bool
     var overrunSeconds: Int
+    /// Coach v6 §3.4: why a break ran 5+ min over, when the user said (`BreakOverrunReason`).
+    var overrunReasonRaw: String? = nil
+
+    var overrunReason: BreakOverrunReason? { overrunReasonRaw.flatMap(BreakOverrunReason.init(rawValue:)) }
 
     var workMode: WorkMode {
         get { WorkMode(rawValue: workModeRawValue) ?? .deepWork }

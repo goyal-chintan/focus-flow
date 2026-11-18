@@ -374,6 +374,8 @@ final class TimerViewModel {
     var timer: Timer?
     private var modelContext: ModelContext?
     private var currentSession: FocusSession?
+    /// The running block's id (the notch lists what this block logged).
+    var currentSessionID: UUID? { currentSession?.id }
     private(set) var settings: AppSettings?
 
     // MARK: - Focus Coach
@@ -450,7 +452,8 @@ final class TimerViewModel {
     private(set) var currentDrift: DriftAssessment?
     private(set) var currentFocusWindow: CoachFocusWindow?
     private var lastRescueDecision: CoachRescueCadence.Decision?
-    private var driftRuleKeys: (confirmed: Set<String>, allowed: Set<String>, loadedAt: Date)?
+    /// A cache read while drawing (the day ledger behind `dailyGoal`), so it is never observed.
+    @ObservationIgnored private var driftRuleKeys: (confirmed: Set<String>, allowed: Set<String>, loadedAt: Date)?
     /// Contexts the user called a side quest at least half the time (≥ 2 answers): their time is pseudo-work.
     private(set) var busyworkContexts: Set<String> = []
     /// The pause screen on screen; nil when hidden.
@@ -708,6 +711,7 @@ final class TimerViewModel {
     func ensureConfigured(modelContext: ModelContext) {
         if !isConfigured {
             configure(modelContext: modelContext)
+            repairCountedTasks()
         }
     }
 
@@ -2007,13 +2011,9 @@ final class TimerViewModel {
         let workMode = completedBlockContext?.workMode ?? selectedProject?.workMode ?? .deepWork
         let recent = breakLearningStore?.recentEvents(projectId: projectId, workMode: workMode, limit: 8) ?? []
 
-        var adaptationScore = 0
-        for event in recent {
-            if event.returnedToFocus { adaptationScore += 1 }
-            if event.endedEarly { adaptationScore -= 1 }
-            if event.overrunSeconds > 120 { adaptationScore -= 1 }
-        }
-        let adaptationMinutes = min(3, max(-3, adaptationScore / 2))
+        let adaptationMinutes = BreakAdaptation.minutes(recent.map {
+            BreakAdaptation.Event(returnedToFocus: $0.returnedToFocus, endedEarly: $0.endedEarly, overrunSeconds: $0.overrunSeconds, reason: $0.overrunReason)
+        })
 
         let suggestion = earnedBreakSuggestionEngine.suggest(
             EarnedBreakSuggestionInput(
@@ -2061,10 +2061,21 @@ final class TimerViewModel {
             actualBreakSeconds: actualSeconds,
             returnedToFocus: returnedToFocus,
             endedEarly: endedEarly,
-            overrunSeconds: overrunSeconds
+            overrunSeconds: overrunSeconds,
+            overrunReason: overrunSeconds >= BreakOverrunReason.askAfterSeconds ? breakOverrunReason : nil
         )
 
         choseSuggestedBreakCurrentEpisode = false
+        breakOverrunReason = nil
+    }
+
+    /// The answer to "What happened?" in the break-over window (coach v6 §3.4), stored on the
+    /// break when it ends.
+    var breakOverrunReason: BreakOverrunReason?
+
+    func answerBreakOverrun(_ reason: BreakOverrunReason, now: Date = Date()) {
+        breakOverrunReason = reason
+        coachJournal.record(.logged, "Break ran over: \(reason.title.lowercased()).", code: .question, at: now)
     }
 
     private func activateBlocking() {
@@ -2142,12 +2153,17 @@ final class TimerViewModel {
     private func tick() {
         if isOvertime {
             overtimeSeconds += 1
-            currentSession?.endedAt = Date()
+            // endedAt moves with the 30 s save, not every second: each write redraws every open page
+            // that reads the block (Insights took the main thread at 100% in a long overtime, 17 Nov
+            // 2026). Leaving overtime stamps the exact end (`continueAfterCompletion`).
+            // Coach v7: land the block (stretch nudge, laps) or walk the return ladder.
+            if isFocusOvertime { handleFocusOvertimeStep() } else { handleBreakOvertimeStep() }
             // Live focus time grows with a block's overtime only: a break that ran over is break time.
             if isFocusOvertime {
                 todayFocusTime += 1
             }
             if overtimeSeconds % 30 == 0 {
+                currentSession?.endedAt = Date()
                 saveContext()
                 loadTodayStats() // Reconcile with DB periodically
             }
@@ -2178,15 +2194,18 @@ final class TimerViewModel {
             }
         }
 
-        // Break duration monitoring — send warnings for long breaks
-        if case .onBreak = state, let session = currentSession {
-            let breakElapsed = Date().timeIntervalSince(session.startedAt)
-            let breakElapsedInt = Int(breakElapsed)
-            if breakElapsedInt == 120 {
-                NotificationService.shared.sendBreakWarning(minutes: 2)
-            } else if breakElapsedInt == 300 {
-                NotificationService.shared.sendBreakCritical(minutes: 5)
-            }
+        // Coach v7 §3.1: two minutes before the planned end, the landing cue asks for the next step.
+        if state == .focusing, Int(remainingSeconds) == CoachLanding.cueSeconds {
+            presentLandingCue()
+        }
+        // Coach v7 §3.2: one minute before a break ends, the next step. (Replaces the alerts at 2
+        // and 5 minutes *into* a break, which fired while the break was still on plan.)
+        if case .onBreak = state, !isBreakPaused, Int(remainingSeconds) == CoachReturnLadder.preEndSeconds {
+            let next = latestNextStep()
+            NotificationService.shared.sendCoachLine(
+                id: "break-ending", title: "1 min left on your break",
+                body: next.map { "Next: \($0)" } ?? "Next: back to the block."
+            )
         }
 
         if remainingSeconds <= 0 {
@@ -2285,6 +2304,10 @@ final class TimerViewModel {
         }
         currentCoachQuickPromptDecision = nil
         hideCoachPanel()
+        overtimeLapEndsAt = nil
+        if wasType != nil, wasType != .focus {
+            beginReturnLadder(now: Date())
+        }
     }
 
     // MARK: - Reflection
@@ -2375,6 +2398,8 @@ final class TimerViewModel {
         }
         showSessionComplete = false
         isManualStop = false
+        overtimeLapEndsAt = nil
+        if coachPanel?.kind == .returnFromBreak || coachPanel?.kind == .landing { hideCoachPanel() }
 
         if case .continueOvertime = action {
             // Keep overtime state and timer running.
@@ -2390,11 +2415,14 @@ final class TimerViewModel {
         closePopover()
 
         // Resolve completion and leave overtime mode.
+        let wasOvertime = isOvertime
         timer?.invalidate()
         timer = nil
         isOvertime = false
         overtimeSeconds = 0
 
+        // Overtime moves the running session's endedAt every 30 s only; it ends now, to the second.
+        if wasOvertime { currentSession?.endedAt = Date() }
         if let session = lastCompletedSession ?? currentSession {
             if session.type == .focus && session.actualDuration < Self.minimumRetainedFocusSeconds {
                 modelContext?.delete(session)
@@ -2424,6 +2452,7 @@ final class TimerViewModel {
             state = .idle
             loadTodayStats()
             currentSession = nil
+            offerBackAt(now: Date())
         }
     }
 
@@ -2740,9 +2769,12 @@ final class TimerViewModel {
         case .dailyPlan:
             // v4: the card's primary is "start now"; time chips plan for later.
             guard startCoachPlan(panel.plan, attemptID: panel.attemptID) else { return false }
-        case .planTomorrow:
-            // No primary: each time chip plans a block.
+        case .planTomorrow, .question, .landing:
+            // No primary: each time chip plans a block; each answer is its own button; the
+            // landing field saves itself.
             hideCoachPanel()
+        case .returnFromBreak:
+            return startFromReturnPanel(minutes: panel.plan?.minutes ?? regularMinutes)
         }
         if panel.kind == .pseudoProductivity, panel.level != nil {
             rescueStartedSessionID = currentSession?.id
@@ -2776,6 +2808,12 @@ final class TimerViewModel {
             }
             interventionActionTaken = true
             hideCoachPanel()
+        case .doneForToday where panel.kind == .returnFromBreak:
+            coachJournal.record(.declined, "Back from break: done for today.", code: .returnLadder, at: now)
+            interventionActionTaken = true
+            hideCoachPanel()
+            suppressBackAtOffer = true
+            continueAfterCompletion(action: .endSession)
         case .doneForToday:
             coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
             coachEngine.snooze(minutes: 90, skipReason: .doneForToday)
@@ -2810,7 +2848,13 @@ final class TimerViewModel {
             interventionActionTaken = true
             hideCoachPanel()
         case .starterInstead:
-            // Two-minute rule: the smallest real start still fulfils the plan.
+            // Two-minute rule: the smallest real start still fulfils the plan. Started from the
+            // plan's own cue, it is that plan however late the cue came (as "Start now" does).
+            if let id = panel.plannedBlockID,
+               let block = plannedBlocks(from: now.addingTimeInterval(-24 * 3600), to: now.addingTimeInterval(24 * 3600)).first(where: { $0.id == id }),
+               block.status == .planned, !CoachPlannedCue.fulfills(startAt: block.startAt, sessionStart: Date()) {
+                block.startAt = Date()
+            }
             guard startStarterBlock(attemptID: panel.attemptID) else {
                 coachPanelError = startError
                 return
@@ -2834,6 +2878,13 @@ final class TimerViewModel {
             hideCoachPanel()
         case .reasonBusy, .reasonTired, .reasonTooBig, .reasonUnclear:
             if let reason = action.declineReason { performCoachPanelDecline(reason, now: now) }
+        case .notToday where panel.kind == .question:
+            if let id = panel.questionID {
+                CoachQuestionStore(defaults: defaults).snooze(id, until: now.addingTimeInterval(CoachQuestionPolicy.notNowCooldown))
+            }
+            coachJournal.record(.declined, "Quick question: not now.", code: .question, at: now)
+            interventionActionTaken = true
+            hideCoachPanel()
         case .notToday where panel.kind == .planTomorrow:
             // Asked once tonight; "Not tonight" just closes it.
             coachEngine.recordInterventionOutcome(.snoozed, attemptID: panel.attemptID)
@@ -2883,7 +2934,7 @@ final class TimerViewModel {
     /// Keep-going, momentum and notice panels are not logged prompts: no outcome to record.
     private static func panelKindLogsOutcome(_ kind: CoachPanelPresentation.Kind?) -> Bool {
         switch kind {
-        case .keepGoing, .momentum, .notice: false
+        case .keepGoing, .momentum, .notice, .question: false
         default: true
         }
     }
@@ -2946,8 +2997,9 @@ final class TimerViewModel {
             pendingIntentText = task.title
             pendingTaskID = task.id
         } else if intentIsFree, let lever = currentLever(projectID: plan?.projectID) {
-            // The block's intent is today's lever: a specific output, not "work on it".
-            pendingIntentText = lever.action
+            // The block's intent is today's lever: what you count ("Problems Solved"), not "work
+            // on it" and not today's numbers.
+            pendingIntentText = lever.intentTitle
         }
         let started = startFocus()
         selectedMinutes = preferredMinutes
@@ -3030,6 +3082,8 @@ final class TimerViewModel {
                 availabilityComputedDay = today
             }
         }
+        refreshWindowFit(now: now, force: force)
+        refreshCalendarDayLabels(now: now)
         if force {
             resolveExpiredCoachRewards(now: now, rebuild: false)
             rebuildBandit()
@@ -3158,6 +3212,7 @@ final class TimerViewModel {
             target.taskTitle = task.title
         } else {
             target.taskTitle = lever?.action
+            target.goalTitle = lever?.goalTitle
         }
 
         var facts = CoachFacts()
@@ -3176,6 +3231,7 @@ final class TimerViewModel {
                 facts.minutesSinceLastSession = max(0, Int(now.timeIntervalSince(end) / 60))
             }
             facts.lastIntent = reader.lastIntent(projectID: projectID)
+            facts.nextStep = latestNextStep(now: now)
             facts.daysWithoutBlock = reader.daysWithoutBlock(now: now)
             facts.derailer = reader.derailerFact(
                 bundleIdentifier: AppUsageTracker.shared.currentFrontmostBundleId,
@@ -3256,12 +3312,42 @@ final class TimerViewModel {
 
     // MARK: Own-work windows (coach audit 2026-10-30)
 
-    /// The declared own-work window around `now` (nil outside, or with none declared).
+    /// The own-work window around `now` (nil outside, or with none declared). Coach v6 §3.1:
+    /// the declared windows plus the hours you actually start, until you answer the window question.
     func currentOwnWorkWindow(now: Date = Date()) -> DateInterval? {
-        CoachOwnWorkWindows.current(settings?.coachOwnWorkWindows ?? [], now: now)
+        CoachOwnWorkWindows.current(effectiveOwnWorkWindows(now: now), now: now)
     }
 
     var hasDeclaredOwnWorkWindows: Bool { !(settings?.coachOwnWorkWindows ?? []).isEmpty }
+
+    /// Declared windows plus observed ones (`CoachWindowFit.effective`).
+    func effectiveOwnWorkWindows(now: Date = Date()) -> [CoachOwnWorkWindow] {
+        let declared = settings?.coachOwnWorkWindows ?? []
+        guard !declared.isEmpty else { return declared }
+        return CoachWindowFit.effective(declared: declared, fit: windowFit, keepMine: keepsDeclaredWindows(now: now))
+    }
+
+    /// How well the declared windows match when own-work blocks start (refreshed once a day and
+    /// after a block ends). Nil until computed or with no history.
+    @ObservationIgnored private(set) var windowFit: CoachWindowFit?
+    @ObservationIgnored private var windowFitComputedAt: Date?
+
+    static let keepDeclaredWindowsUntilKey = "coachKeepDeclaredWindowsUntil"
+
+    /// "Keep mine" was answered in the last 14 days: observed windows stay off.
+    func keepsDeclaredWindows(now: Date = Date()) -> Bool {
+        guard let until = defaults.object(forKey: Self.keepDeclaredWindowsUntilKey) as? Date else { return false }
+        return until > now
+    }
+
+    func refreshWindowFit(now: Date = Date(), force: Bool = false) {
+        if !force, let at = windowFitComputedAt, now.timeIntervalSince(at) < 3600 { return }
+        guard let reader = historyReader else { return }
+        let since = now.addingTimeInterval(-TimeInterval(CoachWindowFit.lookbackDays) * 86_400)
+        let starts = reader.ownWorkSessions(since: since).map(\.startedAt)
+        windowFit = CoachWindowFit.compute(startDates: starts, declared: settings?.coachOwnWorkWindows ?? [])
+        windowFitComputedAt = now
+    }
 
     /// Inside a declared own-work window; with none declared, inside a learned good window.
     func isInOwnWorkWindow(_ now: Date) -> Bool {
@@ -3510,7 +3596,7 @@ final class TimerViewModel {
             front: front,
             tiredRecently: tired,
             missedYesterday: snapshot.facts.missedYesterday,
-            weekend: Calendar.current.isDateInWeekend(now)
+            weekend: DayType.isWeekend(now)
         )
     }
 
@@ -3624,7 +3710,7 @@ final class TimerViewModel {
     }
 
     /// The running block's intent ("3 LeetCode questions"), for the notch.
-    var currentIntentText: String? { currentSession?.intentText }
+    var currentIntentText: String? { currentSession?.intentText.map(BlockTitle.clean) }
 
     /// Active goals from the store (empty before configure or without the goal entities).
     func historyReaderActiveGoals() -> [ProjectGoal] { historyReader?.activeGoals() ?? [] }
@@ -3634,11 +3720,24 @@ final class TimerViewModel {
         guard let modelContext,
               let result = try? modelContext.fetch(FetchDescriptor<GoalKeyResult>(predicate: #Predicate { $0.id == resultID })).first
         else { return }
-        let entry = GoalProgressEntry(amount: amount, at: now, sessionID: currentSession?.id)
-        modelContext.insert(entry)
-        result.entries.append(entry)
+        insertProgressEntry(amount: amount, on: result, sessionID: currentSession?.id, now: now, in: modelContext)
         saveContext()
         coachJournal.record(.logged, "Logged +\(Int(amount)) \(result.title).", at: now)
+    }
+
+    /// The entry the last log made: `logOneMore` hands it to the notch to label.
+    private var lastInsertedProgressEntryID: UUID?
+
+    /// Every goal entry is created here (a direct +1, a task tick, a counted task's +1).
+    @discardableResult
+    private func insertProgressEntry(amount: Double, on result: GoalKeyResult, note: String? = nil, task: DailyTask? = nil,
+                                     sessionID: UUID?, now: Date, in modelContext: ModelContext) -> GoalProgressEntry {
+        let entry = GoalProgressEntry(amount: amount, at: now, note: note, sessionID: sessionID)
+        entry.taskID = task?.id
+        modelContext.insert(entry)
+        result.entries.append(entry)
+        lastInsertedProgressEntryID = entry.id
+        return entry
     }
 
     /// Opens the companion window on a tab (set by FocusFlowApp).
@@ -3723,12 +3822,52 @@ final class TimerViewModel {
         return task
     }
 
-    /// Adds today's lever ("3 LeetCode questions") as a task linked to its key result.
+    /// Adds today's lever as a task linked to its key result: the whole day's aim, already counting
+    /// what you logged on that number today, so it reads "2 of 4", the same as the goal (6 Nov 2026:
+    /// it read "0 of 2" while the goal said 2 of 4). Earlier entries are counted, never re-tagged:
+    /// unticking or deleting the task removes only what was logged through it.
     @discardableResult
     func addLeverTask(_ lever: DailyLever, now: Date = Date()) -> DailyTask? {
-        // A goal count ("3 LeetCode questions") stays in FocusFlow: it never adds a reminder.
-        addDailyTask(title: lever.taskTitle, projectID: lever.projectID, keyResultID: lever.id, amount: lever.amount,
-                     pushToReminders: false, now: now)
+        // A goal count stays in FocusFlow: it never adds a reminder.
+        let aim = max(lever.aim, lever.doneToday + Int(lever.amount))
+        guard let task = addDailyTask(title: lever.taskTitle, projectID: lever.projectID, keyResultID: lever.id,
+                                      amount: Double(aim), pushToReminders: false, now: now) else { return nil }
+        if task.isCounted, lever.doneToday > 0 {
+            task.loggedAmount = Double(lever.doneToday)
+            saveContext()
+        }
+        CountedTaskRepair(defaults: defaults).markDone(task.id)
+        return task
+    }
+
+    /// Once, for counted tasks made before 6 Nov 2026's fix with "N more" amounts: what was already
+    /// logged on the number that day before the task was made joins both its count and its amount
+    /// (2 done + "2 more" = 2 of 4). Entries are not changed; each task is fixed once.
+    func repairCountedTasks(now: Date = Date()) {
+        let repair = CountedTaskRepair(defaults: defaults)
+        let cutoff = repair.cutoff(now: now)
+        for task in todayTasks(now: now) where task.isCounted && task.createdAt < cutoff && !repair.isDone(task.id) {
+            repair.markDone(task.id)
+            guard let result = keyResult(for: task) else { continue }
+            let day = Calendar.current.startOfDay(for: task.day)
+            let before = result.entries
+                .filter { $0.taskID == nil && $0.at >= day && $0.at < task.createdAt && $0.amount > 0 }
+                .reduce(0) { $0 + $1.amount }
+            guard before > 0 else { continue }
+            task.amount = task.progressAmount + before
+            task.loggedAmount = task.loggedCount + before
+            dailyTaskRevision += 1
+        }
+        saveContext()
+    }
+
+    /// −1 on a number: back off today's task when it holds the count, else a plain −1 entry.
+    func takeBackOne(resultID: UUID, sessionID: UUID? = nil, now: Date = Date()) {
+        if let task = todayTasks(now: now).first(where: { $0.keyResultID == resultID && $0.isCounted && $0.loggedCount > 0 }) {
+            stepDailyTask(task, by: -1, sessionID: sessionID, now: now)
+        } else {
+            logGoalProgress(resultID: resultID, amount: -1, now: now)
+        }
     }
 
     /// Ticks or unticks a task. A linked task logs what is left of its amount on tick and removes
@@ -3745,10 +3884,7 @@ final class TimerViewModel {
             task.sessionID = inBlock ? (sessionID ?? currentSession?.id) : sessionID
             let remaining = task.progressAmount - before
             if let result, remaining > 0 {
-                let entry = GoalProgressEntry(amount: remaining, at: now, note: task.title, sessionID: task.sessionID)
-                entry.taskID = task.id
-                modelContext.insert(entry)
-                result.entries.append(entry)
+                insertProgressEntry(amount: remaining, on: result, note: task.title, task: task, sessionID: task.sessionID, now: now, in: modelContext)
             }
             if result != nil { task.loggedAmount = task.progressAmount }
             coachJournal.record(.logged, "Done: \(task.title).", at: now)
@@ -3784,10 +3920,7 @@ final class TimerViewModel {
         var logged = task.loggedCount
         if delta > 0 {
             for _ in 0..<delta {
-                let entry = GoalProgressEntry(amount: 1, at: now, note: task.title, sessionID: sessionID ?? currentSession?.id)
-                entry.taskID = task.id
-                modelContext.insert(entry)
-                result.entries.append(entry)
+                insertProgressEntry(amount: 1, on: result, note: task.title, task: task, sessionID: sessionID ?? currentSession?.id, now: now, in: modelContext)
             }
             logged += Double(delta)
         } else {
@@ -3803,18 +3936,7 @@ final class TimerViewModel {
             }
             guard toRemove < Double(-delta) else { return false }
         }
-        task.loggedAmount = max(0, logged)
-        let nowDone = task.loggedCount >= task.progressAmount
-        if nowDone, !task.isDone {
-            task.isDone = true
-            task.doneAt = now
-            task.sessionID = sessionID ?? currentSession?.id
-            coachJournal.record(.logged, "Done: \(task.title).", at: now)
-        } else if !nowDone, task.isDone {
-            task.isDone = false
-            task.doneAt = nil
-            task.sessionID = nil
-        }
+        applyLoggedCount(logged, to: task, sessionID: sessionID, now: now)
         saveContext()
         dailyTaskRevision += 1
         pushReminderCompletion(of: task)
@@ -3831,6 +3953,22 @@ final class TimerViewModel {
             ))
         }
         return true
+    }
+
+    /// Sets a counted task's logged amount: done once it reaches its number, open again below it.
+    private func applyLoggedCount(_ logged: Double, to task: DailyTask, sessionID: UUID?, now: Date) {
+        task.loggedAmount = max(0, logged)
+        let nowDone = task.loggedCount >= task.progressAmount
+        if nowDone, !task.isDone {
+            task.isDone = true
+            task.doneAt = now
+            task.sessionID = sessionID ?? currentSession?.id
+            coachJournal.record(.logged, "Done: \(task.title).", at: now)
+        } else if !nowDone, task.isDone {
+            task.isDone = false
+            task.doneAt = nil
+            task.sessionID = nil
+        }
     }
 
     /// The tap on a task's control: +1 on an open counted task, otherwise tick or untick.
@@ -3929,12 +4067,47 @@ final class TimerViewModel {
     /// "+1" on a key result from the running popover or the notch. When today has an open task
     /// linked to it, the +1 goes through that task (so the task's count and the goal agree and
     /// nothing is logged twice); otherwise it is logged on the key result directly.
-    func logOneMore(resultID: UUID, now: Date = Date()) {
+    ///
+    /// Returns the entry it made, so the notch can list it in the block and ask for a label.
+    @discardableResult
+    func logOneMore(resultID: UUID, now: Date = Date()) -> UUID? {
+        lastInsertedProgressEntryID = nil
         if let task = todayTasks(now: now).first(where: { $0.keyResultID == resultID && !$0.isDone }) {
             advanceDailyTask(task, now: now)
         } else {
             logGoalProgress(resultID: resultID, amount: 1, now: now)
+            dailyTaskRevision += 1
         }
+        return lastInsertedProgressEntryID
+    }
+
+    /// Names one logged item ("Two Sum"). A blank label keeps what was there.
+    func setGoalProgressNote(entryID: UUID, note: String) {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let modelContext, !trimmed.isEmpty,
+              let entry = try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.id == entryID })).first
+        else { return }
+        entry.note = String(trimmed.prefix(80))
+        saveContext()
+        dailyTaskRevision += 1
+    }
+
+    /// Removes one logged item (a wrong or accidental +1). An entry logged through a task also
+    /// takes its amount off that task, and reopens it when it falls below its number.
+    func deleteGoalProgressEntry(id: UUID, now: Date = Date()) {
+        guard let modelContext,
+              let entry = try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.id == id })).first
+        else { return }
+        let title = entry.keyResult?.title ?? "item"
+        let task = entry.taskID.flatMap { taskID in
+            try? modelContext.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.id == taskID })).first
+        }
+        if let task { applyLoggedCount(task.loggedCount - entry.amount, to: task, sessionID: nil, now: now) }
+        modelContext.delete(entry)
+        saveContext()
+        dailyTaskRevision += 1
+        if let task { pushReminderCompletion(of: task) }
+        coachJournal.record(.logged, "Removed one \(title).", at: now)
     }
 
     /// Deletes the task; a synced task's reminder is deleted with it (the list mirrors the tasks).
@@ -4297,6 +4470,7 @@ final class TimerViewModel {
     @discardableResult
     func performCoachPanelStart(minutes: Int) -> Bool {
         guard let panel = coachPanel else { return false }
+        if panel.kind == .returnFromBreak { return startFromReturnPanel(minutes: minutes) }
         var target = panel.plan ?? CoachStartTarget(minutes: minutes, name: nil, projectID: nil, priorityID: nil)
         target.minutes = minutes
         target.findNextStep = false
@@ -4380,12 +4554,14 @@ final class TimerViewModel {
             return
         }
         // A planned cue or the plan card is on screen: never replace it with a nudge.
-        if isStickyCoachPanelShowing {
+        if isStickyCoachPanelBlocking(now: now) {
             coachJournal.record(.quiet, "Quiet: your plan is on screen.", code: .stickyPanel, at: now)
             return
         }
-        // Drifting in a focus window: the rescue loop's ladder replaces the plain start nudge.
-        if let drift = currentDrift, drift.isActive, drift.level > .ok {
+        // Drifting in a focus window: the rescue loop's ladder replaces the plain start nudge, but
+        // only while it is actually speaking (coach v6 §3.2). On 3 Nov 2026 the ladder held this
+        // turn for 6.5 h while its own rescues were held by the cap and calendar.
+        if let drift = currentDrift, drift.isActive, drift.level > .ok, rescueSpokeRecently(now: now) {
             lastIdleStarterSuppressionReason = nil
             coachJournal.record(.quiet, "Quiet: the rescue ladder has this drift (level \(drift.level.rawValue)).", code: .driftActive, at: now)
             return
@@ -4685,6 +4861,8 @@ final class TimerViewModel {
         guard coachIdleTickCount % 4 == 0 else { return }
         resolveExpiredCoachRewards(now: now)
         if evaluatePlanTomorrowCheckIn(now: now) { return }
+        if evaluateWeeklyReviewInvite(now: now) { return }
+        if evaluateCoachQuestion(now: now) { return }
         if evaluateDailyPlanInvite(now: now) { return }
         if evaluateOwnWorkWindowPrompt(now: now) { return }
         // While the rescue loop owns a drift episode it asks the pseudo-work question itself.
@@ -4776,7 +4954,9 @@ final class TimerViewModel {
 
     /// The name the pseudo-productivity question holds up: the next task, today's lever, or the #1 project.
     private func pseudoProductivityFocusName(_ snapshot: CoachSnapshot) -> String? {
-        snapshot.topPriority?.title ?? snapshot.target.taskTitle ?? (snapshot.target.rank == 1 ? snapshot.target.name : nil)
+        // A real task's title, else the goal, else the #1 project: never the lever's count line.
+        let task = snapshot.target.goalTitle == nil ? snapshot.target.taskTitle : nil
+        return snapshot.topPriority?.title ?? task ?? snapshot.target.goalTitle ?? (snapshot.target.rank == 1 ? snapshot.target.name : nil)
     }
 
     private func logPseudoAnswer(_ answer: CoachPseudoAnswer, panel: CoachPanelPresentation, now: Date = Date()) {
@@ -4959,9 +5139,13 @@ final class TimerViewModel {
             category: frontmost.category,
             confirmedKeys: keys.confirmed,
             allowedKeys: keys.allowed,
-            pacingPressure: currentPacing(now: now).pressure,
+            // Coach v6 §3.2: outside declared windows the day job's apps are not pseudo-work, however
+            // far behind the goal is (a work-app morning held the ladder at L2 until night, 3 Nov 2026).
+            // Real derailers still count, so the menu bar counter still shows "YouTube 12m".
+            pacingPressure: hasDeclaredOwnWorkWindows && currentOwnWorkWindow(now: now) == nil ? nil : currentPacing(now: now).pressure,
             busyworkContexts: busyworkContexts,
-            userAway: systemIdleSeconds() >= 5 * 60
+            userAway: systemIdleSeconds() >= 5 * 60,
+            role: appRole(key: frontmost.browserHost ?? frontmost.bundleIdentifier ?? "", name: frontmost.displayName ?? frontmost.appName ?? "", now: now).role
         )
         driftMonitor.record(at: now, seconds: seconds, kind: kind, switchesPerMinute: frontmost.switchesPerMinute)
     }
@@ -4989,7 +5173,12 @@ final class TimerViewModel {
     /// safe while drawing. Every ring, line and the coach's pace use this, never `dailyFocusGoal`.
     func dailyGoal(now: Date = Date()) -> DailyGoal {
         let projects = modelContext.flatMap { try? $0.fetch(FetchDescriptor<Project>()) } ?? []
-        return GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now)
+        let base = GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now)
+        // Coach v8 §3.5: on a leave, weekend, holiday or sick day your target for that type wins.
+        guard storesDayLedger, let type = settledDayType(now: now), type != .workday else { return base }
+        let yours = DayTargetStore(defaults: defaults).minutes(for: type)
+        guard yours != nil || type == .sick else { return base }
+        return base.sized(minutes: DayTargets.minutes(type: type, yours: yours, goalMinutes: Int(base.seconds / 60)), for: type)
     }
 
     private func currentPacing(now: Date) -> CoachGoalPacing {
@@ -5024,7 +5213,7 @@ final class TimerViewModel {
         busyworkContexts = Set(byContext.filter { $0.value.total >= 2 && Double($0.value.sideQuests) / Double($0.value.total) >= 0.5 }.keys)
     }
 
-    private func systemIdleSeconds() -> TimeInterval {
+    func systemIdleSeconds() -> TimeInterval {
         if let systemIdleSecondsProvider { return systemIdleSecondsProvider() }
         guard let anyEvent = CGEventType(rawValue: ~0) else { return 0 }
         return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyEvent)
@@ -5036,6 +5225,11 @@ final class TimerViewModel {
     func rescueRecords(now: Date = Date()) -> [CoachRescueRecord] {
         coachEngine.store.attempts(deliveredSince: now.addingTimeInterval(-CoachPauseScreenPolicy.escapeLookback))
             .compactMap(CoachRescueRecord.init(attempt:))
+    }
+
+    /// A rescue panel or pause screen went out in the last 30 minutes.
+    func rescueSpokeRecently(now: Date = Date()) -> Bool {
+        rescueRecords(now: now).contains { $0.surface != .ambient && now.timeIntervalSince($0.deliveredAt) < 30 * 60 }
     }
 
     /// The ambient menu bar counter: "YouTube 23m" / "Drift 23m" while drifting in a focus window.
@@ -5319,7 +5513,7 @@ final class TimerViewModel {
     // MARK: - Coach v3: daily plan and planned-start cue
 
     /// Whether this store knows `PlannedBlock` (older test containers do not).
-    private var plannedBlocksSupported: Bool?
+    @ObservationIgnored private var plannedBlocksSupported: Bool?
     /// Whether this store knows `BlockStartEvent` (older test containers do not).
     @ObservationIgnored private var blockStartsSupported: Bool?
 
@@ -5370,6 +5564,15 @@ final class TimerViewModel {
 
     private var isStickyCoachPanelShowing: Bool {
         coachPanel?.kind == .plannedStart || coachPanel?.kind == .dailyPlan || coachPanel?.kind == .planTomorrow
+    }
+
+    /// A planned cue, start card or plan check-in stays on screen until answered, but it holds
+    /// other prompts back for 15 minutes only (coach v6 §3.2: on 5 Nov 2026 an unanswered 20:00
+    /// cue silenced the whole 20–22 window).
+    func isStickyCoachPanelBlocking(now: Date) -> Bool {
+        guard let panel = coachPanel,
+              panel.kind == .plannedStart || panel.kind == .dailyPlan || panel.kind == .planTomorrow else { return false }
+        return now.timeIntervalSince(panel.createdAt) < 15 * 60
     }
 
     /// Runs every coach tick (15 s). Shows the cue when a planned start time has come; marks
@@ -5466,7 +5669,8 @@ final class TimerViewModel {
             capReached: coachGuardrails.verdict(
                 for: .badge, input: coachGuardrailInput(now: now, calendarBusy: availability.isBusyNow, isIdlePrompt: true)
             ) == .dailyCapReached,
-            outsideOwnWindow: hasDeclaredOwnWorkWindows && currentOwnWorkWindow(now: now) == nil
+            outsideOwnWindow: hasDeclaredOwnWorkWindows && currentOwnWorkWindow(now: now) == nil,
+            beforeDayStart: Calendar.current.component(.hour, from: now) * 60 + Calendar.current.component(.minute, from: now) < settings.coachQuietEndMinute
         )
         guard CoachDailyPlanInvite.shouldInvite(input) else { return false }
         // v4: the card's job is "start now"; time chips are the fallback, so none is fine.
@@ -5568,12 +5772,1247 @@ final class TimerViewModel {
         refreshCoachModelsIfNeeded(now: now)
         return CoachPlanTomorrow.slots(
             now: now,
-            windows: settings?.coachOwnWorkWindows ?? [],
+            windows: effectiveOwnWorkWindows(now: now),
             model: availabilityModel,
             quietStartMinute: settings?.coachQuietStartMinute ?? 30,
             quietEndMinute: settings?.coachQuietEndMinute ?? 420,
             planned: tomorrowPlans(now: now).map(\.startAt)
         )
+    }
+
+    // MARK: Cycle: land the block, return from the break (coach v7)
+
+    /// A chosen "Keep going" lap ends at this overtime second (nil: none chosen).
+    @ObservationIgnored private var overtimeLapEndsAt: Int?
+    @ObservationIgnored private var landingCueShownFor: UUID?
+    @ObservationIgnored private var returnHazardCache: (day: Date, hazard: CoachReturnHazard)?
+    /// This break end drew the return panel (learner B's treated arm).
+    @ObservationIgnored private(set) var returnLadderTreated = false
+    @ObservationIgnored private var suppressBackAtOffer = false
+    /// Tests: force the return experiment's arm (nil: randomise).
+    @ObservationIgnored var cycleArmOverride: Bool?
+
+    /// Every finished session since `since`, focus and breaks, for the cycle learners.
+    func cycleSessions(since: Date) -> [CoachCycleStats.Session] {
+        guard let modelContext else { return [] }
+        let descriptor = FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }, sortBy: [SortDescriptor(\.startedAt)])
+        return ((try? modelContext.fetch(descriptor)) ?? []).compactMap { session in
+            guard let end = session.endedAt else { return nil }
+            return CoachCycleStats.Session(isFocus: session.type == .focus, start: session.startedAt, end: end,
+                                           plannedSeconds: session.duration, pausedSeconds: session.totalPausedSeconds)
+        }
+    }
+
+    func cycleStats(now: Date = Date()) -> CoachCycleStats {
+        CoachCycleStats.compute(cycleSessions(since: now.addingTimeInterval(-60 * 86_400)))
+    }
+
+    /// Learner A, refit once a day from the last 60 days of breaks.
+    func returnHazard(now: Date = Date()) -> CoachReturnHazard {
+        let day = Calendar.current.startOfDay(for: now)
+        if let cache = returnHazardCache, cache.day == day { return cache.hazard }
+        let sessions = cycleSessions(since: now.addingTimeInterval(-60 * 86_400))
+        var latencies: [Double?] = []
+        for (i, s) in sessions.enumerated() where !s.isFocus {
+            let plannedEnd = s.start.addingTimeInterval(s.plannedSeconds)
+            let next = sessions[(i + 1)...].first(where: \.isFocus)
+            if let next, next.start.timeIntervalSince(plannedEnd) <= TimeInterval(CoachReturnHazard.horizonMinutes * 60) {
+                latencies.append(next.start.timeIntervalSince(plannedEnd) / 60)
+            } else {
+                latencies.append(nil)
+            }
+        }
+        let hazard = CoachReturnHazard.fit(latencies: latencies)
+        returnHazardCache = (day, hazard)
+        return hazard
+    }
+
+    /// The most recent next step written in the last 12 hours.
+    func latestNextStep(now: Date = Date()) -> String? {
+        guard let modelContext else { return nil }
+        let since = now.addingTimeInterval(-12 * 3600)
+        var descriptor = FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }, sortBy: [SortDescriptor(\.startedAt, order: .reverse)])
+        descriptor.fetchLimit = 20
+        let sessions = (try? modelContext.fetch(descriptor)) ?? []
+        return sessions.lazy.compactMap { $0.nextStepText?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+    }
+
+    /// The return experiment's decisions (Insights reads its estimate).
+    func cycleDecisions() -> [CoachCycleExperiment.Decision] { CoachCycleLog(defaults: defaults).load() }
+
+    // Landing
+
+    /// T − 2 min: "2 min left. What's the next step?" (§3.1). Once per block, not on starters or
+    /// blocks under 10 min, never over another panel or while sharing.
+    func presentLandingCue(now: Date = Date()) {
+        guard state == .focusing, !isStarterBlock, let session = currentSession, session.type == .focus,
+              totalSeconds >= 10 * 60, landingCueShownFor != session.id,
+              coachPanel == nil, pauseScreen == nil, !isPrivate,
+              settings?.coachOnScreenPromptsEnabled == true else { return }
+        landingCueShownFor = session.id
+        let message = CoachComposedMessage(
+            style: settings?.coachStyle ?? .challenger, trigger: .startNudge,
+            hook: "2 min left. What's the next step?",
+            detail: .line("Write where you'll pick up. It's waiting when the break ends."),
+            primaryTitle: "", hookIsFact: false
+        )
+        coachJournal.record(.shown, "Landing cue.", code: .landing, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .landing, message: message, createdAt: now, step: session.nextStepText))
+    }
+
+    /// Stores the next step on the running block, or on the block that just ended.
+    func setNextStep(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = (currentSession?.type == .focus && !isOvertime) ? currentSession : (lastCompletedFocusSession ?? currentSession)
+        guard let session, session.type == .focus else { return }
+        session.nextStepText = trimmed.isEmpty ? nil : trimmed
+        saveContext()
+    }
+
+    func saveLandingNextStep(_ text: String, now: Date = Date()) {
+        setNextStep(text)
+        coachJournal.record(.logged, "Next step written.", code: .landing, at: now)
+        if coachPanel?.kind == .landing { hideCoachPanel() }
+    }
+
+    /// "Keep going" (§3.1): a 10-minute lap, then the block-end window comes back.
+    func keepGoingLap(now: Date = Date()) {
+        guard isFocusOvertime else { return }
+        overtimeLapEndsAt = overtimeSeconds + CoachLanding.lapMinutes * 60
+        showSessionComplete = false
+        coachJournal.record(.logged, "Kept going: a \(CoachLanding.lapMinutes)-min lap.", code: .stretch, at: now)
+    }
+
+    var isInOvertimeLap: Bool { isFocusOvertime && overtimeLapEndsAt != nil }
+
+    private func handleFocusOvertimeStep(now: Date = Date()) {
+        switch CoachLanding.overtimeStep(overtimeSeconds: overtimeSeconds, lapEndsAt: overtimeLapEndsAt) {
+        case .none:
+            return
+        case .stretchNudge:
+            let fact = cycleStats(now: now).stretchFact
+            NotificationService.shared.sendCoachLine(
+                id: "stretch", title: "5 min past your block",
+                body: fact ?? "Land it: finish, or take the break you earned."
+            )
+            coachJournal.record(.shown, "Stretch nudge at +5 min.", code: .stretch, hook: fact, at: now)
+        case .resurface, .lapEnded:
+            let lap = overtimeLapEndsAt != nil
+            overtimeLapEndsAt = nil
+            if lap {
+                NotificationService.shared.sendCoachLine(id: "lap-done", title: "Lap done", body: "Finish, or take your break.")
+            }
+            coachJournal.record(.shown, lap ? "Lap done: block-end window back." : "Block-end window back at +10 min.", code: .stretch, at: now)
+            showSessionComplete = true
+            showCompletionWindow()
+        }
+    }
+
+    // Return
+
+    /// Break end (§3.2, learner B): the return panel with probability 0.7, else only the
+    /// notification and the break-over window. Every decision is logged for the lift estimate.
+    private func beginReturnLadder(now: Date) {
+        guard let settings, settings.coachOnScreenPromptsEnabled, settings.coachIdleStarterEnabled else {
+            returnLadderTreated = false
+            return
+        }
+        let treated = cycleArmOverride ?? (Double.random(in: 0..<1) < CoachCycleExperiment.probability)
+        returnLadderTreated = treated
+        if !isEvidenceMode {
+            CoachCycleLog(defaults: defaults).append(.init(at: now, treated: treated, propensity: CoachCycleExperiment.probability))
+        }
+        coachJournal.record(treated ? .shown : .quiet, treated ? "Return panel at break end." : "Return panel held back (control).",
+                            code: .returnLadder, propensity: CoachCycleExperiment.probability, at: now)
+        if treated { presentReturnPanel(reentry: false, now: now) }
+    }
+
+    func presentReturnPanel(reentry: Bool, now: Date = Date()) {
+        let next = latestNextStep(now: now)
+        let sizes = CoachReturnLadder.sizes(regular: regularMinutes, reentry: reentry)
+        let hook: String
+        let detail: String?
+        if reentry {
+            hook = next.map { "Start 5m on “\(CoachMessageComposer.shortName($0))”?" } ?? "Start 5 minutes. Just get back in."
+            detail = "Breaks this long rarely end on their own. Five minutes is enough to be back."
+        } else {
+            hook = next.map { "Back to: \(CoachMessageComposer.shortName($0))" } ?? "Break's over. Back in?"
+            let hazard = returnHazard(now: now)
+            detail = hazard.episodes >= CoachReturnHazard.minEpisodes
+                ? "After a break you're back within 5 min \(Int((hazard.startedWithin(5) * 100).rounded()))% of the time. Make this one of them."
+                : nil
+        }
+        let projectID = completedBlockContext?.projectId ?? breakEpisodeContext?.earnedBlock.projectId ?? selectedProject?.id
+        var target = CoachStartTarget(minutes: sizes.first ?? regularMinutes, name: completedBlockContext?.projectName ?? selectedProject?.name,
+                                      projectID: projectID, priorityID: nil)
+        target.taskTitle = next
+        let message = CoachComposedMessage(
+            style: settings?.coachStyle ?? .challenger, trigger: .startNudge,
+            hook: hook, detail: detail.map { .line($0) }, primaryTitle: "Start \(target.minutes)m", hookIsFact: false
+        )
+        presentCoachPanel(CoachPanelPresentation(kind: .returnFromBreak, message: message, plan: target, createdAt: now,
+                                                 sizeOptions: sizes, recommendedMinutes: sizes.first))
+    }
+
+    private func handleBreakOvertimeStep(now: Date = Date()) {
+        let reentry = returnHazard(now: now).reentryMinute * 60
+        switch CoachReturnLadder.step(overrunSeconds: overtimeSeconds, reentrySeconds: reentry) {
+        case .none:
+            return
+        case .reentry:
+            guard returnLadderTreated, coachPanel == nil || coachPanel?.kind == .returnFromBreak else { return }
+            coachJournal.record(.shown, "Re-entry offer at +\(reentry / 60) min.", code: .returnLadder, at: now)
+            presentReturnPanel(reentry: true, now: now)
+        case .close:
+            coachJournal.record(.logged, "Break closed \(CoachReturnLadder.closeSeconds / 60) min over.", code: .returnLadder, at: now)
+            if coachPanel?.kind == .returnFromBreak { hideCoachPanel() }
+            suppressBackAtOffer = true
+            continueAfterCompletion(action: .endSession)
+        }
+    }
+
+    /// Starts the next block from the return panel (the break is still pending completion).
+    private func startFromReturnPanel(minutes: Int, now: Date = Date()) -> Bool {
+        let previous = selectedMinutes
+        selectedMinutes = minutes
+        if pendingIntentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let next = latestNextStep(now: now) {
+            pendingIntentText = next
+        }
+        coachJournal.record(.started, "Back from break: \(minutes)m.", code: .returnLadder, at: now)
+        continueAfterCompletion(action: .continueFocusing)
+        selectedMinutes = previous
+        interventionActionTaken = true
+        if coachPanel?.kind == .returnFromBreak { hideCoachPanel() }
+        return state == .focusing
+    }
+
+    // Walk-away
+
+    /// "Done for today" before 19:00 with the goal not met (§3.3): "Back at…?" A chip plans a
+    /// block with its cue; "Really done" closes it. Never blocks the ending itself.
+    private func offerBackAt(now: Date) {
+        defer { suppressBackAtOffer = false }
+        guard !suppressBackAtOffer, let settings, settings.coachOnScreenPromptsEnabled, settings.coachIdleStarterEnabled,
+              !isPrivate, coachPanel == nil, pauseScreen == nil, canUsePlannedBlocks(),
+              Calendar.current.component(.hour, from: now) < 19,
+              currentPacing(now: now).tier != .goalMet else { return }
+        let next = latestNextStep(now: now)
+        let message = CoachComposedMessage(
+            style: settings.coachStyle, trigger: .startNudge,
+            hook: "Back at…?",
+            detail: .line(next.map { "Pick a time and I'll cue it. Your next step waits: \($0)." } ?? "Pick a time and I'll cue it."),
+            primaryTitle: "", hookIsFact: false
+        )
+        coachJournal.record(.shown, "Back at…? offered.", code: .backAt, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .question, message: message, createdAt: now, questionID: "back_at", choices: [
+            CoachQuestionChoice(id: "30", title: "In 30 min"),
+            CoachQuestionChoice(id: "60", title: "In 1 hour"),
+            CoachQuestionChoice(id: "120", title: "In 2 hours"),
+            CoachQuestionChoice(id: "done", title: "Really done"),
+        ]))
+    }
+
+    // MARK: Day ledger (coach v8 §3.1)
+
+    @ObservationIgnored private var calendarLabelsRefreshedDay: Date?
+
+    private var storesDayLedger: Bool {
+        modelContext?.container.schema.entities.contains { $0.name == "DayLabel" } ?? false
+    }
+
+    /// Once a day: leave and holiday marks from the calendar for the last 120 and next 14 days,
+    /// stored as `DayLabel(source: .calendar)`. A user's own label is never replaced.
+    func refreshCalendarDayLabels(now: Date = Date(), force: Bool = false) {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        guard !isEvidenceMode, storesDayLedger, let modelContext, force || calendarLabelsRefreshedDay != today,
+              CalendarService.shared.authStatus == .authorized,
+              let start = calendar.date(byAdding: .day, value: -120, to: today),
+              let end = calendar.date(byAdding: .day, value: 15, to: today) else { return }
+        calendarLabelsRefreshedDay = today
+        let marks = CalendarService.shared.dayMarks(from: start, to: end)
+        let existing = (try? modelContext.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day >= start }))) ?? []
+        var byDay = Dictionary(existing.map { ($0.day, $0) }, uniquingKeysWith: { a, _ in a })
+        for (day, mark) in marks {
+            let type: DayType = mark == .leave ? .leave : .holiday
+            if let label = byDay[day] {
+                if label.source == .calendar, label.type != type { label.typeRaw = type.rawValue }
+            } else {
+                let label = DayLabel(day: day, type: type, source: .calendar)
+                modelContext.insert(label)
+                byDay[day] = label
+            }
+        }
+        // A calendar mark that went away (event deleted) goes too.
+        for label in existing where label.source == .calendar && marks[label.day] == nil {
+            modelContext.delete(label)
+        }
+        saveContext()
+    }
+
+    /// The user's answer for a day ("On leave?" or a change in Insights).
+    func setDayType(_ day: Date, type: DayType) {
+        guard storesDayLedger, let modelContext else { return }
+        let start = Calendar.current.startOfDay(for: day)
+        let labels = (try? modelContext.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day == start }))) ?? []
+        labels.forEach(modelContext.delete)
+        modelContext.insert(DayLabel(day: start, type: type, source: .user))
+        saveContext()
+        todayTypeCache = nil
+        goalProgressCache = nil
+        lifeRevision += 1
+    }
+
+    /// Today's day type when it is settled (`DayTargets.isSettled`), cached for 10 minutes.
+    /// An inferred leave stays a workday for the goal until you answer "On leave?".
+    func settledDayType(now: Date = Date()) -> DayType? {
+        if let cached = todayTypeCache, now.timeIntervalSince(cached.at) < 600, cached.at <= now,
+           Calendar.current.isDate(cached.at, inSameDayAs: now) {
+            return cached.settled
+        }
+        guard let today = dayLedger(days: 1, now: now).last else { return nil }
+        let settled = DayTargets.isSettled(today.classification) ? today.type : DayType.workday
+        todayTypeCache = (now, today.type, settled)
+        return settled
+    }
+
+    /// Your own-work targets per day type (nil: follows the daily goal).
+    func dayTargets() -> [DayType: Int] { DayTargetStore(defaults: defaults).all }
+
+    /// Sets (or with nil clears) your target for a day type; the goal and the ledger use it at once.
+    func setDayTarget(_ minutes: Int?, for type: DayType) {
+        DayTargetStore(defaults: defaults).set(minutes, for: type)
+        todayTypeCache = nil
+        goalProgressCache = nil
+        dayTargetsRevision += 1
+    }
+
+    /// One day, hour by hour (`DayTimeline`). Read-only (safe in `body`).
+    func dayTimeline(_ day: Date, now: Date = Date()) -> DayTimeline {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        guard let modelContext else { return DayTimeline.build(day: start, rows: [], blocks: [], isPull: { _, _, _ in false }) }
+        // From 12 h before midnight, so a block that ran across it shows its part of this day.
+        let earlier = start.addingTimeInterval(-12 * 3600)
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= earlier && $0.startedAt < end }))) ?? []
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        let blocks = sessions.filter { $0.type == .focus && ($0.endedAt ?? now) > start }.map { session in
+            DayTimeline.Block(start: session.startedAt, end: session.endedAt ?? min(now, session.startedAt.addingTimeInterval(session.actualDuration)),
+                              own: !ownConfigured || CoachHistoryReader.isOwnWork(session.project))
+        }
+        let rows: [DayTimeline.Row] = storesDayLedger
+            ? ((try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end }))) ?? [])
+                .map { DayTimeline.Row(hourStart: $0.hourStart, key: $0.key, label: $0.label, inBlock: $0.inBlock, seconds: $0.seconds) }
+            : []
+        let book = appRoleBook(now: now)
+        let type = dayLedger(days: 1, now: start.addingTimeInterval(12 * 3600)).last?.type ?? .workday
+        let windows = effectiveOwnWorkWindows(now: now)
+        return DayTimeline.build(day: start, rows: rows, blocks: blocks, isPull: { key, label, hour in
+            let minute = hour * 60
+            let inWindow = windows.contains { minute >= $0.startMinute && minute < $0.endMinute }
+            let context = AppContext.outsideBlock(dayType: type, hour: hour, inOwnWindow: inWindow)
+            return book.role(key: key, name: label, in: context).role == .pull
+        }, calendar: calendar)
+    }
+
+    /// The ledger, oldest first, for the `days` days ending today. Read-only (safe in `body`).
+    func dayLedger(days: Int, now: Date = Date()) -> [DayEntry] {
+        guard let modelContext, days > 0 else { return [] }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: now)
+        guard let start = calendar.date(byAdding: .day, value: -(days - 1), to: today),
+              let end = calendar.date(byAdding: .day, value: 1, to: today) else { return [] }
+
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= start && $0.startedAt < end }))) ?? []
+        let usage = (try? modelContext.fetch(FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= start && $0.date < end }))) ?? []
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        let labels = storesDayLedger ? ((try? modelContext.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day >= start && $0.day < end }))) ?? []) : []
+        let hours = storesDayLedger ? ((try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end }))) ?? []) : []
+        let planned = canUsePlannedBlocks() ? plannedBlocks(from: start, to: end) : []
+        let tasks = (try? modelContext.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.day >= start && $0.day < end }))) ?? []
+        let keys = currentDriftRuleKeys(now: now)
+        let targets = DayTargetStore(defaults: defaults).all
+
+        var entries: [DayEntry] = []
+        var day = start
+        while day < end {
+            let next = calendar.date(byAdding: .day, value: 1, to: day) ?? end
+            let daySessions = sessions.filter { $0.type == .focus && $0.startedAt >= day && $0.startedAt < next && $0.endedAt != nil }
+            let minutes: (FocusSession) -> Double = { $0.actualDuration / 60 }
+            let ownMinutes = daySessions.filter { !ownConfigured || CoachHistoryReader.isOwnWork($0.project) }.map(minutes).reduce(0, +)
+            let workBlockMinutes = ownConfigured
+                ? daySessions.filter { $0.project?.areaRaw != nil && $0.project?.area == .work }.map(minutes).reduce(0, +)
+                : 0
+            let dayUsage = usage.filter { $0.date >= day && $0.date < next }
+            let appRows = dayUsage.filter { !$0.bundleIdentifier.hasPrefix("domain:") && !AppUsageTracker.isIgnoredSystemBundleIdentifier($0.bundleIdentifier) && $0.bundleIdentifier != "com.apple.loginwindow" }
+            let seconds: (AppUsageEntry) -> Double = { Double($0.duringFocusSeconds + $0.outsideFocusSeconds) }
+            let officeSeconds = dayUsage.filter { OfficeActivity.isOffice(key: $0.bundleIdentifier) || OfficeActivity.isOffice(key: $0.appName) }.map(seconds).reduce(0, +)
+            let activeMinutes = appRows.map(seconds).reduce(0, +) / 60
+            let derailSeconds = dayUsage.filter {
+                DerailerClassifier.isDerailer(UsageSample($0), confirmedKeys: keys.confirmed, allowedKeys: keys.allowed)
+            }.map { Double($0.outsideFocusSeconds) }.reduce(0, +)
+            let dayHours = hours.filter { $0.hourStart >= day && $0.hourStart < next }
+            let callMinutes = dayHours.isEmpty ? nil : Double(dayHours.filter { $0.key == "call" }.map(\.seconds).reduce(0, +)) / 60
+            let awayMinutes = dayHours.isEmpty ? nil : Double(dayHours.filter { $0.key == "away" }.map(\.seconds).reduce(0, +)) / 60
+
+            let label = labels.filter { $0.day == day }.sorted { $0.source == .user && $1.source != .user }.first
+            let signals = DaySignals(
+                day: day,
+                userLabel: label?.source == .user ? label?.type : nil,
+                calendarMark: label?.source == .calendar ? (label?.type == .leave ? .leave : .holiday) : nil,
+                officeMinutes: officeSeconds / 60 + workBlockMinutes + (callMinutes ?? 0),
+                activeMinutes: max(activeMinutes, daySessions.map(minutes).reduce(0, +))
+            )
+            let classification = DayClassifier.classify(signals, now: now, calendar: calendar)
+
+            // Planned: a block planned for the day, or a task you added for it, before you acted.
+            let firstStart = daySessions.map(\.startedAt).min() ?? next
+            let hadPlan = planned.contains { calendar.isDate($0.day, inSameDayAs: day) && $0.createdAt < min(firstStart, $0.startAt) }
+                || tasks.contains { calendar.isDate($0.day, inSameDayAs: day) && $0.reminderID == nil && $0.carriedFromID == nil && $0.createdAt < firstStart }
+
+            let goalMinutes = Int(GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: day, calendar: calendar).seconds / 60)
+            let target = DayTargets.minutes(type: classification.type, yours: targets[classification.type], goalMinutes: goalMinutes)
+            entries.append(DayEntry(
+                day: day, classification: classification, planned: hadPlan,
+                ownMinutes: ownMinutes, officeMinutes: signals.officeMinutes, callMinutes: callMinutes, awayMinutes: awayMinutes,
+                derailMinutes: derailSeconds / 60, targetMinutes: target,
+                verdict: DayVerdict.of(planned: hadPlan, ownMinutes: ownMinutes, targetMinutes: target, isPast: next <= now)
+            ))
+            day = next
+        }
+        return entries
+    }
+
+    // MARK: Your week (coach v8 §3.4)
+
+    /// Bumped when an answer changes the week (a day type, a recommendation applied or dismissed).
+    private(set) var lifeRevision = 0
+    /// The companion window shows the weekly review while this is true (coach v8 §3.5).
+    var weeklyReviewRequested = false
+
+    /// Opens the weekly review in the companion window.
+    func requestWeeklyReview() {
+        weeklyReviewRequested = true
+        openCompanionWindow?(.insights)
+    }
+    @ObservationIgnored private var lifeCache: (at: Date, revision: Int, week: YourWeek, input: LifeRecInput, recs: [LifeRecommendation])?
+
+    /// The week, its inputs and the ranked recommendations, cached for a minute (safe in `body`).
+    private func lifeSnapshot(now: Date) -> (week: YourWeek, input: LifeRecInput, recs: [LifeRecommendation]) {
+        let revision = lifeRevision &+ dayTargetsRevision &* 31
+        if let cache = lifeCache, cache.revision == revision, now.timeIntervalSince(cache.at) < 60, cache.at <= now {
+            return (cache.week, cache.input, cache.recs)
+        }
+        let input = lifeRecInput(now: now)
+        let calendar = Calendar.current
+        let weekStart = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: now)) ?? now
+        let baseStart = weekStart.addingTimeInterval(-Double(YourWeek.baselineDays) * 86_400)
+        let sessions = cycleSessions(since: baseStart)
+        let week = YourWeek.build(
+            entries: input.entries, firstDay: firstHistoryDay(),
+            thisCycle: CoachCycleStats.compute(sessions.filter { $0.start >= weekStart }),
+            baselineCycle: CoachCycleStats.compute(sessions.filter { $0.start < weekStart }),
+            thisSwitches: blockSwitches(from: weekStart, to: now), baselineSwitches: blockSwitches(from: baseStart, to: weekStart),
+            calendar: calendar
+        )
+        let recs = LifeRecommendations.ranked(LifeRecommendations.all(input), records: LifeRecStore(defaults: defaults).load(), now: now)
+        lifeCache = (now, revision, week, input, recs)
+        return (week, input, recs)
+    }
+
+    func yourWeek(now: Date = Date()) -> YourWeek { lifeSnapshot(now: now).week }
+
+    /// "Do this next": at most three, ranked.
+    func lifeRecommendations(now: Date = Date()) -> [LifeRecommendation] { lifeSnapshot(now: now).recs }
+
+    /// Every recommendation the library has now, unranked (the weekly review's "one pick").
+    func allLifeRecommendations(now: Date = Date()) -> [LifeRecommendation] {
+        let records = LifeRecStore(defaults: defaults).load()
+        let all = LifeRecommendations.all(lifeSnapshot(now: now).input)
+        return LifeRecommendations.ranked(all, records: records, now: now) + all.filter { rec in
+            !LifeRecommendations.ranked(all, records: records, now: now).contains(rec) && records[rec.id]?.appliedAt == nil
+        }
+    }
+
+    /// Called when recommendations appear on screen (not while drawing).
+    func noteLifeRecommendationsShown(_ recs: [LifeRecommendation], now: Date = Date()) {
+        LifeRecStore(defaults: defaults).markShown(recs, now: now)
+    }
+
+    /// Apply: the one action, recorded with its baseline so next week can say whether it worked.
+    func applyLifeRecommendation(_ rec: LifeRecommendation, picked: Bool = false, now: Date = Date()) {
+        let entries = dayLedger(days: 28, now: now)
+        let cycle = CoachCycleStats.compute(cycleSessions(since: now.addingTimeInterval(-28 * 86_400)))
+        let baseline = LifeRecMetric.value(kind: rec.kind, id: rec.id, entries: entries, cycle: cycle)
+        switch rec.action {
+        case .planBlocks(let times):
+            for time in times where time > now { _ = insertPlannedBlock(at: time, now: now) }
+        case .setTarget(let type, let minutes):
+            setDayTarget(minutes, for: type)
+        case .blockLength(let minutes):
+            applyNaturalLengthAnswer(CoachQuestionChoice(id: "\(minutes)", title: ""), now: now)
+        case .breakLength(let minutes):
+            settings?.shortBreakDuration = TimeInterval(minutes * 60)
+            saveContext()
+        case .useObservedWindows:
+            if let settings { applyWindowFitAnswer(.useObserved, settings: settings, now: now) }
+        case .appRole(let key, let name, let projectID, let role):
+            setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .project(projectID), role: role)
+        case .markPull(let key, let name):
+            setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .everywhere, role: .pull)
+        case .openGoals:
+            openCompanionWindow?(.goals)
+        case .longBreak(let minutes, let after):
+            settings?.longBreakDuration = TimeInterval(minutes * 60)
+            settings?.sessionsBeforeLongBreak = after
+            saveContext()
+        }
+        LifeRecStore(defaults: defaults).markApplied(rec, baseline: baseline, picked: picked, now: now)
+        coachJournal.record(.logged, "Recommendation applied: \(rec.title) (\(rec.actionTitle)).", code: .question, at: now)
+        lifeRevision += 1
+    }
+
+    func dismissLifeRecommendation(_ rec: LifeRecommendation, now: Date = Date()) {
+        LifeRecStore(defaults: defaults).dismiss(rec, now: now)
+        coachJournal.record(.declined, "Recommendation not now: \(rec.title).", code: .question, at: now)
+        lifeRevision += 1
+    }
+
+    /// What became of recent recommendations: applied ones judged a week later, shown ones not tried.
+    func lifeRecOutcomes(now: Date = Date()) -> [(record: LifeRecRecord, outcome: LifeRecOutcome)] {
+        let records = LifeRecStore(defaults: defaults).load().values
+        let recent = records.filter { record in
+            if let applied = record.appliedAt { return now.timeIntervalSince(applied) < 35 * 86_400 }
+            guard record.dismissedAt == nil, let shown = record.firstShownAt else { return false }
+            return now.timeIntervalSince(shown) >= LifeRecMetric.followUpAfter && now.timeIntervalSince(shown) < 21 * 86_400
+        }
+        guard !recent.isEmpty else { return [] }
+        let entries = dayLedger(days: 35, now: now)
+        return recent.sorted { ($0.appliedAt ?? $0.firstShownAt ?? .distantPast) > ($1.appliedAt ?? $1.firstShownAt ?? .distantPast) }
+            .prefix(4)
+            .map { record in
+                var current: Double?
+                if let applied = record.appliedAt, let kind = record.kind {
+                    let since = Calendar.current.startOfDay(for: applied)
+                    current = LifeRecMetric.value(kind: kind, id: record.id, entries: entries.filter { $0.day >= since },
+                                                  cycle: CoachCycleStats.compute(cycleSessions(since: applied)))
+                }
+                return (record, LifeRecMetric.outcome(record, current: current, now: now))
+            }
+    }
+
+    private func lifeRecInput(now: Date) -> LifeRecInput {
+        let calendar = Calendar.current
+        let entries = dayLedger(days: 35, now: now)
+        let projects = (try? modelContext?.fetch(FetchDescriptor<Project>())) ?? []
+        let goalMinutes = Int(GoalDataBuilder.dailyGoal(projects: projects, settings: settings, on: now).seconds / 60)
+        let regular = regularMinutes
+        let recent = cycleSessions(since: now.addingTimeInterval(-28 * 86_400))
+
+        var breaks: (actual: Double, suggested: Double, count: Int)?
+        if let modelContext {
+            let since = now.addingTimeInterval(-28 * 86_400)
+            let events = (try? modelContext.fetch(FetchDescriptor<BreakLearningEvent>(predicate: #Predicate { $0.createdAt >= since }))) ?? []
+            let real = events.filter { $0.actualBreakSeconds >= 60 }
+            if !real.isEmpty {
+                breaks = (CoachPatterns.median(real.map { Double($0.actualBreakSeconds) / 60 }),
+                          CoachPatterns.median(real.map { Double($0.suggestedMinutes) }), real.count)
+            }
+        }
+
+        refreshWindowFit(now: now)
+        let declared = settings?.coachOwnWorkWindows ?? []
+        let fit = windowFit.flatMap { fit in
+            fit.isMismatch(declared: declared) && !keepsDeclaredWindows(now: now) ? (fit.observedLabel, fit.covered, fit.starts) : nil
+        }
+        let pull = appRoleCandidate(now: now).map { candidate, projectName in
+            (key: candidate.key, name: candidate.name, projectID: candidate.projectID, projectName: projectName, minutes: candidate.minutes, days: candidate.days)
+        }
+
+        // Your usual first start on days off (weekends and holidays in the ledger), else 10:00.
+        let freeDays = Set(entries.filter { $0.type == .weekend || $0.type == .holiday }.map(\.day))
+        var firstStarts: [Double] = []
+        for day in freeDays {
+            if let first = recent.filter({ $0.isFocus && calendar.isDate($0.start, inSameDayAs: day) }).map(\.start).min() {
+                firstStarts.append(Double(calendar.component(.hour, from: first)))
+            }
+        }
+        let freeHour = firstStarts.count >= 2 ? Int(CoachPatterns.median(firstStarts)) : 10
+
+        // The coming Saturday and Sunday (today too, before 18:00) with no plan yet.
+        let weekend = LifeRecommendations.comingWeekend(now: now, calendar: calendar).filter { day in
+            let next = calendar.date(byAdding: .day, value: 1, to: day) ?? day
+            return plannedBlocks(from: day, to: next).isEmpty
+        }
+
+        // Read-only: `dailyPlanSuggestions` refreshes the coach model and calendar labels, which
+        // must not happen while a page draws. The model the idle tick keeps fresh is used as is.
+        var slot: Date? = CoachDailyPlanner.suggestions(
+            now: now, model: availabilityModel, busy: currentCalendarAvailability(now: now).busyIntervals,
+            quietStartMinute: settings?.coachQuietStartMinute ?? 30, quietEndMinute: settings?.coachQuietEndMinute ?? 420
+        ).first?.start
+        if slot == nil, calendar.component(.hour, from: now) < 21 {
+            let base = now.addingTimeInterval(30 * 60)
+            let minute = calendar.component(.minute, from: base)
+            slot = calendar.date(bySettingHour: calendar.component(.hour, from: base), minute: minute < 30 ? 30 : 0, second: 0, of: base)
+                .map { minute < 30 ? $0 : $0.addingTimeInterval(3600) }
+        }
+
+        let rhythm = focusRhythm(now: now)
+        let since14 = calendar.startOfDay(for: now.addingTimeInterval(-13 * 86_400))
+        let usage14 = (try? modelContext?.fetch(FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= since14 }))) ?? []
+        // Side work: from the hourly record where there is one (office hours on workdays excluded);
+        // before it, only days that were not workdays (on a workday the hour is unknown).
+        var sideMinutes = 0.0
+        for entry in entries.suffix(14) {
+            let account = dayAccount(entry.day, now: now)
+            if account.hasRollup {
+                sideMinutes += account.minutes[.side] ?? 0
+            } else if entry.type != .workday {
+                sideMinutes += usage14.filter { calendar.isDate($0.date, inSameDayAs: entry.day) && SideWorkTools.isSide(key: $0.bundleIdentifier, label: $0.appName) }
+                    .map { Double($0.outsideFocusSeconds) / 60 }.reduce(0, +)
+            }
+        }
+        let ownMinutes14 = entries.suffix(14).map(\.ownMinutes).reduce(0, +)
+        let workdayStarts = recent.filter { $0.isFocus && !DayType.isWeekend($0.start) }
+        let firstByDay = Dictionary(grouping: workdayStarts) { calendar.startOfDay(for: $0.start) }.compactMapValues { $0.map(\.start).min() }
+        let firstHour = firstByDay.count >= 3 ? Int(CoachPatterns.median(firstByDay.values.map { Double(calendar.component(.hour, from: $0)) })) : 10
+
+        var input = LifeRecInput(
+            now: now, entries: entries, cycle: CoachCycleStats.compute(recent), regularMinutes: regular,
+            naturalLength: CoachNaturalLength.suggestion(recent, regularMinutes: regular), breaks: breaks, windowFit: fit,
+            appPull: pull, derailer: derailerBand(now: now), targets: dayTargets(), goalMinutes: goalMinutes,
+            freeDayHour: freeHour, unplannedWeekend: weekend, todaySlot: slot, hasPlanToday: hasPlanForToday(now: now), calendar: calendar
+        )
+        input.rhythm = rhythm
+        input.sideMinutes14 = sideMinutes
+        input.ownMinutes14 = ownMinutes14
+        input.firstHour = firstHour
+        return input
+    }
+
+    // MARK: Where the day went, and how you sit (6 Nov 2026)
+
+    @ObservationIgnored private var rhythmCache: (at: Date, revision: Int, rhythm: FocusRhythm)?
+
+    /// One day from first activity to last: own work, breaks, office, side work, pulls, away,
+    /// and the gaps between sittings with your answers. Read-only (safe in `body`).
+    func dayAccount(_ day: Date, now: Date = Date()) -> DayAccount {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        guard let modelContext else {
+            return DayAccount.build(day: start, now: now, rows: [], blocks: [], breaks: [], category: { _, _, _ in .other }, reasons: [:])
+        }
+        let earlier = start.addingTimeInterval(-12 * 3600)
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= earlier && $0.startedAt < end }))) ?? []
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        func interval(_ s: FocusSession) -> (Date, Date) {
+            (s.startedAt, s.endedAt ?? min(now, s.startedAt.addingTimeInterval(s.actualDuration)))
+        }
+        let blocks = sessions.filter { $0.type == .focus }.map { s -> DayAccount.Block in
+            let (a, b) = interval(s)
+            return DayAccount.Block(start: a, end: b, own: !ownConfigured || CoachHistoryReader.isOwnWork(s.project), pausedSeconds: s.totalPausedSeconds)
+        }
+        let breaks = sessions.filter { $0.type != .focus }.map { s -> DateInterval in
+            let (a, b) = interval(s)
+            return DateInterval(start: a, end: max(a, b))
+        }
+        let rows: [DayAccount.Row] = storesDayLedger
+            ? ((try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end }))) ?? [])
+                .map { DayAccount.Row(hourStart: $0.hourStart, key: $0.key, label: $0.label, inBlock: $0.inBlock, seconds: $0.seconds) }
+            : []
+        let book = appRoleBook(now: now)
+        let isWorkday = dayLedger(days: 1, now: start.addingTimeInterval(12 * 3600)).last.map { $0.type == .workday && DayTargets.isSettled($0.classification) } ?? false
+        return DayAccount.build(day: start, now: now, rows: rows, blocks: blocks, breaks: breaks, category: { key, label, hour in
+            if AppRoleBook.isOffice(key, name: label) { return .office }
+            let role = book.role(key: key, name: label, in: .own).role
+            if role == .pull { return .pull }
+            if SideWorkTools.isSide(key: key, label: label) {
+                // On a workday in office hours, dev and AI tools are most likely the office's.
+                return isWorkday && (9..<19).contains(hour) ? .office : .side
+            }
+            if role == .tool { return .unblockedOwn }
+            return .other
+        }, reasons: GapReasonStore(defaults: defaults).all(), splits: GapSplitStore(defaults: defaults).all(), calendar: calendar)
+    }
+
+    /// Splits a gap at `date` ("11–1 was real work, 1–3 I wasted"); each part gets its own reason.
+    func splitGap(at date: Date, now: Date = Date()) {
+        GapSplitStore(defaults: defaults).add(date, now: now)
+        rhythmCache = nil
+        lifeRevision += 1
+    }
+
+    /// Joins a part back with the one before it (removes the split at its start and its reason).
+    func joinGap(at start: Date) {
+        GapSplitStore(defaults: defaults).remove(start)
+        GapReasonStore(defaults: defaults).set(nil, for: start)
+        rhythmCache = nil
+        lifeRevision += 1
+    }
+
+    /// Whether a part starts at one of your splits (so it can be joined back).
+    func isSplitPoint(_ date: Date) -> Bool {
+        GapSplitStore(defaults: defaults).all().contains(DayAccount.reasonKey(date))
+    }
+
+    /// The longest unanswered gap of an hour or more that ended in the last 3 hours today (fresh
+    /// in memory), between sittings. Asked with the other questions (one a day).
+    func gapReasonQuestion(now: Date = Date()) -> CoachQuestion? {
+        let account = dayAccount(now, now: now)
+        guard let gap = account.gaps
+            .filter({ $0.reason == nil && $0.minutes >= 60 && now.timeIntervalSince($0.end) <= 3 * 3600 && now.timeIntervalSince($0.end) >= 60 })
+            .max(by: { $0.minutes < $1.minutes }) else { return nil }
+        return .gapReason(start: gap.start, end: gap.end, summary: gap.summary)
+    }
+
+    /// Your answer for a gap ("Tired", "Family / friends"); nil clears it.
+    func setGapReason(_ reason: GapReason?, for start: Date, now: Date = Date()) {
+        GapReasonStore(defaults: defaults).set(reason, for: start, now: now)
+        coachJournal.record(.logged, "Gap at \(Self.clockLabel(start)): \(reason?.title ?? "cleared").", code: .question, at: now)
+        rhythmCache = nil
+        lifeRevision += 1
+    }
+
+    /// How you sit over 4 weeks, with your gap answers; cached 5 minutes (safe in `body`).
+    func focusRhythm(now: Date = Date()) -> FocusRhythm {
+        if let cache = rhythmCache, cache.revision == lifeRevision, now.timeIntervalSince(cache.at) < 300, cache.at <= now {
+            return cache.rhythm
+        }
+        let calendar = Calendar.current
+        let since = calendar.startOfDay(for: now.addingTimeInterval(-27 * 86_400))
+        let sessions = (try? modelContext?.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }))) ?? []
+        let projects = (try? modelContext?.fetch(FetchDescriptor<Project>())) ?? []
+        let ownConfigured = GoalDataBuilder.ownWorkConfigured(projects)
+        let blocks = sessions.filter { $0.type == .focus && $0.endedAt != nil && (!ownConfigured || CoachHistoryReader.isOwnWork($0.project)) }
+            .map { FocusRhythm.Block(start: $0.startedAt, end: $0.endedAt ?? $0.startedAt, focusedMinutes: $0.actualDuration / 60) }
+        var gaps: [DayAccount.Gap] = []
+        var day = since
+        while day <= now {
+            gaps += dayAccount(day, now: now).gaps
+            day = calendar.date(byAdding: .day, value: 1, to: day) ?? now.addingTimeInterval(1)
+        }
+        let rhythm = FocusRhythm.compute(blocks: blocks, ledger: dayLedger(days: 28, now: now), gaps: gaps, calendar: calendar)
+        rhythmCache = (now, lifeRevision, rhythm)
+        return rhythm
+    }
+
+    /// The first day with any history (blocks or app time).
+    private func firstHistoryDay() -> Date? {
+        guard let modelContext else { return nil }
+        var sessions = FetchDescriptor<FocusSession>(sortBy: [SortDescriptor(\.startedAt)]); sessions.fetchLimit = 1
+        var usage = FetchDescriptor<AppUsageEntry>(sortBy: [SortDescriptor(\.date)]); usage.fetchLimit = 1
+        return [(try? modelContext.fetch(sessions))?.first?.startedAt, (try? modelContext.fetch(usage))?.first?.date].compactMap { $0 }.min()
+    }
+
+    /// App and site switches inside blocks, and the block hours they happened in (hourly rollup).
+    private func blockSwitches(from start: Date, to end: Date) -> (count: Int, blockHours: Double)? {
+        guard storesDayLedger, let modelContext else { return nil }
+        let rows = (try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= start && $0.hourStart < end && $0.inBlock }))) ?? []
+        let active = rows.filter { $0.key != "away" && $0.key != "call" }
+        guard !active.isEmpty else { return nil }
+        return (active.map(\.switches).reduce(0, +), Double(active.map(\.seconds).reduce(0, +)) / 3600)
+    }
+
+    /// The pull you spend most time on outside blocks in 2 weeks, and the 3 hours it clusters in.
+    private func derailerBand(now: Date) -> (key: String, name: String, minutes: Double, fromHour: Int, toHour: Int, isYourRule: Bool)? {
+        guard storesDayLedger, let modelContext else { return nil }
+        let since = now.addingTimeInterval(-14 * 86_400)
+        let rows = (try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= since && !$0.inBlock }))) ?? []
+        let book = appRoleBook(now: now)
+        var byKey: [String: (name: String, hours: [Int: Double])] = [:]
+        for row in rows where row.key != "away" && row.key != "call" {
+            let decision = book.role(key: row.key, name: row.label, in: .free)
+            guard decision.role == .pull else { continue }
+            let key = AppRoleBook.normalize(row.key)
+            byKey[key, default: (row.label, [:])].hours[Calendar.current.component(.hour, from: row.hourStart), default: 0] += Double(row.seconds) / 60
+        }
+        guard let (key, value) = byKey.max(by: { $0.value.hours.values.reduce(0, +) < $1.value.hours.values.reduce(0, +) }) else { return nil }
+        let total = value.hours.values.reduce(0, +)
+        let hours = value.hours
+        func bandMinutes(_ start: Int) -> Double {
+            var sum = 0.0
+            for offset in 0..<3 { sum += hours[(start + offset) % 24] ?? 0 }
+            return sum
+        }
+        var band = 0
+        for start in 1..<24 where bandMinutes(start) > bandMinutes(band) { band = start }
+        let inBand = bandMinutes(band)
+        guard total > 0, inBand / total >= 0.5 else { return nil }
+        return (key, value.name, total, band, band + 3, book.role(key: key, name: value.name, in: .free).source == .user)
+    }
+
+    /// Is the coach helping? Prompt lift (v5), the back-from-break panel (v7), recommendations.
+    struct CoachHelping {
+        let promptLift: CoachLiftEstimate.Result?
+        let returnLift: CoachCycleExperiment.Estimate?
+        let outcomes: [(record: LifeRecRecord, outcome: LifeRecOutcome)]
+    }
+
+    @ObservationIgnored private var coachHelpingCache: (at: Date, revision: Int, value: CoachHelping)?
+
+    /// Cached for a minute (the prompt model refit is not cheap); safe in `body`.
+    func coachHelping(now: Date = Date()) -> CoachHelping {
+        if let cache = coachHelpingCache, cache.revision == lifeRevision, now.timeIntervalSince(cache.at) < 60, cache.at <= now {
+            return cache.value
+        }
+        let value = computeCoachHelping(now: now)
+        coachHelpingCache = (now, lifeRevision, value)
+        return value
+    }
+
+    private func computeCoachHelping(now: Date) -> CoachHelping {
+        let starts = (historyReader?.focusSessions(since: now.addingTimeInterval(-60 * 86_400)) ?? []).map(\.startedAt)
+        return CoachHelping(
+            promptLift: coachLearningSummary(now: now).lift,
+            returnLift: CoachCycleExperiment.estimate(cycleDecisions(), starts: starts, now: now),
+            outcomes: lifeRecOutcomes(now: now)
+        )
+    }
+
+    // MARK: Weekly review and Plan today (coach v8 §3.5)
+
+    /// Puts one block on the calendar (the review's plan step, "Plan today?" and Your week).
+    @discardableResult
+    func planBlock(at start: Date, now: Date = Date()) -> Bool {
+        guard start > now else { return false }
+        return insertPlannedBlock(at: start, now: now) != nil
+    }
+
+    /// "Plan today?": a settled day off, the morning, no plan or own work yet, after a week without plans.
+    func planTodayQuestion(now: Date = Date()) -> CoachQuestion? {
+        // Cheap checks first: this runs with the other questions once a minute.
+        let hour = Calendar.current.component(.hour, from: now)
+        guard (PlanTodayPolicy.fromHour..<PlanTodayPolicy.untilHour).contains(hour), storesDayLedger, canUsePlannedBlocks(),
+              let type = settledDayType(now: now), type != .workday, type != .sick, !hasPlanForToday(now: now) else { return nil }
+        let week = dayLedger(days: 8, now: now)
+        guard let today = week.last else { return nil }
+        let plannedDays = week.dropLast().filter(\.planned).count
+        guard PlanTodayPolicy.shouldAsk(type: type, now: now, hasPlanToday: hasPlanForToday(now: now), ownMinutesToday: today.ownMinutes,
+                                        plannedDaysLastWeek: plannedDays) else { return nil }
+        let times = PlanTodayPolicy.times(now: now, usualHour: lifeSnapshot(now: now).input.freeDayHour)
+        guard !times.isEmpty else { return nil }
+        return .planToday(day: today.day, times: times)
+    }
+
+    /// Sunday 19:00 to Monday 12:00, at a breakpoint: "Your weekly review is ready."
+    @discardableResult
+    func evaluateWeeklyReviewInvite(now: Date = Date()) -> Bool {
+        guard let settings, settings.coachOnScreenPromptsEnabled else { return false }
+        let store = WeeklyReviewStore(defaults: defaults)
+        guard WeeklyReviewPolicy.isDue(now: now, lastDone: store.last?.completedAt, lastOffered: store.lastOffered),
+              state == .idle, !isOvertime, coachPanel == nil, pauseScreen == nil,
+              !CoachGuardrails.isQuietHours(now, start: settings.coachQuietStartMinute, end: settings.coachQuietEndMinute),
+              !shouldSuppressGuardianPopups(using: settings), systemIdleSeconds() <= CoachQuestionPolicy.maxIdleSeconds else { return false }
+        store.markOffered(now)
+        let message = CoachComposedMessage(
+            style: settings.coachStyle, trigger: .startNudge,
+            hook: "Your weekly review is ready.",
+            detail: .line("5 minutes: how the week went, one change, and next week's blocks."),
+            primaryTitle: "", hookIsFact: false
+        )
+        coachJournal.record(.shown, "Weekly review offered.", code: .question, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .question, message: message, createdAt: now, questionID: "weekly_review", choices: [
+            CoachQuestionChoice(id: "start", title: "Start review"),
+            CoachQuestionChoice(id: "later", title: "Later"),
+        ]))
+        return coachPanel?.kind == .question
+    }
+
+    /// The days a review plans, each with its day type (your labels and calendar marks, else
+    /// weekend or workday) and what is already planned.
+    func weeklyPlanDays(now: Date = Date()) -> [(day: Date, type: DayType, planned: [Date])] {
+        let calendar = Calendar.current
+        let days = WeeklyReviewPolicy.planDays(now, calendar: calendar)
+        guard let first = days.first, let end = days.last.flatMap({ calendar.date(byAdding: .day, value: 1, to: $0) }) else { return [] }
+        let labels = storesDayLedger
+            ? ((try? modelContext?.fetch(FetchDescriptor<DayLabel>(predicate: #Predicate { $0.day >= first && $0.day < end }))) ?? [])
+            : []
+        let plans = plannedBlocks(from: first, to: end).filter { $0.status == .planned }
+        return days.map { day in
+            let label = labels.filter { calendar.isDate($0.day, inSameDayAs: day) }.sorted { $0.source == .user && $1.source != .user }.first
+            let type = label?.type ?? (DayType.isWeekend(day, calendar: calendar) ? .weekend : .workday)
+            return (day, type, plans.filter { calendar.isDate($0.startAt, inSameDayAs: day) }.map(\.startAt))
+        }
+    }
+
+    /// Default start hours for the plan step: your usual hour on days off; for workdays, the
+    /// start of your first observed own-work window (else 21:00).
+    func weeklyPlanHours(now: Date = Date()) -> (free: Int, workday: Int) {
+        refreshWindowFit(now: now)
+        let windows = effectiveOwnWorkWindows(now: now).filter { $0.startMinute >= 17 * 60 }
+        return (lifeSnapshot(now: now).input.freeDayHour, windows.first.map { $0.startMinute / 60 } ?? 21)
+    }
+
+    var lastWeeklyReview: WeeklyReviewRecord? { WeeklyReviewStore(defaults: defaults).last }
+
+    /// Finishes a review: plans the chosen blocks, applies the pick, and records it.
+    @discardableResult
+    func completeWeeklyReview(pick: LifeRecommendation?, blocks: [Date], obstacle: String, now: Date = Date()) -> WeeklyReviewRecord {
+        let planned = blocks.filter { planBlock(at: $0, now: now) }.count
+        if let pick { applyLifeRecommendation(pick, picked: true, now: now) }
+        let record = WeeklyReviewRecord(
+            weekStart: WeeklyReviewPolicy.reviewedWeekStart(now), completedAt: now, pickID: pick?.id, pickTitle: pick?.title,
+            plannedBlocks: planned, obstacle: obstacle.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        WeeklyReviewStore(defaults: defaults).append(record)
+        coachJournal.record(.logged, "Weekly review done: \(planned) block\(planned == 1 ? "" : "s") planned\(pick.map { ", pick: \($0.title)" } ?? "").", code: .question, at: now)
+        weeklyReviewRequested = false
+        lifeRevision += 1
+        return record
+    }
+
+    // MARK: Apps in context (coach v8 §3.3)
+
+    @ObservationIgnored private var appRoleBookCache: (at: Date, book: AppRoleBook, names: [String: String])?
+    @ObservationIgnored private var todayTypeCache: (at: Date, type: DayType, settled: DayType)?
+    /// Bumped when a day-type target changes, so pages showing targets redraw.
+    private(set) var dayTargetsRevision = 0
+
+    private var storesAppRoles: Bool {
+        modelContext?.container.schema.entities.contains { $0.name == "AppRoleRuleRecord" } ?? false
+    }
+
+    /// Your rules (global distraction rules plus per-project and per-area roles) and what your
+    /// blocks show, refreshed every 5 minutes or after a change. Read-only on the store.
+    func appRoleBook(now: Date = Date()) -> AppRoleBook {
+        if let cached = appRoleBookCache, now.timeIntervalSince(cached.at) < 300, cached.at <= now { return cached.book }
+        let built = buildAppRoleBook(now: now)
+        appRoleBookCache = (now, built.book, built.names)
+        return built.book
+    }
+
+    /// Display names seen for each key (hourly labels and daily app names).
+    func appRoleNames(now: Date = Date()) -> [String: String] {
+        _ = appRoleBook(now: now)
+        return appRoleBookCache?.names ?? [:]
+    }
+
+    func invalidateAppRoles() {
+        appRoleBookCache = nil
+        driftRuleKeys = nil
+    }
+
+    private func buildAppRoleBook(now: Date) -> (book: AppRoleBook, names: [String: String]) {
+        var book = AppRoleBook()
+        var names: [String: String] = [:]
+        guard let modelContext else { return (book, names) }
+        let items = (try? modelContext.fetch(FetchDescriptor<IdleDistractionItem>())) ?? []
+        for item in items where item.status == .active {
+            book.rules.append(AppRoleRule(key: item.key.lowercased(), scope: .everywhere, role: item.severity == .allowed ? .tool : .pull))
+        }
+        if storesAppRoles {
+            let records = (try? modelContext.fetch(FetchDescriptor<AppRoleRuleRecord>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)]))) ?? []
+            // Newest first, so a later answer for the same scope wins.
+            book.rules = records.map(\.rule) + book.rules
+            for record in records { names[record.key] = record.displayName }
+        }
+
+        let calendar = Calendar.current
+        let since = calendar.startOfDay(for: now.addingTimeInterval(-28 * 86_400))
+        var hourDays = Set<Date>()
+        if storesDayLedger {
+            let hours = (try? modelContext.fetch(FetchDescriptor<ActivityHour>(predicate: #Predicate { $0.hourStart >= since && $0.inBlock }))) ?? []
+            for hour in hours {
+                guard let projectID = hour.projectID, hour.key != "away", hour.key != "call" else { continue }
+                let key = AppRoleBook.normalize(hour.key)
+                let day = calendar.startOfDay(for: hour.hourStart)
+                hourDays.insert(day)
+                book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].minutes += Double(hour.seconds) / 60
+                book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].days.insert(day)
+                names[key] = names[key] ?? hour.label
+            }
+        }
+        // Before the hourly rollup: days whose blocks were all one project lend it that day's
+        // in-block app time (the daily rows know "in a block", not which block).
+        let sessions = (try? modelContext.fetch(FetchDescriptor<FocusSession>(predicate: #Predicate { $0.startedAt >= since }))) ?? []
+        let projectByDay = Dictionary(grouping: sessions.filter { $0.type == .focus }, by: { calendar.startOfDay(for: $0.startedAt) })
+            .compactMapValues { day -> UUID? in
+                let ids = Set(day.compactMap { $0.project?.id })
+                return ids.count == 1 && day.allSatisfy { $0.project != nil } ? ids.first : nil
+            }
+        let usage = (try? modelContext.fetch(FetchDescriptor<AppUsageEntry>(predicate: #Predicate { $0.date >= since && $0.duringFocusSeconds > 0 }))) ?? []
+        for entry in usage {
+            let day = calendar.startOfDay(for: entry.date)
+            guard !hourDays.contains(day), let projectID = projectByDay[day] else { continue }
+            let key = AppRoleBook.normalize(entry.bundleIdentifier)
+            book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].minutes += Double(entry.duringFocusSeconds) / 60
+            book.evidence[key, default: [:]][projectID, default: AppRoleEvidence()].days.insert(day)
+            names[key] = names[key] ?? entry.appName
+        }
+        // Block reviews where you kept an app for a project ("planned").
+        if let memory = coachEngine.driftMemoryStore?.memory {
+            for (compound, count) in memory.plannedCounts(now: now) {
+                let parts = compound.split(separator: "|").map(String.init)
+                guard parts.count == 3, let projectID = UUID(uuidString: parts[0]) else { continue }
+                book.evidence[AppRoleBook.normalize(parts[2]), default: [:]][projectID, default: AppRoleEvidence()].plannedMarks += count
+            }
+        }
+        return (book, names)
+    }
+
+    /// Where you are now, for app roles.
+    func currentAppContext(now: Date = Date()) -> AppContext {
+        if state == .focusing || state == .paused {
+            if let project = selectedProject { return .project(project.id, AreaGroup.of(project.areaRaw == nil ? nil : project.area)) }
+            return .own
+        }
+        _ = settledDayType(now: now)
+        let type = todayTypeCache?.type ?? (DayType.isWeekend(now) ? .weekend : .workday)
+        return AppContext.outsideBlock(dayType: type, hour: Calendar.current.component(.hour, from: now), inOwnWindow: currentOwnWorkWindow(now: now) != nil)
+    }
+
+    func appRole(key: String, name: String, now: Date = Date()) -> AppRoleDecision {
+        appRoleBook(now: now).role(key: key, name: name, in: currentAppContext(now: now))
+    }
+
+    /// "Distraction / It's work" with a scope (coach v8): everywhere writes the old global rule;
+    /// an area or a project writes an `AppRoleRuleRecord`, replacing the same key and scope.
+    func setAppRole(key rawKey: String, kind: DerailerTarget.Kind, name: String, scope: AppRoleScope, role: AppRole) {
+        guard let modelContext else { return }
+        let key = AppRoleBook.normalize(rawKey)
+        if scope == .everywhere {
+            try? DistractionRuleWriter.mark(kind: kind == .website ? .website : .app, key: key, name: name,
+                                            as: role == .tool ? .allowed : .minor, source: .manual, in: modelContext)
+        } else if storesAppRoles {
+            let probe = AppRoleRuleRecord(key: key, displayName: name, scope: scope, role: role)
+            let kindRaw = probe.scopeKindRaw, value = probe.scopeValue
+            let existing = (try? modelContext.fetch(FetchDescriptor<AppRoleRuleRecord>(predicate: #Predicate { $0.key == key && $0.scopeKindRaw == kindRaw && $0.scopeValue == value }))) ?? []
+            existing.forEach(modelContext.delete)
+            if role != .neutral { modelContext.insert(probe) }
+            saveContext()
+        }
+        invalidateAppRoles()
+    }
+
+    /// The tracker's category for the frontmost app during a block: your roles first.
+    func contextualCategory(_ base: AppUsageEntry.AppCategory, key: String, name: String, now: Date = Date()) -> AppUsageEntry.AppCategory {
+        let decision = appRole(key: key, name: name, now: now)
+        guard decision.source != .standard else { return base }
+        switch decision.role {
+        case .pull: return .distracting
+        case .tool: return .productive
+        case .neutral: return base
+        }
+    }
+
+    /// The pull open longest in an own-work project's blocks this week, with its project's name.
+    func appRoleCandidate(now: Date = Date()) -> (AppRoleQuestionPicker.Candidate, String)? {
+        guard let modelContext else { return nil }
+        let book = appRoleBook(now: now)
+        let projects = (try? modelContext.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived }))) ?? []
+        let own = Set(projects.filter { $0.areaRaw == nil || $0.area.isOwnWork }.map(\.id))
+        // Only the last 7 days' evidence counts for asking.
+        let weekAgo = Calendar.current.startOfDay(for: now.addingTimeInterval(-7 * 86_400))
+        var recent = book.evidence
+        for (key, byProject) in recent {
+            for (id, found) in byProject {
+                var trimmed = found
+                trimmed.days = found.days.filter { $0 >= weekAgo }
+                if trimmed.days.isEmpty { recent[key]?[id] = nil } else { recent[key]?[id] = trimmed }
+            }
+        }
+        guard let candidate = AppRoleQuestionPicker.pick(evidence: recent, names: appRoleNames(now: now), ownProjects: own, book: book),
+              let project = projects.first(where: { $0.id == candidate.projectID }) else { return nil }
+        return (candidate, project.name)
+    }
+
+    /// An office tool or a default pull open in an own-work project's blocks: ask which it is.
+    func appRoleQuestion(now: Date = Date()) -> CoachQuestion? {
+        guard let (candidate, projectName) = appRoleCandidate(now: now) else { return nil }
+        return .appRole(key: candidate.key, name: candidate.name, projectID: candidate.projectID, projectName: projectName, days: candidate.days)
+    }
+
+    /// Today, when the coach should ask what kind of day it is (likely leave, not yet answered).
+    func dayTypeQuestion(now: Date = Date()) -> CoachQuestion? {
+        guard storesDayLedger, let today = dayLedger(days: 1, now: now).last else { return nil }
+        let c = today.classification
+        guard c.source == .inferred, c.type == .leave, c.confidence < DayClassification.askBelow else { return nil }
+        return .dayType(day: today.day, inferred: c.type, reason: c.reason)
+    }
+
+    // MARK: Quick questions (coach v6 §3.4)
+
+    /// The questions the coach has right now, most useful first (snoozed ones included).
+    func coachQuestionCandidates(now: Date = Date()) -> [CoachQuestion] {
+        let declared = settings?.coachOwnWorkWindows ?? []
+        refreshWindowFit(now: now)
+        var questions: [CoachQuestion] = []
+        // Coach v8: what kind of day it is decides every target, so it is asked first.
+        if let day = dayTypeQuestion(now: now) { questions.append(day) }
+        if let plan = planTodayQuestion(now: now) { questions.append(plan) }
+        if let gap = gapReasonQuestion(now: now) { questions.append(gap) }
+        if let role = appRoleQuestion(now: now) { questions.append(role) }
+        if let fit = windowFit, fit.isMismatch(declared: declared), !keepsDeclaredWindows(now: now) {
+            questions.append(.windowFit(fit, declared: declared))
+        }
+        if let project = unclassifiedProjectQuestion(now: now) { questions.append(project) }
+        let regular = regularMinutes
+        if let minutes = CoachNaturalLength.suggestion(cycleSessions(since: now.addingTimeInterval(-30 * 86_400)), regularMinutes: regular) {
+            questions.append(.naturalLength(minutes: minutes, regular: regular))
+        }
+        return questions
+    }
+
+    /// The question the coach would ask now: the first one not snoozed by "Not now".
+    func pendingCoachQuestion(now: Date = Date()) -> CoachQuestion? {
+        let store = CoachQuestionStore(defaults: defaults)
+        return coachQuestionCandidates(now: now).first { question in
+            store.snoozedUntil(question.id).map { $0 <= now } ?? true
+        }
+    }
+
+    /// "Is ProjectWork your own work, or your day job?" (`CoachQuestion.unclassifiedProject`).
+    func unclassifiedProjectQuestion(now: Date = Date()) -> CoachQuestion? {
+        guard let context = modelContext,
+              let projects = try? context.fetch(FetchDescriptor<Project>(predicate: #Predicate { !$0.archived })) else { return nil }
+        let since = now.addingTimeInterval(-TimeInterval(CoachWindowFit.lookbackDays) * 86_400)
+        let sessions = historyReader?.focusSessions(since: since) ?? []
+        let counts = Dictionary(grouping: sessions.compactMap { $0.project?.id }, by: { $0 }).mapValues(\.count)
+        return CoachQuestion.unclassifiedProject(projects.map {
+            (id: $0.id, name: $0.name, hasArea: $0.areaRaw != nil, isWork: $0.areaRaw != nil && $0.area == .work, blocks: counts[$0.id] ?? 0)
+        })
+    }
+
+    /// Runs once a minute. At most one question a day, at a breakpoint with someone at the desk.
+    @discardableResult
+    func evaluateCoachQuestion(now: Date = Date()) -> Bool {
+        guard let settings, settings.coachOnScreenPromptsEnabled, settings.coachIdleStarterEnabled,
+              let question = pendingCoachQuestion(now: now) else { return false }
+        let store = CoachQuestionStore(defaults: defaults)
+        let input = CoachQuestionPolicy.Input(
+            now: now,
+            askedToday: store.askedToday(now: now),
+            sessionActive: state != .idle || isOvertime,
+            panelShowing: coachPanel != nil || pauseScreen != nil,
+            quietHours: CoachGuardrails.isQuietHours(now, start: settings.coachQuietStartMinute, end: settings.coachQuietEndMinute),
+            screenShare: shouldSuppressGuardianPopups(using: settings),
+            userIdleSeconds: systemIdleSeconds(),
+            questionSnoozedUntil: nil
+        )
+        guard CoachQuestionPolicy.mayAsk(input) else { return false }
+        store.markAsked(now: now)
+        presentCoachQuestion(question, now: now)
+        return coachPanel?.kind == .question
+    }
+
+    func presentCoachQuestion(_ question: CoachQuestion, now: Date = Date()) {
+        let message = CoachComposedMessage(
+            style: settings?.coachStyle ?? .challenger,
+            trigger: .startNudge,
+            hook: question.hook,
+            detail: .line(question.detail),
+            primaryTitle: "",
+            hookIsFact: true
+        )
+        coachJournal.record(.shown, "Quick question: \(question.hook)", code: .question, at: now)
+        presentCoachPanel(CoachPanelPresentation(kind: .question, message: message, createdAt: now, questionID: question.id, choices: question.choices))
+    }
+
+    /// A quick question was answered: act on it now.
+    func answerCoachQuestion(_ choice: CoachQuestionChoice, now: Date = Date()) {
+        guard let panel = coachPanel, panel.kind == .question else { return }
+        switch panel.questionID {
+        case "window_fit":
+            if let answer = CoachQuestion.WindowFitAnswer(rawValue: choice.id), let settings {
+                applyWindowFitAnswer(answer, settings: settings, now: now)
+            }
+        case "back_at":
+            if let minutes = Int(choice.id) {
+                let at = now.addingTimeInterval(TimeInterval(minutes * 60))
+                if insertPlannedBlock(at: at, now: now) != nil {
+                    coachJournal.record(.logged, "Back at \(Self.clockLabel(at)): planned.", code: .backAt, at: now)
+                }
+            } else {
+                coachJournal.record(.declined, "Really done for today.", code: .backAt, at: now)
+            }
+        case "natural_length":
+            applyNaturalLengthAnswer(choice, now: now)
+        case let id? where id.hasPrefix("app_role."):
+            if case .appRole(let key, let name, let projectID, _, _)? = coachQuestionCandidates(now: now).first(where: { $0.id == id }),
+               let role = AppRole(rawValue: choice.id) {
+                setAppRole(key: key, kind: AppRoleBook.isHost(key) ? .website : .app, name: name, scope: .project(projectID), role: role)
+                coachJournal.record(.logged, "\(name): \(role.title.lowercased()) for this project.", code: .question, at: now)
+            }
+        case "weekly_review":
+            if choice.id == "start" {
+                requestWeeklyReview()
+                coachJournal.record(.logged, "Weekly review started.", code: .question, at: now)
+            }
+        case let id? where id.hasPrefix("gap_reason."):
+            if let seconds = TimeInterval(String(id.dropFirst("gap_reason.".count))), let reason = GapReason(rawValue: choice.id) {
+                setGapReason(reason, for: Date(timeIntervalSince1970: seconds), now: now)
+            }
+        case let id? where id.hasPrefix("plan_today."):
+            if let seconds = TimeInterval(choice.id) {
+                let at = Date(timeIntervalSince1970: seconds)
+                if planBlock(at: at, now: now) {
+                    coachJournal.record(.logged, "Planned today at \(Self.clockLabel(at)).", code: .question, at: now)
+                }
+            } else {
+                coachJournal.record(.declined, "Resting today.", code: .question, at: now)
+            }
+        case let id? where id.hasPrefix("day_type."):
+            if let type = DayType(rawValue: choice.id) {
+                setDayType(now, type: type)
+                coachJournal.record(.logged, "Today is a \(type.title.lowercased()).", code: .question, at: now)
+            }
+        case let id? where id.hasPrefix("project_area."):
+            if let uuid = UUID(uuidString: String(id.dropFirst("project_area.".count))), let area = ProjectArea(rawValue: choice.id) {
+                setProjectArea(uuid, area: area)
+            }
+        default:
+            break
+        }
+        coachJournal.record(.logged, "Quick question answered: \(choice.title).", code: .question, at: now)
+        interventionActionTaken = true
+        hideCoachPanel()
+    }
+
+    /// "Not now" or "Keep…" holds this question back (Insights hides it too).
+    func isCoachQuestionSnoozed(_ id: String, now: Date = Date()) -> Bool {
+        CoachQuestionStore(defaults: defaults).snoozedUntil(id).map { $0 > now } ?? false
+    }
+
+    /// "Make it 35 min" / "Keep 25 min" (coach v7 §3.1; also offered in Insights).
+    func applyNaturalLengthAnswer(_ choice: CoachQuestionChoice, now: Date = Date()) {
+        if let minutes = Int(choice.id) {
+            settings?.focusDuration = TimeInterval(minutes * 60)
+            selectedMinutes = minutes
+            saveContext()
+        } else {
+            CoachQuestionStore(defaults: defaults).snooze("natural_length", until: now.addingTimeInterval(30 * 86_400))
+        }
+    }
+
+    /// Sets a project's area from a quick question (also offered in Insights).
+    func setProjectArea(_ projectID: UUID, area: ProjectArea) {
+        guard let context = modelContext,
+              let project = try? context.fetch(FetchDescriptor<Project>(predicate: #Predicate { $0.id == projectID })).first else { return }
+        project.area = area
+        saveContext()
+        refreshWindowFit(now: Date(), force: true)
+    }
+
+    /// Applies the window question's answer (also offered in Insights).
+    func applyWindowFitAnswer(_ answer: CoachQuestion.WindowFitAnswer, settings: AppSettings, now: Date = Date()) {
+        refreshWindowFit(now: now)
+        let declared = settings.coachOwnWorkWindows
+        if let fit = windowFit, let windows = CoachQuestion.windows(after: answer, declared: declared, fit: fit) {
+            settings.coachOwnWorkWindows = windows
+            saveContext()
+            refreshWindowFit(now: now, force: true)
+        }
+        if answer == .keepMine {
+            defaults.set(now.addingTimeInterval(CoachQuestionPolicy.keepMineCooldown), forKey: Self.keepDeclaredWindowsUntilKey)
+        } else {
+            defaults.removeObject(forKey: Self.keepDeclaredWindowsUntilKey)
+        }
     }
 
     /// Runs once a minute. In the evening, once, at a breakpoint: "When are tomorrow's 2 blocks?"
@@ -6324,5 +7763,13 @@ final class TimerViewModel {
             inReleaseWindow: isInReleaseWindow,
             secondsSinceLastFocusSession: secondsSinceLastFocusSessionEnd()
         )
+    }
+
+    // MARK: Calm surfaces (coach v8 phase 5)
+
+    /// Today's pace against the day's goal (`dailyGoal(now:)`, so day-type targets count), for
+    /// Today's one sentence. A store read: safe while drawing.
+    func goalPacing(now: Date = Date()) -> CoachGoalPacing {
+        currentPacing(now: now)
     }
 }

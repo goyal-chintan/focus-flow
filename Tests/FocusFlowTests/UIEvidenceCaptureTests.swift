@@ -279,6 +279,9 @@ final class UIEvidenceCaptureTests: XCTestCase {
             fixtures: fixtures
         )
 
+        if let out = ProcessInfo.processInfo.environment["FOCUSFLOW_PROBE_OUT"] {
+            try writePNG(image, to: URL(fileURLWithPath: out))
+        }
         // Block-end window (screen audit 2026-10-28): one stage that fits its content, then the
         // sticky footer. Start button (full width) at y≈0.84-0.89.
         let continueStats = try luminanceStats(
@@ -1324,7 +1327,8 @@ final class UIEvidenceCaptureTests: XCTestCase {
             .environment(\.modelContext, fixture.context)
             .padding(16)
             .background(backgroundColor(for: appearance))
-        return try render(view, appearance: appearance, size: CGSize(width: 560, height: 920))
+        // The window opens at 560 × 760 (BlockEndWindowPresenter); the content fills it.
+        return try render(view, appearance: appearance, size: CGSize(width: 592, height: 792))
     }
 
     private func renderCoachWindow(_ fixture: Fixture, appearance: ReviewArtifactAppearance) throws -> CGImage {

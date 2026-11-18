@@ -10,12 +10,12 @@ final class CoachInterventionFixesTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        defaultsSuite = "FocusFlowTests-\(UUID())"
+        defaultsSuite = "FocusFlowTests.\(UUID())"
         defaults = UserDefaults(suiteName: defaultsSuite)!
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: defaultsSuite)
+        TestDefaults.remove(defaultsSuite)
         super.tearDown()
     }
 

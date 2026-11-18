@@ -76,21 +76,20 @@ struct PaceBar: View {
 
 // MARK: - Goal card
 
-/// A goal, read top to bottom (Goals clarity 2026-11-02): what it is and when it's due, one
-/// sentence on where you stand, then each number with +1. The overall bar shows only when there
-/// are several numbers (with one, it repeats the number's own bar). A goal with nothing to count
-/// says so and offers the two ways forward instead of a 0% bar.
+/// A goal, calm (coach v8 §3.6): what it is and when it's due, one sentence on where you stand
+/// (the pace, said once), one bar, and today's count per number ("2 of 4 today", with +1). Each number
+/// with its +1 / −1, the chart and "Add from Reminders" sit behind one disclosure. A goal with
+/// nothing to count says so and offers the two ways forward instead of a 0% bar.
 struct GoalCard: View {
     let goal: ProjectGoal
     let project: Project?
     let now: Date
-    var compact: Bool = false
     var onEdit: (() -> Void)?
     /// Pick reminders (the project's tasks) to count toward this goal; nil when its project has none.
     var onPickReminders: (() -> Void)?
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showNumbers = false
     @State private var showChart = false
 
     var body: some View {
@@ -98,7 +97,7 @@ struct GoalCard: View {
         let tint = FFPalette.project(project?.color)
         let results = goal.sortedKeyResults
         VStack(alignment: .leading, spacing: FFSpace.m) {
-            header(summary, tint: tint, hasMeasures: !results.isEmpty)
+            header(tint: tint, summary: summary)
             if results.isEmpty {
                 GoalFirstStep(onEdit: onEdit, onPickReminders: onPickReminders)
             } else {
@@ -109,45 +108,81 @@ struct GoalCard: View {
                     deadline: goal.deadline
                 ))
                 .ffText(.body)
+                .foregroundStyle(summary.status == .behind || summary.status == .overdue ? summary.status.color : .primary)
                 .fixedSize(horizontal: false, vertical: true)
-                if results.count > 1 {
-                    overallBar(summary)
-                }
-                VStack(spacing: 14) {
-                    ForEach(Array(zip(results, summary.keyResults)), id: \.0.id) { pair in
-                        KeyResultRow(keyResult: pair.0, pace: pair.1, compact: compact)
-                    }
-                }
-                if !compact {
-                    HStack(alignment: .top) {
-                        chartToggle(summary)
-                        if let onPickReminders {
-                            Button(action: onPickReminders) {
-                                Label("Add from Reminders…", systemImage: "checklist")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Pick reminders that count toward this goal")
-                        }
-                    }
-                }
+                PaceBar(fraction: summary.fraction, expected: summary.expectedFraction, color: summary.status.color, height: 8)
+                todayRows(results)
+                numbers(summary, results: results)
             }
         }
         .padding(FFSpace.l)
         .ffSurface()
     }
 
-    private func overallBar(_ summary: GoalPacing.GoalSummary) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            PaceBar(fraction: summary.fraction, expected: summary.expectedFraction, color: summary.status.color, height: 8)
-            HStack {
-                Text("Overall \(Int((summary.fraction * 100).rounded()))% done").ffText(.caption).monospacedDigit()
-                Spacer()
-                Text("Today's mark │ \(Int((summary.expectedFraction * 100).rounded()))%")
-                    .ffText(.caption)
-                    .monospacedDigit()
-                    .help("The tick on the bar is where steady progress would put you today")
+    /// Today, always in view (6 Nov 2026): each counted number's "2 of 4 today" with its +1, so
+    /// what you did today is never behind a disclosure or mixed up with what's still to do.
+    @ViewBuilder
+    private func todayRows(_ results: [GoalKeyResult]) -> some View {
+        let counts = GoalDataBuilder.todayCounts(goal, now: now)
+        let rows = results.compactMap { kr in counts[kr.id].flatMap { $0.label == nil ? nil : (kr, $0) } }
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: FFSpace.s) {
+                ForEach(rows, id: \.0.id) { kr, count in
+                    TodayCountRow(keyResult: kr, count: count)
+                }
+            }
+            .padding(FFSpace.m)
+            .background(RoundedRectangle(cornerRadius: FFRadius.control, style: .continuous).fill(FFPalette.track.opacity(0.6)))
+            .accessibilityIdentifier("goals.today")
+        }
+    }
+
+    /// Each number with +1 / −1, the chart and Reminders, behind one row.
+    private func numbers(_ summary: GoalPacing.GoalSummary, results: [GoalKeyResult]) -> some View {
+        VStack(alignment: .leading, spacing: FFSpace.m) {
+            Button {
+                withAnimation(FFAnimation.gated(FFAnimation.control, reduceMotion: reduceMotion)) { showNumbers.toggle() }
+            } label: {
+                HStack(spacing: FFSpace.s) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(showNumbers ? 90 : 0))
+                        .accessibilityHidden(true)
+                    // Today's +1 is already in view: this opens the totals and the history.
+                    Text(Self.totalsLabel(results, summary: summary)).ffText(.callout).monospacedDigit()
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .frame(minHeight: 30)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(showNumbers ? "Hide the totals" : "Show each total and its history")
+            if showNumbers {
+                VStack(spacing: 14) {
+                    ForEach(Array(zip(results, summary.keyResults)), id: \.0.id) { pair in
+                        KeyResultRow(keyResult: pair.0, pace: pair.1)
+                    }
+                }
+                .transition(.opacity)
+                HStack(alignment: .top) {
+                    chartToggle(summary)
+                    if let onPickReminders {
+                        Button(action: onPickReminders) {
+                            Label("Add from Reminders…", systemImage: "checklist")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Pick reminders that count toward this goal")
+                    }
+                }
             }
         }
+    }
+
+    /// "Total 28 of 40 · history", or "Totals and history" for several numbers.
+    static func totalsLabel(_ results: [GoalKeyResult], summary: GoalPacing.GoalSummary) -> String {
+        guard results.count == 1, let pace = summary.keyResults.first else { return "Totals and history" }
+        return "Total \(KeyResultRow.number(pace.done)) of \(KeyResultRow.number(pace.target)) · history"
     }
 
     /// The whole row opens and closes the chart, not only its chevron.
@@ -178,7 +213,7 @@ struct GoalCard: View {
         }
     }
 
-    private func header(_ summary: GoalPacing.GoalSummary, tint: Color, hasMeasures: Bool) -> some View {
+    private func header(tint: Color, summary: GoalPacing.GoalSummary) -> some View {
         HStack(alignment: .top, spacing: FFSpace.m) {
             Image(systemName: goal.isBossFight ? "star.fill" : "scope")
                 .font(.system(size: 15, weight: .semibold))
@@ -202,9 +237,6 @@ struct GoalCard: View {
                 Text(subtitle(summary)).ffText(.caption).lineLimit(1)
             }
             Spacer(minLength: FFSpace.s)
-            if hasMeasures {
-                PaceStatusPill(status: summary.status)
-            }
             if let onEdit {
                 Button("Edit", action: onEdit)
                     .buttonStyle(.bordered)
@@ -215,6 +247,7 @@ struct GoalCard: View {
         }
     }
 
+    /// "Learning · Due 28 Nov · 18 days left". The pace itself is the sentence's, said once.
     private func subtitle(_ summary: GoalPacing.GoalSummary) -> String {
         var parts: [String] = []
         if let project { parts.append(project.name) }
@@ -266,7 +299,7 @@ struct KeyResultRow: View {
     var compact: Bool = false
     var sessionID: UUID?
 
-    @Environment(\.modelContext) private var modelContext
+    @Environment(TimerViewModel.self) private var timerVM
     @State private var bump = 0
 
     var body: some View {
@@ -275,6 +308,12 @@ struct KeyResultRow: View {
                 HStack(spacing: FFSpace.s) {
                     Text(keyResult.title).ffText(.body).lineLimit(1)
                     Spacer(minLength: FFSpace.s)
+                    if let today = Self.doneToday(keyResult), today > 0 {
+                        Text("+\(Self.number(today)) today")
+                            .ffText(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(FFPalette.goal)
+                    }
                     Text("\(Self.number(pace.done)) of \(Self.number(pace.target))\(keyResult.unit.map { " \($0)" } ?? "")")
                         .ffText(.headline)
                         .monospacedDigit()
@@ -315,17 +354,78 @@ struct KeyResultRow: View {
         .sensoryFeedback(.increase, trigger: bump)
     }
 
+    /// Through today's task for this number when there is one, so the task and the goal keep one count.
     private func log(_ amount: Double) {
-        guard amount != 0 else { return }
-        let entry = GoalProgressEntry(amount: amount, sessionID: sessionID)
-        modelContext.insert(entry)
-        keyResult.entries.append(entry)
-        try? modelContext.save()
-        if amount > 0 { bump += 1 }
+        if amount > 0 {
+            timerVM.logOneMore(resultID: keyResult.id)
+            bump += 1
+        } else if amount < 0 {
+            timerVM.takeBackOne(resultID: keyResult.id)
+        }
     }
 
     static func number(_ value: Double) -> String {
         value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    /// What was logged to this number today.
+    static func doneToday(_ keyResult: GoalKeyResult, now: Date = Date()) -> Double? {
+        let today = Calendar.current.startOfDay(for: now)
+        return keyResult.entries.filter { $0.at >= today }.reduce(0) { $0 + $1.amount }
+    }
+}
+
+/// One number's day on a goal card: "Problems Solved · 2 of 4 today", a dot per item, and +1.
+struct TodayCountRow: View {
+    let keyResult: GoalKeyResult
+    let count: TodayCount
+
+    @Environment(TimerViewModel.self) private var timerVM
+    @State private var bump = 0
+
+    var body: some View {
+        HStack(spacing: FFSpace.m) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
+                    Text("Today").ffText(.caption)
+                    Text(keyResult.title).ffText(.body).lineLimit(1)
+                }
+                if count.aim > 0, count.aim <= 12 {
+                    HStack(spacing: 4) {
+                        ForEach(0..<count.aim, id: \.self) { i in
+                            Circle()
+                                .fill(Double(i) < count.done ? FFPalette.goal : FFPalette.track)
+                                .frame(width: 9, height: 9)
+                        }
+                    }
+                    .accessibilityHidden(true)
+                }
+            }
+            Spacer(minLength: FFSpace.s)
+            Text(count.label ?? "")
+                .ffText(.headline)
+                .monospacedDigit()
+                .foregroundStyle(count.isMet ? FFPalette.goal : .primary)
+                .contentTransition(.numericText())
+            Button {
+                timerVM.logOneMore(resultID: keyResult.id)
+                bump += 1
+            } label: {
+                Text("+1")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 12)
+                    .frame(minWidth: 44, minHeight: 30)
+                    .background(Capsule().fill(FFPalette.accent.opacity(0.16)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(FFPalette.accent)
+            .help("Log 1 \(keyResult.unit ?? keyResult.title)")
+            .accessibilityLabel("Log 1: \(keyResult.title)")
+        }
+        .sensoryFeedback(.increase, trigger: bump)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(keyResult.title): \(count.label ?? "")")
     }
 }
 
@@ -387,6 +487,22 @@ struct GoalPaceChart: View {
         }
         if let last = points.last, last.date < now { points.append((min(now, goal.deadline), last.percent)) }
         return points
+    }
+}
+
+/// The goal's scope beside its number: "★ Learning", "Own work", "All focus".
+struct ScopeChip: View {
+    let label: String
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(FFPalette.accent)
+            .padding(.horizontal, 8)
+            .frame(height: 20)
+            .background(Capsule().fill(FFPalette.accent.opacity(0.14)))
+            .lineLimit(1)
+            .accessibilityLabel("Counts \(label)")
     }
 }
 

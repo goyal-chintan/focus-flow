@@ -140,6 +140,23 @@ final class NotificationService: ObservableObject {
         }
     }
 
+    /// Coach v7: one plain line (landing, stretch, return). Quiet sound; held while sharing.
+    func sendCoachLine(id: String, title: String, body: String, sound: String = "Tink") {
+        guard !isPrivate else { return }
+        NSSound(named: NSSound.Name(sound))?.play()
+        guard canUseUserNotificationsAPI, authorizationState == .authorized else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[NotificationService] Failed to deliver notification: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func sendPauseWarning(minutes: Int) {
         guard !isPrivate else { return }
         NSSound(named: NSSound.Name("Bottle"))?.play()

@@ -46,13 +46,13 @@ struct ScreenShareGuard {
         self.frontmostApplicationProvider = frontmostApplicationProvider
     }
 
+    /// Only a real screen capture holds the coach. Being in a call app is not sharing: the old
+    /// frontmost-app guess ("teams", "meet", "call"…) silenced 58 coach decisions in 10 days
+    /// (28 Oct–6 Nov 2026) while nothing was shared. The heuristic below stays for callers that
+    /// only want to know "is this a meeting app".
     func shouldSuppressGuardianPopups(enabled: Bool) -> Bool {
         guard enabled else { return false }
-        if isScreenSharingProvider() {
-            return true
-        }
-        guard let app = frontmostApplicationProvider() else { return false }
-        return Self.shouldSuppressForFrontmostApplication(app)
+        return isScreenSharingProvider()
     }
 
     static func shouldSuppressForFrontmostApplication(_ app: FrontmostApplication?) -> Bool {
