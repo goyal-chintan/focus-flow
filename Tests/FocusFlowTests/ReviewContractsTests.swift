@@ -711,7 +711,8 @@ final class ReviewContractsTests: XCTestCase {
             return XCTFail("DomainSignalRow should exist as a shared Today domain row component.")
         }
 
-        XCTAssertTrue(source.contains("Color.white.opacity(0.04)"))
+        XCTAssertTrue(source.contains("FFPalette.rowHover"), "Rows use the adaptive row fill, not glass (and not white, which vanishes in light mode).")
+        XCTAssertFalse(source.contains("glassEffect"))
         XCTAssertTrue(source.contains("Label("), "DomainSignalRow should pair icon and text for its state/category indicator.")
         XCTAssertTrue(source.contains(".accessibilityIdentifier("))
         XCTAssertTrue(source.contains(".accessibilityLabel("))

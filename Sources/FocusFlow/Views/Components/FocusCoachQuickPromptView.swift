@@ -99,11 +99,11 @@ struct FocusCoachQuickPromptView: View {
                 Capsule()
                     .fill(isPrimary
                         ? accentColor.opacity(isHovered ? 0.25 : 0.15)
-                        : Color.white.opacity(isHovered ? 0.08 : 0.04))
+                        : (isHovered ? FFPalette.rowHoverStrong : FFPalette.rowHover))
                     .overlay(
                         Capsule()
                             .strokeBorder(
-                                isPrimary ? accentColor.opacity(0.3) : Color.white.opacity(0.08),
+                                isPrimary ? accentColor.opacity(0.3) : FFPalette.hairline,
                                 lineWidth: 0.5
                             )
                     )

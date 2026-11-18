@@ -11,7 +11,7 @@ struct SessionDotsView: View {
                 Circle()
                     .fill(index < completed
                         ? LiquidDesignTokens.Spectral.electricBlue
-                        : Color.white.opacity(0.12))
+                        : FFPalette.trackStrong)
                     .frame(width: 6, height: 6)
             }
         }

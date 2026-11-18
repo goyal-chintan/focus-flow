@@ -232,6 +232,7 @@ private struct GeneralSettingsTab: View {
     @State private var saveError: String?
     @State private var loginItemStatus: SMAppService.Status = SMAppService.mainApp.status
     @State private var loginItemError: String?
+    @AppStorage(AppAppearance.storageKey, store: AppIsolation.defaults) private var appearance: AppAppearance = .system
 
     private var settings: AppSettings { allSettings.first ?? AppSettings() }
     private var bind: SettingsBinder {
@@ -260,6 +261,22 @@ private struct GeneralSettingsTab: View {
                 }
             } header: {
                 Text("Startup")
+            }
+
+            Section {
+                Picker(selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { option in
+                        Label(option.title, systemImage: option.icon).tag(option)
+                    }
+                } label: {
+                    Text("Appearance")
+                    Text("System follows macOS. The notch stays dark.")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("settings.general.appearance")
+                .onChange(of: appearance) { _, newValue in AppAppearance.apply(newValue) }
+            } header: {
+                Text("Appearance")
             }
 
             Section {

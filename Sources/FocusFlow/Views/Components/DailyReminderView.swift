@@ -36,7 +36,7 @@ struct DailyReminderView: View {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Image(systemName: line.isOwn ? "heart.fill" : (line.isQuestion ? "questionmark" : "quote.opening"))
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.orange.opacity(0.85))
+                    .foregroundStyle(FFPalette.atRisk.opacity(0.85))
                     .accessibilityHidden(true)
                 Text(line.text)
                     .font(.system(size: 12, weight: .medium, design: .serif))
@@ -64,7 +64,7 @@ struct DailyReminderView: View {
             HStack(alignment: .firstTextBaseline, spacing: FFSpace.s) {
                 Image(systemName: line.isOwn ? "heart.fill" : (line.isQuestion ? "questionmark" : "quote.opening"))
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(FFPalette.atRisk)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(line.text)

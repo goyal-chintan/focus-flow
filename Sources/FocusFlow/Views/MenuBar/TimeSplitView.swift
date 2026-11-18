@@ -151,10 +151,10 @@ struct TimeSplitView: View {
         .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.03))
+                .fill(FFPalette.rowHover)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
+                        .strokeBorder(FFPalette.hairline, lineWidth: 0.5)
                 )
         )
     }

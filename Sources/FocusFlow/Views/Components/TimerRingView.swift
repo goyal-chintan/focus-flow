@@ -23,6 +23,12 @@ struct TimerRingView: View {
     @State private var breakBreathingOpacity: Double = 0.06
     @State private var completionBurst: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    /// Glow reads as light on near-black; on frosted white it looks like a smudge, so light
+    /// mode keeps under half of it and leans on the disc's drop shadow for depth.
+    private var glowScale: Double { colorScheme == .dark ? 1 : 0.4 }
+    /// State labels: soft in dark, near-solid in light so the deep inks keep their contrast.
+    private var labelAlpha: Double { colorScheme == .dark ? 0.65 : 0.9 }
 
     @Environment(\.motionPaused) private var motionPaused
     private var disableMotion: Bool { reduceMotion || evidenceMode || motionPaused }
@@ -84,14 +90,14 @@ struct TimerRingView: View {
     private var outerGlowColor: Color {
         if isBreakOverrun {
             // Escalate: >1.0 progress means overtime; use progress magnitude for severity
-            if progress > 1.5 { return .red }
-            if progress > 1.0 { return Color(hex: 0xE6A820) }
+            if progress > 1.5 { return FFPalette.destructive }
+            if progress > 1.0 { return RingInk.amber }
             return ringGlowColor
         }
         switch state {
         case .paused:
-            if pauseDuration > 300 { return .red }
-            if pauseDuration > 180 { return Color(hex: 0xE6A820) }
+            if pauseDuration > 300 { return FFPalette.destructive }
+            if pauseDuration > 180 { return RingInk.amber }
             return ringGlowColor
         default:
             return ringGlowColor
@@ -120,7 +126,7 @@ struct TimerRingView: View {
             // Idle breathing glow — CPU-safe, only animates opacity
             if !isActive && !disableMotion {
                 Circle()
-                    .fill(LiquidDesignTokens.Spectral.mint.opacity(breathingOpacity))
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(breathingOpacity * glowScale))
                     .blur(radius: 12)
                     .frame(width: ringSize + 20, height: ringSize + 20)
                     .animation(disableMotion ? nil : FFMotion.breathing, value: breathingOpacity)
@@ -129,7 +135,7 @@ struct TimerRingView: View {
             // Break recovery breathing — calms in last 40%
             if case .onBreak = state, !disableMotion {
                 Circle()
-                    .fill(LiquidDesignTokens.Spectral.mint.opacity(breakBreathingOpacity))
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(breakBreathingOpacity * glowScale))
                     .blur(radius: 12)
                     .frame(width: ringSize + 20, height: ringSize + 20)
                     .animation(disableMotion ? nil : FFMotion.breathing, value: breakBreathingOpacity)
@@ -138,7 +144,7 @@ struct TimerRingView: View {
             // Completion mint burst
             if completionBurst && !disableMotion {
                 Circle()
-                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.3))
+                    .fill(LiquidDesignTokens.Spectral.mint.opacity(0.3 * glowScale))
                     .blur(radius: 20)
                     .frame(width: ringSize + 40, height: ringSize + 40)
                     .transition(.opacity)
@@ -155,13 +161,14 @@ struct TimerRingView: View {
 
             // Inner disc with shadow
             Circle()
-                .fill(Color.black.opacity(0.5))
+                .fill(RingInk.disc)
                 .frame(width: ringSize, height: ringSize)
+                .shadow(color: RingInk.discShadow, radius: 10, y: 4)
                 .overlay(
                     Circle()
                         .fill(
                             RadialGradient(
-                                colors: [Color.clear, Color.black.opacity(0.3)],
+                                colors: [Color.clear, RingInk.discEdge],
                                 center: .center,
                                 startRadius: ringSize * 0.2,
                                 endRadius: ringSize * 0.5
@@ -175,7 +182,7 @@ struct TimerRingView: View {
             } else if state == .idle {
                 // Idle: very subtle track only (no heavy gray)
                 Circle()
-                    .stroke(Color.white.opacity(0.04), lineWidth: strokeWidth)
+                    .stroke(RingInk.idleTrack, lineWidth: strokeWidth)
             } else if state == .paused {
                 pausedRings
             } else {
@@ -187,8 +194,8 @@ struct TimerRingView: View {
                         style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .shadow(color: ringGlowColor.opacity(glowPulse ? 0.65 : 0.28), radius: glowPulse ? 18 : 10)
-                    .shadow(color: ringGlowColor.opacity(glowPulse ? 0.25 : 0.08), radius: glowPulse ? 28 : 18)
+                    .shadow(color: ringGlowColor.opacity((glowPulse ? 0.65 : 0.28) * glowScale), radius: glowPulse ? 18 : 10)
+                    .shadow(color: ringGlowColor.opacity((glowPulse ? 0.25 : 0.08) * glowScale), radius: glowPulse ? 28 : 18)
                     .animation(disableMotion ? nil : FFMotion.progress, value: progress)
             }
 
@@ -205,7 +212,7 @@ struct TimerRingView: View {
                     TrackedLabel(
                         text: "PAUSED",
                         font: .system(size: 10, weight: .medium),
-                        color: pauseRingColor.opacity(0.65),
+                        color: pauseRingColor.opacity(labelAlpha),
                         tracking: 2.2
                     )
 
@@ -232,7 +239,7 @@ struct TimerRingView: View {
                     TrackedLabel(
                         text: label,
                         font: .system(size: 10, weight: .medium),
-                        color: (labelColorOverride ?? labelColor).opacity(0.65),
+                        color: (labelColorOverride ?? labelColor).opacity(labelAlpha),
                         tracking: 2.2
                     )
                     .contentTransition(.interpolate)
@@ -329,7 +336,7 @@ struct TimerRingView: View {
     private var timeTextColor: Color {
         switch state {
         case .idle: LiquidDesignTokens.Surface.onSurface.opacity(0.72)
-        case .focusing: .white
+        case .focusing: RingInk.focusText
         case .paused: LiquidDesignTokens.Spectral.amber
         case .onBreak: LiquidDesignTokens.Spectral.mint
         }
@@ -340,11 +347,11 @@ struct TimerRingView: View {
         case .focusing:
             AngularGradient(
                 colors: [
-                    Color(hex: 0x3A4F85),
-                    Color(hex: 0x5B96F8),
-                    Color(hex: 0x7DB4FF),
-                    Color(hex: 0x5B96F8),
-                    Color(hex: 0x3A4F85)
+                    RingInk.blueTail,
+                    RingInk.blue,
+                    RingInk.bluePeak,
+                    RingInk.blue,
+                    RingInk.blueTail
                 ],
                 center: .center
             )
@@ -365,7 +372,7 @@ struct TimerRingView: View {
         ForEach(0..<60, id: \.self) { tick in
             let isMajor = tick % 5 == 0
             let tickLength: CGFloat = isMajor ? 6 : 4
-            let tickColor = Color.white.opacity(isMajor ? 0.12 : 0.06)
+            let tickColor = isMajor ? RingInk.tickMajor : RingInk.tickMinor
 
             Rectangle()
                 .fill(tickColor)
@@ -377,15 +384,15 @@ struct TimerRingView: View {
 
     // Pause ring color based on how long the user has been paused
     private var pauseRingColor: Color {
-        if pauseDuration > 300 { return .red }
-        if pauseDuration > 180 { return Color(hex: 0xCC8800) } // dark yellow
-        return Color(hex: 0xE6A820) // amber
+        if pauseDuration > 300 { return FFPalette.destructive }
+        if pauseDuration > 180 { return RingInk.amberDeep }
+        return RingInk.amber
     }
 
     private var pauseRingColorLight: Color {
-        if pauseDuration > 300 { return .red.opacity(0.6) }
-        if pauseDuration > 180 { return Color(hex: 0xCC8800).opacity(0.6) }
-        return Color(hex: 0xE6A820).opacity(0.6)
+        if pauseDuration > 300 { return FFPalette.destructive.opacity(0.6) }
+        if pauseDuration > 180 { return RingInk.amberDeep.opacity(0.6) }
+        return RingInk.amber.opacity(0.6)
     }
 
     // Paused: arc showing how far timer reached, color escalates with pause duration
@@ -405,7 +412,7 @@ struct TimerRingView: View {
                     style: StrokeStyle(lineWidth: pauseStrokeWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .shadow(color: pauseRingColor.opacity(glowPulse ? 0.55 : 0.2), radius: glowPulse ? 14 : 6)
+                .shadow(color: pauseRingColor.opacity((glowPulse ? 0.55 : 0.2) * glowScale), radius: glowPulse ? 14 : 6)
                 .animation(disableMotion ? nil : FFMotion.progress, value: progress)
                 .animation(disableMotion ? nil : FFMotion.progress, value: pauseDuration)
         }
@@ -418,10 +425,10 @@ struct TimerRingView: View {
                 // Break overtime: full yellow ring + dark yellow overlay filling from 12:00
                 Circle()
                     .stroke(
-                        Color(hex: 0xE6A820).opacity(0.6),
+                        RingInk.amber.opacity(0.6),
                         style: StrokeStyle(lineWidth: breakOvertimeStrokeWidth, lineCap: .round)
                     )
-                    .shadow(color: Color(hex: 0xE6A820).opacity(0.3), radius: 8)
+                    .shadow(color: RingInk.amber.opacity(0.3 * glowScale), radius: 8)
                     .animation(disableMotion ? nil : FFMotion.progress, value: overrunSeconds)
 
                 // Dark yellow overtime fill — progress beyond 1.0, map to 0→1 range
@@ -429,11 +436,11 @@ struct TimerRingView: View {
                 Circle()
                     .trim(from: 0, to: max(0.001, overtimeProgress))
                     .stroke(
-                        Color(hex: 0xCC8800).opacity(0.9),
+                        RingInk.amberDeep.opacity(0.9),
                         style: StrokeStyle(lineWidth: breakOvertimeStrokeWidth, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
-                        .shadow(color: Color(hex: 0xCC8800).opacity(0.5), radius: 10)
+                        .shadow(color: RingInk.amberDeep.opacity(0.5 * glowScale), radius: 10)
                         .animation(disableMotion ? nil : FFMotion.progress, value: progress)
                         .animation(disableMotion ? nil : FFMotion.progress, value: overrunSeconds)
             } else {
@@ -443,17 +450,17 @@ struct TimerRingView: View {
                     .stroke(
                         AngularGradient(
                             colors: [
-                                Color(hex: 0x3A4F85),
-                                Color(hex: 0x5B96F8),
-                                Color(hex: 0x7DB4FF),
-                                Color(hex: 0x5B96F8),
-                                Color(hex: 0x3A4F85)
+                                RingInk.blueTail,
+                                RingInk.blue,
+                                RingInk.bluePeak,
+                                RingInk.blue,
+                                RingInk.blueTail
                             ],
                             center: .center
                         ),
                         style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                     )
-                    .shadow(color: Color(hex: 0x5B96F8).opacity(glowPulse ? 0.5 : 0.2), radius: glowPulse ? 14 : 8)
+                    .shadow(color: RingInk.blue.opacity((glowPulse ? 0.5 : 0.2) * glowScale), radius: glowPulse ? 14 : 8)
 
                 // Green overlay: grows from 12 o'clock as overtime increases
                 let overtimeProgress = min(max(progress - 1.0, 0) / 0.5, 1.0)
@@ -461,11 +468,11 @@ struct TimerRingView: View {
                     Circle()
                         .trim(from: 0, to: max(0.001, overtimeProgress))
                         .stroke(
-                            Color(hex: 0x3DA86A).opacity(0.9),
+                            RingInk.green.opacity(0.9),
                             style: StrokeStyle(lineWidth: strokeWidth + 1, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))
-                        .shadow(color: Color(hex: 0x3DA86A).opacity(glowPulse ? 0.5 : 0.25), radius: glowPulse ? 12 : 6)
+                        .shadow(color: RingInk.green.opacity((glowPulse ? 0.5 : 0.25) * glowScale), radius: glowPulse ? 12 : 6)
                         .animation(disableMotion ? nil : FFMotion.progress, value: progress)
                 }
             }
@@ -482,27 +489,27 @@ struct TimerRingView: View {
             )
             .frame(width: ringSize + 6, height: ringSize + 6)
             .rotationEffect(.degrees(-90))
-            .shadow(color: outerGlowColor.opacity(outerGlowOpacity), radius: outerGlowRadius)
+            .shadow(color: outerGlowColor.opacity(outerGlowOpacity * glowScale), radius: outerGlowRadius)
             .animation(disableMotion ? nil : FFMotion.progress, value: progress)
     }
 
     private var ringColor: Color {
         switch state {
         case .focusing:
-            Color(hex: 0x506392)
+            RingInk.idleBlue
         case .paused:
             LiquidDesignTokens.Spectral.amberDark
         case .onBreak(let type):
             type == .longBreak ? LiquidDesignTokens.Spectral.mint : LiquidDesignTokens.Spectral.mintDark
         case .idle:
-            Color(hex: 0x4C5A80)
+            RingInk.idleBlueDim
         }
     }
 
     private var ringGlowColor: Color {
         switch state {
         case .focusing:
-            Color(hex: 0x5B96F8)
+            RingInk.blue
         case .paused:
             LiquidDesignTokens.Spectral.amber
         case .onBreak:
@@ -524,4 +531,26 @@ struct TimerRingView: View {
             LiquidDesignTokens.Surface.onSurfaceMuted
         }
     }
+}
+
+/// Timer ring colours. Dark: a smoked-glass disc with luminous arcs (unchanged). Light: a raised
+/// porcelain dial (white disc, soft drop shadow) with deep ink arcs and text
+/// (light-mode design 2026-11-18).
+private enum RingInk {
+    static let disc = Color.adaptive(light: 0xFFFFFF, dark: 0x000000, lightAlpha: 0.92, darkAlpha: 0.5)
+    static let discEdge = Color.adaptive(light: 0x000000, dark: 0x000000, lightAlpha: 0.035, darkAlpha: 0.3)
+    static let discShadow = Color.adaptive(light: 0x1C2440, dark: 0x000000, lightAlpha: 0.14, darkAlpha: 0)
+    static let idleTrack = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.07, darkAlpha: 0.04)
+    static let tickMajor = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.16, darkAlpha: 0.12)
+    static let tickMinor = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.08, darkAlpha: 0.06)
+    static let focusText = Color.adaptive(light: 0x14161C, dark: 0xFFFFFF)
+
+    static let blueTail = Color.adaptive(light: 0xB7CDF5, dark: 0x3A4F85)
+    static let blue = Color.adaptive(light: 0x2A72E8, dark: 0x5B96F8)
+    static let bluePeak = Color.adaptive(light: 0x1A5FD0, dark: 0x7DB4FF)
+    static let idleBlue = Color.adaptive(light: 0x7F9BD0, dark: 0x506392)
+    static let idleBlueDim = Color.adaptive(light: 0x8FA3C8, dark: 0x4C5A80)
+    static let amber = Color.adaptive(light: 0xB86E00, dark: 0xE6A820)
+    static let amberDeep = Color.adaptive(light: 0x9A5200, dark: 0xCC8800)
+    static let green = Color.adaptive(light: 0x15805A, dark: 0x3DA86A)
 }

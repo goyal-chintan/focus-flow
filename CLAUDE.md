@@ -91,8 +91,9 @@ These rules were established through iterative visual review and must not be vio
 
 - **Reference images are source of truth** — Stitch folder (`stitch_popover_break_light 2/`) has PNG references for all screens. Match them before code convenience.
 - **Never use `.buttonStyle(.glass)` on icon-only buttons** — renders as ugly gray rectangles. Use `.buttonStyle(.plain)` with `.frame(width: 28-30)` and `.contentShape(Rectangle())`.
-- **Never use `LiquidGlassPanel` on list rows** — creates visible bordered wireframes. Use `Color.white.opacity(0.04)` fills for rows. Reserve glass panels for SECTION containers.
-- **Popover background opacity: 0.45-0.55** — higher kills glass translucency. Don't exceed 0.55.
+- **Never use `LiquidGlassPanel` on list rows** — creates visible bordered wireframes. Use `FFPalette.rowHover` fills for rows (never `Color.white.opacity`, which vanishes in light mode). Reserve glass panels for SECTION containers.
+- **Popover background: `PopoverSurface`** — dark is black 0.52 over the material (don't exceed 0.55, it kills the glass); light is porcelain white 0.78 so a dark desktop never turns it grey.
+- **Both appearances are designed (2026-11-18).** Settings → General → Appearance (`AppAppearance`: System/Light/Dark, applied through `NSApp.appearance`). Every colour is a token that adapts: `Spectral.*`, `Gradient.*` and `FFPalette.atRisk`/`destructive` are luminous pastels in dark and deep inks (≥ 4.5:1 text, ≥ 3:1 white-on-fill) in light. No `Color(hex:)`, `.orange`, `Color.white.opacity` or `Color.black.opacity` in views; glow is dark-only (scale it down in light, depth comes from soft shadows). The timer ring is a porcelain dial in light (`RingInk`). Check light and dark with real screenshots.
 - **Timer ring: 160pt, 6pt stroke, 36pt text** — these are locked proportions for the 300pt popover.
 - **Don't add chevrons to Menu labels** — native Menu renders its own. Double chevrons = broken.
 - **Minimum text: 10pt** — Apple HIG floor. No exceptions.

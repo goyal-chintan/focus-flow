@@ -38,7 +38,7 @@ struct PopoverPlanStrip: View {
             HStack(spacing: 6) {
                 Text("It's time")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(FFPalette.atRisk)
                 Text("Planned \(TimerViewModel.clockLabel(plan.startAt)) · \(plan.minutes)m\(plan.title.map { " · \($0)" } ?? "")")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
