@@ -48,7 +48,7 @@ enum IdleDistractionLegacyCleanup {
 
     /// Deletes matching rows once per install. Returns the number deleted (0 when already run).
     @discardableResult
-    static func runOnce(in context: ModelContext, defaults: UserDefaults = .standard) -> Int {
+    static func runOnce(in context: ModelContext, defaults: UserDefaults = AppIsolation.defaults) -> Int {
         guard !defaults.bool(forKey: completedFlagKey) else { return 0 }
         do {
             let items = try context.fetch(FetchDescriptor<IdleDistractionItem>())

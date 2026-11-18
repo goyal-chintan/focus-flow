@@ -29,7 +29,7 @@ enum BlockEndWindowPresenter {
 
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-        let saved = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString)
+        let saved = AppIsolation.defaults.string(forKey: sizeKey).map(NSSizeFromString)
         window.setFrame(frame(saved: saved, visible: screen?.visibleFrame ?? window.frame, compact: compact), display: true)
 
         NSApp.activate()
@@ -39,7 +39,7 @@ enum BlockEndWindowPresenter {
         if let resizeObserver { NotificationCenter.default.removeObserver(resizeObserver) }
         resizeObserver = NotificationCenter.default.addObserver(forName: NSWindow.didEndLiveResizeNotification, object: window, queue: .main) { note in
             guard let w = note.object as? NSWindow, !compact else { return }
-            UserDefaults.standard.set(NSStringFromSize(w.frame.size), forKey: sizeKey)
+            AppIsolation.defaults.set(NSStringFromSize(w.frame.size), forKey: sizeKey)
         }
     }
 }

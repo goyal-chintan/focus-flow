@@ -373,7 +373,7 @@ struct CoachSettingsTab: View {
     @ViewBuilder
     private var debugSection: some View {
         #if DEBUG
-        if UserDefaults.standard.bool(forKey: "FocusFlowShowCoachDebug") == true {
+        if AppIsolation.defaults.bool(forKey: "FocusFlowShowCoachDebug") == true {
             Section {
                 LabeledContent("Window strength", value: "\(Int(timerVM.latestWorkIntentScore * 100))%")
                 LabeledContent("Pacing pressure", value: "\(Int(timerVM.latestDriftScore * 100))%")

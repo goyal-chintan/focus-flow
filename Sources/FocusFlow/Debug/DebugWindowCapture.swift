@@ -75,7 +75,7 @@ enum DebugWindowCapture {
         }
         await pause(1.5)
         for (index, tab) in SettingsTab.allCases.enumerated() {
-            UserDefaults.standard.set(tab.rawValue, forKey: SettingsTab.storageKey)
+            AppIsolation.defaults.set(tab.rawValue, forKey: SettingsTab.storageKey)
             await pause(1.2)
             log("capture: settings tab=\(tab.rawValue) frame=\(window.frame)")
             snapshot(window, name: String(format: "settings_%02d_%@.png", index + 1, tab.rawValue), directory: dirURL)
@@ -107,7 +107,7 @@ enum DebugWindowCapture {
             let tabName = tab.rawValue.lowercased()
 
             // Same mechanism openStatsWindow(requestedTab:) uses: CompanionWindowView observes this key.
-            UserDefaults.standard.set(tab.rawValue, forKey: "companionRequestedTab")
+            AppIsolation.defaults.set(tab.rawValue, forKey: "companionRequestedTab")
             await pause(1.2)
             log("capture: tab=\(tab.rawValue) frame=\(window.frame)")
             snapshot(window, name: "\(nn)_\(tabName).png", directory: dirURL)

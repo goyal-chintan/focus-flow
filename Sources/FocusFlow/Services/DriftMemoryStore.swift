@@ -13,7 +13,7 @@ final class DriftMemoryStore {
     var sessionStart: Date = Date()
 
     convenience init() {
-        self.init(defaults: .standard)
+        self.init(defaults: AppIsolation.defaults)
     }
 
     init(defaults: UserDefaults) {

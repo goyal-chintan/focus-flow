@@ -352,7 +352,7 @@ struct CoachBanditStore {
     static let storageKey = "focusflow.coachBandit.v1"
     let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = AppIsolation.defaults) {
         self.defaults = defaults
     }
 

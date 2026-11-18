@@ -158,7 +158,7 @@ struct DailyTargetLine: View {
             ScopeChip(label: goal.label)
             Spacer(minLength: FFSpace.s)
             Button("Set per day type…") {
-                UserDefaults.standard.set(SettingsTab.timer.rawValue, forKey: SettingsTab.requestedTabKey)
+                AppIsolation.defaults.set(SettingsTab.timer.rawValue, forKey: SettingsTab.requestedTabKey)
                 timerVM.openSettingsScene?()
             }
             .buttonStyle(.link)
