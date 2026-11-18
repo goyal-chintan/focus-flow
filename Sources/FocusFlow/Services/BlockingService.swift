@@ -33,7 +33,7 @@ final class BlockingService {
         let websites = Array(Set(uniqueProfiles.flatMap(\.blockedWebsites))).sorted()
         activeBlockedWebsites = websites
         let logMsg = "[BlockingService] profiles=\(profileNames) parsedWebsites=\(websites)\n"
-        let logPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/blocking.log"
+        let logPath = AppIsolation.supportDirectory.appendingPathComponent("blocking.log").path
         try? logMsg.write(toFile: logPath, atomically: true, encoding: .utf8)
         if !websites.isEmpty {
             print("[BlockingService] Calling BlockingHelper.blockWebsites...")

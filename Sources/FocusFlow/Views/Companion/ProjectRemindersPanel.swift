@@ -87,7 +87,7 @@ struct ProjectRemindersPanel: View {
                 title: "Reminders sync is off",
                 detail: "Turn it on to see \(project.name)'s reminders here as tasks.") {
                 Button("Turn On…") {
-                    UserDefaults.standard.set(SettingsTab.integrations.rawValue, forKey: "settingsRequestedTab")
+                    AppIsolation.defaults.set(SettingsTab.integrations.rawValue, forKey: "settingsRequestedTab")
                     timerVM.openSettingsScene?()
                 }
                 .buttonStyle(.bordered)

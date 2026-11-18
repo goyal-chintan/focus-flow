@@ -62,7 +62,7 @@ extension CompanionTab {
 struct CompanionWindowView: View {
     @State private var selection: CompanionDestination? = .tab(.today)
     @State private var showNewProject = false
-    @AppStorage("companionRequestedTab") private var requestedTabRaw: String = ""
+    @AppStorage("companionRequestedTab", store: AppIsolation.defaults) private var requestedTabRaw: String = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(TimerViewModel.self) private var timerVM
     @Query(filter: #Predicate<Project> { !$0.archived }, sort: \Project.createdAt) private var projects: [Project]

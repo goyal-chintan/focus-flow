@@ -10,7 +10,7 @@ struct DistractionsView: View {
     @Environment(\.openSettings) private var openSettings
     @Query(animation: .smooth(duration: 0.25)) private var allDistractionItems: [IdleDistractionItem]
     @Query private var allSettings: [AppSettings]
-    @AppStorage(SettingsTab.storageKey) private var selectedSettingsTab: SettingsTab = .general
+    @AppStorage(SettingsTab.storageKey, store: AppIsolation.defaults) private var selectedSettingsTab: SettingsTab = .general
 
     @State private var editorDestination: DistractionEditorDestination?
     @State private var itemToDelete: IdleDistractionItem?

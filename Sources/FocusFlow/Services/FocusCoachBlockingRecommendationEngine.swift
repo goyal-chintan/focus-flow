@@ -11,7 +11,7 @@ final class FocusCoachBlockingRecommendationEngine {
     private let defaults: UserDefaults
 
     convenience init() {
-        self.init(defaults: .standard)
+        self.init(defaults: AppIsolation.defaults)
     }
 
     init(defaults: UserDefaults) {

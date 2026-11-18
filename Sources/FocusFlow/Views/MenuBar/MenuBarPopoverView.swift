@@ -416,7 +416,7 @@ struct MenuBarPopoverView: View {
 
     private func openStatsWindow(requestedTab: CompanionTab?) {
         if let requestedTab {
-            UserDefaults.standard.set(requestedTab.rawValue, forKey: "companionRequestedTab")
+            AppIsolation.defaults.set(requestedTab.rawValue, forKey: "companionRequestedTab")
         }
         // Pre-promote while FocusFlow is still active (we're inside a button-tap handler).
         // Calling this after the popover closes is too late — Tahoe blocks activation then.

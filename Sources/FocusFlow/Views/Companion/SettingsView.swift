@@ -48,7 +48,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     /// Reads and clears the one-shot `settingsRequestedTab` request. Returns nil when there is
     /// no request or the value is not a known tab (an unknown value is cleared as well).
-    static func consumeRequestedTab(from defaults: UserDefaults = .standard) -> SettingsTab? {
+    static func consumeRequestedTab(from defaults: UserDefaults = AppIsolation.defaults) -> SettingsTab? {
         guard let raw = defaults.string(forKey: requestedTabKey) else { return nil }
         defaults.removeObject(forKey: requestedTabKey)
         return SettingsTab(rawValue: raw)
@@ -66,7 +66,7 @@ struct SettingsView: View {
 
     /// The persisted selection. Tab bar clicks, ⌘1–⌘5, `settingsRequestedTab` and other views
     /// (Distractions links here) all write this; `shownTab` follows it with animation.
-    @AppStorage(SettingsTab.storageKey) private var selectedTab: SettingsTab = .general
+    @AppStorage(SettingsTab.storageKey, store: AppIsolation.defaults) private var selectedTab: SettingsTab = .general
     /// The tab on screen. Changes one update after `slideDirection`, so the outgoing page
     /// already carries the new direction when it is removed.
     @State private var shownTab: SettingsTab
@@ -78,7 +78,7 @@ struct SettingsView: View {
 
     init(initialScrollTarget: ScrollTarget? = nil) {
         self.initialScrollTarget = initialScrollTarget
-        let stored = UserDefaults.standard.string(forKey: SettingsTab.storageKey).flatMap(SettingsTab.init(rawValue:))
+        let stored = AppIsolation.defaults.string(forKey: SettingsTab.storageKey).flatMap(SettingsTab.init(rawValue:))
         _shownTab = State(initialValue: initialScrollTarget != nil ? .integrations : (stored ?? .general))
     }
 

@@ -75,7 +75,7 @@ struct CoachPseudoWorkLog {
     static let maxEntries = 500
     let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = AppIsolation.defaults) {
         self.defaults = defaults
     }
 

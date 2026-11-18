@@ -149,10 +149,7 @@ final class CoachJournal {
         recent = Array(Self.load(from: fileURL).suffix(Self.maxEntries))
     }
 
-    static func defaultURL() -> URL? {
-        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        return dir.appendingPathComponent("FocusFlow", isDirectory: true).appendingPathComponent(fileName)
-    }
+    static var defaultURL: URL { AppIsolation.supportDirectory.appendingPathComponent(fileName) }
 
     /// Appends an entry. Repeats of the same "quiet" reason are written once until something
     /// else happens, so a 15-second tick doesn't flood the file. A quiet line with an attempt

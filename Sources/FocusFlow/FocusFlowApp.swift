@@ -7,19 +7,13 @@ struct FocusFlowApp: App {
     @Environment(\.scenePhase) private var scenePhase
     private let container: ModelContainer = {
         let schema = FocusFlowSchema.schema
-        let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory)
-            .appendingPathComponent("FocusFlow", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let storeURL = dir.appendingPathComponent("FocusFlow.store")
-        #if DEBUG
-        // FOCUSFLOW_DEBUG_FRESH_STORE=1: an empty in-memory store, so first-run screens (the welcome
+        let storeURL = AppIsolation.supportDirectory.appendingPathComponent("FocusFlow.store")
+        // A trial run (AppIsolation): an empty in-memory store, so first-run screens (the welcome
         // tour) can be tried without touching the real store.
-        if ProcessInfo.processInfo.environment["FOCUSFLOW_DEBUG_FRESH_STORE"] == "1",
+        if AppIsolation.isIsolated,
            let fresh = try? ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)) {
             return fresh
         }
-        #endif
         do {
             try StoreMigrator.migrateStoreIfNeeded(at: storeURL)
             let config = ModelConfiguration(schema: schema, url: storeURL)
@@ -226,7 +220,7 @@ private struct AppLaunchBridge: View {
                     timerVM.hotkeyRegistrar = CoachGlobalHotkey.shared
                 }
                 timerVM.openCompanionWindow = { tab in
-                    UserDefaults.standard.set(tab.rawValue, forKey: "companionRequestedTab")
+                    AppIsolation.defaults.set(tab.rawValue, forKey: "companionRequestedTab")
                     WindowPolicyManager.shared.prepareToOpen()
                     openWindow(id: "stats")
                 }
@@ -237,7 +231,7 @@ private struct AppLaunchBridge: View {
                 }
                 // Coach v4: the decision journal, written in release builds too.
                 if timerVM.coachJournal.fileURL == nil, !timerVM.isEvidenceMode {
-                    timerVM.coachJournal = CoachJournal(fileURL: CoachJournal.defaultURL())
+                    timerVM.coachJournal = CoachJournal(fileURL: CoachJournal.defaultURL)
                 }
                 timerVM.ensureConfigured(modelContext: modelContext)
                 // Notch companion (notch design §2): on unless turned off in Settings.

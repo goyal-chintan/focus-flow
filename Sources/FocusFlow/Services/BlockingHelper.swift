@@ -4,9 +4,9 @@ struct BlockingHelper {
     private static let startMarker = "# FocusFlow-Block-Start"
     private static let endMarker = "# FocusFlow-Block-End"
     private static let hostsPath = "/etc/hosts"
-    private static let helperDir = NSHomeDirectory() + "/Library/Application Support/FocusFlow"
-    private static let helperPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/blocking-helper.sh"
-    private static let askpassPath = NSHomeDirectory() + "/Library/Application Support/FocusFlow/sudo-askpass.sh"
+    private static let helperDir = AppIsolation.supportDirectory.path
+    private static let helperPath = AppIsolation.supportDirectory.appendingPathComponent("blocking-helper.sh").path
+    private static let askpassPath = AppIsolation.supportDirectory.appendingPathComponent("sudo-askpass.sh").path
     private static let keepAliveQueue = DispatchQueue(label: "FocusFlow.SudoKeepAlive")
     nonisolated(unsafe) private static var keepAliveTimer: DispatchSourceTimer?
     private static let keepAliveIntervalSeconds: TimeInterval = 240

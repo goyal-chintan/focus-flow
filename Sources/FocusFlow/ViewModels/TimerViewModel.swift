@@ -188,16 +188,16 @@ struct CrashRecoveryState: Codable {
 
     func save() {
         guard let data = try? JSONEncoder().encode(self) else { return }
-        UserDefaults.standard.set(data, forKey: Self.key)
+        AppIsolation.defaults.set(data, forKey: Self.key)
     }
 
     static func load() -> CrashRecoveryState? {
-        guard let data = UserDefaults.standard.data(forKey: Self.key) else { return nil }
+        guard let data = AppIsolation.defaults.data(forKey: Self.key) else { return nil }
         return try? JSONDecoder().decode(CrashRecoveryState.self, from: data)
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: Self.key)
+        AppIsolation.defaults.removeObject(forKey: Self.key)
     }
 }
 
@@ -584,8 +584,8 @@ final class TimerViewModel {
     private var isConfigured = false
 
     /// `defaults` backs the coach's persisted state (bandit cache, pseudo-work answer log,
-    /// weekly priorities invite). Tests pass an isolated suite; production uses `.standard`.
-    init(screenShareGuard: ScreenShareGuard = ScreenShareGuard(), defaults: UserDefaults = .standard) {
+    /// weekly priorities invite). Tests pass an isolated suite; the app uses `AppIsolation.defaults`.
+    init(screenShareGuard: ScreenShareGuard = ScreenShareGuard(), defaults: UserDefaults = AppIsolation.defaults) {
         self.screenShareGuard = screenShareGuard
         self.defaults = defaults
         self.banditStore = CoachBanditStore(defaults: defaults)
@@ -1360,7 +1360,6 @@ final class TimerViewModel {
     private static let systemSleepActiveSessionIdKey = "FocusFlow.systemSleepActiveSessionId"
 
     func saveWakeRecoveryStateToDefaults() {
-        let defaults = UserDefaults.standard
         defaults.set(showWakeRecoveryPrompt, forKey: Self.showWakeRecoveryPromptKey)
         defaults.set(wakeRecoverySleepStartTime, forKey: Self.wakeRecoverySleepStartTimeKey)
         defaults.set(wakeRecoveryWakeTime, forKey: Self.wakeRecoveryWakeTimeKey)
@@ -1371,7 +1370,6 @@ final class TimerViewModel {
     }
 
     private func loadWakeRecoveryStateFromDefaults() {
-        let defaults = UserDefaults.standard
         self.showWakeRecoveryPrompt = defaults.bool(forKey: Self.showWakeRecoveryPromptKey)
         self.wakeRecoverySleepStartTime = defaults.object(forKey: Self.wakeRecoverySleepStartTimeKey) as? Date
         self.wakeRecoveryWakeTime = defaults.object(forKey: Self.wakeRecoveryWakeTimeKey) as? Date
@@ -1447,7 +1445,6 @@ final class TimerViewModel {
     }
 
     private func clearWakeRecoveryStateDefaults() {
-        let defaults = UserDefaults.standard
         defaults.removeObject(forKey: Self.showWakeRecoveryPromptKey)
         defaults.removeObject(forKey: Self.wakeRecoverySleepStartTimeKey)
         defaults.removeObject(forKey: Self.wakeRecoveryWakeTimeKey)
@@ -2740,7 +2737,7 @@ final class TimerViewModel {
             markWeeklyInviteHandled()
             coachEngine.recordInterventionOutcome(.improved, attemptID: panel.attemptID)
             hideCoachPanel()
-            UserDefaults.standard.set("coach", forKey: "settingsRequestedTab")
+            defaults.set("coach", forKey: SettingsTab.requestedTabKey)
             openSettingsScene?()
         case .rescue:
             guard let ask = panel.ask else { return false }

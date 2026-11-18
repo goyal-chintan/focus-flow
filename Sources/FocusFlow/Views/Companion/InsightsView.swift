@@ -16,7 +16,7 @@ struct InsightsView: View {
     @Query private var distractionRules: [IdleDistractionItem]
     @Query(filter: #Predicate<Project> { !$0.archived }) private var projects: [Project]
     /// The detail sections' one range, remembered per Mac.
-    @AppStorage("insightsRange") private var range: InsightsRange = .month
+    @AppStorage("insightsRange", store: AppIsolation.defaults) private var range: InsightsRange = .month
     @State private var selectedDay: Date?
 
     var body: some View {

@@ -331,7 +331,7 @@ private struct ProjectDetail: View {
     let onAddGoal: () -> Void
 
     @State private var selectedDay: Date?
-    @AppStorage("companionRequestedTab") private var requestedTabRaw: String = ""
+    @AppStorage("companionRequestedTab", store: AppIsolation.defaults) private var requestedTabRaw: String = ""
 
     private var key: AnalyticsProjectKey { AnalyticsProjectKey(project: project, customLabel: nil) }
     private var color: Color { FFPalette.project(project.color) }
