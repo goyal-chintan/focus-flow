@@ -159,6 +159,41 @@ final class DailyTaskTests: XCTestCase {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<DailyTask>()), 0)
     }
 
+    /// The notch's +1 (13 Nov 2026): each +1 is its own entry you can name and remove, through a
+    /// counted task too, so a wrong or accidental one never sticks.
+    func testNotchPlusOneCanBeLabelledAndRemoved() throws {
+        let (vm, context) = try makeVM()
+        let goal = ProjectGoal(title: "Interview-ready", projectID: nil, startDate: day(-1), deadline: day(20))
+        let result = GoalKeyResult(title: "Problems Solved", kind: .count, target: 60, unit: nil)
+        context.insert(goal)
+        context.insert(result)
+        goal.keyResults = [result]
+        try context.save()
+
+        // No task: the +1 goes straight onto the number.
+        let first = try XCTUnwrap(vm.logOneMore(resultID: result.id, now: Date()))
+        XCTAssertEqual(result.done, 1)
+        vm.setGoalProgressNote(entryID: first, note: "  Two Sum ")
+        XCTAssertEqual(result.entries.first { $0.id == first }?.note, "Two Sum")
+        vm.setGoalProgressNote(entryID: first, note: "   ")
+        XCTAssertEqual(result.entries.first { $0.id == first }?.note, "Two Sum", "A blank label keeps the old one")
+        vm.deleteGoalProgressEntry(id: first)
+        XCTAssertEqual(result.done, 0)
+
+        // Through a counted task: removing one takes it off the task and reopens it.
+        let task = try XCTUnwrap(vm.addDailyTask(title: "Problems Solved", keyResultID: result.id, amount: 2))
+        let a = try XCTUnwrap(vm.logOneMore(resultID: result.id, now: Date()))
+        let b = try XCTUnwrap(vm.logOneMore(resultID: result.id, now: Date().addingTimeInterval(1)))
+        XCTAssertNotEqual(a, b)
+        XCTAssertTrue(task.isDone)
+        XCTAssertEqual(task.loggedCount, 2)
+        vm.deleteGoalProgressEntry(id: b)
+        XCTAssertFalse(task.isDone, "Below its number again")
+        XCTAssertEqual(task.loggedCount, 1)
+        XCTAssertEqual(result.done, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<GoalProgressEntry>()).map(\.id), [a])
+    }
+
     func testCarryOverCopiesOnceAndKeepsYesterdayHonest() throws {
         let (vm, context) = try makeVM()
         let yesterday = task("Write the README", on: day(-1))

@@ -16,6 +16,29 @@ final class NotchState {
     /// Height of the open island, measured from its content (no empty band at the bottom).
     var expandedHeight: CGFloat = 200
     @ObservationIgnored var onExpandedHeight: (CGFloat) -> Void = { _ in }
+    /// The logged item whose label is being typed; the panel takes the keyboard meanwhile.
+    var labelingEntryID: UUID?
+    var labelDraft = ""
+    @ObservationIgnored var onBeginLabeling: () -> Void = {}
+    /// Ends typing; `save` writes the draft as the item's label.
+    @ObservationIgnored var onEndLabeling: (_ save: Bool) -> Void = { _ in }
+
+    /// Starts typing a label for one item; a label already open is saved first.
+    func beginLabeling(_ id: UUID, draft: String) {
+        onEndLabeling(true)
+        labelDraft = draft
+        labelingEntryID = id
+        onBeginLabeling()
+    }
+}
+
+/// One item logged in the running block ("Two Sum", 10:42), shown in the notch with a delete.
+struct NotchLogItem: Identifiable, Equatable {
+    let id: UUID
+    let resultTitle: String
+    /// What you called it; nil until you name it.
+    let label: String?
+    let at: Date
 }
 
 /// The island's outline: flat top flush with the screen edge, small concave "ears" where it
@@ -99,6 +122,12 @@ struct NotchSnapshot {
     var regularMinutes: Int = CoachBlockSizeLadder.defaultMinutes
     /// The next block size up (5 → 15 → 25) the running block can grow to; nil hides the button.
     var growToMinutes: Int? = nil
+    /// Everything logged in the running block, newest first.
+    var blockLog: [NotchLogItem] = []
+    /// The +1 number's count today (all blocks).
+    var quickResultToday: Double? = nil
+    /// A block cut short by a crash or quit, waiting to be resumed (idle only).
+    var recovery: NotchRecovery? = nil
 
     var goalFraction: Double { goalTarget > 0 ? min(1, goalDone / goalTarget) : 0 }
 
@@ -120,6 +149,29 @@ struct NotchSnapshot {
         case .lever: lever?.action
         case .result, .none: nil
         }
+    }
+}
+
+/// The interrupted block offered for resuming, worded once for the notch and the popover banner.
+struct NotchRecovery: Equatable {
+    var title: String
+    var detail: String
+    var ago: String
+    /// The interrupted block's project colour (the Resume button's tint).
+    var color: String?
+
+    static func make(_ recovery: CrashRecoveryState, projectName: String?, projectColor: String?, now: Date) -> NotchRecovery {
+        let remaining = max(0, Int(recovery.remainingSeconds))
+        let left = String(format: "%d:%02d left", remaining / 60, remaining % 60)
+        let total = Int(recovery.totalSeconds / 60)
+        let minutesAgo = Int(now.timeIntervalSince(recovery.checkpointDate) / 60)
+        let label = recovery.customLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NotchRecovery(
+            title: projectName ?? ((label?.isEmpty ?? true) ? "Focus" : label!),
+            detail: "\(total)-min block · \(left)\(recovery.isPaused ? " · paused" : "")",
+            ago: minutesAgo < 1 ? "just now" : "\(minutesAgo)m ago",
+            color: projectColor
+        )
     }
 }
 
@@ -184,6 +236,10 @@ struct NotchView: View {
         .onHover { state.onHover($0) }
         .onTapGesture { if !state.expanded { state.onTapCompact() } }
         .animation(spring, value: state.expanded)
+        .onChange(of: snapshot.mode) { _, mode in
+            // The block ended or went on a break while a label was being typed: keep what was typed.
+            if mode != .focusing, mode != .paused { state.onEndLabeling(true) }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .contain)
@@ -217,7 +273,12 @@ struct NotchView: View {
         case .breakOver:
             Image(systemName: "cup.and.saucer.fill").font(.system(size: 12, weight: .semibold)).foregroundStyle(.orange)
         case .idle:
-            if snapshot.coachHook != nil {
+            if snapshot.recovery != nil {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("Block interrupted")
+            } else if snapshot.coachHook != nil {
                 BreathingDot(color: .orange)
             } else {
                 MiniRing(progress: snapshot.goalFraction, color: snapshot.goalFraction >= 1 ? .green : FFPalette.accent, symbol: nil)
@@ -237,7 +298,9 @@ struct NotchView: View {
         case .onBreak(let paused):
             wingText(snapshot.time, color: paused ? .green.opacity(0.55) : .green)
         case .idle:
-            if snapshot.coachHook != nil {
+            if snapshot.recovery != nil {
+                wingText("Resume?", color: .orange)
+            } else if snapshot.coachHook != nil {
                 wingText("Start?", color: .orange)
             } else {
                 wingText(FFFormat.duration(snapshot.goalDone), color: .white.opacity(0.85))
@@ -259,7 +322,8 @@ struct NotchView: View {
     @ViewBuilder
     private var expandedContent: some View {
         switch snapshot.mode {
-        case .idle: idleExpanded
+        case .idle:
+            if let recovery = snapshot.recovery { recoveryExpanded(recovery) } else { idleExpanded }
         case .focusing, .paused: focusExpanded
         case .overtime: overtimeExpanded
         case .onBreak(let paused): breakExpanded(paused: paused)
@@ -296,6 +360,9 @@ struct NotchView: View {
             if snapshot.next == .task {
                 taskLine(tint: tint)
             }
+            if snapshot.quickResult != nil || !snapshot.blockLog.isEmpty {
+                solvedSection(tint: tint)
+            }
             HStack(spacing: 8) {
                 if snapshot.mode == .paused {
                     NotchButton(title: "Resume", symbol: "play.fill", prominent: true, tint: tint, action: actions.resume)
@@ -308,12 +375,6 @@ struct NotchView: View {
                 }
                 NotchButton(title: "Finish", symbol: "checkmark", action: actions.finish)
                 Spacer(minLength: 0)
-                if snapshot.next == .result, let result = snapshot.quickResult {
-                    NotchButton(title: "\(result.title) +1", symbol: "arrow.up.circle.fill", prominent: true, tint: tint) {
-                        actions.logResult(result.id)
-                    }
-                    .help("\(Int(result.done)) of \(Int(result.target)) · log one more")
-                }
             }
         }
     }
@@ -376,6 +437,45 @@ struct NotchView: View {
             HStack(spacing: 8) {
                 NotchButton(title: "Start next block", symbol: "play.fill", prominent: true, tint: .green, action: actions.startAfterBreak)
                 NotchButton(title: "Done for today", symbol: "stop.fill", action: actions.end)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// After a crash or quit mid-block: the block that was running, with Resume and Discard, as in
+    /// the popover's banner. It replaces the idle start until it is answered.
+    private func recoveryExpanded(_ recovery: NotchRecovery) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text("BLOCK INTERRUPTED")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundStyle(.orange)
+                Spacer(minLength: 8)
+                Text(recovery.ago)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recovery.title)
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(recovery.detail)
+                    .font(.system(size: 12, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+            HStack(spacing: 8) {
+                NotchButton(title: "Resume", symbol: "play.fill", prominent: true, tint: FFPalette.project(recovery.color), action: actions.resumeRecovery)
+                    .accessibilityLabel("Resume interrupted block")
+                NotchButton(title: "Discard", symbol: "xmark", action: actions.discardRecovery)
+                    .accessibilityLabel("Discard interrupted block")
                 Spacer(minLength: 0)
             }
         }
@@ -514,6 +614,99 @@ struct NotchView: View {
         }
     }
 
+    /// "PROBLEMS SOLVED · 2 this block" with +1, then each item this block logged (newest first)
+    /// with its time, its label and a delete, so a +1 is never silent and a wrong one can go.
+    private func solvedSection(tint: Color) -> some View {
+        let shown = Array(snapshot.blockLog.prefix(3))
+        let title = snapshot.quickResult?.title ?? snapshot.blockLog.first?.resultTitle ?? "Logged"
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                Text(snapshot.blockLog.isEmpty ? "none yet this block" : "\(snapshot.blockLog.count) this block")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(snapshot.blockLog.isEmpty ? .white.opacity(0.45) : tint)
+                    .contentTransition(.numericText())
+                Spacer(minLength: 6)
+                if let result = snapshot.quickResult {
+                    Text("\(KeyResultRow.number(snapshot.quickResultToday ?? 0)) today · \(KeyResultRow.number(result.done)) of \(KeyResultRow.number(result.target))")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                    NotchButton(title: "1", symbol: "plus", prominent: true, tint: tint) {
+                        state.onEndLabeling(true)
+                        guard let id = actions.logResult(result.id) else { return }
+                        state.beginLabeling(id, draft: "")
+                    }
+                    .help("Log one more \(result.title), then name it (optional)")
+                }
+            }
+            ForEach(shown) { item in
+                logRow(item, tint: tint)
+            }
+            if snapshot.blockLog.count > shown.count {
+                Text("+\(snapshot.blockLog.count - shown.count) earlier this block")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .padding(.leading, 28)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(0.07)))
+        .animation(.easeOut(duration: 0.18), value: snapshot.blockLog)
+    }
+
+    private func logRow(_ item: NotchLogItem, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(.green)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            if state.labelingEntryID == item.id {
+                NotchLabelField(state: state, tint: tint)
+            } else {
+                Button {
+                    state.beginLabeling(item.id, draft: item.label ?? "")
+                } label: {
+                    Text(item.label ?? "Add a label")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(item.label == nil ? .white.opacity(0.4) : .white.opacity(0.9))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(item.label == nil ? "Name what you solved" : "Rename")
+            }
+            Text(item.at, format: .dateTime.hour().minute())
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white.opacity(0.45))
+            Button {
+                if state.labelingEntryID == item.id { state.onEndLabeling(false) }
+                actions.deleteEntry(item.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Remove this one (logged by mistake)")
+            .accessibilityLabel("Remove \(item.label ?? item.resultTitle) logged at \(item.at.formatted(date: .omitted, time: .shortened))")
+        }
+        .frame(height: 28)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
     private func projectChip(tint: Color) -> some View {
         HStack(spacing: 6) {
             Circle().fill(tint).frame(width: 8, height: 8)
@@ -542,15 +735,48 @@ struct NotchActions {
     var startAfterBreak: () -> Void = {}
     var toggleBreak: () -> Void = {}
     var start: (Int) -> Void = { _ in }
-    var logResult: (UUID) -> Void = { _ in }
+    /// +1 on a number; returns the entry it logged (to label it).
+    var logResult: (UUID) -> UUID? = { _ in nil }
+    /// Removes one logged item.
+    var deleteEntry: (UUID) -> Void = { _ in }
     /// Ticks the task, or adds 1 to a counted one.
     var tickTask: (UUID) -> Void = { _ in }
     var undoTask: () -> Void = {}
     /// Overtime: open the block-end window to log the block.
     var log: () -> Void = {}
+    /// The block a crash or quit cut short: pick it up, or let it go.
+    var resumeRecovery: () -> Void = {}
+    var discardRecovery: () -> Void = {}
 }
 
 // MARK: - Pieces
+
+/// "What was it?" typed straight into the island; Return saves, Esc leaves it unnamed.
+private struct NotchLabelField: View {
+    @Bindable var state: NotchState
+    let tint: Color
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("What was it? (optional) ↩", text: $state.labelDraft)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundStyle(.white)
+            .tint(tint)
+            .focused($focused)
+            .onSubmit { state.onEndLabeling(true) }
+            .onExitCommand { state.onEndLabeling(false) }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.white.opacity(0.1)))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(tint.opacity(0.6), lineWidth: 1))
+            .task {
+                // The panel becomes key in the same turn; focus once it has.
+                try? await Task.sleep(for: .milliseconds(30))
+                focused = true
+            }
+    }
+}
 
 private struct MiniRing: View {
     let progress: Double

@@ -37,6 +37,23 @@ final class NotchTests: XCTestCase {
 
     // MARK: Renders (FOCUSFLOW_CAPTURE_OUTPUT_DIR/notch)
 
+    /// After a crash the notch offers the interrupted block, worded like the popover's banner.
+    func testRecoveryIsDescribedForTheNotch() {
+        let checkpoint = Date(timeIntervalSince1970: 1_800_000_000)
+        var saved = CrashRecoveryState(
+            sessionId: UUID(), remainingSeconds: 724, totalSeconds: 25 * 60, isPaused: false,
+            checkpointDate: checkpoint, projectId: nil, customLabel: "  ", completedFocusSessions: 0
+        )
+        let fresh = NotchRecovery.make(saved, projectName: "Learning", projectColor: nil, now: checkpoint.addingTimeInterval(20))
+        XCTAssertEqual(fresh, NotchRecovery(title: "Learning", detail: "25-min block · 12:04 left", ago: "just now", color: nil))
+
+        saved.isPaused = true
+        let unnamed = NotchRecovery.make(saved, projectName: nil, projectColor: nil, now: checkpoint.addingTimeInterval(7 * 60))
+        XCTAssertEqual(unnamed.title, "Focus", "A blank label falls back to Focus")
+        XCTAssertEqual(unnamed.detail, "25-min block · 12:04 left · paused")
+        XCTAssertEqual(unnamed.ago, "7m ago")
+    }
+
     @MainActor
     func testCaptureNotchStates() throws {
         guard let dir = ProcessInfo.processInfo.environment["FOCUSFLOW_CAPTURE_OUTPUT_DIR"], !dir.isEmpty else {
@@ -68,6 +85,14 @@ final class NotchTests: XCTestCase {
         focusing.mode = .focusing
         var focusingNoTask = focusing
         focusingNoTask.nextTask = nil
+        var focusingLog = focusingNoTask
+        focusingLog.quickResultToday = 3
+        focusingLog.blockLog = [
+            NotchLogItem(id: UUID(), resultTitle: "LeetCode", label: nil, at: Date()),
+            NotchLogItem(id: UUID(), resultTitle: "LeetCode", label: "Two Sum", at: Date().addingTimeInterval(-600)),
+        ]
+        var focusingEmpty = focusingNoTask
+        focusingEmpty.quickResultToday = 1
         var paused = base
         paused.mode = .paused
         var overtime = base
@@ -79,14 +104,18 @@ final class NotchTests: XCTestCase {
         var breakOver = base
         breakOver.mode = .breakOver
         breakOver.time = "+06:40"
+        var recovery = base
+        recovery.recovery = NotchRecovery(title: "Learning", detail: "25-min block · 12:04 left", ago: "3m ago", color: "purple")
 
         let cases: [(String, NotchSnapshot, Bool)] = [
             ("compact_idle", base, false), ("compact_attention", attention, false), ("compact_focusing", focusing, false),
             ("compact_paused", paused, false), ("compact_overtime", overtime, false), ("compact_break", onBreak, false),
             ("compact_break_over", breakOver, false),
             ("expanded_idle", attention, true), ("expanded_idle_lever", leverOnly, true), ("expanded_receipt", receipt, true), ("expanded_focusing", focusing, true),
-            ("expanded_focusing_no_task", focusingNoTask, true), ("expanded_overtime", overtime, true),
+            ("expanded_focusing_no_task", focusingNoTask, true),
+            ("expanded_focusing_log", focusingLog, true), ("expanded_focusing_log_empty", focusingEmpty, true), ("expanded_overtime", overtime, true),
             ("expanded_break", onBreak, true), ("expanded_break_over", breakOver, true),
+            ("compact_recovery", recovery, false), ("expanded_recovery", recovery, true),
         ]
         for (name, snapshot, expanded) in cases {
             let state = NotchState()
@@ -104,7 +133,7 @@ final class NotchTests: XCTestCase {
                 .foregroundStyle(.black.opacity(0.8))
                 NotchView(state: state, snapshot: snapshot)
             }
-            .frame(width: 900, height: 330)
+            .frame(width: 900, height: 420)
             let renderer = ImageRenderer(content: canvas)
             renderer.scale = 2
             guard let image = renderer.cgImage else { XCTFail("render \(name)"); continue }

@@ -122,6 +122,7 @@ struct PaceDot: View {
     var size: CGFloat = 8
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.motionPaused) private var motionPaused
     @State private var on = false
 
     private var behind: Bool { !met && (tier == .nudge || tier == .atRisk) }
@@ -135,11 +136,13 @@ struct PaceDot: View {
             .opacity(behind && !on ? 0.45 : 1)
             .onAppear { blink() }
             .onChange(of: behind) { _, _ in blink() }
+            .onChange(of: motionPaused) { _, _ in blink() }
             .accessibilityLabel(PaceRing.word(tier, met: met))
     }
 
     private func blink() {
-        guard behind, !reduceMotion else { on = false; return }
+        // Setting `on` without an animation also ends a running repeatForever.
+        guard behind, !reduceMotion, !motionPaused else { on = false; return }
         withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { on = true }
     }
 }

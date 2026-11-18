@@ -24,7 +24,8 @@ struct TimerRingView: View {
     @State private var completionBurst: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var disableMotion: Bool { reduceMotion || evidenceMode }
+    @Environment(\.motionPaused) private var motionPaused
+    private var disableMotion: Bool { reduceMotion || evidenceMode || motionPaused }
 
     /// Amber break-overrun ring, not the blue and green of a block's overtime.
     private var isBreakOverrun: Bool {

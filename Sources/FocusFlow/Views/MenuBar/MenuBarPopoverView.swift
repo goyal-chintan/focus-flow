@@ -8,16 +8,24 @@ struct MenuBarPopoverView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showStopConfirmation = false
+    /// The popover window is on screen. While it is closed nothing here animates.
+    @State private var isShown = true
 
     private var disableMotionForEvidence: Bool { reduceMotion || timerVM.isEvidenceMode }
 
     var body: some View {
         popoverShell
+            .environment(\.motionPaused, !isShown)
+            .transaction { t in
+                // Closed: per-second changes (ring progress, numbers) apply without animating.
+                if !isShown { t.animation = nil; t.disablesAnimations = true }
+            }
             .background(
                 PopoverWindowAccessor { window in
                     timerVM.popoverWindow = window
                 }
             )
+            .background(WindowVisibilityReader { isShown = $0 })
             .task {
                 timerVM.ensureConfigured(modelContext: modelContext)
                 timerVM.checkDayRolloverIfNeeded()
@@ -687,14 +695,9 @@ private struct IdlePopoverContent: View {
     }
 
     private func recoveryBanner(_ recovery: CrashRecoveryState) -> some View {
-        let remaining = Int(recovery.remainingSeconds)
-        let mins = remaining / 60
-        let secs = remaining % 60
-        let timeString = String(format: "%d:%02d", mins, secs)
-        let minutesAgo = Int(Date().timeIntervalSince(recovery.checkpointDate) / 60)
-        let agoText = minutesAgo < 1 ? "just now" : "\(minutesAgo)m ago"
-        let projectName = timerVM.recoveryProject?.name ?? recovery.customLabel ?? "Focus"
-        let totalMins = Int(recovery.totalSeconds / 60)
+        // Worded once, for here and the notch.
+        let shown = NotchRecovery.make(recovery, projectName: timerVM.recoveryProject?.name,
+                                       projectColor: timerVM.recoveryProject?.color, now: Date())
 
         return VStack(spacing: 10) {
             // Header
@@ -707,7 +710,7 @@ private struct IdlePopoverContent: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(agoText)
+                Text(shown.ago)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -715,11 +718,11 @@ private struct IdlePopoverContent: View {
             // Details
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(projectName)
+                    Text(shown.title)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text("\(totalMins)-min session · \(timeString) remaining\(recovery.isPaused ? " · paused" : "")")
+                    Text(shown.detail)
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }

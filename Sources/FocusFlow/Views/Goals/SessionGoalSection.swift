@@ -78,10 +78,10 @@ private struct SessionKeyResultRow: View {
         keyResult.entries.filter { $0.sessionID == sessionID }.reduce(0) { $0 + $1.amount }
     }
 
-    /// The newest stepper entry from this block (task entries carry the task title as their note).
+    /// The newest stepper entry from this block (not one logged through a task; any may carry a label).
     private var lastStepperEntry: GoalProgressEntry? {
         keyResult.entries
-            .filter { $0.sessionID == sessionID && $0.note == nil && $0.amount > 0 }
+            .filter { $0.sessionID == sessionID && $0.taskID == nil && $0.amount > 0 }
             .max { $0.at < $1.at }
     }
 

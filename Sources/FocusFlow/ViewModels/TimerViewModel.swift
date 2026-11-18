@@ -374,6 +374,8 @@ final class TimerViewModel {
     var timer: Timer?
     private var modelContext: ModelContext?
     private var currentSession: FocusSession?
+    /// The running block's id (the notch lists what this block logged).
+    var currentSessionID: UUID? { currentSession?.id }
     private(set) var settings: AppSettings?
 
     // MARK: - Focus Coach
@@ -2151,7 +2153,9 @@ final class TimerViewModel {
     private func tick() {
         if isOvertime {
             overtimeSeconds += 1
-            currentSession?.endedAt = Date()
+            // endedAt moves with the 30 s save, not every second: each write redraws every open page
+            // that reads the block (Insights took the main thread at 100% in a long overtime, 17 Nov
+            // 2026). Leaving overtime stamps the exact end (`continueAfterCompletion`).
             // Coach v7: land the block (stretch nudge, laps) or walk the return ladder.
             if isFocusOvertime { handleFocusOvertimeStep() } else { handleBreakOvertimeStep() }
             // Live focus time grows with a block's overtime only: a break that ran over is break time.
@@ -2159,6 +2163,7 @@ final class TimerViewModel {
                 todayFocusTime += 1
             }
             if overtimeSeconds % 30 == 0 {
+                currentSession?.endedAt = Date()
                 saveContext()
                 loadTodayStats() // Reconcile with DB periodically
             }
@@ -2410,11 +2415,14 @@ final class TimerViewModel {
         closePopover()
 
         // Resolve completion and leave overtime mode.
+        let wasOvertime = isOvertime
         timer?.invalidate()
         timer = nil
         isOvertime = false
         overtimeSeconds = 0
 
+        // Overtime moves the running session's endedAt every 30 s only; it ends now, to the second.
+        if wasOvertime { currentSession?.endedAt = Date() }
         if let session = lastCompletedSession ?? currentSession {
             if session.type == .focus && session.actualDuration < Self.minimumRetainedFocusSeconds {
                 modelContext?.delete(session)
@@ -3712,11 +3720,24 @@ final class TimerViewModel {
         guard let modelContext,
               let result = try? modelContext.fetch(FetchDescriptor<GoalKeyResult>(predicate: #Predicate { $0.id == resultID })).first
         else { return }
-        let entry = GoalProgressEntry(amount: amount, at: now, sessionID: currentSession?.id)
-        modelContext.insert(entry)
-        result.entries.append(entry)
+        insertProgressEntry(amount: amount, on: result, sessionID: currentSession?.id, now: now, in: modelContext)
         saveContext()
         coachJournal.record(.logged, "Logged +\(Int(amount)) \(result.title).", at: now)
+    }
+
+    /// The entry the last log made: `logOneMore` hands it to the notch to label.
+    private var lastInsertedProgressEntryID: UUID?
+
+    /// Every goal entry is created here (a direct +1, a task tick, a counted task's +1).
+    @discardableResult
+    private func insertProgressEntry(amount: Double, on result: GoalKeyResult, note: String? = nil, task: DailyTask? = nil,
+                                     sessionID: UUID?, now: Date, in modelContext: ModelContext) -> GoalProgressEntry {
+        let entry = GoalProgressEntry(amount: amount, at: now, note: note, sessionID: sessionID)
+        entry.taskID = task?.id
+        modelContext.insert(entry)
+        result.entries.append(entry)
+        lastInsertedProgressEntryID = entry.id
+        return entry
     }
 
     /// Opens the companion window on a tab (set by FocusFlowApp).
@@ -3863,10 +3884,7 @@ final class TimerViewModel {
             task.sessionID = inBlock ? (sessionID ?? currentSession?.id) : sessionID
             let remaining = task.progressAmount - before
             if let result, remaining > 0 {
-                let entry = GoalProgressEntry(amount: remaining, at: now, note: task.title, sessionID: task.sessionID)
-                entry.taskID = task.id
-                modelContext.insert(entry)
-                result.entries.append(entry)
+                insertProgressEntry(amount: remaining, on: result, note: task.title, task: task, sessionID: task.sessionID, now: now, in: modelContext)
             }
             if result != nil { task.loggedAmount = task.progressAmount }
             coachJournal.record(.logged, "Done: \(task.title).", at: now)
@@ -3902,10 +3920,7 @@ final class TimerViewModel {
         var logged = task.loggedCount
         if delta > 0 {
             for _ in 0..<delta {
-                let entry = GoalProgressEntry(amount: 1, at: now, note: task.title, sessionID: sessionID ?? currentSession?.id)
-                entry.taskID = task.id
-                modelContext.insert(entry)
-                result.entries.append(entry)
+                insertProgressEntry(amount: 1, on: result, note: task.title, task: task, sessionID: sessionID ?? currentSession?.id, now: now, in: modelContext)
             }
             logged += Double(delta)
         } else {
@@ -3921,18 +3936,7 @@ final class TimerViewModel {
             }
             guard toRemove < Double(-delta) else { return false }
         }
-        task.loggedAmount = max(0, logged)
-        let nowDone = task.loggedCount >= task.progressAmount
-        if nowDone, !task.isDone {
-            task.isDone = true
-            task.doneAt = now
-            task.sessionID = sessionID ?? currentSession?.id
-            coachJournal.record(.logged, "Done: \(task.title).", at: now)
-        } else if !nowDone, task.isDone {
-            task.isDone = false
-            task.doneAt = nil
-            task.sessionID = nil
-        }
+        applyLoggedCount(logged, to: task, sessionID: sessionID, now: now)
         saveContext()
         dailyTaskRevision += 1
         pushReminderCompletion(of: task)
@@ -3949,6 +3953,22 @@ final class TimerViewModel {
             ))
         }
         return true
+    }
+
+    /// Sets a counted task's logged amount: done once it reaches its number, open again below it.
+    private func applyLoggedCount(_ logged: Double, to task: DailyTask, sessionID: UUID?, now: Date) {
+        task.loggedAmount = max(0, logged)
+        let nowDone = task.loggedCount >= task.progressAmount
+        if nowDone, !task.isDone {
+            task.isDone = true
+            task.doneAt = now
+            task.sessionID = sessionID ?? currentSession?.id
+            coachJournal.record(.logged, "Done: \(task.title).", at: now)
+        } else if !nowDone, task.isDone {
+            task.isDone = false
+            task.doneAt = nil
+            task.sessionID = nil
+        }
     }
 
     /// The tap on a task's control: +1 on an open counted task, otherwise tick or untick.
@@ -4047,12 +4067,47 @@ final class TimerViewModel {
     /// "+1" on a key result from the running popover or the notch. When today has an open task
     /// linked to it, the +1 goes through that task (so the task's count and the goal agree and
     /// nothing is logged twice); otherwise it is logged on the key result directly.
-    func logOneMore(resultID: UUID, now: Date = Date()) {
+    ///
+    /// Returns the entry it made, so the notch can list it in the block and ask for a label.
+    @discardableResult
+    func logOneMore(resultID: UUID, now: Date = Date()) -> UUID? {
+        lastInsertedProgressEntryID = nil
         if let task = todayTasks(now: now).first(where: { $0.keyResultID == resultID && !$0.isDone }) {
             advanceDailyTask(task, now: now)
         } else {
             logGoalProgress(resultID: resultID, amount: 1, now: now)
+            dailyTaskRevision += 1
         }
+        return lastInsertedProgressEntryID
+    }
+
+    /// Names one logged item ("Two Sum"). A blank label keeps what was there.
+    func setGoalProgressNote(entryID: UUID, note: String) {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let modelContext, !trimmed.isEmpty,
+              let entry = try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.id == entryID })).first
+        else { return }
+        entry.note = String(trimmed.prefix(80))
+        saveContext()
+        dailyTaskRevision += 1
+    }
+
+    /// Removes one logged item (a wrong or accidental +1). An entry logged through a task also
+    /// takes its amount off that task, and reopens it when it falls below its number.
+    func deleteGoalProgressEntry(id: UUID, now: Date = Date()) {
+        guard let modelContext,
+              let entry = try? modelContext.fetch(FetchDescriptor<GoalProgressEntry>(predicate: #Predicate { $0.id == id })).first
+        else { return }
+        let title = entry.keyResult?.title ?? "item"
+        let task = entry.taskID.flatMap { taskID in
+            try? modelContext.fetch(FetchDescriptor<DailyTask>(predicate: #Predicate { $0.id == taskID })).first
+        }
+        if let task { applyLoggedCount(task.loggedCount - entry.amount, to: task, sessionID: nil, now: now) }
+        modelContext.delete(entry)
+        saveContext()
+        dailyTaskRevision += 1
+        if let task { pushReminderCompletion(of: task) }
+        coachJournal.record(.logged, "Removed one \(title).", at: now)
     }
 
     /// Deletes the task; a synced task's reminder is deleted with it (the list mirrors the tasks).

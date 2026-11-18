@@ -394,6 +394,11 @@ extension EnvironmentValues {
         get { self[FocusFlowEvidenceRenderingKey.self] }
         set { self[FocusFlowEvidenceRenderingKey.self] = newValue }
     }
+
+    /// True while the view's window is off screen (the closed menu bar popover). Repeating and
+    /// per-second animations stop: a hidden popover kept animating its ring and redrew it every
+    /// frame, about a third of a core for as long as a block ran (17 Nov 2026).
+    @Entry var motionPaused = false
 }
 
 // MARK: - Motion System (Standardized Springs)
