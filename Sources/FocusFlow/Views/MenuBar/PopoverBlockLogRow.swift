@@ -64,7 +64,7 @@ struct PopoverBlockLogRow: View {
         .frame(minHeight: 34)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+                .fill(FFPalette.rowHover)
         )
     }
 

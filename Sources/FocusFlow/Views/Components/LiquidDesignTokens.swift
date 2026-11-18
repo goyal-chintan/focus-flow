@@ -21,19 +21,25 @@ enum LiquidDesignTokens {
         static let onSurfaceMuted = Color.secondary
         static let onProminent = Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF)
         static let glassStroke = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.08, darkAlpha: 0.08)
+        /// Light-mode frosting laid over glass and material panels (popover, coach panel), so a
+        /// dark desktop behind never turns them grey. Clear in dark mode.
+        static let frosted = Color.adaptive(light: 0xFBFBFD, dark: 0x000000, lightAlpha: 0.78, darkAlpha: 0)
         static let materialOverlay = Color.adaptive(light: 0xFFFFFF, dark: 0x000000, lightAlpha: 0.08, darkAlpha: 0.20)
     }
 
     // MARK: - Spectral Colors (Light Sources)
+    /// Dark mode keeps the luminous pastels that glow on near-black. Light mode uses deep,
+    /// saturated versions of the same hues (≥ 4.5:1 on white; light-mode design 2026-11-18),
+    /// so state colours read as ink on frosted white instead of washing out.
     enum Spectral {
-        static let electricBlue = Color(hex: 0xAAC7FF)
-        static let primaryContainer = Color(hex: 0x3E90FF)
-        static let amber = Color(hex: 0xFFC07A)
-        static let amberDark = Color(hex: 0xD4940A)
-        static let mint = Color(hex: 0x5ED4A0)
-        static let mintDark = Color(hex: 0x34C77B)
-        static let salmon = Color(hex: 0xFFB4A8)
-        static let destructive = Color(hex: 0xFF6B6B)
+        static let electricBlue = Color.adaptive(light: 0x1F6FE0, dark: 0xAAC7FF)
+        static let primaryContainer = Color.adaptive(light: 0x1F6FE0, dark: 0x3E90FF)
+        static let amber = Color.adaptive(light: 0xB45309, dark: 0xFFC07A)
+        static let amberDark = Color.adaptive(light: 0x9A4A06, dark: 0xD4940A)
+        static let mint = Color.adaptive(light: 0x15805A, dark: 0x5ED4A0)
+        static let mintDark = Color.adaptive(light: 0x0F6B43, dark: 0x34C77B)
+        static let salmon = Color.adaptive(light: 0xC2362F, dark: 0xFFB4A8)
+        static let destructive = Color.adaptive(light: 0xC2362F, dark: 0xFF6B6B)
     }
 
     // MARK: - Spacing (Editorial Breathing Room)
@@ -85,73 +91,43 @@ enum LiquidDesignTokens {
     }
 
     // MARK: - Gradients (CTA Fills)
+    /// Each gradient has a dark-mode ramp (bright, towards a pastel) and a light-mode ramp that
+    /// stays deep end to end, so the white label holds ≥ 3:1 across the whole button.
     enum Gradient {
-        static let focus = LinearGradient(
-            colors: [Color(hex: 0x5B9EF8), Color(hex: 0x6AABFF), Color(hex: 0xA5C4FF)],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-        static let resume = LinearGradient(
-            colors: [Color(hex: 0xCC8800), Color(hex: 0xE6A820), Color(hex: 0xF0C040)],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-        static let breakStart = LinearGradient(
-            colors: [Color(hex: 0x34C77B), Color(hex: 0x5ED4A0), Color(hex: 0x8CE6C0)],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-        static let pause = LinearGradient(
-            colors: [Color(hex: 0xCC8800), Color(hex: 0xE6A820), Color(hex: 0xF0C040)],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-        static let stop = LinearGradient(
-            colors: [Color(hex: 0xC03030), Color(hex: 0xD94848), Color(hex: 0xEF6B6B)],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
+        private static let blueLight: [UInt] = [0x1A63D6, 0x2A72E8, 0x3D84F2]
+        private static let blueDark: [UInt] = [0x5B9EF8, 0x6AABFF, 0xA5C4FF]
+        private static let greenLight: [UInt] = [0x116B44, 0x15805A, 0x1A8A57]
+        private static let greenDark: [UInt] = [0x34C77B, 0x5ED4A0, 0x8CE6C0]
+
+        static let focus = adaptiveRamp(light: blueLight, dark: blueDark)
+        static let resume = adaptiveRamp(light: [0xB45F00, 0xC47200, 0xD48812], dark: [0xCC8800, 0xE6A820, 0xF0C040])
+        static let pause = resume
+        static let stop = adaptiveRamp(light: [0xA82828, 0xB83232, 0xC83A3A], dark: [0xC03030, 0xD94848, 0xEF6B6B])
 
         /// Interpolated blue→green gradient based on Pomodoro cycle progress.
         /// progress 0.0 = pure blue (just started), 1.0 = pure green (earned it).
         static func cycleCompletion(progress: Double) -> LinearGradient {
             let p = min(max(progress, 0), 1)
-
-            // Blue endpoints (focus gradient)
-            let blueStart = (r: 0x5B, g: 0x9E, b: 0xF8)
-            let blueMid   = (r: 0x6A, g: 0xAB, b: 0xFF)
-            let blueEnd   = (r: 0xA5, g: 0xC4, b: 0xFF)
-
-            // Green endpoints (breakStart gradient)
-            let greenStart = (r: 0x34, g: 0xC7, b: 0x7B)
-            let greenMid   = (r: 0x5E, g: 0xD4, b: 0xA0)
-            let greenEnd   = (r: 0x8C, g: 0xE6, b: 0xC0)
-
-            func lerp(_ a: Int, _ b: Int) -> Double {
-                Double(a) + (Double(b) - Double(a)) * p
-            }
-
-            let c1 = Color(
-                red: lerp(blueStart.r, greenStart.r) / 255,
-                green: lerp(blueStart.g, greenStart.g) / 255,
-                blue: lerp(blueStart.b, greenStart.b) / 255
+            return adaptiveRamp(
+                light: zip(blueLight, greenLight).map { lerpHex($0, $1, p) },
+                dark: zip(blueDark, greenDark).map { lerpHex($0, $1, p) }
             )
-            let c2 = Color(
-                red: lerp(blueMid.r, greenMid.r) / 255,
-                green: lerp(blueMid.g, greenMid.g) / 255,
-                blue: lerp(blueMid.b, greenMid.b) / 255
-            )
-            let c3 = Color(
-                red: lerp(blueEnd.r, greenEnd.r) / 255,
-                green: lerp(blueEnd.g, greenEnd.g) / 255,
-                blue: lerp(blueEnd.b, greenEnd.b) / 255
-            )
+        }
 
-            return LinearGradient(
-                colors: [c1, c2, c3],
+        static func adaptiveRamp(light: [UInt], dark: [UInt]) -> LinearGradient {
+            LinearGradient(
+                colors: zip(light, dark).map { Color.adaptive(light: $0, dark: $1) },
                 startPoint: .leading,
                 endPoint: .trailing
             )
+        }
+
+        private static func lerpHex(_ a: UInt, _ b: UInt, _ p: Double) -> UInt {
+            func channel(_ shift: UInt) -> UInt {
+                let x = Double((a >> shift) & 0xFF), y = Double((b >> shift) & 0xFF)
+                return UInt((x + (y - x) * p).rounded()) << shift
+            }
+            return channel(16) | channel(8) | channel(0)
         }
     }
 
@@ -211,30 +187,6 @@ private extension NSColor {
 // MARK: - Gradient Helpers
 
 enum ObsidianGradients {
-    static func blueCTA() -> LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(hex: 0x3E90FF),
-                Color(hex: 0x6BB5FF),
-                Color(hex: 0xAAC7FF, alpha: 0.85)
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-    }
-
-    static func amberCTA() -> LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(hex: 0xD4940A),
-                Color(hex: 0xFFC07A),
-                Color(hex: 0xFFD89E)
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-    }
-
     static func glassPanel() -> LinearGradient {
         LinearGradient(
             colors: [

@@ -254,8 +254,8 @@ final class TimerViewModel {
         var color: Color {
             switch self {
             case .normal: return .secondary
-            case .warning: return .orange
-            case .critical: return .red
+            case .warning: return FFPalette.atRisk
+            case .critical: return FFPalette.destructive
             }
         }
     }

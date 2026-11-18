@@ -87,9 +87,11 @@ enum FFPalette {
     static let accent = LiquidDesignTokens.Spectral.primaryContainer
     /// Goal met.
     static let goal = Color.green
-    /// At risk / derailers.
-    static let atRisk = Color.orange
-    static let destructive = Color.red
+    /// At risk / derailers / warnings. System orange in dark; a deep amber in light, where system
+    /// orange is about 2:1 on white (light-mode design 2026-11-18).
+    static let atRisk = Color.adaptive(light: 0xB45309, dark: 0xFF9F0A)
+    /// Red that holds as text in light mode too (system red is 3.6:1 on white).
+    static let destructive = Color.adaptive(light: 0xC2362F, dark: 0xFF453A)
 
     /// Window background (explicit so off-screen renders match the live window).
     static let windowBackground = Color(nsColor: .windowBackgroundColor)
@@ -97,10 +99,13 @@ enum FFPalette {
     static let sectionFill = Color.adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.72, darkAlpha: 0.045)
     static let hairline = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.08, darkAlpha: 0.09)
     static let rowHover = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.045, darkAlpha: 0.06)
+    static let rowHoverStrong = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.075, darkAlpha: 0.09)
     static let rowSelected = accent.opacity(0.14)
     static let gridLine = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.07, darkAlpha: 0.09)
     /// Empty heatmap cell / track.
     static let track = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.055, darkAlpha: 0.07)
+    /// An unfilled dot or step: a track you can see on its own.
+    static let trackStrong = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.12, darkAlpha: 0.12)
     static let comparison = Color.adaptive(light: 0x8E8E93, dark: 0x8E8E93, lightAlpha: 0.45, darkAlpha: 0.55)
 
     /// Colour for a stored project colour name. Use only on project-specific marks.

@@ -66,11 +66,11 @@ struct MenuBarPopoverView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 11))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(FFPalette.atRisk)
                             .accessibilityHidden(true)
                         Text(error)
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(FFPalette.atRisk)
                     }
                     .padding(.horizontal, LiquidDesignTokens.Padding.popoverHorizontal)
                     .padding(.vertical, 6)
@@ -93,18 +93,14 @@ struct MenuBarPopoverView: View {
         .frame(width: 310)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color.black.opacity(0.52))
+                .fill(PopoverSurface.tint)
                 .background(
                     .ultraThinMaterial,
                     in: RoundedRectangle(cornerRadius: 24, style: .continuous)
                 )
                 .overlay(
                     LinearGradient(
-                        colors: [
-                            Color.black.opacity(0.16),
-                            Color.black.opacity(0.08),
-                            Color.black.opacity(0.2)
-                        ],
+                        colors: [PopoverSurface.washTop, PopoverSurface.washMiddle, PopoverSurface.washBottom],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -112,9 +108,9 @@ struct MenuBarPopoverView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.09), lineWidth: 0.5)
+                        .strokeBorder(FFPalette.hairline, lineWidth: 0.5)
                 )
-                .shadow(color: Color.black.opacity(0.28), radius: 12, y: 8)
+                .shadow(color: PopoverSurface.shadow, radius: 12, y: 8)
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
@@ -351,10 +347,10 @@ struct MenuBarPopoverView: View {
             .background(
                 Rectangle()
                     .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.26))
+                    .overlay(PopoverSurface.footerTint)
                     .overlay(alignment: .top) {
-                        // A hairline of light along the top edge, so the footer reads as a surface.
-                        Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5)
+                        // A hairline along the top edge, so the footer reads as a surface.
+                        Rectangle().fill(PopoverSurface.footerHairline).frame(height: 0.5)
                     }
             )
         }
@@ -387,7 +383,7 @@ struct MenuBarPopoverView: View {
     private var stateLabelColor: Color {
         switch timerVM.state {
         case .idle:
-            if timerVM.isOvertime { return timerVM.isFocusOvertime ? LiquidDesignTokens.Spectral.mint : Color.orange }
+            if timerVM.isOvertime { return timerVM.isFocusOvertime ? LiquidDesignTokens.Spectral.mint : FFPalette.atRisk }
             return LiquidDesignTokens.Surface.onSurfaceMuted
         case .focusing:
             if timerVM.isOvertime { return LiquidDesignTokens.Spectral.mint }
@@ -704,7 +700,7 @@ private struct IdlePopoverContent: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.counterclockwise.circle.fill")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(FFPalette.atRisk)
                     .accessibilityHidden(true)
                 Text("Block interrupted")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -1780,9 +1776,12 @@ private struct PopoverFooterButtonBody: View {
     let isOn: Bool
     @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let fill: Color = isOn ? LiquidDesignTokens.Spectral.primaryContainer.opacity(hovering ? 0.42 : 0.32)
+        // On: a tinted glass dot in dark; a solid accent in light, where a 32 % tint is too pale for a white glyph.
+        let onAlpha = colorScheme == .dark ? (hovering ? 0.42 : 0.32) : (hovering ? 0.88 : 1.0)
+        let fill: Color = isOn ? LiquidDesignTokens.Spectral.primaryContainer.opacity(onAlpha)
             : Color.primary.opacity(configuration.isPressed ? 0.16 : (hovering ? 0.12 : 0.06))
         configuration.label
             .foregroundStyle(isOn ? Color.white : Color.primary.opacity(hovering ? 1 : 0.82))
@@ -1800,4 +1799,18 @@ private struct PopoverFooterButtonBody: View {
             .animation(reduceMotion ? nil : .snappy(duration: 0.12), value: configuration.isPressed)
             .onHover { hovering = $0 }
     }
+}
+
+/// The popover's glass. Dark: smoked glass (black 52 % over the material; unchanged). Light:
+/// frosted porcelain (white over the material), so it stays a clean light surface even over a
+/// dark desktop instead of a muddy grey (light-mode design 2026-11-18).
+enum PopoverSurface {
+    static let tint = Color.adaptive(light: 0xFBFBFD, dark: 0x000000, lightAlpha: 0.78, darkAlpha: 0.52)
+    static let washTop = Color.adaptive(light: 0xFFFFFF, dark: 0x000000, lightAlpha: 0.35, darkAlpha: 0.16)
+    static let washMiddle = Color.adaptive(light: 0xFFFFFF, dark: 0x000000, lightAlpha: 0.0, darkAlpha: 0.08)
+    static let washBottom = Color.adaptive(light: 0xE9ECF3, dark: 0x000000, lightAlpha: 0.35, darkAlpha: 0.2)
+    static let shadow = Color.adaptive(light: 0x1C2440, dark: 0x000000, lightAlpha: 0.18, darkAlpha: 0.28)
+    /// The footer tray: a slightly recessed shade of the body, never a separate grey band.
+    static let footerTint = Color.adaptive(light: 0xF1F2F6, dark: 0x000000, lightAlpha: 0.9, darkAlpha: 0.26)
+    static let footerHairline = Color.adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.07, darkAlpha: 0.07)
 }

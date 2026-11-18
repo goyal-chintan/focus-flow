@@ -78,7 +78,7 @@ struct CoachPanelView: View {
                 if let errorText, !errorText.isEmpty {
                     Label(errorText, systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(colorScheme == .dark ? Color.orange : Color(hex: 0xB45309))
+                        .foregroundStyle(FFPalette.atRisk)
                         .lineLimit(2)
                         .padding(.top, 6)
                         .accessibilityLabel("Couldn't start: \(errorText)")
@@ -414,7 +414,10 @@ struct CoachPanelView: View {
     private var surface: some View {
         switch chrome {
         case .hosted:
-            Color.clear
+            // The panel's NSGlassEffectView is the glass. Light mode adds frosted porcelain on
+            // top so a dark desktop behind never turns the panel grey; dark adds nothing.
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(LiquidDesignTokens.Surface.frosted)
         case .standalone:
             if isEvidenceRendering {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -422,6 +425,12 @@ struct CoachPanelView: View {
             } else {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(.regularMaterial)
+                    // Light: frosted porcelain over the material, so a dark desktop behind
+                    // never turns the panel grey. Dark: the material alone (unchanged).
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(LiquidDesignTokens.Surface.frosted)
+                    )
             }
         }
     }
@@ -533,9 +542,10 @@ struct CoachPanelPalette {
 
     init(style: CoachStyle) {
         switch style {
-        case .challenger: gradient = [Color(hex: 0xFF8A3D), Color(hex: 0xE8483A)]
-        case .data: gradient = [Color(hex: 0x3E90FF), Color(hex: 0x2B5FE0)]
-        case .gentle: gradient = [Color(hex: 0x2FBF7A), Color(hex: 0x15936B)]
+        // Light mode starts each ramp deeper, so white text holds on the lighter stop too.
+        case .challenger: gradient = [Color.adaptive(light: 0xE0661C, dark: 0xFF8A3D), Color.adaptive(light: 0xC8352B, dark: 0xE8483A)]
+        case .data: gradient = [Color.adaptive(light: 0x2A72E8, dark: 0x3E90FF), Color.adaptive(light: 0x1A55C8, dark: 0x2B5FE0)]
+        case .gentle: gradient = [Color.adaptive(light: 0x15805A, dark: 0x2FBF7A), Color.adaptive(light: 0x0F6B43, dark: 0x15936B)]
         }
     }
 }

@@ -36,7 +36,7 @@ struct DomainSignalRow: View {
             }
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(FFPalette.rowHover))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("analytics.domainSignal.\(row.bundleIdentifier)")
         .accessibilityLabel("\(row.label), \(categoryBadge.title), \(TimeInterval(row.totalSeconds).formattedFocusTime), \(activitySummary)")

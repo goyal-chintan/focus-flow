@@ -192,20 +192,26 @@ TextField("Min", value: $selectedMinutes, format: .number)
 ## Essential Design Tokens
 
 ### Colors
+Every token adapts (light-mode design 2026-11-18): dark keeps the luminous pastels that glow on
+near-black; light uses deep inks that read on frosted white. Pick appearance in
+Settings → General → Appearance.
 ```swift
-// Primary actions
-LiquidDesignTokens.Spectral.primaryContainer  // #3E90FF
-LiquidDesignTokens.Spectral.electricBlue      // #AAC7FF — accents
+// Primary actions                               light     dark
+LiquidDesignTokens.Spectral.primaryContainer  // #1F6FE0 / #3E90FF
+LiquidDesignTokens.Spectral.electricBlue      // #1F6FE0 / #AAC7FF — accents
 
 // State colors
-LiquidDesignTokens.Spectral.amber             // #FFC07A — paused
-LiquidDesignTokens.Spectral.mint              // #5ED4A0 — break
-LiquidDesignTokens.Spectral.salmon            // #FFB4A8 — destructive
+LiquidDesignTokens.Spectral.amber             // #B45309 / #FFC07A — paused
+LiquidDesignTokens.Spectral.mint              // #15805A / #5ED4A0 — break
+LiquidDesignTokens.Spectral.salmon            // #C2362F / #FFB4A8 — destructive
+FFPalette.atRisk                              // #B45309 / system orange — warnings
 
 // Text
-LiquidDesignTokens.Surface.onSurface          // #E5E2E1
-LiquidDesignTokens.Surface.onSurfaceMuted     // @ 0.55 opacity
+LiquidDesignTokens.Surface.onSurface          // Color.primary
+LiquidDesignTokens.Surface.onSurfaceMuted     // Color.secondary
 ```
+Never `Color(hex:)`, `.orange`, `Color.white.opacity` or `Color.black.opacity` in a view: add an
+adaptive token. Glow is for dark only; in light, depth comes from soft shadows and hairlines.
 
 ### Typography
 - **36pt ultraLight rounded** — timer display (hero element)
